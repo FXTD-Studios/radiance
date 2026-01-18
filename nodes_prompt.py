@@ -152,6 +152,10 @@ class CinematicDatasets:
         "🌙 Moody Night",
         "⚡ Action / Dynamic",
         "🎪 Wes Anderson",
+        "🎞️ 1970s New Hollywood",
+        "📼 1980s Retro Action",
+        "📺 1990s Music Video",
+        "📹 2000s Digital Look",
     ]
     
     # Preset configurations: {preset_name: {setting: value, ...}}
@@ -311,6 +315,50 @@ class CinematicDatasets:
             "color_grading": "Pastel Soft Tones",
             "aspect_ratio": "2.39:1 (Anamorphic Scope)",
         },
+        "🎞️ 1970s New Hollywood": {
+            "framing": "Medium Shot (MS)",
+            "camera_type": "Panavision Panaflex Gold II (35mm)",
+            "lens_focal": "35mm Classic Wide",
+            "aperture_dof": "f/2.8 (Cinematic Separation)",
+            "lighting": "Practical Lighting",
+            "style_aesthetic": "Cinematic Movie Still",
+            "film_stock": "Kodak Vision3 500T",
+            "color_grading": "Technicolor (Vintage)",
+            "aspect_ratio": "2.39:1 (Anamorphic Scope)",
+        },
+        "📼 1980s Retro Action": {
+            "framing": "Low Angle (Hero Shot)",
+            "camera_type": "ARRI Alexa 35",
+            "lens_focal": "Anamorphic Lens",
+            "aperture_dof": "f/4.0 (Balanced)",
+            "lighting": "Cinematic Haze / Volumetric Fog",
+            "style_aesthetic": "Hyper-Realism",
+            "film_stock": "None",
+            "color_grading": "Teal and Orange (Blockbuster)",
+            "aspect_ratio": "2.39:1 (Anamorphic Scope)",
+        },
+        "📺 1990s Music Video": {
+            "framing": "Extreme Close-Up (ECU)",
+            "camera_type": "Super 8mm Camera",
+            "lens_focal": "Fish-Eye Lens",
+            "aperture_dof": "f/1.8 (Soft Background)",
+            "lighting": "Neon Cyberpunk Lighting",
+            "style_aesthetic": "Vintage 1990s VHS",
+            "film_stock": "Polaroid 600",
+            "color_grading": "Cross Processed",
+            "aspect_ratio": "4:3 (Academy Ratio)",
+        },
+        "📹 2000s Digital Look": {
+            "framing": "Medium Shot (MS)",
+            "camera_type": "Sony A7S III",
+            "lens_focal": "24mm Wide Angle",
+            "aperture_dof": "f/5.6 (Sharp Subject)",
+            "lighting": "Harsh Sunlight",
+            "style_aesthetic": "Editorial Photography",
+            "film_stock": "None",
+            "color_grading": "Vibrant High Contrast",
+            "aspect_ratio": "16:9 (Widescreen)",
+        },
     }
 
 
@@ -321,10 +369,11 @@ class CinematicDatasets:
 def build_cinematic_prompt(base_prompt, framing, camera_type, lens_focal, aperture_dof, 
                            lighting, style_aesthetic, film_stock="None", shutter_speed="None", 
                            color_grading="None", aspect_ratio="None", custom_details="", 
-                           year_era=2024, auto_negative=False):
+                           year_era=2024, negative_strength="Standard"):
     """
     Shared prompt builder function used by all cinematic prompt nodes.
     Returns tuple of (final_prompt, negative_prompt).
+    negative_strength options: "Off", "Soft", "Standard", "Aggressive"
     """
     
     def clean(val):
@@ -404,19 +453,35 @@ def build_cinematic_prompt(base_prompt, framing, camera_type, lens_focal, apertu
     final_prompt = " ".join([p for p in parts if p]).strip()
     
     # --- AUTO NEGATIVE GENERATION ---
+    # --- AUTO NEGATIVE GENERATION ---
     negative_prompt = ""
-    if auto_negative:
-        neg_terms = ["blur", "low quality", "watermark", "text", "deformed", "ugly", "duplicate", "disfigured"]
+    
+    if negative_strength != "Off":
+        neg_terms = []
         
-        if "Photorealistic" in style or "Cinematic" in style or "Documentary" in style:
-            neg_terms.extend(["cartoon", "anime", "illustration", "painting", "cgi", "3d render", "drawing", "sketch"])
-        elif "Anime" in style:
-            neg_terms.extend(["photograph", "realistic", "photo", "photorealistic", "3d"])
-        elif "Painting" in style or "Oil" in style:
-            neg_terms.extend(["photograph", "realistic", "photo", "digital", "3d render"])
-        elif "CGI" in style or "Unreal" in style or "3D" in style:
-            neg_terms.extend(["photograph", "realistic", "2d", "flat", "hand drawn"])
+        # Soft: Minimal cleanup
+        if negative_strength in ["Soft", "Standard", "Aggressive"]:
+            neg_terms.extend(["blur", "low quality", "watermark", "text"])
             
+        # Standard: Add deformities and duplicates
+        if negative_strength in ["Standard", "Aggressive"]:
+            neg_terms.extend(["deformed", "ugly", "duplicate", "disfigured", "bad anatomy"])
+            
+            # Context-aware negatives (Standard+)
+            if "Photorealistic" in style or "Cinematic" in style or "Documentary" in style:
+                neg_terms.extend(["cartoon", "anime", "illustration", "painting", "cgi", "3d render", "drawing", "sketch"])
+            elif "Anime" in style:
+                neg_terms.extend(["photograph", "realistic", "photo", "photorealistic", "3d"])
+            elif "Painting" in style or "Oil" in style:
+                neg_terms.extend(["photograph", "realistic", "photo", "digital", "3d render"])
+            elif "CGI" in style or "Unreal" in style or "3D" in style:
+                neg_terms.extend(["photograph", "realistic", "2d", "flat", "hand drawn"])
+        
+        # Aggressive: Add everything specific
+        if negative_strength == "Aggressive":
+             neg_terms.extend(["mutated", "extra limbs", "missing limbs", "floating limbs", "disconnected limbs",
+                               "pixelated", "noise", "grainy", "cropped", "out of frame", "worst quality", "lowres"])
+
         negative_prompt = ", ".join(neg_terms)
     
     return (final_prompt, negative_prompt)
@@ -491,7 +556,7 @@ class FXTDCinematicPromptEncoder:
                 "aspect_ratio": (cls.ASPECT_RATIOS, {"default": "None", "tooltip": "Frame aspect ratio."}),
                 "custom_details": ("STRING", {"multiline": False, "default": "", "tooltip": "Additional custom prompt details."}),
                 "year_era": ("INT", {"default": 2024, "min": 1800, "max": 2100, "step": 1, "tooltip": "Time period for era-specific looks."}),
-                "auto_negative": ("BOOLEAN", {"default": True, "label_on": "Active", "label_off": "Inactive", "tooltip": "Auto-generate smart negative prompt."}),
+                "negative_strength": (["Off", "Soft", "Standard", "Aggressive"], {"default": "Standard", "tooltip": "Strength of auto-generated negative prompt."}),
                 "clip_skip": ("INT", {"default": 0, "min": 0, "max": 24, "step": 1, "tooltip": "Number of CLIP layers to skip (0 = use all layers)."}),
             }
         }
@@ -511,7 +576,7 @@ class FXTDCinematicPromptEncoder:
                          lens_focal="50mm Standard Prime", aperture_dof="f/2.8 (Cinematic Separation)", 
                          lighting="Cinematic Haze / Volumetric Fog", style_aesthetic="Photorealistic (Raw)",
                          film_stock="None", shutter_speed="None", color_grading="None", aspect_ratio="None",
-                         custom_details="", year_era=2024, auto_negative=True, clip_skip=0):
+                         custom_details="", year_era=2024, negative_strength="Standard", clip_skip=0):
         
         # Validate CLIP input
         if clip is None:
@@ -550,7 +615,7 @@ class FXTDCinematicPromptEncoder:
             aspect_ratio=settings.get("aspect_ratio", "None"),
             custom_details=custom_details,
             year_era=year_era,
-            auto_negative=auto_negative
+            negative_strength=negative_strength
         )
         
         # --- CLIP ENCODING WITH CLIP SKIP ---
