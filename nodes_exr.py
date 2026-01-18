@@ -201,8 +201,14 @@ class SimpleEXRWriter:
                              self._encode_channel_list(channel_list, pixel_type))
         
         comp_value = EXR_COMPRESSION.get(compression, 3)
+        # FIX: Simple writer only supports single-scanline compression (ZIPS logic)
+        # ZIP (3) requires 16-line blocks. If we write single lines labeled as ZIP, it's corrupt.
+        # So we remap ZIP -> ZIPS (2) which is zlib-compressed single lines.
+        if comp_value == 3:  # ZIP
+            comp_value = 2  # ZIPS
+        
         self._write_attribute(f, "compression", "compression",
-                             struct.pack('<B', comp_value))
+                              struct.pack('<B', comp_value))
         
         self._write_attribute(f, "dataWindow", "box2i",
                              struct.pack('<iiii', 0, 0, width - 1, height - 1))
