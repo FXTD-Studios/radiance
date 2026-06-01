@@ -7436,15 +7436,91 @@ else:
     //                          HUD / CONTROLS
     // ═══════════════════════════════════════════════════════════════════════════
 
+    getHUDDockMode() {
+        return localStorage.getItem('radiance_hud_dock_mode') === 'floating' ? 'floating' : 'panel';
+    }
+
+    applyHUDDockMode() {
+        if (!this.controlsPanel) return;
+        const mode = this.getHUDDockMode();
+        const panel = this.controlsPanel;
+        if (mode === 'floating') {
+            panel.classList.remove('radiance-panel-embedded');
+            if (panel.parentNode !== document.body) {
+                if (panel.parentNode) panel.parentNode.removeChild(panel);
+                document.body.appendChild(panel);
+            }
+
+            const width = parseInt(localStorage.getItem('radiance_hud_float_width') || '520');
+            const height = parseInt(localStorage.getItem('radiance_hud_float_height') || '720');
+            const left = parseInt(localStorage.getItem('radiance_hud_float_left') || String(Math.max(16, window.innerWidth - width - 24)));
+            const top = parseInt(localStorage.getItem('radiance_hud_float_top') || '72');
+            const clampedLeft = Math.min(Math.max(8, left), Math.max(8, window.innerWidth - 120));
+            const clampedTop = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - 80));
+
+            panel.style.position = 'fixed';
+            panel.style.left = `${clampedLeft}px`;
+            panel.style.top = `${clampedTop}px`;
+            panel.style.width = `${Math.max(320, width)}px`;
+            panel.style.height = `${Math.max(240, height)}px`;
+            panel.style.zIndex = '10000';
+            panel.style.display = 'flex';
+            panel.style.overflow = 'hidden';
+            panel.style.pointerEvents = 'auto';
+            panel.style.opacity = '1';
+            if (this.rightControlPanel) this.rightControlPanel.style.display = 'none';
+        } else {
+            if (this.rightControlPanel) this.rightControlPanel.style.display = 'flex';
+            panel.classList.add('radiance-panel-embedded');
+            if (this.rightControlPanel && panel.parentNode !== this.rightControlPanel) {
+                if (panel.parentNode) panel.parentNode.removeChild(panel);
+                this.rightControlPanel.appendChild(panel);
+            }
+            panel.style.left = '';
+            panel.style.top = '';
+            panel.style.width = '';
+            panel.style.height = '';
+            panel.style.position = '';
+            panel.style.zIndex = '';
+        }
+    }
+
+    enableFloatingHUDDrag(gripRow) {
+        if (!gripRow || gripRow._radianceDragBound) return;
+        gripRow._radianceDragBound = true;
+        gripRow.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || this.getHUDDockMode() !== 'floating') return;
+            if (e.target?.closest?.('[data-radiance-hud-action]')) return;
+            e.preventDefault();
+            const panel = this.controlsPanel;
+            const rect = panel.getBoundingClientRect();
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startLeft = rect.left;
+            const startTop = rect.top;
+
+            const onMove = (me) => {
+                const left = Math.min(Math.max(8, startLeft + me.clientX - startX), Math.max(8, window.innerWidth - 120));
+                const top = Math.min(Math.max(8, startTop + me.clientY - startY), Math.max(8, window.innerHeight - 80));
+                panel.style.left = `${left}px`;
+                panel.style.top = `${top}px`;
+                localStorage.setItem('radiance_hud_float_left', Math.round(left));
+                localStorage.setItem('radiance_hud_float_top', Math.round(top));
+            };
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    }
+
     createHUD() {
         // Singleton pattern: Check if HUD already exists
         if (RadianceViewer.singletonHUD) {
             this.controlsPanel = RadianceViewer.singletonHUD;
-            // Attach to THIS instance's rightControlPanel (not document.body)
-            if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-                if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-                this.rightControlPanel.appendChild(this.controlsPanel);
-            }
+            this.applyHUDDockMode();
 
             // v2.4: Sync active instance and re-render content immediately on creation if HUD already exists
             RadianceViewer.activeInstance = this;
@@ -7478,6 +7554,11 @@ else:
             localStorage.setItem('radiance_hud_width', Math.round(this.hudPanelWidth));
             if (this.hudPanelHeight) localStorage.setItem('radiance_hud_height2', Math.round(this.hudPanelHeight));
             else localStorage.removeItem('radiance_hud_height2');
+            if (this.getHUDDockMode() === 'floating' && this.controlsPanel) {
+                const rect = this.controlsPanel.getBoundingClientRect();
+                localStorage.setItem('radiance_hud_float_width', Math.round(rect.width));
+                localStorage.setItem('radiance_hud_float_height', Math.round(rect.height));
+            }
         };
 
         // Panel-embedded mode: position/size controlled by rightControlPanel — these are no-ops
@@ -7536,6 +7617,7 @@ else:
             color: rgba(255,255,255,0.3); cursor: pointer; border-radius: 6px;
             transition: color 0.15s, background 0.15s; flex-shrink: 0;
         `;
+        minBtn.dataset.radianceHudAction = '1';
         minBtn.onmouseenter = () => { minBtn.style.color = '#fff'; minBtn.style.background = 'rgba(255,255,255,0.08)'; };
         minBtn.onmouseleave = () => { minBtn.style.color = 'rgba(255,255,255,0.3)'; minBtn.style.background = ''; };
         minBtn.addEventListener('mousedown', e => e.stopPropagation());
@@ -7560,8 +7642,32 @@ else:
         panelTitle.textContent = 'GRADING CONTROLS';
         panelTitle.style.cssText = `flex: 1; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; color: rgba(255,255,255,0.28); user-select: none;`;
 
+        const dockBtn = document.createElement('div');
+        dockBtn.dataset.radianceHudAction = '1';
+        dockBtn.style.cssText = `
+            width: 26px; height: 24px; display: flex; align-items: center; justify-content: center;
+            color: rgba(255,255,255,0.36); cursor: pointer; border-radius: 6px;
+            transition: color 0.15s, background 0.15s; flex-shrink: 0; font-size: 12px;
+        `;
+        const updateDockBtn = () => {
+            const floating = this.getHUDDockMode() === 'floating';
+            dockBtn.textContent = floating ? '⇲' : '⇱';
+            dockBtn.title = floating ? 'Dock controls to right panel' : 'Float controls panel';
+        };
+        updateDockBtn();
+        dockBtn.onmouseenter = () => { dockBtn.style.color = '#fff'; dockBtn.style.background = 'rgba(255,255,255,0.08)'; };
+        dockBtn.onmouseleave = () => { dockBtn.style.color = 'rgba(255,255,255,0.36)'; dockBtn.style.background = ''; };
+        dockBtn.onclick = () => {
+            const next = this.getHUDDockMode() === 'floating' ? 'panel' : 'floating';
+            localStorage.setItem('radiance_hud_dock_mode', next);
+            this.applyHUDDockMode();
+            updateDockBtn();
+        };
+
         gripRow.appendChild(minBtn);
         gripRow.appendChild(panelTitle);
+        gripRow.appendChild(dockBtn);
+        this.enableFloatingHUDDrag(gripRow);
 
         tabsHeader.appendChild(gripRow);
 
@@ -8190,17 +8296,7 @@ else:
         this.canvasWrapper.appendChild(this.transportPanel);
 
 
-        // ── Embed HUD into the right control panel (not floating on body) ──────
-        this.controlsPanel.classList.add('radiance-panel-embedded');
-        // Remove position/size override styles that only apply to floating mode
-        this.controlsPanel.style.left = '';
-        this.controlsPanel.style.top = '';
-        this.controlsPanel.style.width = '';
-        this.controlsPanel.style.height = '';
-        if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-            if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-            this.rightControlPanel.appendChild(this.controlsPanel);
-        }
+        this.applyHUDDockMode();
 
         // Relative ordering for info bar
         if (this.bottomInfoBar) {
