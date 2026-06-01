@@ -332,9 +332,14 @@ class RadianceViewer {
         this.grainColor = 0.0;
         this.grainAnimate = false;
         this.bloom = 0.0;
+        this.bloomThreshold = 1.0;
         this.halation = 0.0;
+        this.halationRadius = 1.0;
+        this.halationThreshold = 0.35;
         this.diffusion = 0.0;
         this.anamorphicStreaks = 0.0;
+        this.streakThreshold = 0.85;
+        this.streakLength = 0.08;
 
         // Grading State
         this.exposure = 0.0;
@@ -2313,11 +2318,11 @@ else:
                     this.temperature = 0.0; this.tint = 0.0; this.contrast = 1.0; this.pivot = 0.5; this.saturation = 1.0;
                     this.grain = 0.0; this.denoise = 0.0;
                     this.printerR = 0; this.printerG = 0; this.printerB = 0; this.softClip = 0.0;
-                    this.bloom = 0.0; this.halation = 0.0; this.diffusion = 0.0;
+                    this.bloom = 0.0; this.bloomThreshold = 1.0; this.halation = 0.0; this.halationRadius = 1.0; this.halationThreshold = 0.35; this.diffusion = 0.0;
                     this.grainSize = 1.0; this.grainColor = 0.0; this.grainAnimate = false;
                     this.bokehHighlightBias = 0.0; this.bokehSoapBubble = 0.0; this.bokehOpticalVig = 0.0;
                     this.apertureBlades = 0; this.apertureRotation = 0.0; this.apertureAnamorphic = 1.0;
-                    this.anamorphicStreaks = 0.0; this.lensDistortion = 0.0; this.lensFringe = 0.0;
+                    this.anamorphicStreaks = 0.0; this.streakThreshold = 0.85; this.streakLength = 0.08; this.lensDistortion = 0.0; this.lensFringe = 0.0;
                     this.vignetteIntensity = 0.0; this.vignetteFalloff = 0.5;
                     if (this.curveEditor) this.curveEditor.resetAllChannels?.();
                     if (this.renderer) {
@@ -6661,7 +6666,10 @@ else:
             this.renderer.setGrainAnimate(this.grainAnimate || false);
             // Bloom / Halation / Diffusion
             this.renderer.setBloom(this.bloom || 0.0);
+            if (this.renderer && this.renderer.setBloomThreshold) this.renderer.setBloomThreshold(this.bloomThreshold ?? 1.0);
             this.renderer.setHalation(this.halation || 0.0);
+            if (this.renderer && this.renderer.setHalationRadius) this.renderer.setHalationRadius(this.halationRadius ?? 1.0);
+            if (this.renderer && this.renderer.setHalationThreshold) this.renderer.setHalationThreshold(this.halationThreshold ?? 0.35);
             this.renderer.setDiffusion(this.diffusion || 0.0);
             // Lens Distortion + Chromatic Aberration
             this.renderer.setLensDistortion(this.lensDistortion || 0.0, this.lensFringe || 0.0);
@@ -6672,7 +6680,9 @@ else:
             // Aperture shape (always pushed for CA / anamorphic ratio in fringe mode)
             this.renderer.setApertureShape(this.apertureBlades || 0, this.apertureRotation || 0.0, this.apertureAnamorphic || 1.0);
             // Anamorphic streaks
-            if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(this.anamorphicStreaks || 0.0);
+            if (this.renderer && this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(this.anamorphicStreaks || 0.0);
+            if (this.renderer && this.renderer.setStreakThreshold) this.renderer.setStreakThreshold(this.streakThreshold ?? 0.85);
+            if (this.renderer && this.renderer.setStreakLength) this.renderer.setStreakLength(this.streakLength ?? 0.08);
 
             // Time + frame must always be updated so grain, zebra-blink, and other
             // time-driven effects animate even when DoF is disabled.
@@ -7662,12 +7672,13 @@ else:
                     temperature: active.temperature, tint: active.tint, contrast: active.contrast, pivot: active.pivot, saturation: active.saturation,
                     grain: active.grain, grainSize: active.grainSize ?? 1.0, grainColor: active.grainColor ?? 0.0, grainAnimate: active.grainAnimate ?? false,
                     denoise: active.denoise,
-                    bloom: active.bloom ?? 0.0, halation: active.halation ?? 0.0, diffusion: active.diffusion ?? 0.0,
+                    bloom: active.bloom ?? 0.0, bloomThreshold: active.bloomThreshold ?? 1.0, halation: active.halation ?? 0.0,
+                    halationRadius: active.halationRadius ?? 1.0, halationThreshold: active.halationThreshold ?? 0.35, diffusion: active.diffusion ?? 0.0,
                     lensDistortion: active.lensDistortion, lensFringe: active.lensFringe,
                     vignetteIntensity: active.vignetteIntensity, vignetteFalloff: active.vignetteFalloff,
                     bokehHighlightBias: active.bokehHighlightBias ?? 0.0, bokehSoapBubble: active.bokehSoapBubble ?? 0.0, bokehOpticalVig: active.bokehOpticalVig ?? 0.0,
                     apertureBlades: active.apertureBlades ?? 0, apertureRotation: active.apertureRotation ?? 0.0, apertureAnamorphic: active.apertureAnamorphic ?? 1.0,
-                    anamorphicStreaks: active.anamorphicStreaks ?? 0.0,
+                    anamorphicStreaks: active.anamorphicStreaks ?? 0.0, streakThreshold: active.streakThreshold ?? 0.85, streakLength: active.streakLength ?? 0.08,
                 };
                 if (active.renderer) {
                     active.renderer.setExposure(0); active.renderer.setLift(0, 0, 0); active.renderer.setGamma(1, 1, 1); active.renderer.setGain(1, 1, 1);
@@ -7688,11 +7699,14 @@ else:
                     active.renderer.setTemperature(s.temperature); active.renderer.setTint(s.tint); active.renderer.setContrast(s.contrast); active.renderer.setPivot(s.pivot); active.renderer.setSaturation(s.saturation);
                     active.renderer.setGrain(s.grain); active.renderer.setGrainSize(s.grainSize ?? 1.0); active.renderer.setGrainColor(s.grainColor ?? 0.0); active.renderer.setGrainAnimate(s.grainAnimate ?? false);
                     active.renderer.setDenoise(s.denoise);
-                    active.renderer.setBloom(s.bloom ?? 0.0); active.renderer.setHalation(s.halation ?? 0.0); active.renderer.setDiffusion(s.diffusion ?? 0.0);
+                    active.renderer.setBloom(s.bloom ?? 0.0); if (active.renderer.setBloomThreshold) active.renderer.setBloomThreshold(s.bloomThreshold ?? 1.0);
+                    active.renderer.setHalation(s.halation ?? 0.0); if (active.renderer.setHalationRadius) active.renderer.setHalationRadius(s.halationRadius ?? 1.0); if (active.renderer.setHalationThreshold) active.renderer.setHalationThreshold(s.halationThreshold ?? 0.35); active.renderer.setDiffusion(s.diffusion ?? 0.0);
                     active.renderer.setLensDistortion(s.lensDistortion, s.lensFringe); active.renderer.setVignette(s.vignetteIntensity, s.vignetteFalloff);
                     active.renderer.setBokehPhysics(s.bokehHighlightBias ?? 0.0, s.bokehSoapBubble ?? 0.0, s.bokehOpticalVig ?? 0.0);
                     active.renderer.setApertureShape(s.apertureBlades ?? 0, s.apertureRotation ?? 0.0, s.apertureAnamorphic ?? 1.0);
                     if (active.renderer.setAnamorphicStreaks) active.renderer.setAnamorphicStreaks(s.anamorphicStreaks ?? 0.0);
+                    if (active.renderer.setStreakThreshold) active.renderer.setStreakThreshold(s.streakThreshold ?? 0.85);
+                    if (active.renderer.setStreakLength) active.renderer.setStreakLength(s.streakLength ?? 0.08);
                 }
                 bypassBtn.textContent = 'A/B'; bypassBtn.style.color = '#666'; bypassBtn.style.borderColor = 'rgba(255,255,255,0.08)';
             }
@@ -7742,8 +7756,8 @@ else:
             active.contrast = 1.0; active.pivot = 0.5; active.saturation = 1.0;
             // Film / Effects
             active.grain = 0.0; active.grainSize = 1.0; active.grainColor = 0.0; active.grainAnimate = false;
-            active.denoise = 0.0; active.bloom = 0.0; active.halation = 0.0; active.diffusion = 0.0;
-            active.anamorphicStreaks = 0.0;
+            active.denoise = 0.0; active.bloom = 0.0; active.bloomThreshold = 1.0; active.halation = 0.0; active.halationRadius = 1.0; active.halationThreshold = 0.35; active.diffusion = 0.0;
+            active.anamorphicStreaks = 0.0; active.streakThreshold = 0.85; active.streakLength = 0.08;
             // Lens
             active.focusDistance = 0.5; active.aperture = 0.0; active.dofEnabled = false;
             active.apertureBlades = 0; active.apertureRotation = 0.0; active.apertureAnamorphic = 1.0;
@@ -8744,7 +8758,7 @@ else:
         const signaturePresets = [
             { label: 'Zeiss MP', blades: 0, angle: 0, anamorphic: 1.0, distort: 0.0, fringe: 0.0, halation: 0.05, diffusion: 0.0 },
             { label: 'Cooke S4', blades: 8, angle: 22, anamorphic: 1.0, distort: 0.04, fringe: 0.35, halation: 0.15, diffusion: 0.2 },
-            { label: 'Anamorphic', blades: 0, angle: 0, anamorphic: 2.0, distort: 0.18, fringe: 0.75, halation: 0.1, diffusion: 0.15, streaks: 0.5 },
+            { label: 'Anamorphic', blades: 0, angle: 0, anamorphic: 2.0, distort: 0.18, fringe: 0.75, halation: 0.1, halRadius: 1.0, diffusion: 0.15, streaks: 0.5, streakThreshold: 0.78, streakLength: 0.12 },
             { label: 'Petzval', blades: 0, angle: 0, anamorphic: 1.0, distort: -0.1, fringe: 0.0, opticalVig: 0.5, highlight: 0.4 },
             { label: 'Dreamy', blades: 0, angle: 0, anamorphic: 1.0, distort: 0.0, fringe: 0.2, halation: 0.4, diffusion: 0.6 }
         ];
@@ -8797,8 +8811,10 @@ else:
                     this.apertureAnamorphic = 1.0;
                     this.lensDistortion = 0.0; this.lensFringe = 0.0;
                     this.halation = 0.0; this.diffusion = 0.0;
+                    this.halationRadius = 1.0; this.halationThreshold = 0.35; this.bloomThreshold = 1.0;
                     this.bokehOpticalVig = 0.0; this.bokehHighlightBias = 0.0;
                     this.anamorphicStreaks = 0.0;
+                    this.streakThreshold = 0.85; this.streakLength = 0.08;
                 } else {
                     // Apply preset
                     this.activeLensSignature = p.label;
@@ -8808,19 +8824,29 @@ else:
                     this.lensDistortion = p.distort || 0.0;
                     this.lensFringe = p.fringe || 0.0;
                     this.halation = p.halation || 0.0;
+                    this.halationRadius = p.halRadius || 1.0;
+                    this.halationThreshold = p.halThreshold || 0.35;
+                    this.bloomThreshold = p.bloomThreshold || 1.0;
                     this.diffusion = p.diffusion || 0.0;
                     this.bokehOpticalVig = p.opticalVig || 0.0;
                     this.bokehHighlightBias = p.highlight || 0.0;
                     this.anamorphicStreaks = p.streaks || 0.0;
+                    this.streakThreshold = p.streakThreshold || 0.85;
+                    this.streakLength = p.streakLength || 0.08;
                 }
 
                 if (this.renderer) {
                     this.renderer.setApertureShape(this.apertureBlades, this.apertureRotation, this.apertureAnamorphic);
                     this.renderer.setLensDistortion(this.lensDistortion, this.lensFringe);
                     this.renderer.setHalation(this.halation);
+                    if (this.renderer.setBloomThreshold) this.renderer.setBloomThreshold(this.bloomThreshold);
+                    if (this.renderer.setHalationRadius) this.renderer.setHalationRadius(this.halationRadius);
+                    if (this.renderer.setHalationThreshold) this.renderer.setHalationThreshold(this.halationThreshold);
                     this.renderer.setDiffusion(this.diffusion);
                     this.renderer.setBokehPhysics(this.bokehHighlightBias, this.bokehSoapBubble || 0.0, this.bokehOpticalVig);
                     if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(this.anamorphicStreaks);
+                    if (this.renderer.setStreakThreshold) this.renderer.setStreakThreshold(this.streakThreshold);
+                    if (this.renderer.setStreakLength) this.renderer.setStreakLength(this.streakLength);
                 }
                 this.render();
                 // Safe: renderLensTab is now idempotent (removes old content first)
@@ -8893,10 +8919,11 @@ else:
         fxGrid.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px 0; justify-content: space-evenly;';
 
         const diffPresets = [
-            { label: 'Pro-Mist 1/4', bloom: 0.15, halation: 0.1, diffusion: 0.2 },
-            { label: 'Pro-Mist 1/2', bloom: 0.25, halation: 0.15, diffusion: 0.35 },
-            { label: 'Glimmerglass', bloom: 0.4, halation: 0.05, diffusion: 0.15 },
-            { label: 'H.Black Magic', bloom: 0.2, halation: 0.3, diffusion: 0.4 },
+            { label: 'Pro-Mist 1/4', bloom: 0.15, threshold: 1.0, halation: 0.1, halRadius: 0.7, halThreshold: 0.35, diffusion: 0.2 },
+            { label: 'Pro-Mist 1/2', bloom: 0.25, threshold: 0.95, halation: 0.15, halRadius: 0.85, halThreshold: 0.32, diffusion: 0.35 },
+            { label: 'Glimmerglass', bloom: 0.4, threshold: 0.85, halation: 0.05, halRadius: 0.6, halThreshold: 0.38, diffusion: 0.15 },
+            { label: 'H.Black Magic', bloom: 0.2, threshold: 0.9, halation: 0.3, halRadius: 1.0, halThreshold: 0.28, diffusion: 0.4 },
+            { label: 'Strong Preview', bloom: 0.65, threshold: 0.65, halation: 0.55, halRadius: 1.0, halThreshold: 0.22, diffusion: 0.25, streaks: 0.35, streakThreshold: 0.7, streakLength: 0.14 },
         ];
 
         const dfRow = document.createElement('div');
@@ -8909,12 +8936,24 @@ else:
             btn.onmouseleave = () => btn.style.background = 'rgba(255,255,255,0.05)';
             btn.onclick = () => {
                 this.bloom = p.bloom;
+                this.bloomThreshold = p.threshold;
                 this.halation = p.halation;
+                this.halationRadius = p.halRadius;
+                this.halationThreshold = p.halThreshold;
                 this.diffusion = p.diffusion;
+                if (p.streaks !== undefined) this.anamorphicStreaks = p.streaks;
+                if (p.streakThreshold !== undefined) this.streakThreshold = p.streakThreshold;
+                if (p.streakLength !== undefined) this.streakLength = p.streakLength;
                 if (this.renderer) {
                     this.renderer.setBloom(p.bloom);
+                    if (this.renderer.setBloomThreshold) this.renderer.setBloomThreshold(p.threshold);
                     this.renderer.setHalation(p.halation);
+                    if (this.renderer.setHalationRadius) this.renderer.setHalationRadius(p.halRadius);
+                    if (this.renderer.setHalationThreshold) this.renderer.setHalationThreshold(p.halThreshold);
                     this.renderer.setDiffusion(p.diffusion);
+                    if (p.streaks !== undefined && this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(p.streaks);
+                    if (p.streakThreshold !== undefined && this.renderer.setStreakThreshold) this.renderer.setStreakThreshold(p.streakThreshold);
+                    if (p.streakLength !== undefined && this.renderer.setStreakLength) this.renderer.setStreakLength(p.streakLength);
                 }
                 this.render();
                 // Safe: renderLensTab is now idempotent (removes old content first)
@@ -8924,21 +8963,57 @@ else:
         });
         fxGroup.appendChild(dfRow);
 
-        fxGrid.appendChild(this.createKnob('BLOOM', 0.0, 1.0, this.bloom || 0.0, 0.01, v => {
+        fxGrid.appendChild(this.createKnob('BLOOM', 0.0, 2.0, this.bloom || 0.0, 0.01, v => {
             this.bloom = v;
             if (this.renderer) this.renderer.setBloom(v);
             this.render();
         }));
 
-        fxGrid.appendChild(this.createKnob('HALATION', 0.0, 1.0, this.halation || 0.0, 0.01, v => {
+        fxGrid.appendChild(this.createKnob('BLOOM THR', 0.5, 2.0, this.bloomThreshold ?? 1.0, 0.05, v => {
+            this.bloomThreshold = v;
+            if (this.renderer && this.renderer.setBloomThreshold) this.renderer.setBloomThreshold(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('HALATION', 0.0, 2.0, this.halation || 0.0, 0.01, v => {
             this.halation = v;
             if (this.renderer) this.renderer.setHalation(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('HAL RADIUS', 0.0, 1.0, this.halationRadius ?? 1.0, 0.05, v => {
+            this.halationRadius = v;
+            if (this.renderer && this.renderer.setHalationRadius) this.renderer.setHalationRadius(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('HAL THR', 0.05, 1.0, this.halationThreshold ?? 0.35, 0.01, v => {
+            this.halationThreshold = v;
+            if (this.renderer && this.renderer.setHalationThreshold) this.renderer.setHalationThreshold(v);
             this.render();
         }));
 
         fxGrid.appendChild(this.createKnob('DIFFUSION', 0.0, 1.0, this.diffusion || 0.0, 0.01, v => {
             this.diffusion = v;
             if (this.renderer) this.renderer.setDiffusion(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('STREAK', 0.0, 2.0, this.anamorphicStreaks || 0.0, 0.01, v => {
+            this.anamorphicStreaks = v;
+            if (this.renderer && this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('STR THR', 0.1, 1.0, this.streakThreshold ?? 0.85, 0.01, v => {
+            this.streakThreshold = v;
+            if (this.renderer && this.renderer.setStreakThreshold) this.renderer.setStreakThreshold(v);
+            this.render();
+        }));
+
+        fxGrid.appendChild(this.createKnob('STR LEN', 0.02, 0.25, this.streakLength ?? 0.08, 0.01, v => {
+            this.streakLength = v;
+            if (this.renderer && this.renderer.setStreakLength) this.renderer.setStreakLength(v);
             this.render();
         }));
 
@@ -12960,7 +13035,8 @@ else:
 app.registerExtension({
     name: "FXTD.RadianceViewer",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name !== "FXTD_RadianceViewer") return;
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass !== "FXTD_RadianceViewer" && comfyClass !== "FXTD_RadianceProViewer") return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -13523,6 +13599,8 @@ class RadianceCurveEditor {
 
         cvs.onmousedown = (e) => {
             if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
             const { norm, best, px, py } = hitTest(e);
 
             if (best) {
@@ -13554,6 +13632,7 @@ class RadianceCurveEditor {
         };
 
         cvs.onmousemove = (e) => {
+            e.stopPropagation();
             if (this.draggingPoint && e.buttons !== 1) {
                 this.draggingPoint = null;
                 cvs.style.cursor = 'crosshair';
@@ -13616,6 +13695,8 @@ class RadianceCurveEditor {
 
         // Double-click: remove interior point
         cvs.ondblclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             const { best } = hitTest(e);
             if (!best) return;
             const pts = this.curves[this.activeChannel];
@@ -13631,6 +13712,7 @@ class RadianceCurveEditor {
         // Right-click: also remove
         cvs.oncontextmenu = (e) => {
             e.preventDefault();
+            e.stopPropagation();
             const { best } = hitTest(e);
             if (!best) return;
             const pts = this.curves[this.activeChannel];
@@ -13651,6 +13733,7 @@ class RadianceCurveEditor {
         // Zoom
         cvs.onwheel = (e) => {
             e.preventDefault();
+            e.stopPropagation();
             const rect = cvs.getBoundingClientRect();
             const mouseX = (e.clientX - rect.left) * (cvs.width / rect.width);
             const mouseY = (e.clientY - rect.top) * (cvs.height / rect.height);
@@ -13675,10 +13758,11 @@ class RadianceCurveEditor {
 
         cvs.addEventListener('mousedown', (e) => {
             if (e.button === 1 || (e.button === 0 && e.altKey)) {
+                e.preventDefault();
+                e.stopPropagation();
                 isPanning = true;
                 lastPanPos = { x: e.clientX, y: e.clientY };
                 cvs.style.cursor = 'move';
-                e.preventDefault();
             }
         });
 
@@ -14222,5 +14306,3 @@ class RadianceCurveEditor {
         this.draw();
     }
 }
-
-

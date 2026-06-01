@@ -183,7 +183,8 @@ app.registerExtension({
     name: "Radiance.Workspace",
 
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
-        if (nodeData.name !== "RadianceWorkspace") return;
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass !== "RadianceWorkspace") return;
 
         const origOnNodeCreated = nodeType.prototype.onNodeCreated;
 

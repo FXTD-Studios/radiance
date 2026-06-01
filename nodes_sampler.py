@@ -3,6 +3,7 @@ import time
 import math
 import logging
 import gc  # ALBABIT FIX: Added garbage collection import for pre-flight cleanup
+import inspect
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
@@ -18,6 +19,56 @@ try:
 except ImportError:
     _NestedTensor = None
     _HAS_NESTED_TENSOR = False
+
+
+def _sample_custom_compat(
+    model,
+    noise,
+    cfg,
+    sampler,
+    sigmas,
+    positive,
+    negative,
+    latent_image,
+    noise_mask=None,
+    callback=None,
+    disable_pbar=False,
+    seed=None,
+):
+    """Call ComfyUI sample_custom across positional/keyword API variants."""
+    kwargs = {
+        "model": model,
+        "noise": noise,
+        "cfg": cfg,
+        "sampler": sampler,
+        "sigmas": sigmas,
+        "positive": positive,
+        "negative": negative,
+        "latent_image": latent_image,
+        "noise_mask": noise_mask,
+        "callback": callback,
+        "disable_pbar": disable_pbar,
+        "seed": seed,
+    }
+    try:
+        params = inspect.signature(comfy.sample.sample_custom).parameters
+        filtered = {k: v for k, v in kwargs.items() if k in params}
+        return comfy.sample.sample_custom(**filtered)
+    except (TypeError, ValueError):
+        return comfy.sample.sample_custom(
+            model,
+            noise,
+            cfg,
+            sampler,
+            sigmas,
+            positive,
+            negative,
+            latent_image,
+            noise_mask=noise_mask,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+        )
 
 DYNAMIC_GUIDANCE_EARLY_MULTIPLIER = 0.6                                              
 DYNAMIC_GUIDANCE_LATE_MULTIPLIER = 0.95                                                                         
@@ -1395,9 +1446,6 @@ def tile_sample(
     tile_blend: str = "feather",
     noise_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-
-    import comfy.sample as cs
-
     if latent_samples.ndim != 4:
         raise ValueError(
             f"[Radiance] tile_sample requires 4D latent (B, C, H, W), "
@@ -1427,10 +1475,10 @@ def tile_sample(
         t_noise = noise[:, :, y1:y2, x1:x2]
 
         try:
-            t_out = cs.sample_custom(
-                model,
-                t_noise,
-                cfg=1.0,                                                         
+            t_out = _sample_custom_compat(
+                model=model,
+                noise=t_noise,
+                cfg=1.0,
                 sampler=sampler_obj,
                 sigmas=sigmas,
                 positive=positive,
@@ -2497,15 +2545,15 @@ class RadianceSamplerPro:
 
                     comfy.model_management.load_model_gpu(current_model)
 
-                    result = comfy.sample.sample_custom(
-                        current_model,
-                        stage_noise,
-                        effective_cfg,
-                        sampler_obj,
-                        stage_sigmas,
-                        stage_positive,
-                        negative,
-                        stage_latent,
+                    result = _sample_custom_compat(
+                        model=current_model,
+                        noise=stage_noise,
+                        cfg=effective_cfg,
+                        sampler=sampler_obj,
+                        sigmas=stage_sigmas,
+                        positive=stage_positive,
+                        negative=negative,
+                        latent_image=stage_latent,
                         noise_mask=noise_mask,
                         callback=create_phase_callback(s_start),
                         disable_pbar=use_custom_preview,

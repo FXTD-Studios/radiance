@@ -23,10 +23,11 @@ const VIDEO_EXTENSIONS = [".mp4", ".mov", ".gif", ".webp", ".avi", ".mkv", ".web
 app.registerExtension({
 	name: "Radiance.IO",
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
+		const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
 
 		// 1. Digital Cinema Read — label intelligence
 		// FIX 1: was "◎ RadianceDigitalCinemaRead" — ◎ removed from Python mapping key.
-		if (nodeData.name === "RadianceDigitalCinemaRead") {
+		if (comfyClass === "RadianceDigitalCinemaRead" || comfyClass === "◎ RadianceDigitalCinemaRead") {
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
 			nodeType.prototype.onNodeCreated = function () {
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
@@ -53,7 +54,7 @@ app.registerExtension({
 
 		// 2. Digital Cinema Write — smart show/hide toggles
 		// FIX 1: was "◎ RadianceDigitalCinemaWrite"
-		if (nodeData.name === "RadianceDigitalCinemaWrite") {
+		if (comfyClass === "RadianceDigitalCinemaWrite" || comfyClass === "◎ RadianceDigitalCinemaWrite") {
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
 			nodeType.prototype.onNodeCreated = function () {
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;

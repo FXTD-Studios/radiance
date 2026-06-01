@@ -47,7 +47,8 @@ app.registerExtension({
     name: "FXTD.Radiance.Layout",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name !== "RadianceAdvancedReroute") return;
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass !== "RadianceAdvancedReroute") return;
 
         // Override onNodeCreated for initial setup
         const origOnNodeCreated = nodeType.prototype.onNodeCreated;

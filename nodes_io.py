@@ -14,9 +14,9 @@ import cv2
 
 from . import color_utils
 try:
-    from .path_utils import safe_join, get_safe_output_dir, get_safe_input_path, get_next_index
+    from .path_utils import safe_join, get_safe_output_dir, get_safe_input_path
 except ImportError:
-    from path_utils import safe_join, get_safe_output_dir, get_safe_input_path, get_next_index
+    from path_utils import safe_join, get_safe_output_dir, get_safe_input_path
 
 import folder_paths
 
@@ -171,6 +171,61 @@ def _load_video_frames(video_path: str, input_colorspace: str = "sRGB (Standard)
     frames_np = np.stack(frames).astype(np.float32) / 255.0
     return apply_input_transform(torch.from_numpy(frames_np), input_colorspace)
 
+
+def _unique_path(path: str) -> str:
+    """Return a non-existing path by appending _0001, _0002, ... if needed."""
+    if not os.path.exists(path):
+        return path
+    directory, filename = os.path.split(path)
+    stem, ext = os.path.splitext(filename)
+    idx = 1
+    while True:
+        candidate = os.path.join(directory, f"{stem}_{idx:04d}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        idx += 1
+
+
+def _unique_dir(path: str) -> str:
+    """Return a non-existing directory path by appending _0001, _0002, ... if needed."""
+    if not os.path.exists(path):
+        return path
+    idx = 1
+    while True:
+        candidate = f"{path}_{idx:04d}"
+        if not os.path.exists(candidate):
+            return candidate
+        idx += 1
+
+
+def _history_outputs(path_or_dir: str) -> List[Dict[str, str]]:
+    """Build Comfy history output entries for files written by Radiance."""
+    if not path_or_dir:
+        return []
+    if os.path.isdir(path_or_dir):
+        files = [
+            os.path.join(path_or_dir, name)
+            for name in sorted(os.listdir(path_or_dir))
+            if os.path.isfile(os.path.join(path_or_dir, name))
+        ]
+    else:
+        files = [path_or_dir] if os.path.isfile(path_or_dir) else []
+
+    output_root = os.path.abspath(folder_paths.get_output_directory())
+    entries = []
+    for fpath in files:
+        abs_path = os.path.abspath(fpath)
+        try:
+            rel = os.path.relpath(abs_path, output_root)
+            if rel.startswith(".." + os.sep) or rel == "..":
+                raise ValueError
+            subfolder = os.path.dirname(rel).replace(os.sep, "/")
+            filename = os.path.basename(rel)
+            entries.append({"filename": filename, "subfolder": subfolder, "type": "output"})
+        except ValueError:
+            entries.append({"filename": os.path.basename(abs_path), "subfolder": "", "type": "output", "fullpath": abs_path})
+    return entries
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #                         NODE: DIGITAL CINEMA READ (UNIVERSAL)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -231,6 +286,11 @@ class RadianceDigitalCinemaRead:
         return None, None, None
 
     def read(self, source_path, start_frame, frame_limit, input_colorspace, fps_override=0.0):
+        if isinstance(source_path, (list, tuple)):
+            source_path = source_path[0] if source_path else ""
+        source_path = str(source_path or "").strip()
+        if not source_path:
+            raise ValueError("source_path is empty")
         source_path = get_safe_input_path(folder_paths.get_input_directory(), source_path, allow_absolute=True)
         
         is_video = source_path.lower().endswith((".mp4", ".mov", ".gif", ".webp", ".avi", ".mkv", ".webm"))
@@ -388,8 +448,8 @@ class RadianceDigitalCinemaWrite:
     CATEGORY = "FXTD Studios/Radiance/IO"
 
     def write(self, **kwargs):
-        RadianceWrite().write(**kwargs)
-        return {}
+        _, written_path, _ = RadianceWrite().write(**kwargs)
+        return {"ui": {"images": _history_outputs(written_path)}, "result": ()}
 
 class RadianceWrite:
     def write(self, image, filename_prefix, write_mode="Video", output_format="", fps=24.0, quality=10, 
@@ -436,8 +496,8 @@ class RadianceWrite:
     def _write_video(self, images_np, prefix, fmt, fps, quality, color_space, output_dir, ts, audio, broadcast_safe):
         import imageio.v3 as iio
 
-        fpath_mp4 = os.path.join(output_dir, f"{prefix}_{ts}.mp4")
-        fpath_mov = os.path.join(output_dir, f"{prefix}_{ts}.mov")
+        fpath_mp4 = _unique_path(os.path.join(output_dir, f"{prefix}_{ts}.mp4"))
+        fpath_mov = _unique_path(os.path.join(output_dir, f"{prefix}_{ts}.mov"))
 
         if "H.264" in fmt:
             # ── H.264 / AVC — 8-bit, imageio path ──────────────────────────────
@@ -534,20 +594,8 @@ class RadianceWrite:
     def _write_sequence(self, images_np, prefix, fmt, quality, output_dir, ts, start, padding, use_ts, bdepth, comp, meta, alpha_mode, is_single_image=False):
         if is_single_image:
             target = output_dir
-            # For single image, determine extension first to check for existence
-            if "EXR" in fmt: ext = ".exr"
-            elif "HDR" in fmt: ext = ".hdr"
-            elif "JPEG" in fmt: ext = ".jpg"
-            else: ext = ".png"
-            
-            # If base file exists, find next version index
-            if os.path.exists(os.path.join(target, f"{prefix}{ext}")):
-                v_prefix = f"{prefix}_v"
-                idx = get_next_index(target, v_prefix, ext, 1)
-                if idx == 0: idx = 2 # Start at v2 if no _vN files exist yet
-                prefix = f"{v_prefix}{idx}"
         else:
-            target = os.path.join(output_dir, f"{prefix}_{ts}") if (use_ts and len(images_np) > 1) else output_dir
+            target = _unique_dir(os.path.join(output_dir, f"{prefix}_{ts}")) if (use_ts and len(images_np) > 1) else output_dir
         
         os.makedirs(target, exist_ok=True)
         
@@ -559,7 +607,7 @@ class RadianceWrite:
             if "EXR" in fmt:
                 ext = ".exr"
                 fname = f"{prefix}{ext}" if is_single_image else f"{prefix}.{num}{ext}"
-                fpath = os.path.join(target, fname)
+                fpath = _unique_path(os.path.join(target, fname))
                 if write_exr_robust:
                     success = write_exr_robust(fpath, frame, bdepth, comp, frame_meta)
                     if not success: cv2.imwrite(fpath, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR).astype(np.float32))
@@ -568,18 +616,18 @@ class RadianceWrite:
             elif "HDR" in fmt:
                 ext = ".hdr"
                 fname = f"{prefix}{ext}" if is_single_image else f"{prefix}.{num}{ext}"
-                fpath = os.path.join(target, fname)
+                fpath = _unique_path(os.path.join(target, fname))
                 if write_hdr_rgbe: write_hdr_rgbe(fpath, frame)
                 else: cv2.imwrite(fpath, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR).astype(np.float32))
             elif "JPEG" in fmt:
                 ext = ".jpg"
                 fname = f"{prefix}{ext}" if is_single_image else f"{prefix}.{num}{ext}"
-                fpath = os.path.join(target, fname)
+                fpath = _unique_path(os.path.join(target, fname))
                 cv2.imwrite(fpath, cv2.cvtColor((np.clip(frame, 0, 1)*255).astype(np.uint8), cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, quality * 10])
             else: # PNG
                 ext = ".png"
                 fname = f"{prefix}{ext}" if is_single_image else f"{prefix}.{num}{ext}"
-                fpath = os.path.join(target, fname)
+                fpath = _unique_path(os.path.join(target, fname))
                 data = (np.clip(frame, 0, 1)*65535).astype(np.uint16) if "16-bit" in fmt else (np.clip(frame, 0, 1)*255).astype(np.uint8)
                 cv2.imwrite(fpath, cv2.cvtColor(data, cv2.COLOR_RGB2BGR))
             paths.append(fpath)
@@ -601,12 +649,119 @@ class RadianceWrite:
             os.unlink(tmp_wav)
         except: pass
 
+
+class SaveImage16bit:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "Radiance"}),
+            },
+            "optional": {
+                "output_path": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "FXTD Studios/Radiance/IO"
+
+    def save(self, image, filename_prefix="Radiance", output_path=""):
+        _, written_path, _ = RadianceWrite().write(
+            image=image,
+            filename_prefix=filename_prefix,
+            write_mode="Single Image",
+            output_format="Image Sequence — PNG (16-bit)",
+            output_path=output_path,
+            output_color_space="sRGB (Standard)",
+            broadcast_safe=True,
+        )
+        return {"ui": {"images": _history_outputs(written_path)}, "result": ()}
+
+
+class RadianceSaveEXR:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "Radiance"}),
+                "bit_depth": (BIT_DEPTHS, {"default": "32-bit Float"}),
+                "compression": (COMPRESSIONS, {"default": "ZIP"}),
+            },
+            "optional": {
+                "output_path": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "FXTD Studios/Radiance/IO"
+
+    def save(self, image, filename_prefix="Radiance", bit_depth="32-bit Float", compression="ZIP", output_path=""):
+        _, written_path, _ = RadianceWrite().write(
+            image=image,
+            filename_prefix=filename_prefix,
+            write_mode="Single Image",
+            output_format="Image Sequence — EXR (32-bit)",
+            output_path=output_path,
+            output_color_space="Linear (sRGB)",
+            broadcast_safe=False,
+            bit_depth=bit_depth,
+            compression=compression,
+        )
+        return {"ui": {"images": _history_outputs(written_path)}, "result": ()}
+
+
+class RadianceSaveHDR:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "filename_prefix": ("STRING", {"default": "Radiance"}),
+            },
+            "optional": {
+                "output_path": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "FXTD Studios/Radiance/IO"
+
+    def save(self, image, filename_prefix="Radiance", output_path=""):
+        _, written_path, _ = RadianceWrite().write(
+            image=image,
+            filename_prefix=filename_prefix,
+            write_mode="Single Image",
+            output_format="Image Sequence — Radiance HDR (.hdr)",
+            output_path=output_path,
+            output_color_space="Linear (sRGB)",
+            broadcast_safe=False,
+        )
+        return {"ui": {"images": _history_outputs(written_path)}, "result": ()}
+
 NODE_CLASS_MAPPINGS = {
+    "RadianceDigitalCinemaRead": RadianceDigitalCinemaRead,
+    "RadianceDigitalCinemaWrite": RadianceDigitalCinemaWrite,
     "◎ RadianceDigitalCinemaRead": RadianceDigitalCinemaRead,
     "◎ RadianceDigitalCinemaWrite": RadianceDigitalCinemaWrite,
+    "SaveImage16bit": SaveImage16bit,
+    "RadianceSaveEXR": RadianceSaveEXR,
+    "RadianceSaveHDR": RadianceSaveHDR,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "RadianceDigitalCinemaRead": "◎ Radiance Read",
+    "RadianceDigitalCinemaWrite": "◎ Radiance Write",
     "◎ RadianceDigitalCinemaRead": "◎ Radiance Read",
     "◎ RadianceDigitalCinemaWrite": "◎ Radiance Write",
+    "SaveImage16bit": "◎ Save Image 16-bit",
+    "RadianceSaveEXR": "◎ Radiance Save EXR",
+    "RadianceSaveHDR": "◎ Radiance Save HDR",
 }

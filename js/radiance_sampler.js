@@ -299,7 +299,8 @@ function importPreset(node) {
 app.registerExtension({
     name: "FXTD.RadianceSampler",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name !== "RadianceSamplerPro") return;
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass !== "RadianceSamplerPro") return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 

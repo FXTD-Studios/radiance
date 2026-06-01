@@ -1333,7 +1333,7 @@ class RadianceViewer:
             logger.error(validation_error)
             return {
                 "ui": {"radiance_images": [], "error": [validation_error]},
-                "result": (image, validation_error),
+                "result": (),
             }
 
         try:
@@ -2422,7 +2422,7 @@ async def radiance_deliver_endpoint(request):
         # ─── AI Upscale (2x) ──────────────────────────────────────────
         if upscale_2x:
             try:
-                from .nodes_upscale import RadianceAIUpscale
+                from .image.upscale import RadianceAIUpscale
                 upscaler = RadianceAIUpscale()
                 # RealESRGAN_x2plus is ideal for performance/quality trade-off
                 graded_tensor, _ = upscaler.upscale(
@@ -2533,7 +2533,7 @@ async def radiance_deliver_endpoint(request):
             if settings.get('reveal_folder', False):
                 import platform, subprocess
                 try:
-                    p = os.path.abspath(output_path)
+                    p = os.path.abspath(output_path) if output_path else folder_paths.get_output_directory()
                     if platform.system() == "Windows":
                         os.startfile(p)
                     elif platform.system() == "Darwin":
@@ -2577,10 +2577,12 @@ async def radiance_progress_endpoint(request):
 
 NODE_CLASS_MAPPINGS = {
     "FXTD_RadianceViewer": RadianceViewer,
+    "FXTD_RadianceProViewer": RadianceViewer,
     "FXTD_RadianceGradeApply": RadianceGradeApply,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FXTD_RadianceViewer": "◎ Radiance Viewer",
+    "FXTD_RadianceProViewer": "◎ Radiance Pro Viewer (Legacy)",
     "FXTD_RadianceGradeApply": "◎ Radiance Grade Apply",
 }
