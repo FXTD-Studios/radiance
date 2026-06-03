@@ -144,6 +144,42 @@ pip install -r requirements_windows.txt  # Or linux/mac_silicon
 
 ---
 
+## ◎ Troubleshooting
+
+### ComfyUI Manager Security Level
+If ComfyUI Manager refuses to install Radiance because only the default channel is allowed, install manually with Git:
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/fxtdstudios/radiance.git
+cd radiance
+pip install -r requirements.txt
+```
+
+Restart ComfyUI after installation. If you use a platform-specific requirements file, choose `requirements_windows.txt`, `requirements_linux.txt`, or `requirements_mac_silicon.txt`.
+
+### Dependency Conflicts
+Radiance avoids strict upper version caps where possible so ComfyUI and other custom nodes can resolve shared packages. If another extension conflicts, reinstall Radiance dependencies last, then restart ComfyUI.
+
+### EXR / HDR Saving
+Use `◎ Radiance Write`, `◎ Radiance Save EXR`, or `◎ Save Image 16-bit` for managed outputs. Radiance writes non-overwriting filenames and reports saved files to ComfyUI history so API users can discover generated outputs from prompt history.
+
+For EXR support, Radiance sets `OPENCV_IO_ENABLE_OPENEXR=1` at import time, but the Python EXR packages must still be installed. On Linux, install the system OpenEXR development package before `pip install -r requirements_linux.txt`.
+
+### Viewer Export
+The viewer preview is interactive. To bake the result, run the workflow first, open the Radiance Viewer controls, then use the delivery/export controls. Grain, bloom, halation, diffusion, and denoise are baked by the delivery path; purely interactive display/navigation overlays are not part of the source image.
+
+### 32-Bit HDR Expectations
+Radiance preserves 32-bit float values when upstream data contains them. It cannot recover highlight or shadow detail that was already clipped in an 8-bit source image. For true HDR workflows, start from EXR/HDR, scene-linear, or float outputs where possible.
+
+### Viewer And Lens Controls
+`◎ Radiance Viewer` is the current viewer node. Legacy workflows that reference the older Pro Viewer name are mapped to the current viewer. Lens effects are in the Viewer Lens tab; use 32-bit mode for the widest HDR preview range and use the Strong Preview preset when tuning bloom, halation, and anamorphic streaks.
+
+### Old Workflows
+Use the `.rad` workflows in the `workflows/` folder for current node layouts. Very old JSON workflows may contain stale widget order or renamed nodes and should be rebuilt or imported through the current Radiance Workspace tools.
+
+---
+
 ## <a name="viewer-shortcuts"></a>◎ Professional Keyboard Shortcuts
 
 ![Radiance Pro Viewer](viewer.png)  

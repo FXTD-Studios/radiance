@@ -90,6 +90,59 @@ def gpu_gaussian_blur(
     return blurred
 
 
+def gpu_anisotropic_blur(
+    tensor: torch.Tensor, sigma_x: float, sigma_y: float, kernel_size: int = None
+) -> torch.Tensor:
+    """GPU separable blur with independent horizontal/vertical sigma."""
+    if max(sigma_x, sigma_y) < 0.1:
+        return tensor
+
+    if kernel_size is None:
+        kernel_size = int(max(sigma_x, sigma_y) * 6) | 1
+        kernel_size = max(3, min(kernel_size, 31))
+
+    device = tensor.device
+    dtype = tensor.dtype
+    was_bhwc = tensor.dim() == 4 and tensor.shape[-1] in [1, 3, 4]
+    if was_bhwc:
+        tensor = tensor.permute(0, 3, 1, 2)
+
+    b, c, h, w = tensor.shape
+    x = torch.arange(kernel_size, device=device, dtype=dtype) - kernel_size // 2
+    kx = torch.exp(-(x**2) / (2 * max(sigma_x, 0.1) ** 2))
+    ky = torch.exp(-(x**2) / (2 * max(sigma_y, 0.1) ** 2))
+    kx = (kx / kx.sum()).view(1, 1, 1, kernel_size).expand(c, 1, 1, kernel_size)
+    ky = (ky / ky.sum()).view(1, 1, kernel_size, 1).expand(c, 1, kernel_size, 1)
+
+    pad = kernel_size // 2
+    mode_w = "reflect" if pad < w else "replicate"
+    mode_h = "reflect" if pad < h else "replicate"
+    out = torch.nn.functional.pad(tensor, (pad, pad, 0, 0), mode=mode_w)
+    out = torch.nn.functional.conv2d(out, kx, groups=c)
+    out = torch.nn.functional.pad(out, (0, 0, pad, pad), mode=mode_h)
+    out = torch.nn.functional.conv2d(out, ky, groups=c)
+
+    if was_bhwc:
+        out = out.permute(0, 2, 3, 1)
+    return out
+
+
+def gpu_bokeh_blur(tensor: torch.Tensor, sigma: float, bokeh_shape: str) -> torch.Tensor:
+    """Approximate different aperture shapes without expensive convolution kernels."""
+    shape = (bokeh_shape or "Circle").lower()
+    if "anamorphic" in shape:
+        return gpu_anisotropic_blur(tensor, sigma * 1.8, sigma * 0.65)
+    if "hex" in shape:
+        soft = gpu_gaussian_blur(tensor, sigma * 0.85)
+        wide = gpu_anisotropic_blur(tensor, sigma * 1.25, sigma * 0.9)
+        return soft * 0.55 + wide * 0.45
+    if "oct" in shape:
+        soft = gpu_gaussian_blur(tensor, sigma)
+        wide = gpu_anisotropic_blur(tensor, sigma * 1.15, sigma * 1.15)
+        return soft * 0.7 + wide * 0.3
+    return gpu_gaussian_blur(tensor, sigma)
+
+
 # =============================================================================
 # COLOR TEMPERATURE UTILITIES
 # =============================================================================
@@ -323,8 +376,7 @@ class RadianceDepthOfField:
                     cls.BOKEH_SHAPES,
                     {
                         "default": "Circle",
-                        # TODO: Hexagon / Octagon / Anamorphic Oval kernel shapes not yet
-                        # implemented — all shapes currently produce identical Gaussian blur.
+                        "tooltip": "Approximate aperture shape for out-of-focus blur.",
                     },
                 ),
                 "highlight_boost": (
@@ -424,7 +476,7 @@ class RadianceDepthOfField:
                 level_sigma = blur_amount * level / num_levels
                 level_threshold = (level - 1) / num_levels
 
-                blurred = gpu_gaussian_blur(img, level_sigma)
+                blurred = gpu_bokeh_blur(img, level_sigma, bokeh_shape)
 
                 # Smooth blend weight: 0→1 over one level width
                 level_mask = torch.clamp(

@@ -42,7 +42,10 @@ class RadianceWebGLRenderer {
         this.grainColor = 0.0;
         this.grainAnimate = false;  // static grain by default — only true for video
         this.bloom = 0.0;
+        this.bloomThreshold = 1.0;
         this.halation = 0.0;
+        this.halationRadius = 1.0;
+        this.halationThreshold = 0.35;
         this.diffusion = 0.0;
 
         // Advanced Grading (initialized to identity)
@@ -372,7 +375,10 @@ class RadianceWebGLRenderer {
     setGrainColor(v) { this.grainColor = v; }
     setGrainAnimate(v) { this.grainAnimate = v; }
     setBloom(v) { this.bloom = v; }
+    setBloomThreshold(v) { this.bloomThreshold = v; }
     setHalation(v) { this.halation = v; }
+    setHalationRadius(v) { this.halationRadius = v; }
+    setHalationThreshold(v) { this.halationThreshold = v; }
     setDiffusion(v) { this.diffusion = v; }
     setFrame(v) { this.frame = v; }
     setTime(v) { this.time = v; }
@@ -588,8 +594,9 @@ class RadianceWebGLRenderer {
         gl.uniform2f(this.getUniform(progDown, 'u_srcTexelSize'), 1.0 / imgW, 1.0 / imgH);
         gl.uniform1i(this.getUniform(progDown, 'u_applyThreshold'), 1);
         // Adaptive threshold: scene-linear HDR needs higher threshold than sRGB
-        const threshLo = this.isLinearTexture ? 1.0 : 0.82;
-        const threshHi = this.isLinearTexture ? 4.0 : 1.4;
+        const thresholdScale = this.bloomThreshold ?? 1.0;
+        const threshLo = (this.isLinearTexture ? 1.0 : 0.82) * thresholdScale;
+        const threshHi = (this.isLinearTexture ? 4.0 : 1.4) * thresholdScale;
         gl.uniform1f(this.getUniform(progDown, 'u_thresholdLo'), threshLo);
         gl.uniform1f(this.getUniform(progDown, 'u_thresholdHi'), threshHi);
         gl.uniform1f(this.getUniform(progDown, 'u_exposure'), this.exposure);
@@ -1810,7 +1817,10 @@ class RadianceWebGLRenderer {
             uniform float u_grainColor;
             uniform float u_grainAnimate;  // 0=static, 1=animated (video)
             uniform float u_bloom;
+            uniform float u_bloomThreshold;
             uniform float u_halation;
+            uniform float u_halationRadius;
+            uniform float u_halationThreshold;
             uniform float u_diffusion;
 
             // v4.0: Pre-computed multi-pass bloom texture (Kawase chain result)
@@ -2932,8 +2942,8 @@ vec3 getDenoiseColor(vec2 uv) {
                     vec3 s      = texture(u_image, uv + off).rgb;
                     if (!u_isLinear) s = sRGBToLinear(s);
                     float lum    = dot(s, vec3(0.2126, 0.7152, 0.0722));
-                    float bl_lo = u_isLinear ? 1.0  : 0.82;
-                    float bl_hi = u_isLinear ? 3.0  : 1.4;
+                    float bl_lo = (u_isLinear ? 1.0  : 0.82) * u_bloomThreshold;
+                    float bl_hi = (u_isLinear ? 3.0  : 1.4) * u_bloomThreshold;
                     float thresh = smoothstep(bl_lo, bl_hi, lum);
                     float radW   = exp(-t * 3.0);
                     float w      = thresh * radW;
@@ -2954,10 +2964,10 @@ vec3 getDenoiseColor(vec2 uv) {
             vec2  px2    = 1.0 / u_texSize;
             const int   HAL_RINGS  = 6;
             const int   HAL_DIRS   = 8;
-            const float HAL_RADIUS = 5.0;
+            float halRadius = mix(3.0, 14.0, clamp(u_halationRadius, 0.0, 1.0));
             for (int ring = 1; ring <= HAL_RINGS; ring++) {
                 float rFrac = float(ring) / float(HAL_RINGS);
-                float rad   = rFrac * HAL_RADIUS;
+                float rad   = rFrac * halRadius;
                 float gw    = exp(-rFrac * rFrac * 2.0);
                 for (int dir = 0; dir < HAL_DIRS; dir++) {
                     float a = float(dir) * (6.28318 / float(HAL_DIRS));
@@ -2966,7 +2976,7 @@ vec3 getDenoiseColor(vec2 uv) {
                     if (!u_isLinear) s = sRGBToLinear(s);
                     s = s / (vec3(1.0) + s);  // Reinhard compress
                     float lum = dot(s, vec3(0.2126, 0.7152, 0.0722));
-                    float w = max(lum - 0.35, 0.0) * gw;
+                    float w = max(lum - u_halationThreshold, 0.0) * gw;
                     halAcc += s.r * w;
                     halW   += w;
                 }
@@ -3975,7 +3985,10 @@ vec3 getDenoiseColor(vec2 uv) {
         this._uf1(program, 'u_grainColor', this.grainColor || 0.0);
         this._uf1(program, 'u_grainAnimate', this.grainAnimate ? 1.0 : 0.0);
         this._uf1(program, 'u_bloom', this.bloom || 0.0);
+        this._uf1(program, 'u_bloomThreshold', this.bloomThreshold ?? 1.0);
         this._uf1(program, 'u_halation', this.halation || 0.0);
+        this._uf1(program, 'u_halationRadius', this.halationRadius ?? 1.0);
+        this._uf1(program, 'u_halationThreshold', this.halationThreshold ?? 0.35);
         this._uf1(program, 'u_diffusion', this.diffusion || 0.0);
 
         // v4.0: Bind pre-computed bloom texture on TEXTURE5

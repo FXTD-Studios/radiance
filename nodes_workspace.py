@@ -56,7 +56,7 @@ class RadianceWorkspace:
         No execution needed. This node exists purely to provide the
         UI buttons and anchor point on the canvas.
         """
-        return {}
+        return ()
 
 
 NODE_CLASS_MAPPINGS = {

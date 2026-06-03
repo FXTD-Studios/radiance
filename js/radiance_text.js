@@ -4,7 +4,8 @@ import { ComfyWidgets } from "../../scripts/widgets.js";
 app.registerExtension({
     name: "Radiance.ShowText",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "RadianceShowText") {
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass === "RadianceShowText") {
             // Hook into onExecuted to receive the text from the Python backend
             const onExecuted = nodeType.prototype.onExecuted;
             nodeType.prototype.onExecuted = function (message) {

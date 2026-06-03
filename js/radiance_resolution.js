@@ -49,7 +49,8 @@ app.registerExtension({
     // FIX 6: beforeRegisterNodeDef is the correct hook — targets our node only,
     // widgets exist immediately in onNodeCreated, no timing races.
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name !== "RadianceResolution") return;
+        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
+        if (comfyClass !== "RadianceResolution") return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
