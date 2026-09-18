@@ -19,8 +19,8 @@
 ## ◎ What's New - v2.3.3
 
 > [!IMPORTANT]
-> **Native 32-Bit Scene-Linear Engine**  
-> Unlike standard ComfyUI nodes that clamp to 8-bit, Radiance preserves full IEEE 754 floating-point precision across the entire chain. Zero banding. Zero data loss.
+> **32-Bit Scene-Linear Engine**  
+> Radiance preserves full IEEE 754 floating-point precision across the entire chain. Zero banding. Zero data loss.
 
 - **Smart Overwrite Protection** — `Radiance Write` and `EXR Save` now feature automated index detection to prevent accidental file destruction.
 - **Universal Digital Cinema I/O** — Consolidated Video, Image Sequence, and Single Image handling into a high-performance unified pipeline.
