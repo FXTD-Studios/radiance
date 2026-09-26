@@ -233,7 +233,7 @@ Radiance is backed by a professional team of VFX Technical Directors. Engage wit
 
 ### ◎ Technical Resources
 - **Issue Tracker:** [GitHub Issues](https://github.com/fxtd-studios/radiance/issues)
-- **Official Site:** [fxtd.org](https://fxtdstudios.com)
+- **Official Site:** [fxtd studios](https://fxtd-studios.com)
 
 ---
 
