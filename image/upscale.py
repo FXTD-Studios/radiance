@@ -6,6 +6,12 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import torch
 import torch.nn.functional as F
 import numpy as np
+
+from radiance.model.cache import GPUModelCache
+from radiance.core.tiling import (
+    blend_weight_2d, blend_weight_2d_np,
+    edge_overlaps_from_coords, clamp_overlap,
+)
 from typing import Tuple, Dict
 import math
 from enum import Enum
@@ -22,8 +28,29 @@ except ImportError:
 logger = logging.getLogger("radiance.image.upscale")
 
 # Global model cache to prevent re-initialization overhead
-_MODEL_CACHE = {}
+# Bounded LRU: this was an unbounded dict, and because self.model = model.to(device)
+# mutates the cached module in place, the dict held the GPU-resident object. The
+# user-facing unload_model toggle only cleared self.model, so it freed nothing.
+_MODEL_CACHE = GPUModelCache(max_size=2)
 _CACHE_LOCK = threading.RLock()
+
+# ALBABIT-FIX: SUPIR models are diffusion-based (not feedforward upscalers) and
+# cannot be identified or loaded by Spandrel. They require their own loading path.
+_SUPIR_MODELS = {"SUPIR-v0F_fp16", "SUPIR-v0Q_fp16"}
+
+
+def _find_supir_dir() -> str:
+    """Return the ComfyUI-SUPIR custom-node directory, or None if not installed."""
+    # upscale.py lives at:  .../ComfyUI/custom_nodes/radiance/image/upscale.py
+    # ComfyUI-SUPIR lives at: .../ComfyUI/custom_nodes/ComfyUI-SUPIR/
+    custom_nodes = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    for name in ("ComfyUI-SUPIR", "comfyui-supir", "ComfyUI_SUPIR"):
+        d = os.path.join(custom_nodes, name)
+        if os.path.isdir(d) and os.path.exists(os.path.join(d, "nodes.py")):
+            return d
+    return None
 
 
 # =============================================================================
@@ -54,8 +81,11 @@ def gaussian_blur_32bit(img: np.ndarray, sigma: float) -> np.ndarray:
             # Blur spatial dims only, not channels
             return gaussian_filter(img, sigma=[sigma, sigma, 0]).astype(np.float32)
         return gaussian_filter(img, sigma=sigma).astype(np.float32)
-    except ImportError:
-        pass
+    except ImportError as _exc:
+        logger.debug(
+            "[Radiance] gaussian_blur_32bit(): ignoring %s from `from scipy.ndimage import gaussian_filter`: %s",
+            type(_exc).__name__, _exc,
+        )
 
     # Pure numpy fallback: separable 1D convolution via np.convolve.
     # NOTE: scipy is strongly recommended for production use — the numpy path is
@@ -91,6 +121,7 @@ def gaussian_blur_32bit(img: np.ndarray, sigma: float) -> np.ndarray:
 
 
 class UpscaleMethod(Enum):
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     Available upscaling methods.
 
@@ -286,116 +317,97 @@ def _eval_kernel_vectorized(distances: np.ndarray, method: str) -> np.ndarray:
     return catmull_rom_kernel(d)
 
 
+def _axis_weights(in_len: int, out_len: int, method: str, aa_width: float = 1.0):
+    """Source indices and normalised weights for resampling one axis.
+
+    Returns ``(idx, w)``, both ``(out_len, taps)``: output pixel ``i`` is
+    ``sum_k src[idx[i, k]] * w[i, k]``. Pixel centres are aligned
+    (align_corners=False) and edges are replicated.
+
+    ``aa_width`` scales the kernel when downscaling: 1.0 is the textbook
+    prefilter (kernel stretched by the scale factor), 0.0 samples the kernel
+    unstretched (sharp, aliases), 2.0 is twice as wide (soft, no moire).
+    Upscaling never stretches the kernel.
+    """
+    support = _get_kernel_support(method)
+    scale = in_len / out_len
+    filter_scale = max(1.0, scale * max(0.0, aa_width)) if scale > 1.0 else 1.0
+    radius = int(np.ceil(support * filter_scale))
+    taps = 2 * radius + 1
+    centres = (np.arange(out_len, dtype=np.float64) + 0.5) * scale - 0.5
+    starts = np.floor(centres).astype(np.int64) - radius
+    idx = starts[:, None] + np.arange(taps, dtype=np.int64)[None, :]
+    dist = (idx - centres[:, None]) / filter_scale
+    w = _eval_kernel_vectorized(dist.astype(np.float32), method).astype(np.float64)
+    if method == "nearest":
+        # exactly one source pixel, the one the centre falls in
+        w = np.zeros_like(w)
+        w[np.arange(out_len), np.clip(np.round(centres).astype(np.int64) - starts, 0, taps - 1)] = 1.0
+    w /= np.maximum(w.sum(axis=1, keepdims=True), 1e-10)
+    return np.clip(idx, 0, in_len - 1), w.astype(np.float32)
+
+
 def separable_resize_32bit(
-    img: np.ndarray, new_h: int, new_w: int, method: str = "lanczos"
+    img: np.ndarray, new_h: int, new_w: int, method: str = "lanczos",
+    aa_width: float = 1.0,
 ) -> np.ndarray:
     """
-    High-quality separable resize maintaining 32-bit precision.
+    High-quality separable resize maintaining 32-bit precision (numpy, CPU).
 
-    v1.2.0 REWRITE: Fully vectorised numpy implementation.
-    Previous version used nested Python for-loops (O(H×W×taps) iterations) which
-    made a 1080p→4K Lanczos upscale take several minutes.  This version precomputes
-    the full weight matrices with numpy broadcasting and executes the weighted sums
-    as a single np.einsum/matmul — typically 100-1000× faster on the same CPU.
-
-    Algorithm:
-      1. Compute output→input mapping centers for every output pixel (vectorised)
-      2. Build (out_pixels × num_taps) distance matrix
-      3. Evaluate kernel on the full matrix via _eval_kernel_vectorized (no Python loop)
-      4. Normalize per output pixel
-      5. Fancy-index the input + multiply+sum over taps axis (two numpy calls total)
-
-    Identity early-return: returns img.copy() immediately when dimensions match.
+    Same weights as torch_resize_32bit (both come from _axis_weights), so the
+    CPU, GPU and tiled paths give the same picture for the same method.
     """
     h, w = img.shape[:2]
     channels = img.shape[2] if img.ndim > 2 else 1
 
-    # v1.2.0 FIX: identity early-return avoids unnecessary float32 conversion
     if new_h == h and new_w == w:
         return img.copy()
 
     if img.ndim == 2:
         img = img[:, :, np.newaxis]
-
     img = img.astype(np.float32)
 
-    support = _get_kernel_support(method)
-
-    scale_w = w / new_w
-    scale_h = h / new_h
-    filter_scale_w = max(1.0, scale_w)
-    filter_scale_h = max(1.0, scale_h)
-
-    # --- Vectorised horizontal pass ---
+    temp = img
     if new_w != w:
-        radius_w = int(np.ceil(support * filter_scale_w))
-        num_taps_w = 2 * radius_w + 1
-
-        # Output pixel center positions mapped back into input space
-        x_out = np.arange(new_w, dtype=np.float64)
-        x_centers = (x_out + 0.5) * scale_w - 0.5  # (new_w,)
-        x_starts = np.floor(x_centers).astype(int) - radius_w
-
-        # All tap source indices:  (new_w, num_taps_w)
-        offsets_w = np.arange(num_taps_w, dtype=np.int32)
-        x_src_idx = x_starts[:, np.newaxis] + offsets_w[np.newaxis, :]
-
-        # Kernel distances (normalised by filter scale for anti-aliasing)
-        distances_w = (
-            x_src_idx - x_centers[:, np.newaxis]
-        ) / filter_scale_w  # (new_w, num_taps)
-
-        # Vectorised kernel evaluation on the entire distance matrix
-        weights_w = _eval_kernel_vectorized(distances_w.astype(np.float32), method)
-
-        # Normalize per output pixel
-        w_sum = weights_w.sum(axis=1, keepdims=True)
-        weights_w /= np.maximum(w_sum, 1e-10)
-
-        # Clamp source indices to valid range (border replication)
-        x_src_clamped = np.clip(x_src_idx, 0, w - 1)  # (new_w, num_taps_w)
-
-        # Gather input columns: img[:, x_src_clamped, :] → (h, new_w, num_taps_w, channels)
-        gathered_h = img[:, x_src_clamped, :]
-
-        # Weighted sum over taps axis → (h, new_w, channels)
-        temp = (gathered_h * weights_w[np.newaxis, :, :, np.newaxis]).sum(axis=2)
-    else:
-        temp = img
-
-    # --- Vectorised vertical pass ---
+        idx, wt = _axis_weights(w, new_w, method, aa_width)
+        temp = (img[:, idx, :] * wt[None, :, :, None]).sum(axis=2)
+    result = temp
     if new_h != h:
-        h_temp = temp.shape[0]  # may still be original h if horiz pass was skipped
-        radius_h = int(np.ceil(support * filter_scale_h))
-        num_taps_h = 2 * radius_h + 1
-
-        y_out = np.arange(new_h, dtype=np.float64)
-        y_centers = (y_out + 0.5) * scale_h - 0.5  # (new_h,)
-        y_starts = np.floor(y_centers).astype(int) - radius_h
-
-        offsets_h = np.arange(num_taps_h, dtype=np.int32)
-        y_src_idx = y_starts[:, np.newaxis] + offsets_h[np.newaxis, :]
-
-        distances_h = (y_src_idx - y_centers[:, np.newaxis]) / filter_scale_h
-        weights_v = _eval_kernel_vectorized(distances_h.astype(np.float32), method)
-
-        w_sum = weights_v.sum(axis=1, keepdims=True)
-        weights_v /= np.maximum(w_sum, 1e-10)
-
-        y_src_clamped = np.clip(y_src_idx, 0, h_temp - 1)  # (new_h, num_taps_h)
-
-        # Gather input rows: temp[y_src_clamped, :, :] → (new_h, num_taps_h, new_w, channels)
-        gathered_v = temp[y_src_clamped, :, :]
-
-        # Weighted sum over taps axis → (new_h, new_w, channels)
-        result = (gathered_v * weights_v[:, :, np.newaxis, np.newaxis]).sum(axis=1)
-    else:
-        result = temp
+        idx, wt = _axis_weights(temp.shape[0], new_h, method, aa_width)
+        result = np.zeros((new_h, temp.shape[1], temp.shape[2]), np.float32)
+        for k in range(idx.shape[1]):
+            result += temp[idx[:, k]] * wt[:, k, None, None]
 
     if channels == 1:
         result = result[:, :, 0]
-
     return result.astype(np.float32)
+
+
+_DENSE_LIMIT = 48 * 1024 * 1024   # elements in one resampling matrix (192 MB)
+
+
+def _resize_axis_torch(x: torch.Tensor, out_len: int, dim: int, method: str,
+                       aa_width: float) -> torch.Tensor:
+    """Resample BCHW ``x`` along ``dim`` (2 = rows, 3 = columns)."""
+    in_len = x.shape[dim]
+    if in_len == out_len:
+        return x
+    idx, wt = _axis_weights(in_len, out_len, method, aa_width)
+    idx_t = torch.from_numpy(idx).to(x.device)
+    wt_t = torch.from_numpy(wt).to(x.device, x.dtype)
+    if out_len * in_len <= _DENSE_LIMIT:
+        # One matmul against the (out, in) resampling matrix: BLAS / cuBLAS
+        # speed, about 4x the per-tap gather on a CPU at 1080p -> 4K.
+        m = torch.zeros(out_len, in_len, device=x.device, dtype=x.dtype)
+        m.scatter_add_(1, idx_t, wt_t)
+        return torch.matmul(x, m.T) if dim == 3 else torch.matmul(m, x)
+    shape = [1] * x.dim()
+    shape[dim] = out_len
+    out = None
+    for k in range(idx.shape[1]):       # one tap at a time: memory stays at one output
+        term = x.index_select(dim, idx_t[:, k]) * wt_t[:, k].reshape(shape)
+        out = term if out is None else out.add_(term)
+    return out
 
 
 def torch_resize_32bit(
@@ -404,57 +416,37 @@ def torch_resize_32bit(
     new_w: int,
     method: str = "bicubic",
     input_format: str = "BHWC",
+    aa_width: float = 1.0,
 ) -> torch.Tensor:
     """
-    PyTorch-based resize maintaining 32-bit precision.
-    Uses GPU acceleration when available.
+    Separable resize in float32 on the tensor's device, returned as BHWC.
 
-    v1.1.0 FIX: Explicit input_format parameter instead of ambiguous shape detection.
-
-    Args:
-        tensor: Input tensor
-        new_h, new_w: Target dimensions
-        method: Interpolation method
-        input_format: 'BHWC' or 'BCHW'
-
-    Returns:
-        Resized tensor in BHWC format
+    3.5.0: every method runs its own kernel. lanczos, lanczos4, mitchell and
+    catrom used to be mapped to torch's bicubic (and hermite, gaussian to
+    bilinear), so on the untiled path, the default, the method menu changed
+    nothing but the label. The weights are the ones separable_resize_32bit
+    uses, so GPU and CPU agree.
     """
-    # Ensure 4D
     if tensor.dim() == 3:
         tensor = tensor.unsqueeze(0)
-
-    # Convert to BCHW for F.interpolate
     if input_format == "BHWC":
         tensor = tensor.permute(0, 3, 1, 2)
+    x = tensor.float()
+    x = _resize_axis_torch(x, new_w, 3, method, aa_width)
+    x = _resize_axis_torch(x, new_h, 2, method, aa_width)
+    return x.permute(0, 2, 3, 1).contiguous()
 
-    tensor = tensor.float()
 
-    # Map method names to torch modes
-    mode_map = {
-        "nearest": "nearest",
-        "bilinear": "bilinear",
-        "bicubic": "bicubic",
-        "lanczos": "bicubic",  # Best available torch approximation
-        "lanczos4": "bicubic",
-        "mitchell": "bicubic",
-        "catrom": "bicubic",
-        "hermite": "bilinear",
-        "gaussian": "bilinear",
-    }
-
-    mode = mode_map.get(method, "bicubic")
-
-    if mode == "nearest":
-        resized = F.interpolate(tensor, size=(new_h, new_w), mode=mode)
-    else:
-        resized = F.interpolate(
-            tensor, size=(new_h, new_w), mode=mode, align_corners=False, antialias=True
-        )
-
-    # Convert back to BHWC
-    resized = resized.permute(0, 2, 3, 1)
-    return resized
+def resolve_input_space(img: torch.Tensor, input_color_space: str) -> str:
+    """'Auto' made real: a ComfyUI IMAGE is sRGB-encoded 0-1 by convention, so
+    anything outside 0-1 is taken as linear / HDR. 3.5.0: Auto used to mean
+    Linear, whatever came in."""
+    if input_color_space != "Auto":
+        return input_color_space
+    rgb = img[..., :3]
+    if rgb.numel() and (float(rgb.max()) > 1.0 + 1e-4 or float(rgb.min()) < -1e-4):
+        return "Linear"
+    return "sRGB"
 
 
 # =============================================================================
@@ -614,17 +606,35 @@ def process_tiles_32bit(
 
     out_h = int(h * scale_h)
     out_w = int(w * scale_w)
-    out_tile_size = int(tile_size * scale_h)
+    # (out_tile_size is no longer needed: blend weights are now built per tile
+    #  from the tile's own dimensions, so there is nothing to pre-size.)
     out_overlap = int(overlap * scale_h)
 
     # Initialize output and weight buffers
     output = np.zeros((out_h, out_w, channels), dtype=np.float32)
     weights = np.zeros((out_h, out_w), dtype=np.float32)
 
-    # Create blending weight
-    blend_weight = create_tile_weight(out_tile_size, out_overlap)
+    # Blend weights are built per tile so edges lying on the image border are
+    # NOT ramped (a border pixel is covered by one tile only, so a ramp that
+    # starts at 0 normalises to 0 -- a black frame around the output). At most
+    # nine distinct variants exist for a given tile size, so they are cached
+    # rather than rebuilt: the previous code hoisted a single weight out of the
+    # loop for speed, which is what made it border-blind.
+    _weight_cache: dict = {}
+
+    def _tile_weight(th, tw, y0, y1_, x0, x1_):
+        ov_t, ov_b, ov_l, ov_r = edge_overlaps_from_coords(
+            y0, y1_, x0, x1_, out_h, out_w, out_overlap
+        )
+        key = (th, tw, ov_t, ov_b, ov_l, ov_r)
+        w = _weight_cache.get(key)
+        if w is None:
+            w = blend_weight_2d_np(th, tw, ov_t, ov_b, ov_l, ov_r)
+            _weight_cache[key] = w
+        return w
 
     # Calculate tile positions
+    overlap = clamp_overlap(tile_size, overlap)
     stride = max(1, tile_size - overlap)
     # FIX 1: "max(1, out_tile_size - out_overlap)" was a bare expression —
     # result computed and immediately discarded. out_stride is never used;
@@ -680,13 +690,14 @@ def process_tiles_32bit(
             tile_h = out_y_end - out_y
             tile_w = out_x_end - out_x
 
-            # Trim blend_weight to match (handle off-by-one rounding)
-            weight = blend_weight[:tile_h, :tile_w]
+            weight = _tile_weight(tile_h, tile_w, out_y, out_y_end, out_x, out_x_end)
 
-            for c in range(channels):
-                output[out_y:out_y_end, out_x:out_x_end, c] += (
-                    processed[:tile_h, :tile_w, c] * weight
-                )
+            # Vectorised over channels: the per-channel Python loop that used to
+            # sit here made three strided passes and three kernel launches per
+            # tile for no benefit.
+            output[out_y:out_y_end, out_x:out_x_end, :] += (
+                processed[:tile_h, :tile_w, :channels] * weight[..., None]
+            )
             weights[out_y:out_y_end, out_x:out_x_end] += weight
 
     # Normalize
@@ -742,6 +753,105 @@ def srgb_to_linear_32bit(img: np.ndarray) -> np.ndarray:
         img <= 0.04045, img / 12.92, np.power((np.maximum(img, 0) + 0.055) / 1.055, 2.4)
     )
     return result.astype(np.float32)
+
+
+# =============================================================================
+# GPU-ACCELERATED PROCESSING HELPERS  (operate on BHWC float32 tensors)
+# =============================================================================
+
+
+def _gaussian_blur_gpu(img: torch.Tensor, sigma: float) -> torch.Tensor:
+    """Separable Gaussian blur entirely on GPU. img: (B, H, W, C) float32."""
+    if sigma <= 0:
+        return img.clone()
+    device = img.device
+    kernel_size = max(3, int(sigma * 6) | 1)          # always odd
+    x = torch.arange(kernel_size, device=device).float() - kernel_size // 2
+    gauss_1d = torch.exp(-(x ** 2) / (2.0 * sigma ** 2))
+    gauss_1d /= gauss_1d.sum()
+    gauss_2d = (gauss_1d.unsqueeze(0) * gauss_1d.unsqueeze(1)).unsqueeze(0).unsqueeze(0)
+    B, H, W, C = img.shape
+    bchw = img.permute(0, 3, 1, 2)                    # (B, C, H, W)
+    blurred = F.conv2d(
+        bchw,
+        gauss_2d.expand(C, 1, -1, -1),
+        padding=kernel_size // 2,
+        groups=C,
+    )
+    return blurred.permute(0, 2, 3, 1)                # (B, H, W, C)
+
+
+def _srgb_to_linear_gpu(img: torch.Tensor) -> torch.Tensor:
+    """sRGB → linear, any tensor shape."""
+    return torch.where(
+        img <= 0.04045,
+        img / 12.92,
+        torch.pow(torch.clamp((img + 0.055) / 1.055, min=0.0), 2.4),
+    )
+
+
+def _linear_to_srgb_gpu(img: torch.Tensor) -> torch.Tensor:
+    """Linear → sRGB, any tensor shape."""
+    return torch.where(
+        img <= 0.0031308,
+        img * 12.92,
+        1.055 * torch.pow(torch.clamp(img, min=0.0), 1.0 / 2.4) - 0.055,
+    )
+
+
+def _unsharp_mask_gpu(
+    img: torch.Tensor,
+    amount: float = 1.0,
+    radius: float = 1.0,
+    threshold: float = 0.0,
+) -> torch.Tensor:
+    """Unsharp mask on GPU. img: (B, H, W, C) float32."""
+    blurred = _gaussian_blur_gpu(img, sigma=radius)
+    mask = img - blurred
+    if threshold > 0.0:
+        mask = torch.where(mask.abs() > threshold, mask, torch.zeros_like(mask))
+    return img + mask * amount
+
+
+def _high_pass_sharpen_gpu(
+    img: torch.Tensor, strength: float = 0.5, radius: float = 3.0
+) -> torch.Tensor:
+    """High-pass sharpening on GPU. img: (B, H, W, C) float32."""
+    low_pass = _gaussian_blur_gpu(img, sigma=radius)
+    return img + (img - low_pass) * strength
+
+
+def _detail_enhancement_gpu(
+    img: torch.Tensor, detail_strength: float = 0.5
+) -> torch.Tensor:
+    """Multi-scale detail enhancement on GPU. img: (B, H, W, C) float32 (RGB or RGBA)."""
+    lum = (
+        0.2126 * img[..., 0] + 0.7152 * img[..., 1] + 0.0722 * img[..., 2]
+    ).unsqueeze(-1)                                    # (B, H, W, 1)
+    scales     = [1.0, 2.0, 4.0]
+    ms_weights = [0.5, 0.3, 0.2]
+    combined = torch.zeros_like(lum)
+    prev = lum
+    for sigma, w in zip(scales, ms_weights):
+        blur = _gaussian_blur_gpu(prev, sigma=sigma)
+        combined += (prev - blur) * (w * detail_strength)
+        prev = blur
+    result = img.clone()
+    n_col = min(3, img.shape[-1])
+    result[..., :n_col] = img[..., :n_col] + combined
+    return result
+
+
+def _antialiasing_gpu(img: torch.Tensor, strength: float = 0.5) -> torch.Tensor:
+    """Edge-aware antialiasing on GPU. img: (B, H, W, C) float32."""
+    lum = 0.2126 * img[..., 0] + 0.7152 * img[..., 1] + 0.0722 * img[..., 2]
+    gx = F.pad((lum[:, :, 1:] - lum[:, :, :-1]).abs(), (1, 0))        # left-pad
+    gy = F.pad((lum[:, 1:, :] - lum[:, :-1, :]).abs(), (0, 0, 1, 0))  # top-pad
+    edges = (gx ** 2 + gy ** 2).sqrt()
+    edges = edges / (edges.amax(dim=(1, 2), keepdim=True) + 1e-10)
+    blurred = _gaussian_blur_gpu(img, sigma=1.0)
+    mask = (edges * strength).unsqueeze(-1)
+    return img * (1.0 - mask) + blurred * mask
 
 
 # =============================================================================
@@ -841,6 +951,7 @@ METHOD_LIST_QUALITY = [
 
 
 class RadianceProUpscale:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     Professional 32-bit upscaler optimized for Flux with HDR support.
     """
@@ -854,7 +965,10 @@ class RadianceProUpscale:
 
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {
+                    "tooltip": "Image or batch to resize, display-encoded sRGB or linear float (see "
+                    "input_color_space). Alpha is resized separately.",
+                }),
                 "scale_factor": (
                     "FLOAT",
                     {
@@ -863,47 +977,80 @@ class RadianceProUpscale:
                         "max": 8.0,
                         "step": 0.1,
                         "display": "slider",
+                        "tooltip": "Output size as a multiple of the input (rounded down to whole pixels). "
+                        "Below 1.0 downscales.",
                     },
                 ),
-                "preset": (preset_list,),
+                "preset": (preset_list, {
+                    "tooltip": "Custom uses the widgets below. Any other preset overrides method, sharpening, "
+                    "detail_enhancement and antialiasing, and the HDR/Cinematic presets force process_in_linear on.",
+                }),
             },
             "optional": {
-                "method": (METHOD_LIST_FULL,),
+                "method": (METHOD_LIST_FULL, {
+                    "tooltip": "Resampling kernel, run exactly on every path (GPU, CPU and tiled): lanczos "
+                    "(3 lobes), lanczos4, bicubic and catrom (Catmull-Rom), mitchell (B=C=1/3), hermite, "
+                    "gaussian, bilinear, nearest.",
+                }),
                 "sharpening": (
                     "FLOAT",
-                    {"default": 0.3, "min": 0.0, "max": 2.0, "step": 0.05},
+                    {"default": 0.3, "min": 0.0, "max": 2.0, "step": 0.05,
+                     "tooltip": "Unsharp-mask amount applied after resizing. 0 = off, 1 = add the full "
+                     "detail difference once."},
                 ),
                 "sharpen_radius": (
                     "FLOAT",
-                    {"default": 1.0, "min": 0.5, "max": 5.0, "step": 0.1},
+                    {"default": 1.0, "min": 0.5, "max": 5.0, "step": 0.1,
+                     "tooltip": "Gaussian sigma in output pixels for the unsharp mask. Larger sharpens "
+                     "coarser detail."},
                 ),
                 "detail_enhancement": (
                     "FLOAT",
-                    {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.05},
+                    {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.05,
+                     "tooltip": "Multi-scale luma detail boost (blur sigmas 1, 2 and 4 px) added equally "
+                     "to RGB after resizing. 0 = off."},
                 ),
                 "antialiasing": (
                     "FLOAT",
-                    {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.05},
+                    {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.05,
+                     "tooltip": "Edge-aware softening applied last: blends in a 1 px Gaussian blur in "
+                     "proportion to edge strength. 0 = off; counteracts sharpening on edges."},
                 ),
-                "input_color_space": (["sRGB", "Linear", "Auto"],),
-                "process_in_linear": ("BOOLEAN", {"default": True}),
-                "use_tiles": ("BOOLEAN", {"default": False}),
+                "input_color_space": (["sRGB", "Linear", "Auto"], {
+                    "tooltip": "Encoding of the input. sRGB allows the linear-light conversion; Linear leaves "
+                    "values untouched. Auto: Linear when any value is outside 0-1 (HDR), else sRGB; the "
+                    "info output says which.",
+                }),
+                "process_in_linear": ("BOOLEAN", {"default": True,
+                    "tooltip": "Decode sRGB to linear before resampling and re-encode after, for gamma-correct "
+                    "filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted.",
+                }),
+                "use_tiles": ("BOOLEAN", {"default": False,
+                    "tooltip": "Process image in overlapping tiles to handle large images that exceed VRAM.",
+                }),
                 "tile_size": (
                     "INT",
-                    {"default": 512, "min": 128, "max": 2048, "step": 64},
+                    {"default": 512, "min": 128, "max": 2048, "step": 64,
+                     "tooltip": "Input tile size in pixels for the tiled CPU path. Used only when tiling "
+                     "is on (or forced above 64 MP) and the image is larger than this."},
                 ),
                 "tile_overlap": (
                     "INT",
-                    {"default": 64, "min": 16, "max": 256, "step": 16},
+                    {"default": 64, "min": 16, "max": 256, "step": 16,
+                     "tooltip": "Overlap in input pixels between tiles, blended to hide seams. Tiled "
+                     "path only."},
                 ),
-                "output_bit_depth": (["32-bit Float", "16-bit Float", "8-bit"],),
+                "output_bit_depth": (["32-bit Float", "16-bit Float", "8-bit"], {
+                    "tooltip": "Precision of the result (always returned as float). 32-bit keeps values "
+                    "above 1.0; 16-bit rounds to half precision; 8-bit clamps to 0-1 and quantises to 256 levels.",
+                }),
             },
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
     RETURN_NAMES = ("upscaled_image", "width", "height", "info")
     FUNCTION = "upscale"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = "Professional 32-bit upscaler optimized for Flux with HDR support."
 
     def upscale(
@@ -955,23 +1102,64 @@ class RadianceProUpscale:
             )
             use_tiles = True
 
-        results = []
+        needs_tiling = use_tiles and (h > tile_size or w > tile_size)
+        auto_space = input_color_space == "Auto"
+        input_color_space = resolve_input_space(image, input_color_space)
 
-        for b in range(batch_size):
-            img = image[b].cpu().numpy().astype(np.float32)
+        if not needs_tiling:
+            # ── GPU batch path (no per-frame loop, no numpy) ──────────────────
+            device = torch.device("cuda") if torch.cuda.is_available() else image.device
+            img = image.to(device).float()
 
-            # Handle alpha
             has_alpha = img.shape[-1] == 4
             if has_alpha:
                 alpha = img[..., 3:4]
                 img = img[..., :3]
 
-            # Convert to linear if needed
             if process_in_linear and input_color_space == "sRGB":
-                img = srgb_to_linear_32bit(img)
+                img = _srgb_to_linear_gpu(img)
 
-            # Upscale
-            if use_tiles and (h > tile_size or w > tile_size):
+            upscaled = torch_resize_32bit(img, new_h, new_w, method, input_format="BHWC")
+
+            if detail_enhancement > 0:
+                upscaled = _detail_enhancement_gpu(upscaled, detail_enhancement)
+
+            if sharpening > 0:
+                upscaled = _unsharp_mask_gpu(upscaled, amount=sharpening, radius=sharpen_radius)
+
+            if antialiasing > 0:
+                upscaled = _antialiasing_gpu(upscaled, strength=antialiasing)
+
+            if process_in_linear and input_color_space == "sRGB":
+                upscaled = _linear_to_srgb_gpu(upscaled)
+
+            if has_alpha:
+                alpha_up = torch_resize_32bit(alpha, new_h, new_w, "lanczos", input_format="BHWC")
+                upscaled = torch.cat([upscaled, alpha_up], dim=-1)
+
+            # Bit depth conversion on GPU
+            if output_bit_depth == "16-bit Float":
+                upscaled = upscaled.half().float()
+            elif output_bit_depth == "8-bit":
+                upscaled = (upscaled.clamp(0, 1) * 255).round() / 255.0
+            # v1.1.1 FIX: 32-bit Float mode (default) no longer clamps to [0,1]
+            # preserving HDR range for professional workflows.
+
+            output_tensor = upscaled.cpu()
+        else:
+            # ── CPU/numpy tiled path (unchanged — tiling logic requires numpy) ─
+            results = []
+
+            for b in range(batch_size):
+                img = image[b].cpu().numpy().astype(np.float32)
+
+                has_alpha = img.shape[-1] == 4
+                if has_alpha:
+                    alpha = img[..., 3:4]
+                    img = img[..., :3]
+
+                if process_in_linear and input_color_space == "sRGB":
+                    img = srgb_to_linear_32bit(img)
 
                 def upscale_tile(tile, **kw):
                     th, tw = tile.shape[:2]
@@ -986,56 +1174,48 @@ class RadianceProUpscale:
                     upscale_tile,
                     output_scale=scale_factor,
                 )
-            else:
-                upscaled = separable_resize_32bit(img, new_h, new_w, method)
 
-            # Detail enhancement
-            if detail_enhancement > 0:
-                upscaled = detail_enhancement_32bit(upscaled, detail_enhancement)
+                if detail_enhancement > 0:
+                    upscaled = detail_enhancement_32bit(upscaled, detail_enhancement)
 
-            # Sharpening
-            if sharpening > 0:
-                upscaled = unsharp_mask_32bit(upscaled, sharpening, sharpen_radius)
+                if sharpening > 0:
+                    upscaled = unsharp_mask_32bit(upscaled, sharpening, sharpen_radius)
 
-            # Antialiasing
-            if antialiasing > 0:
-                upscaled = apply_antialiasing_32bit(upscaled, antialiasing)
+                if antialiasing > 0:
+                    upscaled = apply_antialiasing_32bit(upscaled, antialiasing)
 
-            # Convert back to sRGB if processed in linear
-            if process_in_linear and input_color_space == "sRGB":
-                upscaled = linear_to_srgb_32bit(upscaled)
+                if process_in_linear and input_color_space == "sRGB":
+                    upscaled = linear_to_srgb_32bit(upscaled)
 
-            # Handle alpha
-            if has_alpha:
-                alpha_up = separable_resize_32bit(alpha, new_h, new_w, "lanczos")
-                if len(alpha_up.shape) == 2:
-                    alpha_up = alpha_up[:, :, np.newaxis]
-                upscaled = np.concatenate([upscaled, alpha_up], axis=-1)
+                if has_alpha:
+                    alpha_up = separable_resize_32bit(alpha, new_h, new_w, "lanczos")
+                    if len(alpha_up.shape) == 2:
+                        alpha_up = alpha_up[:, :, np.newaxis]
+                    upscaled = np.concatenate([upscaled, alpha_up], axis=-1)
 
-            # Convert bit depth
-            if output_bit_depth == "16-bit Float":
-                upscaled = upscaled.astype(np.float16).astype(np.float32)
-            elif output_bit_depth == "8-bit":
-                upscaled = np.clip(upscaled, 0, 1)
-                upscaled = (upscaled * 255).astype(np.uint8).astype(np.float32) / 255.0
-            # v1.1.1 FIX: 32-bit Float mode (default) no longer clamps to [0,1]
-            # preserving HDR range for professional workflows.
+                if output_bit_depth == "16-bit Float":
+                    upscaled = upscaled.astype(np.float16).astype(np.float32)
+                elif output_bit_depth == "8-bit":
+                    upscaled = np.clip(upscaled, 0, 1)
+                    upscaled = (upscaled * 255).astype(np.uint8).astype(np.float32) / 255.0
 
-            results.append(upscaled)
+                results.append(upscaled)
 
-        output = np.stack(results, axis=0)
-        output_tensor = torch.from_numpy(output).float()
+            output = np.stack(results, axis=0)
+            output_tensor = torch.from_numpy(output).float()
 
         info = f"Upscaled: {w}x{h} → {new_w}x{new_h} ({scale_factor}x)\n"
         info += f"Method: {method}\n"
         info += f"Preset: {preset}\n"
         info += f"Sharpening: {sharpening}, Detail: {detail_enhancement}\n"
+        info += f"Input: {input_color_space}{' (Auto)' if auto_space else ''}\n"
         info += f"Output: {output_bit_depth}"
 
         return (output_tensor, new_w, new_h, info)
 
 
 class RadianceUpscaleBySize:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     Upscale to exact dimensions with aspect ratio control.
     """
@@ -1047,28 +1227,47 @@ class RadianceUpscaleBySize:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "width": ("INT", {"default": 2048, "min": 64, "max": 16384, "step": 8}),
+                "image": ("IMAGE", {
+                    "tooltip": "Image or batch to resize, display-encoded sRGB or linear float (see "
+                    "input_color_space). Alpha is resized separately.",
+                }),
+                "width": ("INT", {"default": 2048, "min": 64, "max": 16384, "step": 8,
+                    "tooltip": "Target output width in pixels.",
+                }),
                 "height": (
                     "INT",
-                    {"default": 2048, "min": 64, "max": 16384, "step": 8},
+                    {"default": 2048, "min": 64, "max": 16384, "step": 8,
+                     "tooltip": "Target output height in pixels."},
                 ),
-                "method": (METHOD_LIST_FULL,),
+                "method": (METHOD_LIST_FULL, {
+                    "tooltip": "Resampling kernel, run exactly as named: lanczos (3 lobes), lanczos4, bicubic "
+                    "and catrom (Catmull-Rom), mitchell (B=C=1/3), hermite, gaussian, bilinear, nearest.",
+                }),
             },
             "optional": {
-                "maintain_aspect": ("BOOLEAN", {"default": True}),
-                "aspect_mode": (["fit", "fill", "stretch"],),
+                "maintain_aspect": ("BOOLEAN", {"default": True,
+                    "tooltip": "Keep the source aspect ratio using aspect_mode to fit the width x height box. "
+                    "Off resizes to exactly width x height.",
+                }),
+                "aspect_mode": (["fit", "fill", "stretch"], {
+                    "tooltip": "With maintain_aspect on. fit: largest size inside the box. fill: smallest "
+                    "size covering the box (not cropped, so one side exceeds it). stretch: exactly width x height.",
+                }),
                 "sharpening": (
                     "FLOAT",
-                    {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05},
+                    {"default": 0.2, "min": 0.0, "max": 2.0, "step": 0.05,
+                     "tooltip": "Unsharp-mask amount (1 px sigma) applied after resizing. 0 = off."},
                 ),
-                "process_in_linear": ("BOOLEAN", {"default": True}),
+                "process_in_linear": ("BOOLEAN", {"default": True,
+                    "tooltip": "Decode sRGB to linear before resampling and re-encode after, for gamma-correct "
+                    "filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted.",
+                }),
                 "input_color_space": (
                     ["sRGB", "Linear", "Auto"],
                     {
                         "default": "sRGB",
-                        "tooltip": "Colour space of the input. Set to 'Linear' or 'Auto' to skip "
-                        "the sRGB→linear conversion and avoid double-converting HDR/linear inputs.",
+                        "tooltip": "Colour space of the input. Linear skips the sRGB-to-linear conversion "
+                        "for HDR/linear input. Auto: Linear when any value is outside 0-1, else sRGB.",
                     },
                 ),
             },
@@ -1077,7 +1276,7 @@ class RadianceUpscaleBySize:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("upscaled_image", "final_width", "final_height")
     FUNCTION = "upscale"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = "Upscale to exact dimensions with aspect ratio control."
 
     def upscale(
@@ -1121,45 +1320,38 @@ class RadianceUpscaleBySize:
             new_w = width
             new_h = height
 
-        results = []
+        input_color_space = resolve_input_space(image, input_color_space)
+        device = torch.device("cuda") if torch.cuda.is_available() else image.device
+        img = image.to(device).float()
 
-        for b in range(batch_size):
-            img = image[b].cpu().numpy().astype(np.float32)
+        has_alpha = img.shape[-1] == 4
+        if has_alpha:
+            alpha = img[..., 3:4]
+            img = img[..., :3]
 
-            has_alpha = img.shape[-1] == 4
-            if has_alpha:
-                alpha = img[..., 3:4]
-                img = img[..., :3]
+        if process_in_linear and input_color_space == "sRGB":
+            img = _srgb_to_linear_gpu(img)
 
-            if process_in_linear and input_color_space == "sRGB":
-                img = srgb_to_linear_32bit(img)
+        upscaled = torch_resize_32bit(img, new_h, new_w, method, input_format="BHWC")
 
-            upscaled = separable_resize_32bit(img, new_h, new_w, method)
+        if sharpening > 0:
+            upscaled = _unsharp_mask_gpu(upscaled, amount=sharpening, radius=1.0)
 
-            if sharpening > 0:
-                upscaled = unsharp_mask_32bit(upscaled, sharpening, 1.0)
+        # v1.2.0 FIX: gate on input_color_space so HDR/linear inputs are not
+        # double-converted. process_in_linear alone was insufficient — the node
+        # had no way to tell sRGB inputs from scene-linear inputs.
+        if process_in_linear and input_color_space == "sRGB":
+            upscaled = _linear_to_srgb_gpu(upscaled)
 
-            # v1.2.0 FIX: gate on input_color_space so HDR/linear inputs are not
-            # double-converted. process_in_linear alone was insufficient — the node
-            # had no way to tell sRGB inputs from scene-linear inputs.
-            if process_in_linear and input_color_space == "sRGB":
-                upscaled = linear_to_srgb_32bit(upscaled)
+        if has_alpha:
+            alpha_up = torch_resize_32bit(alpha, new_h, new_w, "lanczos", input_format="BHWC")
+            upscaled = torch.cat([upscaled, alpha_up], dim=-1)
 
-            if has_alpha:
-                alpha_up = separable_resize_32bit(alpha, new_h, new_w, "lanczos")
-                if len(alpha_up.shape) == 2:
-                    alpha_up = alpha_up[:, :, np.newaxis]
-                upscaled = np.concatenate([upscaled, alpha_up], axis=-1)
-
-            results.append(upscaled)
-
-        output = np.stack(results, axis=0)
-        output_tensor = torch.from_numpy(output).float()
-
-        return (output_tensor, new_w, new_h)
+        return (upscaled.cpu(), new_w, new_h)
 
 
 class RadianceDownscale32bit:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     GPU-accelerated 32-bit downscaling with anti-aliasing.
     """
@@ -1171,7 +1363,10 @@ class RadianceDownscale32bit:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {
+                    "tooltip": "Image or batch to downscale, display-encoded sRGB or linear float (see "
+                    "input_color_space). Values above 1.0 are kept.",
+                }),
                 "scale_factor": (
                     "FLOAT",
                     {
@@ -1180,21 +1375,36 @@ class RadianceDownscale32bit:
                         "max": 1.0,
                         "step": 0.05,
                         "display": "slider",
+                        "tooltip": "Output size as a fraction of the input (rounded down, minimum 1 px).",
                     },
                 ),
-                "method": (METHOD_LIST_QUALITY,),
+                "method": (METHOD_LIST_QUALITY, {
+                    "tooltip": "Resampling kernel, run exactly as named on CUDA and CPU alike: lanczos, "
+                    "lanczos4, bicubic (Catmull-Rom), mitchell, catrom, gaussian, bilinear.",
+                }),
             },
             "optional": {
                 "antialiasing": (
                     "FLOAT",
-                    {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05},
+                    {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
+                     "tooltip": "Width of the downscaling prefilter. 0.5 = the kernel's textbook width "
+                     "(stretched by the scale factor), 0 = no prefilter (sharpest, aliases and moires), "
+                     "1 = twice as wide (softest). pre_blur adds a Gaussian on top."},
                 ),
                 "pre_blur": (
                     "FLOAT",
-                    {"default": 0.0, "min": 0.0, "max": 2.0, "step": 0.1},
+                    {"default": 0.0, "min": 0.0, "max": 2.0, "step": 0.1,
+                     "tooltip": "Gaussian sigma in input pixels applied before downscaling to suppress "
+                     "aliasing and moire. 0 = off."},
                 ),
-                "process_in_linear": ("BOOLEAN", {"default": True}),
-                "use_gpu": ("BOOLEAN", {"default": True}),
+                "process_in_linear": ("BOOLEAN", {"default": True,
+                    "tooltip": "Decode sRGB to linear before resampling and re-encode after, for gamma-correct "
+                    "filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted.",
+                }),
+                "use_gpu": ("BOOLEAN", {"default": True,
+                    "tooltip": "Run on CUDA when available (MPS is not used). Falls back to the CPU path, "
+                    "which uses the exact resampling kernels.",
+                }),
                 # FIX 5: parity with RadianceProUpscale / RadianceUpscaleBySize.
                 # Without this param, linear/HDR inputs were always run through
                 # sRGB linearization when process_in_linear=True, double-converting.
@@ -1203,9 +1413,9 @@ class RadianceDownscale32bit:
                     {
                         "default": "sRGB",
                         "tooltip": (
-                            "Colour space of the input image. "
-                            "Set to 'Linear' or 'Auto' to skip the sRGB↔linear "
-                            "conversion for HDR or already-linear inputs."
+                            "Colour space of the input image. Linear skips the sRGB-linear conversion "
+                            "for HDR or already-linear input. Auto: Linear when any value is outside "
+                            "0-1, else sRGB."
                         ),
                     },
                 ),
@@ -1215,8 +1425,8 @@ class RadianceDownscale32bit:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("downscaled_image", "width", "height")
     FUNCTION = "downscale"
-    CATEGORY = "FXTD Studios/Radiance/Image"
-    DESCRIPTION = "GPU-accelerated 32-bit downscaling with anti-aliasing."
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
+    DESCRIPTION = "32-bit downscaling with the exact resampling kernel on GPU or CPU and an adjustable anti-aliasing prefilter."
 
     def downscale(
         self,
@@ -1235,73 +1445,29 @@ class RadianceDownscale32bit:
         new_h = max(1, int(h * scale_factor))
         new_w = max(1, int(w * scale_factor))
 
-        # v1.1.0 FIX: GPU path now applies color space conversion and pre_blur
-        # consistently with the CPU path, so results match regardless of device
+        input_color_space = resolve_input_space(image, input_color_space)
+        # 3.5.0: antialiasing is the prefilter width (it was never read);
+        # 0.5 keeps the textbook filter the node always used.
+        aa_width = 2.0 * float(antialiasing)
+        linearise = process_in_linear and input_color_space == "sRGB"
+
         if use_gpu and torch.cuda.is_available():
             try:
                 device = torch.device("cuda")
                 img = image.to(device).float()
-
-                # FIX 5: gate on input_color_space — prevents double-converting
-                # HDR/linear inputs when process_in_linear=True.
-                if process_in_linear and input_color_space == "sRGB":
-                    # sRGB → Linear on GPU
-                    img = torch.where(
-                        img <= 0.04045,
-                        img / 12.92,
-                        torch.pow((torch.clamp(img, min=0) + 0.055) / 1.055, 2.4),
-                    )
-
-                # Pre-blur for anti-aliasing (GPU gaussian)
+                alpha = img[..., 3:] if img.shape[-1] > 3 else None
+                img = img[..., :3]
+                if linearise:
+                    img = _srgb_to_linear_gpu(img)
                 if pre_blur > 0:
-                    kernel_size = max(3, int(pre_blur * 6) | 1)
-                    x = (
-                        torch.arange(kernel_size, device=device).float()
-                        - kernel_size // 2
-                    )
-                    gauss_1d = torch.exp(-(x**2) / (2 * pre_blur**2))
-                    gauss_1d = gauss_1d / gauss_1d.sum()
-                    gauss_2d = gauss_1d.unsqueeze(0) * gauss_1d.unsqueeze(1)
-                    gauss_2d = gauss_2d.unsqueeze(0).unsqueeze(0)
-
-                    b_sz, h_sz, w_sz, c_sz = img.shape
-                    img_perm = img.permute(0, 3, 1, 2)
-                    img_perm = F.conv2d(
-                        img_perm,
-                        gauss_2d.expand(c_sz, 1, -1, -1),
-                        padding=kernel_size // 2,
-                        groups=c_sz,
-                    )
-                    img = img_perm.permute(0, 2, 3, 1)
-
-                # Downscale
-                img_bchw = img.permute(0, 3, 1, 2)
-                mode = (
-                    "bicubic"
-                    if method not in ("nearest", "bilinear", "bicubic")
-                    else method
-                )
-
-                result = F.interpolate(
-                    img_bchw,
-                    size=(new_h, new_w),
-                    mode=mode,
-                    align_corners=False if mode != "nearest" else None,
-                    antialias=(mode != "nearest"),
-                )
-
-                result = result.permute(0, 2, 3, 1)
-
-                # FIX 5: gate on input_color_space
-                if process_in_linear and input_color_space == "sRGB":
-                    result = torch.where(
-                        result <= 0.0031308,
-                        result * 12.92,
-                        1.055 * torch.pow(torch.clamp(result, min=0), 1 / 2.4) - 0.055,
-                    )
-
-                # v1.1.1 FIX: Removed output clamp to support HDR downscaling
-                # result = torch.clamp(result, min=0)
+                    img = _gaussian_blur_gpu(img, pre_blur)
+                result = torch_resize_32bit(img, new_h, new_w, method, aa_width=aa_width)
+                if linearise:
+                    result = _linear_to_srgb_gpu(result)
+                if alpha is not None:
+                    alpha = torch_resize_32bit(alpha, new_h, new_w, "lanczos", aa_width=aa_width)
+                    result = torch.cat([result, alpha], dim=-1)
+                # No output clamp: HDR values survive the downscale.
                 return (result.cpu(), new_w, new_h)
 
             except RuntimeError as e:  # FIX 2: capture + log the error
@@ -1322,22 +1488,20 @@ class RadianceDownscale32bit:
                 alpha = img[..., 3:4]
                 img = img[..., :3]
 
-            # FIX 5: gate on input_color_space
-            if process_in_linear and input_color_space == "sRGB":
+            if linearise:
                 img = srgb_to_linear_32bit(img)
 
             # Pre-blur in true 32-bit
             if pre_blur > 0:
                 img = gaussian_blur_32bit(img, sigma=pre_blur)
 
-            downscaled = separable_resize_32bit(img, new_h, new_w, method)
+            downscaled = separable_resize_32bit(img, new_h, new_w, method, aa_width)
 
-            # FIX 5: gate on input_color_space
-            if process_in_linear and input_color_space == "sRGB":
+            if linearise:
                 downscaled = linear_to_srgb_32bit(downscaled)
 
             if has_alpha:
-                alpha_down = separable_resize_32bit(alpha, new_h, new_w, "lanczos")
+                alpha_down = separable_resize_32bit(alpha, new_h, new_w, "lanczos", aa_width)
                 if len(alpha_down.shape) == 2:
                     alpha_down = alpha_down[:, :, np.newaxis]
                 downscaled = np.concatenate([downscaled, alpha_down], axis=-1)
@@ -1351,6 +1515,7 @@ class RadianceDownscale32bit:
 
 
 class RadianceBitDepthConvert:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     Convert between bit depths with professional dithering to reduce banding.
     """
@@ -1405,7 +1570,7 @@ class RadianceBitDepthConvert:
         "Information about the conversion.",
     )
     FUNCTION = "convert"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = (
         "Convert between bit depths with professional dithering to reduce banding."
     )
@@ -1419,48 +1584,69 @@ class RadianceBitDepthConvert:
         seed: int = 0,
     ):
 
-        batch_size = image.shape[0]
-        results = []
-
-        for b in range(batch_size):
-            img = image[b].cpu().numpy().astype(np.float32)
-
-            if output_depth == "32-bit Float":
-                results.append(img)
-                continue
-            elif output_depth == "16-bit Float":
-                result = img.astype(np.float16).astype(np.float32)
-                results.append(result)
-                continue
-            elif output_depth == "16-bit Int":
-                levels = 65535
-            elif output_depth == "10-bit":
-                levels = 1023
-            else:  # 8-bit
-                levels = 255
-
-            if dithering != "None":
-                img = self._apply_dither(img, levels, dithering, dither_strength, seed)
-
-            # v1.2.0 FIX: Floyd-Steinberg performs quantization IN-PLACE during error
-            # diffusion and returns a fully-quantized result.  Applying np.round() a
-            # second time destroyed the carefully-computed dither pattern.  All other
-            # methods return a PRE-quantization float, so we quantize those normally.
-            if dithering == "Floyd-Steinberg":
-                result = np.clip(img, 0, 1)  # already quantized — just clamp
-            else:
-                result = np.clip(np.round(img * levels) / levels, 0, 1)
-
-            results.append(result)
-
-        output = np.stack(results, axis=0)
-        output_tensor = torch.from_numpy(output).float()
-
         info = f"Converted to {output_depth}"
-        if dithering != "None":
+
+        # ── Fast tensor-only passthrough cases ────────────────────────────────
+        if output_depth == "32-bit Float":
+            return (image.float(), info)
+
+        if output_depth == "16-bit Float" and dithering == "None":
+            return (image.half().float(), info)
+
+        levels_map = {"16-bit Int": 65535, "10-bit": 1023, "8-bit": 255}
+        levels = levels_map.get(output_depth, 255)
+
+        # ── Floyd-Steinberg: inherently sequential, stays on CPU per-frame ────
+        if dithering == "Floyd-Steinberg":
+            results = []
+            for b in range(image.shape[0]):
+                img_np = image[b].cpu().numpy().astype(np.float32)
+                img_np = self._apply_dither(img_np, levels, dithering, dither_strength, seed)
+                results.append(np.clip(img_np, 0, 1))
+            info += f" with {dithering} dithering"
+            return (torch.from_numpy(np.stack(results, axis=0)).float(), info)
+
+        # ── GPU path for all remaining cases ──────────────────────────────────
+        device = torch.device("cuda") if torch.cuda.is_available() else image.device
+        img = image.to(device).float()
+        B, H, W, C = img.shape
+        n_color = min(3, C)
+
+        if dithering == "Ordered":
+            bayer_base = torch.tensor([
+                [0, 8, 2, 10], [12, 4, 14, 6],
+                [3, 11, 1,  9], [15, 7, 13, 5],
+            ], dtype=torch.float32, device=device) / 16.0 - 0.5
+            tile_h = (H + 3) // 4
+            tile_w = (W + 3) // 4
+            noise = bayer_base.repeat(tile_h, tile_w)[:H, :W]          # (H, W)
+            noise = noise.unsqueeze(0).unsqueeze(-1) * (dither_strength / levels)
+            img = img.clone()
+            img[..., :n_color] = img[..., :n_color] + noise
             info += f" with {dithering} dithering"
 
-        return (output_tensor, info)
+        elif dithering in ("Blue Noise", "Random"):
+            g = torch.Generator()
+            g.manual_seed(seed)
+            if dithering == "Blue Noise":
+                n1 = torch.randn(B, H, W, 1, generator=g).to(device)
+                n2 = torch.randn(B, H // 2 + 1, W // 2 + 1, 1, generator=g).to(device)
+                n2_up = F.interpolate(
+                    n2.permute(0, 3, 1, 2), size=(H, W),
+                    mode="bilinear", align_corners=False,
+                ).permute(0, 2, 3, 1)
+                noise = (n1 - n2_up * 0.5) * (dither_strength / levels)
+            else:
+                noise = torch.randn(B, H, W, 1, generator=g).to(device) * (dither_strength / levels)
+            img = img.clone()
+            img[..., :n_color] = img[..., :n_color] + noise
+            info += f" with {dithering} dithering"
+
+        # v1.2.0 FIX: Floyd-Steinberg performs quantization IN-PLACE during error
+        # diffusion and returns a fully-quantized result — handled above.  All
+        # other paths return a PRE-quantization float, so we quantize here.
+        result = torch.clamp(torch.round(img * levels) / levels, 0.0, 1.0)
+        return (result.cpu(), info)
 
     def _apply_dither(
         self, img: np.ndarray, levels: int, method: str, strength: float, seed: int = 0
@@ -1588,6 +1774,7 @@ class RadianceBitDepthConvert:
 
 
 class RadianceAIUpscale:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     AI-powered upscaling using neural network models. Supports tiled processing for large images.
     """
@@ -1605,13 +1792,28 @@ class RadianceAIUpscale:
         "SUPIR-v0Q_fp16",
     ]
 
-    MODEL_URLS = {
-        "SUPIR-v0F_fp16": "https://huggingface.co/Kijai/SUPIR_pruned/resolve/main/SUPIR-v0F_fp16.safetensors",
-        "SUPIR-v0Q_fp16": "https://huggingface.co/Kijai/SUPIR_pruned/resolve/main/SUPIR-v0Q_fp16.safetensors",
-        "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
-        "RealESRGAN_x4plus_anime_6B": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
-        "RealESRGAN_x2plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+    # 3.5.0: each file pinned to its SHA-256 and size and fetched through
+    # radiance.core.model_fetch (verified before it is installed, resumable).
+    # SUPIR from Kijai/SUPIR_pruned at a fixed commit; Real-ESRGAN from its
+    # original GitHub releases.
+    MODEL_FILES = {
+        "SUPIR-v0F_fp16": (
+            "https://huggingface.co/Kijai/SUPIR_pruned/resolve/eaabd8ecd86906f97626a39f3b9fe882d52d697d/SUPIR-v0F_fp16.safetensors",
+            "a8f1846de1985cf0473fac6d8c0ef17c9498a90d1c19906e944134c5572275d0", 2664825592),
+        "SUPIR-v0Q_fp16": (
+            "https://huggingface.co/Kijai/SUPIR_pruned/resolve/eaabd8ecd86906f97626a39f3b9fe882d52d697d/SUPIR-v0Q_fp16.safetensors",
+            "3eef33ec7633122ca23b1e5ef167faa048b5a0845768694d5e8070138ac013ce", 2664858464),
+        "RealESRGAN_x4plus": (
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+            "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1", 67040989),
+        "RealESRGAN_x4plus_anime_6B": (
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+            "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da", 17938799),
+        "RealESRGAN_x2plus": (
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+            "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb", 67061725),
     }
+    MODEL_URLS = {name: spec[0] for name, spec in MODEL_FILES.items()}
 
     def __init__(self):
         self.model = None
@@ -1672,6 +1874,28 @@ class RadianceAIUpscale:
                         "tooltip": "Unload model from VRAM after processing to free memory.",
                     },
                 ),
+                # ALBABIT-FIX: SUPIR-specific inputs. SUPIR_model_loader merges SUPIR weights
+                # into an SDXL base model and creates its own internal VAE/CLIP — it does NOT
+                # use the vae/clip inputs below. Those are kept for potential future v2 support.
+                "sdxl_model_name": ("STRING", {
+                    "default": "",
+                    "tooltip": "SUPIR only: filename of your SDXL base checkpoint "
+                               "(e.g. sd_xl_base_1.0_0.9vae.safetensors). "
+                               "Leave empty to auto-detect from the checkpoints folder. "
+                               "Ignored for all non-SUPIR models.",
+                }),
+                "supir_prompt": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "tooltip": "SUPIR only: text description for SUPIR upscaling. "
+                               "Leave empty for default conditioning. Ignored for all other models.",
+                }),
+                "vae": ("VAE", {
+                    "tooltip": "Reserved for future SUPIR v2 loader support. Currently unused.",
+                }),
+                "clip": ("CLIP", {
+                    "tooltip": "Reserved for future SUPIR v2 loader support. Currently unused.",
+                }),
             },
         }
 
@@ -1679,60 +1903,244 @@ class RadianceAIUpscale:
     RETURN_NAMES = ("image", "info")
     OUTPUT_TOOLTIPS = ("Upscaled image.", "Information about the upscaling process.")
     FUNCTION = "upscale"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = "AI-powered upscaling using neural network models. Supports tiled processing for large images."
 
     def _download_model(self, model_name: str, target_path: str) -> bool:
-        """Download model if URL is available."""
-        if model_name not in self.MODEL_URLS:
+        """Fetch a pinned model file (see MODEL_FILES). True when it is installed."""
+        if model_name not in self.MODEL_FILES:
+            return False
+        url, sha256, size = self.MODEL_FILES[model_name]
+        from radiance.core.model_fetch import ModelFetchError, fetch
+        try:
+            fetch(url, target_path, sha256=sha256, size=size, label=model_name)
+            return True
+        except ModelFetchError as e:
+            logger.error("%s", e)
             return False
 
-        url = self.MODEL_URLS[model_name]
+    def _load_supir_model(self, model_name: str, model_path: str, sdxl_model_name: str = ""):
+        """Load a SUPIR model via the ComfyUI-SUPIR extension bridge.
 
-        # v1.1.0: Log download size warning for large models
-        large_models = {"SUPIR-v0F_fp16", "SUPIR-v0Q_fp16"}
-        if model_name in large_models:
-            logger.warning(
-                f"◎ Downloading {model_name} — this is a large model (~6GB) and may take a while."
-            )
+        ALBABIT-FIX: Complete rewrite. Debug log revealed three things:
+          1. nodes.NODE_CLASS_MAPPINGS DOES contain SUPIR classes — we were looking for
+             the wrong key ('SUPIRModelLoader' instead of 'SUPIR_model_loader').
+          2. ComfyUI-SUPIR's loader also requires an SDXL base model filename
+             (sdxl_model param). A new sdxl_model_name input is now forwarded here.
+          3. The loader returns (SUPIRMODEL, SUPIRVAE) — both must be stored in the
+             cache tuple for use by _run_supir.
+        """
+        import sys
 
-        logger.info(f"Downloading {model_name} from {url}...")
+        # ALBABIT-FIX: Use nodes.NODE_CLASS_MAPPINGS with the correct key names for this
+        # version of ComfyUI-SUPIR. The old code used 'SUPIRModelLoader' which does not
+        # exist — the real key is 'SUPIR_model_loader'.
+        loader_cls = None
+        _ncm = {}
 
         try:
-            import urllib.request
+            import nodes as _comfy_nodes
+            _ncm = getattr(_comfy_nodes, "NODE_CLASS_MAPPINGS", {})
+            loader_cls = _ncm.get("SUPIR_model_loader")
+        except (ImportError, AttributeError) as _exc:
+            logger.debug(
+                "[Radiance] _load_supir_model(): ignoring %s from `import nodes as _comfy_nodes`: %s",
+                type(_exc).__name__, _exc,
+            )
 
-            if not url.startswith(("http://", "https://")):
-                logger.error(f"❌ Download failed: Invalid URL scheme - {url}")
-                return False
+        # Fallback: ComfyUI 0.19.x stores the module under its full directory path
+        if loader_cls is None:
+            supir_dir = _find_supir_dir()
+            if supir_dir:
+                _mod = sys.modules.get(supir_dir)
+                if _mod is not None:
+                    _ncm_try = _mod.__dict__.get("NODE_CLASS_MAPPINGS", {})
+                    if isinstance(_ncm_try, dict) and "SUPIR_model_loader" in _ncm_try:
+                        loader_cls = _ncm_try["SUPIR_model_loader"]
+                        _ncm = _ncm_try
 
-            # Download with progress logging
-            def _report_progress(block_num, block_size, total_size):
-                if total_size > 0 and block_num % 100 == 0:
-                    downloaded = block_num * block_size
-                    pct = min(100, downloaded * 100 / total_size)
-                    logger.info(
-                        f"  ↳ {pct:.0f}% ({downloaded / 1024**2:.0f}MB / {total_size / 1024**2:.0f}MB)"
-                    )
+        if loader_cls is None:
+            supir_dir = _find_supir_dir()
+            if supir_dir is None:
+                return None, (
+                    "SUPIR is a diffusion-based upscaler — Spandrel cannot load it. "
+                    "To enable SUPIR in this node:\n"
+                    "  1. Install ComfyUI-SUPIR via ComfyUI Manager (search 'SUPIR' by kijai).\n"
+                    "  2. Restart ComfyUI so it loads the extension.\n"
+                    "  3. Set 'sdxl_model_name' to your SDXL base model filename "
+                    "(e.g. sd_xl_base_1.0_0.9vae.safetensors)."
+                )
+            return None, (
+                "ComfyUI-SUPIR is installed but SUPIR_model_loader was not found in "
+                "NODE_CLASS_MAPPINGS. Check the ComfyUI startup log for errors in "
+                "comfyui-supir, then restart ComfyUI."
+            )
 
-            urllib.request.urlretrieve(url, target_path, reporthook=_report_progress)  # nosec B310
-            logger.info(f"✓ Download complete: {target_path}")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Download failed: {e}")
-            # Clean up partial download
+        # Build the class map with actual names from this version of ComfyUI-SUPIR
+        supir_cls_map = {
+            "SUPIR_model_loader": loader_cls,
+            "SUPIR_encode":       _ncm.get("SUPIR_encode"),
+            "SUPIR_conditioner":  _ncm.get("SUPIR_conditioner"),
+            "SUPIR_sample":       _ncm.get("SUPIR_sample"),
+            "SUPIR_decode":       _ncm.get("SUPIR_decode"),
+        }
+
+        # Auto-detect SDXL model if not specified
+        if not sdxl_model_name:
+            import folder_paths as _fp
+            _ckpts = _fp.get_filename_list("checkpoints")
+            for _c in _ckpts:
+                if "xl" in _c.lower() and "base" in _c.lower():
+                    sdxl_model_name = _c
+                    break
+            if not sdxl_model_name:
+                for _c in _ckpts:
+                    if "xl" in _c.lower():
+                        sdxl_model_name = _c
+                        break
+            if not sdxl_model_name:
+                return None, (
+                    "SUPIR requires an SDXL base model. Set 'sdxl_model_name' to the "
+                    "filename of your SDXL checkpoint (e.g. sd_xl_base_1.0_0.9vae.safetensors) "
+                    "or place an SDXL model in your checkpoints folder."
+                )
+            logger.info(f"[RadianceAIUpscale] SUPIR: auto-detected SDXL model '{sdxl_model_name}'")
+
+        try:
+            import folder_paths as fp
+            loader = loader_cls()
+            model_filename = os.path.basename(model_path)
+            model_dir      = os.path.dirname(model_path)
+
+            # SUPIR_model_loader looks up both models in "checkpoints" via folder_paths.
+            # Temporarily register the SUPIR model's directory there if it is not already.
+            _tmp_buckets = []
+            for bucket in ("upscale_models", "checkpoints"):
+                if model_dir not in fp.get_folder_paths(bucket):
+                    fp.add_model_folder_path(bucket, model_dir)
+                    _tmp_buckets.append(bucket)
+
             try:
-                if os.path.exists(target_path):
-                    os.remove(target_path)
-            except Exception:  # nosec B110
-                pass
-            return False
+                result = loader.process(
+                    supir_model=model_filename,
+                    sdxl_model=sdxl_model_name,
+                    diffusion_dtype="auto",
+                    fp8_unet=False,
+                )
+            finally:
+                for bucket in _tmp_buckets:
+                    try:
+                        fp.folder_names_and_paths[bucket][0].remove(model_dir)
+                    except (ValueError, KeyError) as _exc:
+                        logger.debug(
+                            "[Radiance] _load_supir_model(): ignoring %s from `fp.folder_names_and_paths[bucket][0].remove(model_dir)`: %s",
+                            type(_exc).__name__, _exc,
+                        )
 
-    def _load_model(self, model_name: str):
+            if not result or result[0] is None:
+                return None, "SUPIR_model_loader returned an empty result — check ComfyUI-SUPIR logs."
+
+            # result = (SUPIRMODEL, SUPIRVAE)
+            supir_model_obj = result[0]
+            supir_vae_obj   = result[1]
+            entry = ("supir", supir_model_obj, supir_vae_obj, supir_cls_map)
+            _MODEL_CACHE.put(model_name, entry)
+            logger.info(f"[RadianceAIUpscale] SUPIR loaded: {model_name} + {sdxl_model_name}")
+            return entry, f"SUPIR loaded: {model_name} + {sdxl_model_name}"
+
+        except Exception as e:
+            import traceback as _tb
+            logger.error(f"[RadianceAIUpscale] SUPIR load failed: {e}\n" + _tb.format_exc())
+            return None, f"SUPIR load failed: {e}"
+
+    def _run_supir(self, model_tuple, image, tile_size, tile_overlap, prompt=""):
+        """Run SUPIR inference using ComfyUI-SUPIR node classes as a backend.
+
+        ALBABIT-FIX: Full rewrite to match the real ComfyUI-SUPIR API (nodes_v2.py):
+          - model_tuple is now ("supir", SUPIRMODEL, SUPIRVAE, cls_map)
+          - SUPIR_encode takes SUPIR_VAE (not vae/clip — those are baked into the model)
+          - SUPIR_conditioner takes latents + SUPIR_model
+          - SUPIR_sample is the diffusion step
+          - SUPIR_decode takes SUPIR_VAE
+          - All four nodes handle batches internally; we pass the full image batch.
+        """
+        import inspect
+
+        _, supir_model, supir_vae, supir_cls_map = model_tuple
+
+        def _call(cls_name, method_name, **kwargs):
+            cls = supir_cls_map.get(cls_name)
+            if cls is None:
+                raise RuntimeError(f"{cls_name} not found in ComfyUI-SUPIR node registry — update ComfyUI-SUPIR.")
+            obj    = cls()
+            method = getattr(obj, method_name, None)
+            if method is None:
+                raise RuntimeError(f"{cls_name}.{method_name}() not found")
+            sig    = inspect.signature(method)
+            # Forward only kwargs the method accepts; skip None values.
+            filtered = {k: v for k, v in kwargs.items() if k in sig.parameters and v is not None}
+            return method(**filtered)
+
+        # ── Step 1 : encode LQ frames to SUPIR latent space ──────────────────
+        # SUPIR_encode processes the batch internally frame-by-frame.
+        encode_result = _call("SUPIR_encode", "encode",
+            SUPIR_VAE=supir_vae,
+            image=image,
+            use_tiled_vae=True,
+            encoder_tile_size=tile_size,
+            encoder_dtype="auto",
+        )
+        latents = encode_result[0]  # {"samples": tensor, "original_size": [H, W]}
+
+        # ── Step 2 : build positive/negative conditioning ─────────────────────
+        cond_result = _call("SUPIR_conditioner", "condition",
+            SUPIR_model=supir_model,
+            latents=latents,
+            positive_prompt=prompt or "high quality, detailed",
+            negative_prompt="blurry, low quality, noise, artifacts, compression",
+        )
+        positive = cond_result[0]
+        negative = cond_result[1]
+
+        # ── Step 3 : diffusion sampling ───────────────────────────────────────
+        sample_result = _call("SUPIR_sample", "sample",
+            SUPIR_model=supir_model,
+            latents=latents,
+            positive=positive,
+            negative=negative,
+            seed=42,
+            steps=45,
+            cfg_scale_start=4.0,
+            cfg_scale_end=4.0,
+            EDM_s_churn=5,
+            s_noise=1.003,
+            DPMPP_eta=1.0,
+            control_scale_start=1.0,
+            control_scale_end=1.0,
+            restore_cfg=-1.0,
+            keep_model_loaded=False,
+            sampler="RestoreEDMSampler",
+        )
+        output_latents = sample_result[0]
+
+        # ── Step 4 : decode latents back to pixel space ───────────────────────
+        decode_result = _call("SUPIR_decode", "decode",
+            SUPIR_VAE=supir_vae,
+            latents=output_latents,
+            use_tiled_vae=True,
+            decoder_tile_size=tile_size,
+        )
+        out_img = decode_result[0]  # (B, H, W, C) float32, already cpu
+
+        info = f"SUPIR upscale: {image.shape[0]} frame(s) via ComfyUI-SUPIR"
+        return out_img, info
+
+    def _load_model(self, model_name: str, sdxl_model_name: str = "", auto_download: bool = True):
         """Load an upscale model with caching."""
         with _CACHE_LOCK:
             # Check cache first
             if model_name in _MODEL_CACHE:
-                return _MODEL_CACHE[model_name], "Loaded (Cached)"
+                return _MODEL_CACHE.get(model_name), "Loaded (Cached)"
 
             try:
                 import folder_paths
@@ -1755,19 +2163,29 @@ class RadianceAIUpscale:
                 ext = ".safetensors" if "SUPIR" in model_name else ".pth"
                 target_path = os.path.join(models_dir, f"{model_name}{ext}")
 
-                if self._download_model(model_name, target_path):
+                # The node's auto_download widget and RADIANCE_ALLOW_DOWNLOADS=0
+                # (checked inside the fetch) can both say no.
+                if auto_download and self._download_model(model_name, target_path):
                     model_path = target_path
                 else:
+                    why = ("auto_download is off" if not auto_download
+                           else "the download failed or downloads are turned off; see the log")
                     return (
                         None,
-                        f"Model {model_name} not found. Place in models/upscale_models/",
+                        f"Model {model_name} not found and not downloaded: {why}. "
+                        f"Place it in models/upscale_models/",
                     )
 
-            # Load the model
+            # ALBABIT-FIX: SUPIR models are diffusion-based and cannot be identified by
+            # Spandrel (which only handles feedforward upscalers). Route them to a
+            # dedicated loader that uses the ComfyUI-SUPIR extension when available.
+            if model_name in _SUPIR_MODELS:
+                return self._load_supir_model(model_name, model_path, sdxl_model_name)
+
+            # Load standard upscale models with Spandrel
             try:
                 sd = comfy.utils.load_torch_file(model_path, safe_load=True)
 
-                # Load with spandrel
                 try:
                     import spandrel
                 except ImportError:
@@ -1783,12 +2201,22 @@ class RadianceAIUpscale:
                     model_descriptor = spandrel.ModelLoader().load_from_state_dict(sd)
                     upscale_model = model_descriptor.model.eval()
 
-                    _MODEL_CACHE[model_name] = upscale_model
+                    _MODEL_CACHE.put(model_name, upscale_model)
                     return upscale_model, f"Loaded: {model_name}"
 
                 except Exception as e:
-                    logger.error(f"Spandrel load failed for {model_name}: {e}")
-                    return None, f"Model load error: {str(e)}"
+                    # ALBABIT-FIX: Spandrel raises UnsupportedModelError with no message
+                    # when it cannot identify the architecture (str(e) == ""). Replace the
+                    # silent empty string with a human-readable diagnostic.
+                    err_msg = str(e)
+                    if not err_msg:
+                        err_msg = (
+                            "Architecture not recognised by Spandrel (UnsupportedModelError). "
+                            "Ensure the model is a supported ESRGAN / SwinIR / HAT variant "
+                            "and that your ComfyUI Spandrel version is up to date."
+                        )
+                    logger.error(f"Spandrel load failed for {model_name}: {err_msg}")
+                    return None, f"Model load error: {err_msg}"
 
             except Exception as e:
                 # v1.1.0 FIX: Removed destructive auto-deletion of "small" model files.
@@ -1835,36 +2263,39 @@ class RadianceAIUpscale:
 
         new_h, new_w = h * scale, w * scale
 
-        # ── Memory safety cap: 64 MP = 16K×4K ──────────────────────────────
+        # ── Memory safety cap: 64 MP per frame ──────────────────────────────
         MAX_OUTPUT_PIXELS = 64_000_000  # 64 megapixels (~16K×4K)
         output_pixels = new_h * new_w
         if output_pixels > MAX_OUTPUT_PIXELS:
-            # Scale down to fit within the cap
             cap_factor = (MAX_OUTPUT_PIXELS / (h * w)) ** 0.5
             safe_scale = max(1, int(cap_factor))
             new_h, new_w = h * safe_scale, w * safe_scale
             logger.warning(
                 f"[RadianceAIUpscale] Fallback x{scale} would produce {output_pixels:,} pixels "
-                f"({new_h // safe_scale * scale}×{new_w // safe_scale * scale}), "
-                f"which would require ~{output_pixels * 4 * c // 1024**3:.1f} GB RAM. "
-                f"Capping to x{safe_scale} ({new_h}×{new_w}) to avoid OOM."
+                f"per frame. Capping to x{safe_scale} ({new_h}×{new_w}) to avoid OOM."
             )
             scale = safe_scale
 
-        # ── Estimate memory before allocating ────────────────────────────────
-        approx_bytes = b * new_h * new_w * c * 4  # float32
-        if approx_bytes > 4 * 1024 ** 3:  # warn if > 4 GB
+        # ALBABIT-FIX: memory warning and interpolation are now per-frame.
+        # Previous code called F.interpolate on the full batch tensor (all B frames at
+        # once), which for a 121-frame video at 4× resulted in a ~45 GB allocation and
+        # a misleading console warning that included the batch dimension in the estimate.
+        approx_bytes_per_frame = new_h * new_w * c * 4  # float32, single frame
+        if approx_bytes_per_frame * b > 4 * 1024 ** 3:
             logger.warning(
-                f"[RadianceAIUpscale] Fallback upscale output will be "
-                f"~{approx_bytes / 1024**3:.1f} GB. Consider using a smaller image."
+                f"[RadianceAIUpscale] Fallback upscale: {b} frame(s) × "
+                f"~{approx_bytes_per_frame / 1024**2:.0f} MB each "
+                f"= ~{approx_bytes_per_frame * b / 1024**3:.1f} GB total. "
+                f"Consider using a smaller image or fewer frames."
             )
 
-        img_bchw = image.float().cpu().permute(0, 3, 1, 2)
-        upscaled = F.interpolate(
-            img_bchw, size=(new_h, new_w), mode="bicubic", align_corners=False
-        )
-        result = upscaled.permute(0, 2, 3, 1)
+        results = []
+        for b_idx in range(b):
+            frame = image[b_idx : b_idx + 1].float().cpu().permute(0, 3, 1, 2)
+            up = F.interpolate(frame, size=(new_h, new_w), mode="bicubic", align_corners=False)
+            results.append(up.permute(0, 2, 3, 1)[0])
 
+        result = torch.stack(results)
         return (result, f"Bicubic {scale}x (AI model not available)")
 
     def _hdr_compress(self, img: torch.Tensor, mode: str) -> Tuple[torch.Tensor, Dict]:
@@ -1922,17 +2353,52 @@ class RadianceAIUpscale:
         tile_overlap: int = 32,
         auto_download: bool = True,
         unload_model: bool = False,
+        # ALBABIT-FIX: SUPIR optional inputs.
+        sdxl_model_name: str = "",
+        supir_prompt: str = "",
+        vae=None,
+        clip=None,
     ):
         """Upscale image using AI model with tiled processing."""
 
         # Load model if needed
         if self.model is None or self.current_model_name != model_name:
-            self.model, load_info = self._load_model(model_name)
+            # ALBABIT-FIX: forward sdxl_model_name to _load_supir_model via _load_model routing
+            self.model, load_info = self._load_model(model_name, sdxl_model_name=sdxl_model_name,
+                                                     auto_download=bool(auto_download))
             self.current_model_name = model_name
 
             if self.model is None:
                 logger.warning(f"{load_info}")
                 return self._fallback_upscale(image, model_name)
+
+        # ALBABIT-FIX: Route SUPIR models to the dedicated diffusion inference path.
+        # _load_supir_model caches the result as a ("supir", model, nodes_module) tuple.
+        if isinstance(self.model, tuple) and self.model[0] == "supir":
+            try:
+                result_images, info = self._run_supir(
+                    self.model, image, tile_size, tile_overlap, supir_prompt
+                )
+            except Exception as e:
+                import traceback as _tb
+                logger.error(
+                    f"[RadianceAIUpscale] SUPIR inference failed: {e}\n" + _tb.format_exc()
+                )
+                return self._fallback_upscale(image, model_name)
+
+            if unload_model:
+                # Drop the cache entry too. Clearing self.model alone left the
+                # module referenced by _MODEL_CACHE -- and since .to(device)
+                # mutates in place, that reference was the GPU-resident copy,
+                # so empty_cache() reclaimed nothing at all.
+                _MODEL_CACHE.pop(self.current_model_name or model_name)
+                self.model = None
+                self.current_model_name = None
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                info += " (model unloaded)"
+
+            return (result_images, info)
 
         try:
             from comfy import model_management
@@ -1973,9 +2439,11 @@ class RadianceAIUpscale:
                         (1, 1, new_h, new_w), dtype=torch.float32, device=device
                     )
 
-                    stride = tile_size - tile_overlap
+                    tile_overlap = clamp_overlap(tile_size, tile_overlap)
+                    stride = max(1, tile_size - tile_overlap)
                     tiles_x = max(1, math.ceil((w - tile_overlap) / stride))
                     tiles_y = max(1, math.ceil((h - tile_overlap) / stride))
+                    _tile_w_cache: dict = {}
 
                     logger.info(
                         f"Processing {tiles_x * tiles_y} tiles ({tiles_x}x{tiles_y})..."
@@ -2002,34 +2470,35 @@ class RadianceAIUpscale:
 
                             th, tw = tile_output.shape[2], tile_output.shape[3]
 
-                            weight_1d_h = torch.ones(
-                                th, dtype=torch.float32, device=device
+                            # Border-aware, and cached: at most nine distinct
+                            # weights exist for a tile size, but this rebuilt a
+                            # full-size outer product on every tile -- ~670MB of
+                            # allocator churn per 4K frame. The ramp also started
+                            # at 0 on image-border edges, blacking out the
+                            # outermost row and column of the result.
+                            _ov_t, _ov_b, _ov_l, _ov_r = edge_overlaps_from_coords(
+                                out_y1, out_y2, out_x1, out_x2,
+                                new_h, new_w, tile_overlap * scale,
                             )
-                            weight_1d_w = torch.ones(
-                                tw, dtype=torch.float32, device=device
-                            )
-
-                            if tile_overlap > 0:
-                                feather = min(tile_overlap * scale, th // 2, tw // 2)
-                                if feather > 0:
-                                    ramp = torch.linspace(0, 1, feather, device=device)
-                                    weight_1d_h[:feather] = ramp
-                                    weight_1d_h[-feather:] = ramp.flip(0)
-                                    weight_1d_w[:feather] = ramp
-                                    weight_1d_w[-feather:] = ramp.flip(0)
-
-                            tile_weight = (
-                                (weight_1d_h.unsqueeze(1) * weight_1d_w.unsqueeze(0))
-                                .unsqueeze(0)
-                                .unsqueeze(0)
-                            )
+                            _wkey = (th, tw, _ov_t, _ov_b, _ov_l, _ov_r)
+                            tile_weight = _tile_w_cache.get(_wkey)
+                            if tile_weight is None:
+                                tile_weight = blend_weight_2d(
+                                    th, tw, _ov_t, _ov_b, _ov_l, _ov_r,
+                                    device=device, dtype=torch.float32,
+                                )
+                                _tile_w_cache[_wkey] = tile_weight
 
                             output[:, :, out_y1:out_y2, out_x1:out_x2] += (
                                 tile_output * tile_weight
                             )
                             weight[:, :, out_y1:out_y2, out_x1:out_x2] += tile_weight
 
-                    output = output / (weight + 1e-8)
+                    # In-place: the non-in-place form allocated two more
+                    # full-resolution tensors (~2GB extra at 4K/4x) at the
+                    # moment model weights are also resident.
+                    weight.clamp_(min=1e-8)
+                    output.div_(weight)
                     result_img = output.permute(0, 2, 3, 1)  # Back to BHWC
 
                 # Expand back to original HDR range
@@ -2045,6 +2514,11 @@ class RadianceAIUpscale:
             info = f"Upscaled with {model_name} ({scale}x) [{mode}]"
 
             if unload_model:
+                # Drop the cache entry too. Clearing self.model alone left the
+                # module referenced by _MODEL_CACHE -- and since .to(device)
+                # mutates in place, that reference was the GPU-resident copy,
+                # so empty_cache() reclaimed nothing at all.
+                _MODEL_CACHE.pop(self.current_model_name or model_name)
                 self.model = None
                 self.current_model_name = None
                 if torch.cuda.is_available():
@@ -2072,6 +2546,7 @@ class RadianceAIUpscale:
 
 
 class RadianceSharpen32bit:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ IO"
     """
     Professional 32-bit sharpening node for ComfyUI.
     Offers two modes: Unsharp Mask (standard) and High-Pass (for heavy sharpening
@@ -2146,7 +2621,7 @@ class RadianceSharpen32bit:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("sharpened_image",)
     FUNCTION = "sharpen"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = (
         "Professional 32-bit sharpening — Unsharp Mask or High Pass, "
         "true float32 precision, HDR-safe."
@@ -2162,38 +2637,30 @@ class RadianceSharpen32bit:
         process_in_linear: bool = True,
     ):
 
-        batch_size = image.shape[0]
-        results = []
+        device = torch.device("cuda") if torch.cuda.is_available() else image.device
+        img = image.to(device).float()
 
-        for b in range(batch_size):
-            img = image[b].cpu().numpy().astype(np.float32)
+        # Preserve and strip alpha before processing
+        has_alpha = img.shape[-1] == 4
+        if has_alpha:
+            alpha = img[..., 3:4]
+            img = img[..., :3]
 
-            # Preserve and strip alpha before processing
-            has_alpha = img.shape[-1] == 4
-            if has_alpha:
-                alpha = img[..., 3:4]
-                img = img[..., :3]
+        if process_in_linear:
+            img = _srgb_to_linear_gpu(img)
 
-            if process_in_linear:
-                img = srgb_to_linear_32bit(img)
+        if mode == "Unsharp Mask":
+            sharpened = _unsharp_mask_gpu(img, amount=amount, radius=radius, threshold=threshold)
+        else:  # High Pass
+            sharpened = _high_pass_sharpen_gpu(img, strength=amount, radius=radius)
 
-            if mode == "Unsharp Mask":
-                sharpened = unsharp_mask_32bit(
-                    img, amount=amount, radius=radius, threshold=threshold
-                )
-            else:  # High Pass
-                sharpened = high_pass_sharpen_32bit(img, strength=amount, radius=radius)
+        if process_in_linear:
+            sharpened = _linear_to_srgb_gpu(sharpened)
 
-            if process_in_linear:
-                sharpened = linear_to_srgb_32bit(sharpened)
+        if has_alpha:
+            sharpened = torch.cat([sharpened, alpha], dim=-1)
 
-            if has_alpha:
-                sharpened = np.concatenate([sharpened, alpha], axis=-1)
-
-            results.append(sharpened)
-
-        output = np.stack(results, axis=0)
-        return (torch.from_numpy(output).float(),)
+        return (sharpened.cpu(),)
 
 
 # =============================================================================

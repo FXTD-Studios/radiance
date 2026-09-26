@@ -7,8 +7,16 @@ from .utils import tensor_to_numpy_float32, numpy_to_tensor_float32
 
 logger = logging.getLogger("radiance.hdr.recovery")
 
+try:
+    from scipy.ndimage import zoom as _scipy_zoom
+    SCIPY_AVAILABLE = True
+except ImportError:
+    _scipy_zoom = None
+    SCIPY_AVAILABLE = False
+
 
 class RadianceHighlightSynthesis:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
     Synthesize high dynamic range details in clipped highlights.
 
@@ -24,7 +32,7 @@ class RadianceHighlightSynthesis:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {"tooltip": "Image with clipped highlights, in any encoding (threshold is compared with its Rec.709 luma). Every channel, alpha included if present, receives the detail noise."}),
                 "threshold": (
                     "FLOAT",
                     {
@@ -42,7 +50,7 @@ class RadianceHighlightSynthesis:
                         "min": 1.0,
                         "max": 4.0,
                         "step": 0.1,
-                        "tooltip": "How much to expand highlight range (multiplier for values > 1.0).",
+                        "tooltip": "Highlight gain above the threshold: gain = 1 + (luma - threshold) x (expansion - 1) x 2, faded in by the highlight mask. 1.0 = no expansion.",
                     },
                 ),
                 "detail_amount": (
@@ -65,15 +73,17 @@ class RadianceHighlightSynthesis:
                         "tooltip": "Scale/frequency of the synthetic detail.",
                     },
                 ),
-                "blend_mode": (["Screen", "Add", "Soft Light"], {"default": "Screen"}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+                "blend_mode": (["Screen", "Add", "Soft Light"], {"default": "Screen", "tooltip": "How the monochrome detail noise is combined. Add: plain offset. Screen: a + n - a x n, which inverts the noise on values above 1.0. Soft Light: contrast-style blend, normalised by the frame peak."}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
+                    "tooltip": "Random seed for the detail noise; frame N of a batch uses seed + N. The same seed always gives the same pattern.",
+                }),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "synthesize"
-    CATEGORY = "FXTD Studios/Radiance/Color"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = "Synthesize high dynamic range details in clipped highlights to simulate film scan quality."
 
     def synthesize(
@@ -129,7 +139,7 @@ class RadianceHighlightSynthesis:
             # v_expanded = v + (v - threshold)^2 * expansion_factor
 
             # Identify highlight pixels
-            luma > threshold
+            highlight_pixels = luma > threshold
 
             # Apply expansion to the image
             expanded_frame = frame.copy()
@@ -152,16 +162,14 @@ class RadianceHighlightSynthesis:
 
             # Scale noise (simulate grain size)
             if detail_scale != 1.0:
-                try:
-                    from scipy.ndimage import zoom
-
+                if SCIPY_AVAILABLE and _scipy_zoom is not None:
                     # Generate smaller noise and upscale it
                     h_small = int(h / detail_scale)
                     w_small = int(w / detail_scale)
                     noise_small = rng.normal(0, 0.5, (h_small, w_small)).astype(
                         np.float32
                     )
-                    noise = zoom(noise_small, (h / h_small, w / w_small), order=1)
+                    noise = _scipy_zoom(noise_small, (h / h_small, w / w_small), order=1)
                     # Handle size mismatch after zoom
                     noise = noise[:h, :w]
                     if noise.shape != (h, w):
@@ -172,8 +180,11 @@ class RadianceHighlightSynthesis:
                                 (0, max(0, w - noise.shape[1])),
                             ),
                         )[:h, :w]
-                except ImportError:
-                    pass  # Fallback to standard noise
+                else:
+                    logger.warning(
+                        "[HDRRecovery] scipy not available — falling back to standard "
+                        "Gaussian noise. Install scipy for film-grain noise synthesis."
+                    )
 
             # Modulate noise by detail_amount and mask
             noise_layer = noise * detail_amount * mask
@@ -189,16 +200,39 @@ class RadianceHighlightSynthesis:
                 for ch in range(c):
                     final_frame[..., ch] += noise_layer
             elif blend_mode == "Screen":
-                # Screen: 1 - (1-a)(1-b)
-                # But here we want to screen noise ON TOP of image.
-                # Noise is centered at 0, so shift it to 0.5 range?
-                # Actually, simpler film grain model: multipy for shadows, add for highlights?
-                # For highlights, we want to break up the flat white.
+                # Screen: a + b - a*b
+                # Works well for highlights — doesn't blow out as fast as Add
                 for ch in range(c):
-                    final_frame[..., ch] += noise_layer
+                    final_frame[..., ch] = final_frame[..., ch] + noise_layer - (final_frame[..., ch] * noise_layer)
             elif blend_mode == "Soft Light":
-                # Overlay logic
-                pass
+                # Soft Light: standard W3C formula
+                # We treat noise_layer (centered at 0) as an offset around 0.5
+                n = np.clip(noise_layer + 0.5, 0, 1)
+
+                # SOFT-LIGHT-HDR FIX: the W3C formula
+                # ``(1 - 2n)·a² + 2n·a`` is only defined on a in [0,1]. Above
+                # 1.0 the quadratic term dominates and goes hard negative: this
+                # node expands highlights, so a=5.0 at the shipped threshold
+                # 0.95 / expansion 1.5 with n=0.7 evaluated to -219.7, which the
+                # np.maximum(0.0, ...) below then clamped to PURE BLACK. With
+                # detail_amount=1.0 every pixel above roughly 2.0 linear blacked
+                # out, on the node whose only job is to put detail into
+                # highlights.
+                #
+                # Normalising by the frame peak puts the curve back on the
+                # domain it is defined for, keeps the result non-negative
+                # (the formula maps [0,1] -> [0,1] for any n in [0,1]) and is
+                # bit-identical to the old behaviour on SDR frames, where the
+                # peak is 1.0 and the divide/multiply cancel. The peak is taken
+                # over the whole frame rather than per channel so the blend
+                # cannot shift hue.
+                peak = max(1.0, float(np.max(final_frame)))
+                for ch in range(c):
+                    a = final_frame[..., ch] / peak
+                    # Soft Light formula (Pegtop / W3C)
+                    final_frame[..., ch] = (
+                        (1.0 - 2.0 * n) * (a**2) + 2.0 * n * a
+                    ) * peak
 
             # Ensure we strictly expanded range (don't clip back to 1.0)
             # But ensure we don't go below 0

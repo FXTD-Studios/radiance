@@ -42,12 +42,74 @@ _CS_DISPLAY_LIMIT = 50
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 
+def _is_unconfigured_default(cfg) -> bool:
+    """True when `cfg` is OCIO's built-in fallback rather than a real config.
+
+    UNREACHABLE-FALLBACK FIX: step 3 of _resolve_config() used to accept
+    whatever ``OCIO.GetCurrentConfig()`` returned as long as it was not None.
+    In OCIO v2 that call never returns None and never raises: with $OCIO unset
+    it hands back a built-in default, measured here on PyOpenColorIO 2.5.2 as
+    a nameless config carrying exactly one colorspace, "raw". So steps 4 and 5,
+    the ACES config this package bundles and the models/ACES/config.ocio that
+    the "Download ACES 2.0" button installs, were dead code on every machine
+    where PyOpenColorIO imports, which is every machine the OCIO nodes run on.
+    Every transform then failed on colorspace names that config does not have.
+
+    A config a host application genuinely set (Nuke, Resolve, a $OCIO export)
+    has a name, colorspaces, or both. The built-in fallback has neither.
+    """
+    try:
+        if (cfg.getName() or "").strip():
+            return False
+    except Exception:  # nosec B110 - older/odd bindings
+        return False
+    try:
+        return len(list(cfg.getColorSpaces())) < 2
+    except Exception:  # nosec B110 - OCIO v1 has no getColorSpaces()
+        try:
+            return cfg.getNumColorSpaces() < 2
+        except Exception:  # nosec B110
+            return False
+
+
+def _resolve_colorspace_name(config, name: str) -> "Optional[str]":
+    """Resolve `name` to a canonical colorspace name, or None if unknown.
+
+    ALIAS-VALIDATION FIX: the transform node pre-validated against a set built
+    from ``ColorSpace.getName()`` alone, but OCIO resolves aliases and roles
+    too. In the ACES CG config this package bundles, "ACES - ACEScg",
+    "ACES - ACES2065-1" and "sRGB - Texture" exist ONLY as aliases of
+    "ACEScg", "ACES2065-1" and "sRGB Encoded Rec.709 (sRGB)" -- and two of
+    those three are names the node's own tooltip tells the user to type. The
+    node rejected them while OCIO itself would have accepted them. Ask OCIO.
+    """
+    if not name:
+        return None
+    try:
+        cs = config.getColorSpace(name)
+    except Exception:  # nosec B110 - v1 bindings raise on unknown names
+        cs = None
+    if cs is not None:
+        try:
+            return cs.getName()
+        except Exception:  # nosec B110
+            return name
+    # OCIO v1 fallback: no alias support there, so a plain name match is all
+    # there is.
+    for known, _family in _iter_colorspaces(config):
+        if known == name:
+            return known
+    return None
+
+
 def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
     """
     Resolve an OCIO config from (in priority order):
       1. Explicit path argument
       2. OCIO environment variable
-      3. Active process config (OCIO.GetCurrentConfig)
+      3. Active process config (OCIO.GetCurrentConfig), when one was actually
+         configured -- see _is_unconfigured_default() for why that qualifier
+         has to be there
       4. Local Radiance ACES folder  (../ACES/config.ocio relative to this file)
       5. ComfyUI models/ACES/config.ocio
 
@@ -63,13 +125,13 @@ def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
 
     # 2. Environment variable
     env_path = os.environ.get("OCIO", "")
-    if env_path and os.path.exists(env_path):
+    if env_path and (os.path.exists(env_path) or env_path.startswith("ocio://")):
         return OCIO.Config.CreateFromFile(env_path)
 
-    # 3. Active process config
+    # 3. Active process config, if a host application set one
     try:
         cfg = OCIO.GetCurrentConfig()
-        if cfg is not None:
+        if cfg is not None and not _is_unconfigured_default(cfg):
             return cfg
     except Exception:  # nosec B110
         pass
@@ -88,8 +150,11 @@ def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
         aces_path = os.path.join(folder_paths.models_dir, "ACES", "config.ocio")
         if os.path.exists(aces_path):
             return OCIO.Config.CreateFromFile(aces_path)
-    except ImportError:
-        pass
+    except ImportError as _exc:
+        logger.debug(
+            "[Radiance] _resolve_config(): ignoring %s from `import folder_paths`: %s",
+            type(_exc).__name__, _exc,
+        )
 
     return None
 
@@ -196,6 +261,7 @@ def _format_colorspaces(config, config_path: str = "") -> str:
 
 
 class OCIOColorTransform:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
     Apply an OCIO colorspace transform to an image.
 
@@ -206,8 +272,12 @@ class OCIOColorTransform:
 
     Workflow examples
     -----------------
-    - Linear -> ARRI LogC4 :  source="Linear", target="ACES - ARRI LogC4 (EI800)"
-    - ACEScg -> sRGB display: source="ACES - ACEScg", target="Output - sRGB"
+    - ACEScg -> ACEScct    :  source="ACEScg", target="ACEScct"  (the defaults;
+      both exist in the ACES CG config this package bundles)
+    - ACEScg -> sRGB display: source="ACES - ACEScg", target="sRGB - Display"
+      (the first is an alias, which resolves; see _resolve_colorspace_name)
+    - Linear -> ARRI LogC4 :  source="ACEScg", target="ACES - ARRI LogC4 (EI800)",
+      which needs the ACES Studio config, not the bundled CG one
     - Roundtrip test       :  forward then inverse to check reconstruction error
     - Apply a look         :  fill 'look' with e.g. "ACES 1.3 Reference Gamut Compress"
 
@@ -228,26 +298,38 @@ class OCIOColorTransform:
     def INPUT_TYPES(cls) -> Dict[str, Any]:
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {"tooltip": "Image encoded in source_colorspace. RGB goes through OCIO; alpha is passed through unchanged."}),
+                # DEFAULTS FIX: these used to default to "Linear" and
+                # "ACES - ARRI LogC4 (EI800)". Neither name exists in the ACES
+                # CG config this package bundles (the camera log spaces are in
+                # the Studio config, not CG), so the node raised its own
+                # "colorspace not in config" error at its own untouched
+                # defaults. "ACEScg" and "ACEScct" are the scene_linear and
+                # compositing_log roles of the bundled config, present under
+                # those exact names.
                 "source_colorspace": (
                     "STRING",
                     {
-                        "default": "Linear",
+                        "default": "ACEScg",
                         "tooltip": (
                             "OCIO colorspace name of the input image. "
                             "Connect ACESConfigManager -> List Colorspaces to see valid names. "
-                            "Examples: 'ACES - ACEScg', 'Linear', 'sRGB - Texture'."
+                            "Aliases and roles are accepted: in the bundled ACES CG config "
+                            "'ACEScg', 'ACES - ACEScg' and 'lin_ap1' all resolve. "
+                            "Camera log spaces such as 'ACES - ARRI LogC4 (EI800)' need the "
+                            "ACES Studio config, not the bundled CG one."
                         ),
                     },
                 ),
                 "target_colorspace": (
                     "STRING",
                     {
-                        "default": "ACES - ARRI LogC4 (EI800)",
+                        "default": "ACEScct",
                         "tooltip": (
-                            "Desired output colorspace. Any OCIO name in the active config. "
-                            "Log targets: 'ACES - ARRI LogC4 (EI800)', "
-                            "'ACES - Sony S-Log3 SGamut3.Cine', etc."
+                            "Desired output colorspace. Any OCIO name, alias or role in the "
+                            "active config. Bundled CG config log target: 'ACEScct'. "
+                            "Camera log targets ('ACES - ARRI LogC4 (EI800)', "
+                            "'ACES - Sony S-Log3 SGamut3.Cine') require the ACES Studio config."
                         ),
                     },
                 ),
@@ -283,7 +365,8 @@ class OCIOColorTransform:
                         "step": 0.1,
                         "tooltip": (
                             "Pre-transform exposure in stops (multiplies by 2^stops). "
-                            "Applied before the OCIO transform in the source colorspace's linear domain."
+                            "Applied to the raw source values before the OCIO transform, so it is "
+                            "true exposure only when the source colorspace is linear."
                         ),
                     },
                 ),
@@ -314,7 +397,7 @@ class OCIOColorTransform:
     RETURN_TYPES = ("IMAGE", "STRING")
     RETURN_NAMES = ("image", "metadata")
     FUNCTION = "apply_transform"
-    CATEGORY = "FXTD Studios/Radiance/Color"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = (
         "Apply an OCIO colorspace transform to an image. "
         "Supports any source/target pair in the active OCIO config, "
@@ -428,14 +511,15 @@ class OCIOColorTransform:
 
         # Validate colorspace names before building the processor so the error
         # message is actionable ("use List OCIO Colorspaces") rather than a raw
-        # OCIO exception with an opaque internal traceback.
-        available = {name for name, _ in _iter_colorspaces(config)}
-        if source_colorspace not in available:
+        # OCIO exception with an opaque internal traceback. Resolution goes
+        # through OCIO so aliases and roles are accepted, which is what the
+        # node's own tooltip promises. See _resolve_colorspace_name().
+        if _resolve_colorspace_name(config, source_colorspace) is None:
             raise ValueError(
                 f"[Radiance OCIO] Source colorspace '{source_colorspace}' not in config. "
                 f"Use 'List OCIO Colorspaces' to see available names."
             )
-        if target_colorspace not in available:
+        if _resolve_colorspace_name(config, target_colorspace) is None:
             raise ValueError(
                 f"[Radiance OCIO] Target colorspace '{target_colorspace}' not in config. "
                 f"Use 'List OCIO Colorspaces' to see available names."
@@ -466,7 +550,7 @@ class OCIOColorTransform:
 
         metadata = json.dumps(
             {
-                "node": "OCIOColorTransform",
+                "node": "RadianceHDROCIOTransform",
                 "config": config_name,
                 "source_colorspace": source_colorspace,
                 "target_colorspace": target_colorspace,
@@ -492,6 +576,7 @@ class OCIOColorTransform:
 
 
 class ACESConfigManager:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
     Detect, download, and manage ACES OCIO configurations for professional color workflows.
     """
@@ -551,7 +636,7 @@ class ACESConfigManager:
     RETURN_TYPES = ("STRING", "STRING", "STRING")
     RETURN_NAMES = ("config_path", "colorspaces_list", "status_info")
     FUNCTION = "manage_config"
-    CATEGORY = "FXTD Studios/Radiance/Color"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = "Detect, download, and manage ACES OCIO configurations."
     OUTPUT_NODE = True
 
@@ -575,8 +660,11 @@ class ACESConfigManager:
                 aces_path = os.path.join(folder_paths.models_dir, "ACES", "config.ocio")
                 if os.path.exists(aces_path):
                     return aces_path, f"Found config in ComfyUI models: {aces_path}"
-            except ImportError:
-                pass
+            except ImportError as _exc:
+                logger.debug(
+                    "[Radiance] _find_existing_config(): ignoring %s from `import folder_paths`: %s",
+                    type(_exc).__name__, _exc,
+                )
 
             current_dir = os.path.dirname(os.path.realpath(__file__))
             radiance_dir = os.path.dirname(current_dir)
@@ -762,7 +850,7 @@ class OCIOListColorspaces:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("colorspaces_list",)
     FUNCTION = "list_spaces"
-    CATEGORY = "FXTD Studios/Radiance/Color"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = "List all colorspaces available in an OCIO configuration file."
     OUTPUT_NODE = True
 
@@ -814,13 +902,16 @@ class OCIOListColorspaces:
 # ===============================================================================
 
 NODE_CLASS_MAPPINGS = {
-    "OCIOColorTransform": OCIOColorTransform,
-    "ACESConfigManager": ACESConfigManager,
-    "OCIOListColorspaces": OCIOListColorspaces,
+    # Key renamed to RadianceHDROCIOTransform to avoid collision with
+    # color/transform.py which also registers RadianceOCIOColorTransform.
+    # hdr/__init__.py re-exports this class under RadianceHDROCIOTransform.
+    "RadianceHDROCIOTransform": OCIOColorTransform,
+    "RadianceACESConfigManager": ACESConfigManager,
+    "RadianceOCIOListColorspaces": OCIOListColorspaces,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "OCIOColorTransform": "◎ OCIO Color Transform",
-    "ACESConfigManager": "◎ ACES Config Manager",
-    "OCIOListColorspaces": "◎ List OCIO Colorspaces",
+    "RadianceHDROCIOTransform": "◎ Radiance OCIO Transform (HDR)",
+    "RadianceACESConfigManager": "◎ Radiance ACES Config Manager",
+    "RadianceOCIOListColorspaces": "◎ Radiance OCIO List Colorspaces",
 }

@@ -1,0 +1,49 @@
+# Normalize line endings: store text as LF in the repo, check out LF everywhere.
+# Prevents the cross-platform CRLF/LF churn that otherwise shows hundreds of
+# files as "modified" with no real content change.
+* text=auto eol=lf
+
+# Explicit text types (rendered with LF)
+*.py    text eol=lf
+*.pyi   text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.toml  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.js    text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.gizmo text eol=lf
+
+# Binary assets — never normalize or diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.exr   binary
+*.hdr   binary
+*.pth   binary
+*.pt    binary
+*.ckpt  binary
+*.safetensors binary
+*.onnx  binary
+*.bin   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.zip   binary
+*.mp4   binary
+*.mov   binary
+*.wasm  binary
+
+# Vendored third-party builds. Marked so they stay out of language stats and
+# review diffs; js/vendor/ocio/README.md records the provenance and the single
+# patch applied to it.
+js/vendor/** linguist-vendored

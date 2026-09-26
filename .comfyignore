@@ -1,0 +1,84 @@
+# Files excluded from the Comfy Registry archive.
+#
+# Everything here stays on GitHub; none of it is needed by ComfyUI at runtime.
+# Entries are either paths that exist today or glob guards for artefacts a
+# developer may create locally. Dead entries were removed in the 2026-08
+# cleanup — a list naming files that no longer exist reads as coverage it does
+# not have.
+
+# ── VCS, CI and build output ────────────────────────────────────────────────
+.github/
+build/
+dist/
+*.egg-info/
+node_modules/
+package.json
+
+# ── Caches and local scratch ────────────────────────────────────────────────
+__pycache__/
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.codex-backup-*/
+# Session-scratch directory names. These do not exist right now and are kept
+# deliberately: tests/test_package_cleanup.py pins them, because each one has
+# appeared in this repo before and none of them may ever ship.
+_to_delete/
+_audit_tmp/
+.agents/
+.phase3-dist/
+.phase3-dist-final/
+.phase3-venv/
+*.log
+*.map
+*.tmp
+*.temp
+*.bak
+*.patch
+
+# ── Tests and developer tooling ─────────────────────────────────────────────
+tests/
+js/tests/
+tools/check_mojibake.py
+tools/check_release_ready.py
+tools/gpu_acceptance.py
+tools/build_node_reference.py
+
+# ── Repository documentation ────────────────────────────────────────────────
+# Node descriptions and input tooltips ship inside the package and ComfyUI
+# renders them on hover, so the reference travels with the nodes. The prose
+# lives at www.fxtdstudios.com.
+CONTRIBUTING.md
+KNOWN_ISSUES.md
+# The generated node reference (docs/nodes) is for GitHub readers; the same
+# text ships inside the nodes as hover tooltips.
+docs/
+
+# ── Internal write-ups, should any reappear ─────────────────────────────────
+# Audits, reviews and session logs go stale and mislead. Findings that matter
+# belong in the README's Status & to-do list, KNOWN_ISSUES.md or the changelog.
+AUDIT.md
+FULL_AUDIT_*.md
+BATCH*_REPORT.md
+RELEASE_REVIEW.md
+VIEWER_REPORT.md
+PACKAGE_REVIEW.md
+PRE_RELEASE_REVIEW.md
+CLEANUP_REPORT.md
+SESSION_LOG.md
+ADR-*.md
+DEBUG-*.md
+RELEASE_NOTES_*.md
+RADIANCE_v*_RELEASE_NOTES.md
+bug_report_reply_draft.md
+gpu_acceptance_report.md
+*.docx
+
+# ── Local project data ──────────────────────────────────────────────────────
+# The starter graph and TEMPLATES/ ship; anything else under workflows/ is the
+# user's own shot work. A wheel built on a working machine once shipped the
+# developer's shot files.
+workflows/*.rad
+workflows/.versions/
+workflows/.asset_thumbs/
+core/*.db

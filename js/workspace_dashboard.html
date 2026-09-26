@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>◎ Radiance Studio | Workflow Library & Production Dashboard</title>
+    <style>
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           DESIGN SYSTEM & CSS TOKENS
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        :root {
+            --bg-base: #08080c; /* Deep Obsidian Black backing */
+            --bg-surface: rgba(22, 22, 29, 0.84); /* Apple Dark Obsidian Glass */
+            --bg-surface-glass: rgba(22, 22, 29, 0.72);
+            --bg-card: rgba(30, 30, 40, 0.72);
+            --bg-card-glass: rgba(22, 22, 29, 0.65);
+            --bg-input: rgba(255, 255, 255, 0.04);
+
+            --border-color: rgba(255, 255, 255, 0.08); /* Satin micro-bevel edge */
+            --border-glow: rgba(0, 189, 255, 0.2);
+            --border-glow-gold: rgba(255, 149, 0, 0.2);
+
+            --color-primary: #00bdff; /* Ocean Cyan accent */
+            --color-primary-glow: rgba(0, 189, 255, 0.25);
+            --color-secondary: #00a8ff;
+            --color-accent: #ff9500;
+            --color-accent-glow: rgba(255, 149, 0, 0.25);
+            --color-success: #34c759;
+            --color-danger: #ff3b30;
+            --color-purple: #af52de;
+
+            --text-main: #f5f5f7; /* High-contrast white */
+            --text-muted: #8e8e93; /* Apple dim gray */
+            --text-dark: #6e6e73;
+            --text-bright: #ffffff;
+
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --font-mono: "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+
+            --shadow-premium: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.03); /* macOS double shadow */
+            --shadow-neon: 0 0 12px rgba(0, 189, 255, 0.25);
+            --shadow-neon-gold: 0 0 12px rgba(255, 149, 0, 0.2);
+            --transition-smooth: all 0.18s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           RESET & SCROLLBARS
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 14px;
+            line-height: 1.5;
+            height: 100vh;
+            overflow: hidden;
+            letter-spacing: 0;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-base);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           LAYOUT & VIEWS
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Ambient glowing circles */
+        .glow-ambient-1 {
+            display: none;
+        }
+        .glow-ambient-2 {
+            display: none;
+        }
+
+        /* Sidebar navigation */
+        .sidebar {
+            width: 260px;
+            background-color: rgba(11, 11, 16, 0.6);
+            backdrop-filter: blur(35px) saturate(180%) !important;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 32px;
+            padding-left: 8px;
+        }
+
+        .brand-logo {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-primary);
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 189, 255, 0.3);
+        }
+
+        .brand-logo svg {
+            width: 18px;
+            height: 18px;
+            fill: #000000;
+        }
+
+        .brand-logo-img {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .brand-title {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--text-bright);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .brand-title span {
+            color: var(--color-primary);
+        }
+
+        .nav-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 12px;
+            padding-left: 8px;
+        }
+
+        .nav-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 32px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-weight: 500;
+            user-select: none;
+            border: 1px solid transparent;
+            transition: transform 0.18s cubic-bezier(0.25, 1, 0.5, 1), background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+
+        .nav-item:hover {
+            color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-item:active {
+            transform: scale(0.96) !important;
+        }
+
+        .nav-item.active {
+            color: var(--color-primary) !important;
+            background-color: rgba(0, 189, 255, 0.12) !important;
+            border-color: rgba(0, 189, 255, 0.12) !important;
+            box-shadow: inset 0 0 0 1px rgba(0, 189, 255, 0.12) !important;
+            font-weight: 600;
+        }
+
+        .nav-item svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        .nav-item.active svg {
+            fill: var(--color-primary);
+        }
+
+        .nav-badge {
+            margin-left: auto;
+            background-color: rgba(255, 255, 255, 0.06);
+            color: var(--text-muted);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+        }
+
+        .nav-item.active .nav-badge {
+            background-color: rgba(0, 242, 255, 0.15);
+            color: var(--color-primary);
+        }
+
+        /* Sidebar profile / stats */
+        .sidebar-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        .fxtd-banner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background: rgba(255, 157, 0, 0.03);
+            border: 1px solid rgba(255, 157, 0, 0.08);
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+
+        .fxtd-banner:hover {
+            background: rgba(255, 157, 0, 0.06);
+            border-color: rgba(255, 157, 0, 0.18);
+        }
+
+        .fxtd-banner svg {
+            width: 20px;
+            height: 20px;
+            fill: var(--color-accent);
+        }
+
+        .fxtd-banner-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fxtd-banner-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-bright);
+            letter-spacing: 0.02em;
+        }
+
+        .fxtd-banner-sub {
+            font-size: 9px;
+            color: var(--text-muted);
+        }
+
+        /* Main content area */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 1;
+            position: relative;
+        }
+
+        /* Top Action Panel */
+        .top-panel {
+            height: 80px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            background-color: rgba(14, 14, 20, 0.6);
+            backdrop-filter: blur(35px) saturate(180%) !important;
+            z-index: 5;
+        }
+
+        .search-wrapper {
+            position: relative;
+            width: 380px;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 40px;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0 16px 0 40px;
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            outline: none;
+            transition: all 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .search-input:focus {
+            background-color: rgba(255, 255, 255, 0.07);
+            border-color: var(--color-primary);
+            box-shadow: 0 0 12px rgba(0, 189, 255, 0.15);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 12px;
+            width: 16px;
+            height: 16px;
+            fill: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        /* Action Buttons */
+        .btn {
+            height: 40px;
+            padding: 0 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid transparent;
+            user-select: none;
+            text-decoration: none;
+            transition: transform 0.18s cubic-bezier(0.25, 1, 0.5, 1), background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+
+        .btn:active {
+            transform: scale(0.96) !important;
+        }
+
+        .btn-primary {
+            background-color: var(--color-primary);
+            color: #000000;
+            box-shadow: 0 4px 12px rgba(0, 189, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-primary:hover {
+            background-color: #48b7ff;
+            box-shadow: 0 6px 16px rgba(0, 189, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border-color: var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-bright);
+        }
+
+        .btn-danger {
+            background-color: rgba(255, 59, 48, 0.1);
+            color: var(--color-danger);
+            border-color: rgba(255, 59, 48, 0.2);
+        }
+
+        .btn-danger:hover {
+            background-color: rgba(255, 59, 48, 0.2);
+        }
+
+        .btn-accent {
+            background-color: rgba(255, 157, 0, 0.1);
+            color: var(--color-accent);
+            border-color: rgba(255, 157, 0, 0.2);
+        }
+
+        .btn-accent:hover {
+            background-color: rgba(255, 157, 0, 0.2);
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* Sort dropdown wrapper */
+        .sort-wrapper {
+            position: relative;
+        }
+
+        .sort-select {
+            height: 40px;
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0 32px 0 16px;
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 500;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            transition: var(--transition-smooth);
+        }
+
+        .sort-select:focus {
+            border-color: var(--color-primary);
+        }
+
+        .sort-chevron {
+            position: absolute;
+            right: 12px;
+            top: 16px;
+            width: 8px;
+            height: 8px;
+            fill: var(--text-muted);
+            pointer-events: none;
+        }
+
+        /* Diagnostic Box */
+        .vram-hud {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(0, 242, 255, 0.03);
+            border: 1px solid rgba(0, 242, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .vram-led {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--color-primary);
+            box-shadow: 0 0 6px var(--color-primary-glow);
+            animation: pulse-led 2s infinite;
+        }
+
+        @keyframes pulse-led {
+            0% { opacity: 1; box-shadow: 0 0 2px var(--color-primary); }
+            50% { opacity: 0.4; box-shadow: 0 0 8px var(--color-primary); }
+            100% { opacity: 1; box-shadow: 0 0 2px var(--color-primary); }
+        }
+
+        .vram-lbl {
+            color: var(--text-muted);
+        }
+
+        .vram-val {
+            color: var(--color-primary);
+            font-weight: 700;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           CONTENT SCROLL & CARDS GRID
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        .content-scroll {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 32px;
+        }
+
+        .grid-header {
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .grid-title-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .grid-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-bright);
+            letter-spacing: 0;
+        }
+
+        .grid-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        /* Glassmorphic Card */
+        .workflow-card {
+            background-color: var(--bg-surface);
+            backdrop-filter: blur(35px) saturate(180%) !important;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            box-shadow: var(--shadow-premium);
+            position: relative;
+        }
+
+        .workflow-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--color-primary-glow);
+            box-shadow: 0 12px 30px rgba(0, 189, 255, 0.12), var(--shadow-premium);
+        }
+
+        .workflow-card.official-card:hover {
+            border-color: var(--color-accent-glow);
+            box-shadow: 0 12px 30px rgba(255, 157, 0, 0.08), var(--shadow-premium);
+        }
+
+        /* Card Image Cover */
+        .card-cover {
+            height: 160px;
+            background-color: #000;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.65;
+            transition: var(--transition-smooth);
+        }
+
+        .workflow-card:hover .card-cover img {
+            transform: scale(1.05);
+            opacity: 0.8;
+        }
+
+        .card-cover-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .card-cover-placeholder svg {
+            width: 32px;
+            height: 32px;
+            fill: rgba(255, 255, 255, 0.08);
+        }
+
+        /* Cover Overlay Badge */
+        .cover-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(4px);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--color-primary);
+        }
+
+        /* Card Content info */
+        .card-content {
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            gap: 12px;
+        }
+
+        .card-title-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-bright);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-desc {
+            font-size: 11.5px;
+            color: var(--text-muted);
+            line-height: 1.4;
+            height: 3.2em;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .card-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: auto;
+        }
+
+        .badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+            font-family: var(--font-sans);
+        }
+
+        .badge-cyan { background: rgba(0, 242, 255, 0.04); color: var(--color-primary); border-color: rgba(0, 242, 255, 0.15); }
+        .badge-gold { background: rgba(255, 157, 0, 0.04); color: var(--color-accent); border-color: rgba(255, 157, 0, 0.15); }
+        .badge-green { background: rgba(52, 199, 89, 0.04); color: var(--color-success); border-color: rgba(52, 199, 89, 0.15); }
+        .badge-purple { background: rgba(175, 82, 222, 0.04); color: var(--color-purple); border-color: rgba(175, 82, 222, 0.15); }
+        .badge-slate { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); border-color: var(--border-color); }
+
+        .card-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           MODAL DETAIL PANEL
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: var(--transition-smooth);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-premium), 0 20px 50px rgba(0,0,0,0.8);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 950px;
+            height: 85%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: scale(0.95);
+            transition: var(--transition-smooth);
+        }
+
+        .modal-overlay.active .modal-card {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            height: 70px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            background-color: rgba(255,255,255,0.01);
+        }
+
+        .modal-header-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .modal-close-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            transition: var(--transition-smooth);
+            background-color: rgba(255,255,255,0.04);
+        }
+
+        .modal-close-btn:hover {
+            color: var(--text-bright);
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .modal-body {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Modal Side Profile */
+        .modal-side {
+            width: 320px;
+            border-right: 1px solid var(--border-color);
+            background-color: rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 24px;
+            gap: 20px;
+        }
+
+        .modal-preview-box {
+            height: 160px;
+            background-color: #000;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .modal-preview-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .side-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 12px;
+        }
+
+        .technical-spec-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .tech-spec-item {
+            background-color: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .tech-spec-lbl {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .tech-spec-val {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--text-bright);
+            font-weight: 600;
+        }
+
+        .models-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .model-chip {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-chip::before {
+            content: "";
+            display: inline-block;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background-color: var(--color-accent);
+        }
+
+        /* Modal Central Content */
+        .modal-main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 28px;
+            gap: 28px;
+        }
+
+        .modal-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-bright);
+            letter-spacing: 0;
+        }
+
+        .modal-desc-box {
+            font-size: 13.5px;
+            line-height: 1.6;
+            color: var(--text-main);
+            background-color: rgba(255,255,255,0.01);
+            border: 1px solid var(--border-color);
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        /* Node profile roadmap */
+        .roadmap-container {
+            background-color: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .roadmap-flow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .roadmap-node {
+            background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-primary);
+            white-space: nowrap;
+        }
+
+        .roadmap-arrow {
+            color: var(--text-muted);
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        /* History Timeline rollbacks */
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .timeline::before {
+            content: "";
+            position: absolute;
+            left: 5px;
+            top: 6px;
+            bottom: 6px;
+            width: 2px;
+            background-color: var(--border-color);
+        }
+
+        .timeline-item {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            transition: var(--transition-smooth);
+        }
+
+        .timeline-item:hover {
+            border-color: rgba(255,255,255,0.1);
+            background-color: rgba(255,255,255,0.04);
+        }
+
+        .timeline-node {
+            position: absolute;
+            left: -19px;
+            top: 20px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+            border: 2px solid var(--bg-surface);
+            box-shadow: 0 0 0 2px var(--bg-surface);
+            transition: var(--transition-smooth);
+        }
+
+        .timeline-item:hover .timeline-node {
+            background-color: var(--color-primary);
+            box-shadow: 0 0 6px var(--color-primary-glow);
+        }
+
+        .timeline-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .timeline-msg {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-bright);
+        }
+
+        .timeline-sub {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .timeline-meta {
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            color: var(--text-muted);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           DRAG AND DROP OVERLAY
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        .dropzone-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(6, 7, 9, 0.95);
+            backdrop-filter: blur(15px);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: var(--transition-smooth);
+        }
+
+        .dropzone-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .dropzone-box {
+            width: 80%;
+            max-width: 600px;
+            border: 2px dashed var(--color-primary);
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+            border-radius: 16px;
+            padding: 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            text-align: center;
+            background-color: var(--bg-surface);
+        }
+
+        .dropzone-icon {
+            width: 64px;
+            height: 64px;
+            fill: var(--color-primary);
+            animation: bounce-icon 2s infinite ease-in-out;
+        }
+
+        @keyframes bounce-icon {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .dropzone-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-bright);
+        }
+
+        .dropzone-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 360px;
+            line-height: 1.5;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════════════════
+           TOAST NOTIFICATION
+           ═══════════════════════════════════════════════════════════════════════════════ */
+        .toast-notification {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            background-color: rgba(18, 21, 27, 0.9);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-premium), 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            padding: 14px 24px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10000;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: var(--transition-smooth);
+        }
+
+        .toast-notification.active {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .toast-success .toast-led { background-color: var(--color-success); box-shadow: 0 0 6px var(--color-success); }
+        .toast-error .toast-led { background-color: var(--color-danger); box-shadow: 0 0 6px var(--color-danger); }
+        .toast-info .toast-led { background-color: var(--color-primary); box-shadow: 0 0 6px var(--color-primary-glow); }
+
+        .toast-msg {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-bright);
+        }
+
+        @media (max-width: 980px) {
+            body {
+                height: auto;
+                min-height: 100vh;
+                overflow: auto;
+            }
+
+            .app-container {
+                min-height: 100vh;
+                height: auto;
+                flex-direction: column;
+                overflow: visible;
+            }
+
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .sidebar-footer {
+                display: none;
+            }
+
+            .main-content {
+                min-height: 0;
+                overflow: visible;
+            }
+
+            .top-panel {
+                height: auto;
+                min-height: 72px;
+                align-items: stretch;
+                flex-direction: column;
+                gap: 14px;
+                padding: 18px;
+            }
+
+            .search-wrapper,
+            .top-controls {
+                width: 100%;
+            }
+
+            .top-controls {
+                flex-wrap: wrap;
+                justify-content: flex-start;
+            }
+
+            .library-content {
+                padding: 18px;
+                overflow: visible;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-card {
+                width: calc(100vw - 24px);
+                height: calc(100vh - 24px);
+            }
+
+            .modal-body {
+                flex-direction: column;
+                overflow: auto;
+            }
+
+            .modal-side {
+                width: 100%;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-color);
+            }
+        }
+        /* ───────── Radiance dark-minimal reskin (v3.1.1) ───────── */
+        :root {
+            --bg-base: #0a0a0c;
+            --bg-surface: transparent;
+            --bg-surface-glass: transparent;
+            --bg-card: transparent;
+            --bg-card-glass: transparent;
+            --bg-input: rgba(255,255,255,0.03);
+            --color-primary: #c8a96e;
+            --color-primary-glow: rgba(200,169,110,0.35);
+            --color-secondary: #d8bd87;
+            --color-accent: #c8a96e;
+            --color-accent-glow: rgba(200,169,110,0.3);
+            --color-purple: #9a8fb0;
+            --text-main: #ededf0;
+            --text-muted: #767a82;
+            --text-dark: #52555c;
+            --text-bright: #f2f2f4;
+            --border-color: rgba(255,255,255,0.07);
+        }
+        .sidebar { background: none; border-right: 1px solid rgba(255,255,255,0.06); }
+        .brand-title { font-family: 'Space Grotesk','Inter',sans-serif; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+        .brand-title span { color: var(--color-primary); }
+        .nav-item { background: none !important; border: 0 !important; border-left: 2px solid transparent !important; border-radius: 0 !important; color: var(--text-muted) !important; box-shadow: none !important; }
+        .nav-item:hover { background: none !important; color: #c9ccd2 !important; }
+        .nav-item.active { background: none !important; color: var(--text-bright) !important; border-left-color: var(--color-primary) !important; }
+        .nav-item svg, .nav-item.active svg { fill: currentColor !important; opacity: .8; }
+        .nav-badge, .nav-item.active .nav-badge { background: none !important; color: var(--text-dark) !important; box-shadow: none !important; }
+        .cards-grid { gap: 28px 20px; }
+        .workflow-card { background: none !important; backdrop-filter: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible; }
+        .workflow-card:hover, .workflow-card.official-card:hover { transform: none !important; border: 0 !important; box-shadow: none !important; }
+        .card-cover { height: 150px; background: none !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 5px; border-bottom: 1px solid rgba(255,255,255,0.08) !important; }
+        .card-cover img { opacity: .8; border-radius: 5px; }
+        .card-cover-placeholder { color: var(--text-dark); }
+        .card-content { background: none !important; padding: 10px 2px 0 !important; }
+        .card-title { font-size: 13px; }
+        .card-desc { color: var(--text-muted); }
+        .badge { background: none !important; border: 0 !important; padding: 0 10px 0 0 !important; color: var(--text-muted) !important; font-weight: 400; }
+        .badge-cyan, .badge-gold, .badge-green, .badge-purple, .badge-slate { background: none !important; border: 0 !important; color: var(--text-muted) !important; }
+        .btn { background: none !important; border: 1px solid rgba(255,255,255,0.1) !important; box-shadow: none !important; color: var(--text-main) !important; }
+        .btn:hover { background: rgba(255,255,255,0.05) !important; }
+        .btn-primary { background: var(--color-primary) !important; border-color: var(--color-primary) !important; color: #241c08 !important; }
+        .btn-primary:hover { background: #d8bd87 !important; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Ambient BG Effects -->
+        <div class="glow-ambient-1"></div>
+        <div class="glow-ambient-2"></div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════════════
+           SIDEBAR
+           ═══════════════════════════════════════════════════════════════════════════════ -->
+        <div class="sidebar">
+            <div class="brand">
+                <img class="brand-logo-img" src="r_icon.png" alt="Radiance" />
+                <h1 class="brand-title">Radiance<span>.rad</span></h1>
+            </div>
+
+            <h3 class="nav-label">Production Bins</h3>
+            <ul class="nav-list" id="sidebar-bins">
+                <li class="nav-item active" data-bin="ALL">
+                    <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+                    <span>All Bins</span>
+                    <span class="nav-badge" id="badge-all">0</span>
+                </li>
+                <li class="nav-item" data-bin="TEMPLATES">
+                    <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 15c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>
+                    <span>Templates</span>
+                    <span class="nav-badge" id="badge-templates">0</span>
+                </li>
+                <li class="nav-item" data-bin="SHOTS">
+                    <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                    <span>Shots</span>
+                    <span class="nav-badge" id="badge-shots">0</span>
+                </li>
+                <li class="nav-item" data-bin="EXPERIMENTS">
+                    <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+                    <span>Experiments</span>
+                    <span class="nav-badge" id="badge-experiments">0</span>
+                </li>
+                <li class="nav-item" data-bin="SYSTEM">
+                    <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+                    <span>System</span>
+                    <span class="nav-badge" id="badge-system">0</span>
+                </li>
+
+            </ul>
+
+            <h3 class="nav-label" style="margin-top: 16px;">Resources</h3>
+            <ul class="nav-list" style="margin-bottom: 20px;">
+                <li class="nav-item" onclick="window.open('https://www.fxtdstudios.com', '_blank')">
+                    <svg viewBox="0 0 24 24" style="fill: var(--color-primary);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    <span>Documentation</span>
+                </li>
+                <li class="nav-item" onclick="window.open('https://www.fxtdstudios.com', '_blank')">
+                    <svg viewBox="0 0 24 24" style="fill: var(--color-accent);"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                    <span>FXTD Website</span>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <div class="fxtd-banner" onclick="window.open('https://www.fxtdstudios.com', '_blank')">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                    </svg>
+                    <div class="fxtd-banner-text">
+                        <span class="fxtd-banner-title">FXTD STUDIOS</span>
+                        <span class="fxtd-banner-sub">Pipeline Core Suite</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════════════
+           MAIN SECTION
+           ═══════════════════════════════════════════════════════════════════════════════ -->
+        <div class="main-content">
+            <!-- Top bar Panel -->
+            <div class="top-panel">
+                <div class="search-wrapper">
+                    <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                    <input type="text" class="search-input" id="search-bar" placeholder="Search templates by name, models, colorspace...">
+                </div>
+
+                <div class="top-controls">
+                    <div class="sort-wrapper">
+                        <select class="sort-select" id="sort-select">
+                            <option value="mtime_desc">Last Modified (Newest)</option>
+                            <option value="mtime_asc">Last Modified (Oldest)</option>
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="name_desc">Name (Z-A)</option>
+                            <option value="size_desc">File Size (Largest)</option>
+                            <option value="nodes_desc">Complexity (Most Nodes)</option>
+                        </select>
+                        <svg class="sort-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+
+                    <div class="vram-hud">
+                        <div class="vram-led"></div>
+                        <span class="vram-lbl">GPU STATUS:</span>
+                        <span class="vram-val" id="vram-metric">ACTIVE</span>
+                    </div>
+
+                    <button class="btn btn-secondary" id="btn-purge-vram" title="Unload inactive models & clear memory cache">
+                        <svg viewBox="0 0 24 24"><path d="M19.36 2.72L20.78 4.14 18.66 6.26l-1.41-1.42 2.11-2.12zM7.05 6.26L4.93 4.14 6.34 2.72l2.12 2.12-1.41 1.42zm11.61 6.24c0 3.31-2.69 6-6 6s-6-2.69-6-6c0-2.48 1.51-4.6 3.66-5.52L9 5.23C5.51 6.33 3 9.62 3 13.5 3 18.2 6.8 22 11.5 22s8.5-3.8 8.5-8.5c0-3.88-2.51-7.17-6-8.27l-1.32 1.76c2.15.93 3.67 3.05 3.67 5.51zM11.5 8c-3.04 0-5.5 2.46-5.5 5.5h2c0-1.93 1.57-3.5 3.5-3.5V8z"/></svg>
+                        Purge VRAM
+                    </button>
+
+                    <button class="btn btn-primary" id="btn-manual-upload">
+                        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                        Upload Local File
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area Scroll -->
+            <div class="content-scroll">
+                <div class="grid-header">
+                    <div class="grid-title-info">
+                        <h2 class="grid-title" id="grid-category-title">All Project Templates</h2>
+                        <span class="grid-subtitle" id="grid-count-lbl">Showing 0 templates</span>
+                    </div>
+                </div>
+
+                <div class="cards-grid" id="cards-grid">
+                    <!-- Cards injected dynamically -->
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════════
+       DRAG OVERLAY DETECTOR
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+    <div class="dropzone-overlay" id="drag-overlay">
+        <div class="dropzone-box">
+            <svg class="dropzone-icon" viewBox="0 0 24 24">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+            <h3 class="dropzone-title">Drop Workflow to Import</h3>
+            <p class="dropzone-desc">Drag any secure <strong>.rad</strong> or standard ComfyUI <strong>.json</strong> workflow file here to parse and commit it to the library.</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════════
+       TOAST CONTAINER
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+    <div class="toast-notification" id="toast">
+        <div class="toast-led"></div>
+        <span class="toast-msg" id="toast-msg">Workflow imported successfully.</span>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════════
+       MODAL VIEW PANEL
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-card">
+            <!-- Modal top bar -->
+            <div class="modal-header">
+                <div class="modal-header-info">
+                    <span class="badge badge-cyan" id="modal-format-badge">.RAD V3</span>
+                    <div class="vram-hud" style="background: none; border: none; padding: 0;">
+                        <div class="vram-led" id="modal-sec-led"></div>
+                        <span class="vram-lbl" id="modal-sec-status">INTEGRITY OK</span>
+                    </div>
+                </div>
+                <button class="modal-close-btn" id="btn-modal-close" title="Close inspector">✕</button>
+            </div>
+
+            <!-- Modal Body Split -->
+            <div class="modal-body">
+                <!-- Sidebar spec info -->
+                <div class="modal-side">
+                    <div class="modal-preview-box" id="modal-cover-box">
+                        <!-- Thumbnail Cover -->
+                    </div>
+
+                    <h4 class="side-section-title">Technical Profile</h4>
+                    <div class="technical-spec-grid">
+                        <div class="tech-spec-item">
+                            <span class="tech-spec-lbl">Grid Nodes</span>
+                            <span class="tech-spec-val" id="spec-nodes">0</span>
+                        </div>
+                        <div class="tech-spec-item">
+                            <span class="tech-spec-lbl">FPS Rate</span>
+                            <span class="tech-spec-val" id="spec-fps">24.0</span>
+                        </div>
+                        <div class="tech-spec-item">
+                            <span class="tech-spec-lbl">Colorspace</span>
+                            <span class="tech-spec-val" id="spec-colorspace">ACEScg</span>
+                        </div>
+                        <div class="tech-spec-item">
+                            <span class="tech-spec-lbl">HDR Active</span>
+                            <span class="tech-spec-val" id="spec-hdr">No</span>
+                        </div>
+                    </div>
+
+                    <h4 class="side-section-title">Linked Models & Assets</h4>
+                    <div class="models-list" id="modal-models-box">
+                        <!-- Chips -->
+                    </div>
+                </div>
+
+                <!-- Central Main Panel -->
+                <div class="modal-main">
+                    <h2 class="modal-title" id="modal-title">SDR to HDR Uplift Pipeline</h2>
+                    <p class="modal-desc-box" id="modal-desc">This pipeline automatically grade input footage from SDR Rec.709 color spectrum to full dynamic ACES color space, maintaining highlights balance.</p>
+
+                    <h4 class="side-section-title">Visual Node Roadmap</h4>
+                    <div class="roadmap-container">
+                        <div class="roadmap-flow" id="modal-roadmap">
+                            <!-- Roadmap -->
+                        </div>
+                    </div>
+
+                    <h4 class="side-section-title">Version Control Rollbacks</h4>
+                    <div class="timeline" id="modal-timeline">
+                        <!-- Version items -->
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div class="modal-footer" style="display: flex; gap: 12px; margin-top: auto; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                        <button class="btn btn-primary" id="btn-action-load">
+                            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+                            Load to Canvas
+                        </button>
+                        <button class="btn btn-secondary" id="btn-action-append">
+                            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                            Merge into Current
+                        </button>
+                        <button class="btn btn-secondary" id="btn-action-export">
+                            <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+                            Export as .rad
+                        </button>
+                        <button class="btn btn-danger" id="btn-action-delete" style="margin-left: auto;">
+                            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden input for manual file uploads -->
+    <input type="file" id="hidden-file-input" accept=".rad,.json" style="display: none;">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════════
+       APPLICATION CONTROLLER JAVASCRIPT
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+    <script>
+        // State variables
+        let workflows = [];
+        let filteredWorkflows = [];
+        let activeBin = "ALL";
+        let activeWorkflow = null;
+
+        // Dom cache
+        const cardsGrid = document.getElementById("cards-grid");
+        const searchBar = document.getElementById("search-bar");
+        const sortSelect = document.getElementById("sort-select");
+        const btnPurgeVram = document.getElementById("btn-purge-vram");
+        const btnManualUpload = document.getElementById("btn-manual-upload");
+        const hiddenFileInput = document.getElementById("hidden-file-input");
+        const sidebarBins = document.getElementById("sidebar-bins");
+        const dragOverlay = document.getElementById("drag-overlay");
+        const toast = document.getElementById("toast");
+        const toastMsg = document.getElementById("toast-msg");
+
+        // Modal elements
+        const modal = document.getElementById("modal");
+        const btnModalClose = document.getElementById("btn-modal-close");
+        const modalTitle = document.getElementById("modal-title");
+        const modalDesc = document.getElementById("modal-desc");
+        const modalCoverBox = document.getElementById("modal-cover-box");
+        const specNodes = document.getElementById("spec-nodes");
+        const specFps = document.getElementById("spec-fps");
+        const specColorspace = document.getElementById("spec-colorspace");
+        const specHdr = document.getElementById("spec-hdr");
+        const modalModelsBox = document.getElementById("modal-models-box");
+        const modalRoadmap = document.getElementById("modal-roadmap");
+        const modalTimeline = document.getElementById("modal-timeline");
+        const modalFormatBadge = document.getElementById("modal-format-badge");
+        const modalSecLed = document.getElementById("modal-sec-led");
+        const modalSecStatus = document.getElementById("modal-sec-status");
+
+        const btnActionLoad = document.getElementById("btn-action-load");
+        const btnActionAppend = document.getElementById("btn-action-append");
+        const btnActionExport = document.getElementById("btn-action-export");
+        const btnActionDelete = document.getElementById("btn-action-delete");
+
+        // Helper: Toast trigger
+        function notify(message, type = "info") {
+            toast.className = `toast-notification toast-${type} active`;
+            toastMsg.textContent = message;
+            setTimeout(() => {
+                toast.classList.remove("active");
+            }, 3500);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;",
+            })[char]);
+        }
+
+        function escapeAttr(value) {
+            return escapeHtml(value).replace(/`/g, "&#96;");
+        }
+
+        function confirmAction(message, confirmLabel = "Continue") {
+            return new Promise((resolve) => {
+                const overlay = document.createElement("div");
+                overlay.className = "modal-overlay active";
+                overlay.style.zIndex = "3000";
+
+                const card = document.createElement("div");
+                card.className = "modal-card";
+                card.style.width = "min(420px, calc(100vw - 32px))";
+                card.style.height = "auto";
+                card.style.minHeight = "0";
+
+                const header = document.createElement("div");
+                header.className = "modal-header";
+
+                const title = document.createElement("div");
+                title.className = "modal-title";
+                title.style.fontSize = "18px";
+                title.textContent = "Confirm Action";
+
+                const body = document.createElement("div");
+                body.className = "modal-body";
+                body.style.display = "block";
+                body.style.padding = "22px 24px";
+
+                const copy = document.createElement("p");
+                copy.className = "modal-desc-box";
+                copy.textContent = message;
+
+                const footer = document.createElement("div");
+                footer.style.display = "flex";
+                footer.style.justifyContent = "flex-end";
+                footer.style.gap = "10px";
+                footer.style.marginTop = "18px";
+
+                const cancel = document.createElement("button");
+                cancel.className = "btn btn-secondary";
+                cancel.type = "button";
+                cancel.textContent = "Cancel";
+
+                const confirm = document.createElement("button");
+                confirm.className = "btn btn-danger";
+                confirm.type = "button";
+                confirm.textContent = confirmLabel;
+
+                const close = (value) => {
+                    overlay.remove();
+                    resolve(value);
+                };
+
+                cancel.addEventListener("click", () => close(false));
+                confirm.addEventListener("click", () => close(true));
+                overlay.addEventListener("click", (event) => {
+                    if (event.target === overlay) close(false);
+                });
+
+                header.appendChild(title);
+                footer.append(cancel, confirm);
+                body.append(copy, footer);
+                card.append(header, body);
+                overlay.appendChild(card);
+                document.body.appendChild(overlay);
+            });
+        }
+
+        function promptAction(titleText, message, defaultValue = "", confirmLabel = "Continue") {
+            return new Promise((resolve) => {
+                const overlay = document.createElement("div");
+                overlay.className = "modal-overlay active";
+                overlay.style.zIndex = "3000";
+
+                const card = document.createElement("div");
+                card.className = "modal-card";
+                card.style.width = "min(420px, calc(100vw - 32px))";
+                card.style.height = "auto";
+                card.style.minHeight = "0";
+
+                const header = document.createElement("div");
+                header.className = "modal-header";
+
+                const title = document.createElement("div");
+                title.className = "modal-title";
+                title.style.fontSize = "18px";
+                title.textContent = titleText;
+
+                const body = document.createElement("div");
+                body.className = "modal-body";
+                body.style.display = "block";
+                body.style.padding = "22px 24px";
+
+                const copy = document.createElement("p");
+                copy.className = "modal-desc-box";
+                copy.textContent = message;
+
+                const input = document.createElement("input");
+                input.type = "text";
+                input.value = defaultValue;
+                input.style.cssText = `
+                    width:100%;box-sizing:border-box;height:38px;margin:12px 0 18px;
+                    border-radius:8px;border:1px solid var(--border-color);
+                    background:var(--bg-surface);color:var(--text-primary);
+                    padding:0 12px;outline:none;font:13px var(--font-ui);
+                `;
+
+                const footer = document.createElement("div");
+                footer.style.display = "flex";
+                footer.style.justifyContent = "flex-end";
+                footer.style.gap = "10px";
+
+                const cancel = document.createElement("button");
+                cancel.className = "btn btn-secondary";
+                cancel.type = "button";
+                cancel.textContent = "Cancel";
+
+                const confirm = document.createElement("button");
+                confirm.className = "btn btn-primary";
+                confirm.type = "button";
+                confirm.textContent = confirmLabel;
+
+                const close = (value) => {
+                    overlay.remove();
+                    resolve(value);
+                };
+
+                cancel.addEventListener("click", () => close(null));
+                confirm.addEventListener("click", () => close(input.value.trim()));
+                input.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") close(input.value.trim());
+                    if (event.key === "Escape") close(null);
+                });
+                overlay.addEventListener("click", (event) => {
+                    if (event.target === overlay) close(null);
+                });
+
+                header.appendChild(title);
+                footer.append(cancel, confirm);
+                body.append(copy, input, footer);
+                card.append(header, body);
+                overlay.appendChild(card);
+                document.body.appendChild(overlay);
+                input.focus();
+                input.select();
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // API COMMUNICATOR
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        async function fetchLibrary() {
+            try {
+                const response = await fetch("/radiance/workflows/list");
+                if (!response.ok) throw new Error("Server communication failure");
+                const data = await response.json();
+                workflows = data.workflows || [];
+                updateBinCounts();
+                renderCards();
+            } catch (err) {
+                console.error("Library sync failed:", err);
+                notify("Could not sync with local library. Using standalone fallback.", "error");
+
+                // Fallback demo data
+                workflows = getDemoFallbacks();
+                updateBinCounts();
+                renderCards();
+            }
+        }
+
+        async function triggerVramPurge() {
+            try {
+                notify("Triggering model memory cleanup...", "info");
+                const response = await fetch("/free", {
+                    method: "POST",
+                    body: JSON.stringify({ unload_models: true, free_memory: true }),
+                    headers: { "Content-Type": "application/json" }
+                });
+                if (response.ok) {
+                    notify("Peak VRAM and cached models purged successfully.", "success");
+                    document.getElementById("vram-metric").textContent = "PURGED (STANDBY)";
+                } else {
+                    notify("ComfyUI server did not accept memory purge request.", "error");
+                }
+            } catch (err) {
+                notify("VRAM Purge failed.", "error");
+            }
+        }
+
+        async function getWorkflowData(wf) {
+            try {
+                const resp = await fetch(`/radiance/workflows/get?filename=${encodeURIComponent(wf.filename)}`);
+                if (!resp.ok) throw new Error();
+                const data = await resp.json();
+                return data;
+            } catch (e) {
+                notify("Failed to retrieve full graph serialization.", "error");
+                return null;
+            }
+        }
+
+        async function getWorkflowHistory(wf) {
+            try {
+                const resp = await fetch(`/radiance/workflows/history?filename=${encodeURIComponent(wf.filename)}`);
+                if (!resp.ok) throw new Error();
+                const data = await resp.json();
+                return data.history || [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        async function performVersionRestore(wf, versionFile) {
+            try {
+                const resp = await fetch("/radiance/workflows/restore", {
+                    method: "POST",
+                    body: JSON.stringify({ filename: wf.filename, version_file: versionFile }),
+                    headers: { "Content-Type": "application/json" }
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    notify(`Restored workflow rollback: ${versionFile}`, "success");
+                    fetchLibrary();
+                    closeModal();
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (e) {
+                notify(`Restore rollback failed: ${e.message}`, "error");
+            }
+        }
+
+        async function commitWorkflowToServer(filename, content, description = "") {
+            try {
+                const stats = {
+                    node_count: 0,
+                    saved_at: Date.now(),
+                    os: navigator.platform
+                };
+
+                try {
+                    const parsed = JSON.parse(content);
+                    stats.node_count = parsed.nodes ? parsed.nodes.length : 0;
+                } catch(e) {}
+
+                const response = await fetch("/radiance/workflows/save", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        filename: filename,
+                        content: content,
+                        description: description,
+                        message: "Imported via Studio Dashboard",
+                        author: "Studio Artist",
+                        stats: stats,
+                        preview_image: ""
+                    }),
+                    headers: { "Content-Type": "application/json" }
+                });
+
+                if (response.ok) {
+                    notify(`Workflow "${filename}" successfully added to library!`, "success");
+                    fetchLibrary();
+                } else {
+                    const err = await response.json();
+                    notify(`Import failed: ${err.error}`, "error");
+                }
+            } catch (e) {
+                notify("Import failed. Could not communicate with server.", "error");
+            }
+        }
+
+        async function deleteWorkflow(wf) {
+            try {
+                const response = await fetch("/radiance/workflows/delete", {
+                    method: "POST",
+                    body: JSON.stringify({ filename: wf.filename }),
+                    headers: { "Content-Type": "application/json" }
+                });
+                if (response.ok) {
+                    notify(`Deleted workflow: ${wf.filename}`, "success");
+                    fetchLibrary();
+                    closeModal();
+                } else {
+                    notify("Delete failed.", "error");
+                }
+            } catch(e) {
+                notify("Delete failed.", "error");
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // RENDER & FILTER CONTROLLER
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        function updateBinCounts() {
+            const counts = { ALL: 0, TEMPLATES: 0, SHOTS: 0, EXPERIMENTS: 0, SYSTEM: 0 };
+
+            workflows.forEach(w => {
+                counts.ALL++;
+                const folder = w.filename.split("/")[0].toUpperCase();
+                if (counts[folder] !== undefined) {
+                    counts[folder]++;
+                } else {
+                    // Falls into General system bin
+                    if (w.filename.startsWith("System/") || w.filename === "default.rad") {
+                        counts.SYSTEM++;
+                    } else {
+                        // General fallback
+                        counts.TEMPLATES++;
+                    }
+                }
+            });
+
+            document.getElementById("badge-all").textContent = counts.ALL;
+            document.getElementById("badge-templates").textContent = counts.TEMPLATES;
+            document.getElementById("badge-shots").textContent = counts.SHOTS;
+            document.getElementById("badge-experiments").textContent = counts.EXPERIMENTS;
+            document.getElementById("badge-system").textContent = counts.SYSTEM;
+        }
+
+        function filterAndSortWorkflows() {
+            const query = searchBar.value.toLowerCase().trim();
+            const sortMode = sortSelect.value;
+
+            // 1. Bin filtering
+            filteredWorkflows = workflows.filter(w => {
+                if (activeBin === "ALL") return true;
+
+                const folder = w.filename.split("/")[0].toUpperCase();
+                if (activeBin === "SYSTEM") {
+                    return folder === "SYSTEM" || w.filename.startsWith("System/") || w.filename === "default.rad";
+                }
+
+                if (activeBin === "TEMPLATES") {
+                    // Anything that isn't categorized in other explicit folders
+                    return folder !== "SHOTS" && folder !== "EXPERIMENTS" && folder !== "SYSTEM" && !w.filename.startsWith("System/") && w.filename !== "default.rad";
+                }
+
+                return folder === activeBin;
+            });
+
+            // 2. Query search
+            if (query) {
+                filteredWorkflows = filteredWorkflows.filter(w => {
+                    const name = w.filename.split("/").pop().replace(".rad", "").toLowerCase();
+                    const desc = (w.metadata?.description || "").toLowerCase();
+                    const author = (w.metadata?.author || "").toLowerCase();
+                    const models = (w.metadata?.pipeline?.models || []).join(" ").toLowerCase();
+                    const spaces = (w.metadata?.pipeline?.color_spaces || []).join(" ").toLowerCase();
+
+                    return name.includes(query) || desc.includes(query) || author.includes(query) || models.includes(query) || spaces.includes(query);
+                });
+            }
+
+            // 3. Sorting
+            filteredWorkflows.sort((a, b) => {
+                if (sortMode === "mtime_desc") return b.mtime - a.mtime;
+                if (sortMode === "mtime_asc") return a.mtime - b.mtime;
+
+                const nameA = a.filename.split("/").pop().toLowerCase();
+                const nameB = b.filename.split("/").pop().toLowerCase();
+                if (sortMode === "name_asc") return nameA.localeCompare(nameB);
+                if (sortMode === "name_desc") return nameB.localeCompare(nameA);
+
+                if (sortMode === "size_desc") return b.size - a.size;
+
+                const nodesA = a.metadata?.pipeline?.node_count || a.metadata?.stats?.node_count || 0;
+                const nodesB = b.metadata?.pipeline?.node_count || b.metadata?.stats?.node_count || 0;
+                if (sortMode === "nodes_desc") return nodesB - nodesA;
+
+                return 0;
+            });
+
+            document.getElementById("grid-count-lbl").textContent = `Showing ${filteredWorkflows.length} workflow templates`;
+        }
+
+        function renderCards() {
+            filterAndSortWorkflows();
+            cardsGrid.innerHTML = "";
+
+            if (filteredWorkflows.length === 0) {
+                cardsGrid.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 80px 20px; opacity: 0.5;">
+                        <svg viewBox="0 0 24 24" style="width: 48px; height: 48px; fill: var(--text-muted); margin-bottom: 12px;"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg>
+                        <p style="font-size: 15px; font-weight: 500; color: var(--text-main);">No workflows match active query.</p>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Search something else or upload a new workflow template.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filteredWorkflows.forEach(wf => {
+                const displayName = wf.filename.split("/").pop().replace(".rad", "");
+                const displayNameHtml = escapeHtml(displayName);
+                const displayNameAttr = escapeAttr(displayName);
+                const isOfficial = wf.filename.toLowerCase().startsWith("official/");
+                const hasPreview = wf.metadata?.has_preview;
+                const sizeKB = Math.round(wf.size / 1024);
+                const desc = wf.metadata?.description || "No description provided.";
+                const descHtml = escapeHtml(desc);
+
+                const card = document.createElement("div");
+                card.className = `workflow-card ${isOfficial ? 'official-card' : ''}`;
+
+                // Cover
+                let coverHtml = "";
+                if (hasPreview) {
+                    coverHtml = `<img src="/radiance/workflows/preview?filename=${encodeURIComponent(wf.filename)}" alt="${displayNameAttr}" loading="lazy">`;
+                } else {
+                    coverHtml = `
+                        <div class="card-cover-placeholder">
+                            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5.12 10.88L12 17l-1.88-3.12L8 17H5l5-7 5 7h-3.12z"/></svg>
+                            <span>NO PREVIEW AVAILABLE</span>
+                        </div>
+                    `;
+                }
+
+                // Color space badge or V3 format badge
+                const format = wf.metadata?.format || "v1";
+                const pipeline = wf.metadata?.pipeline || {};
+                const nodeCount = pipeline.node_count || wf.metadata?.stats?.node_count || 0;
+
+                let badgesHtml = "";
+                if (isOfficial) {
+                    badgesHtml += `<span class="badge badge-gold">Official</span>`;
+                } else if (wf.filename.startsWith("System/") || wf.filename === "default.rad") {
+                    badgesHtml += `<span class="badge badge-purple">System</span>`;
+                } else {
+                    badgesHtml += `<span class="badge badge-slate">User</span>`;
+                }
+
+                if (pipeline.is_hdr) {
+                    badgesHtml += `<span class="badge badge-cyan">HDR Pipeline</span>`;
+                }
+
+                if (pipeline.color_spaces && pipeline.color_spaces.length) {
+                    const space = pipeline.color_spaces[0];
+                    const truncSpace = space.length > 10 ? space.substring(0, 8) + ".." : space;
+                    badgesHtml += `<span class="badge badge-purple">${escapeHtml(truncSpace)}</span>`;
+                }
+
+                card.innerHTML = `
+                    <div class="card-cover">
+                        ${coverHtml}
+                        <div class="cover-badge">${escapeHtml(format.toUpperCase())}</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title-row">
+                            <h3 class="card-title" title="${displayNameAttr}">${displayNameHtml}</h3>
+                        </div>
+                        <p class="card-desc">${descHtml}</p>
+                        <div class="card-badges">
+                            ${badgesHtml}
+                            <span class="badge badge-slate" style="margin-left: auto;">${escapeHtml(nodeCount)} Nodes</span>
+                        </div>
+                        <div class="card-meta-row">
+                            <span>${new Date(wf.mtime * 1000).toLocaleDateString()}</span>
+                            <span>${escapeHtml(sizeKB)} KB</span>
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener("click", () => openWorkflowModal(wf));
+                cardsGrid.appendChild(card);
+            });
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // MODAL ACTION HANDLERS
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        async function openWorkflowModal(wf) {
+            activeWorkflow = wf;
+            const displayName = wf.filename.split("/").pop().replace(".rad", "");
+
+            // Set simple info
+            modalTitle.textContent = displayName;
+            modalDesc.textContent = wf.metadata?.description || "No description provided for this template. Use it as a structural base or rollback workflow.";
+            modalFormatBadge.textContent = (wf.metadata?.format || "v1").toUpperCase();
+
+            const isV3 = wf.metadata?.format === "v3";
+            const pipeline = wf.metadata?.pipeline || {};
+
+            // Check preview
+            modalCoverBox.innerHTML = "";
+            if (wf.metadata?.has_preview) {
+                const img = document.createElement("img");
+                img.src = `/radiance/workflows/preview?filename=${encodeURIComponent(wf.filename)}`;
+                img.alt = displayName;
+                modalCoverBox.appendChild(img);
+            } else {
+                modalCoverBox.innerHTML = `
+                    <div class="card-cover-placeholder">
+                        <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        <span>Preview Unavailable</span>
+                    </div>
+                `;
+            }
+
+            // Specs
+            specNodes.textContent = pipeline.node_count || wf.metadata?.stats?.node_count || "N/A";
+            specFps.textContent = pipeline.fps ? `${pipeline.fps} FPS` : "24.0";
+            specColorspace.textContent = (pipeline.color_spaces && pipeline.color_spaces.length) ? pipeline.color_spaces[0] : "Linear sRGB";
+            specHdr.textContent = pipeline.is_hdr ? "Active" : "No";
+
+            // Security integrity status
+            if (wf.metadata?.secure) {
+                modalSecLed.style.backgroundColor = "var(--color-primary)";
+                modalSecLed.style.boxShadow = "0 0 6px var(--color-primary-glow)";
+                modalSecStatus.textContent = "INTEGRITY SECURE";
+                modalSecStatus.style.color = "var(--color-primary)";
+            } else {
+                modalSecLed.style.backgroundColor = "var(--color-accent)";
+                modalSecLed.style.boxShadow = "0 0 6px var(--color-accent-glow)";
+                modalSecStatus.textContent = "LEGACY CONTAINER";
+                modalSecStatus.style.color = "var(--color-accent)";
+            }
+
+            // Models
+            modalModelsBox.innerHTML = "";
+            const models = pipeline.models || [];
+            if (models.length === 0) {
+                modalModelsBox.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); font-style: italic;">No checkpoint/LORA models tracked in metadata.</div>`;
+            } else {
+                models.forEach(m => {
+                    const chip = document.createElement("span");
+                    chip.className = "model-chip";
+                    chip.textContent = m;
+                    chip.title = m;
+                    modalModelsBox.appendChild(chip);
+                });
+            }
+
+            // Roadmap workflow tracking
+            modalRoadmap.innerHTML = "";
+            let flowNodes = ["Load Checkpoint"];
+            if (pipeline.is_hdr) {
+                flowNodes.push("RadianceOCIO", "HDR Synthesis");
+            } else {
+                flowNodes.push("KSampler", "VAE Decode");
+            }
+            flowNodes.push("RadianceViewer");
+
+            flowNodes.forEach((n, idx) => {
+                if (idx > 0) {
+                    const arrow = document.createElement("span");
+                    arrow.className = "roadmap-arrow";
+                    arrow.textContent = "➜";
+                    modalRoadmap.appendChild(arrow);
+                }
+                const element = document.createElement("div");
+                element.className = "roadmap-node";
+                element.textContent = n;
+                modalRoadmap.appendChild(element);
+            });
+
+            // History Timeline
+            modalTimeline.innerHTML = "";
+            const history = await getWorkflowHistory(wf);
+            if (history.length === 0) {
+                modalTimeline.innerHTML = `
+                    <div style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 10px 0;">
+                        No rollback versions tracked. Automated commits are generated when you perform incremental changes.
+                    </div>
+                `;
+            } else {
+                history.forEach(v => {
+                    const date = new Date(v.timestamp * 1000).toLocaleString();
+                    const sizeKB = Math.round(v.size / 1024);
+
+                    const item = document.createElement("div");
+                    item.className = "timeline-item";
+                    item.innerHTML = `
+                        <div class="timeline-node"></div>
+                        <div class="timeline-info">
+                            <span class="timeline-msg">${escapeHtml(v.message || "Rollback Savepoint")}</span>
+                            <span class="timeline-sub">Author: ${escapeHtml(v.author || "Studio Artist")}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <span class="timeline-meta">${escapeHtml(date)} • ${escapeHtml(sizeKB)} KB</span>
+                            <button class="btn btn-secondary btn-restore-rollback" data-file="${escapeAttr(v.version_file)}" style="height: 30px; padding: 0 10px; font-size: 11px;">Restore</button>
+                        </div>
+                    `;
+
+                    item.querySelector(".btn-restore-rollback").onclick = async (e) => {
+                        e.stopPropagation();
+                        if (await confirmAction(`Restore canvas to backup "${v.message || v.version_file}"? Current active canvas will be backed up.`, "Restore")) {
+                            performVersionRestore(wf, v.version_file);
+                        }
+                    };
+
+                    modalTimeline.appendChild(item);
+                });
+            }
+
+            modal.classList.add("active");
+        }
+
+        function closeModal() {
+            modal.classList.remove("active");
+            activeWorkflow = null;
+        }
+
+        // Post Message to Canvas Communication
+        function loadWorkflowToCanvas(append = false) {
+            if (!activeWorkflow) return;
+            getWorkflowData(activeWorkflow).then(data => {
+                if (data && data.success) {
+                    const actionType = append ? "radiance_append_workflow" : "radiance_load_workflow";
+                    const target = window.opener || (window.parent !== window ? window.parent : null);
+                    if (target) {
+                        target.postMessage({ type: actionType, content: data.content }, "*");
+                        notify(`${append ? 'Merged' : 'Loaded'} workflow directly into active canvas session!`, "success");
+                        closeModal();
+                    } else {
+                        notify("Unable to sync with active canvas. Canvas window was closed.", "error");
+                    }
+                }
+            });
+        }
+
+        // Delete workflow
+        async function triggerDelete() {
+            if (!activeWorkflow) return;
+            if (await confirmAction(`Permanently delete workflow "${activeWorkflow.filename.split('/').pop()}"?`, "Delete")) {
+                deleteWorkflow(activeWorkflow);
+            }
+        }
+
+        // Export active workflow
+        async function triggerLocalExport() {
+            if (!activeWorkflow) return;
+            const data = await getWorkflowData(activeWorkflow);
+            if (!data || !data.success) return;
+
+            const displayName = activeWorkflow.filename.split("/").pop().replace(".rad", "");
+
+            // Trigger download of packed raw base64 or construct zip blob if we can retrieve
+            // Or simple local backup export of json content
+            const blob = new Blob([data.content], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${displayName}.json`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+            notify("Exported workflow configuration.", "success");
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // EVENT HANDLERS & UPLOADER
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // Drag and drop uploader
+        window.addEventListener("dragenter", (e) => {
+            e.preventDefault();
+            dragOverlay.classList.add("active");
+        });
+
+        dragOverlay.addEventListener("dragover", (e) => e.preventDefault());
+
+        dragOverlay.addEventListener("dragleave", (e) => {
+            // Only deactivate if leaving the backdrop container
+            if (e.target === dragOverlay || e.relatedTarget === null) {
+                dragOverlay.classList.remove("active");
+            }
+        });
+
+        dragOverlay.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dragOverlay.classList.remove("active");
+
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleUploadedFile(file);
+        });
+
+        btnManualUpload.onclick = () => hiddenFileInput.click();
+        hiddenFileInput.onchange = (e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUploadedFile(file);
+        };
+
+        function handleUploadedFile(file) {
+            const reader = new FileReader();
+            const extension = file.name.split('.').pop().toLowerCase();
+
+            if (extension !== "rad" && extension !== "json") {
+                notify("Unsupported format. Please import only .rad or .json ComfyUI graphs.", "error");
+                return;
+            }
+
+            reader.onload = async (event) => {
+                const content = event.target.result;
+                let finalContent = content;
+
+                notify(`Parsing ${file.name}...`, "info");
+
+                // If it is binary .rad, we must send to server to unpack first
+                if (extension === "rad") {
+                    try {
+                        const blob = new Blob([content], { type: "application/octet-stream" });
+                        const response = await fetch("/radiance/workflows/unpack", {
+                            method: "POST",
+                            body: blob,
+                            headers: { "Content-Type": "application/octet-stream" }
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            finalContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content);
+                        } else {
+                            throw new Error(data.error);
+                        }
+                    } catch (e) {
+                        notify(`Failed to decrypt .rad container: ${e.message}`, "error");
+                        return;
+                    }
+                }
+
+                // Verify standard JSON format
+                try {
+                    JSON.parse(finalContent);
+                } catch(e) {
+                    notify("Malformed JSON content inside file.", "error");
+                    return;
+                }
+
+                const binName = await promptAction("Import Destination", "Select a bin directory, for example TEMPLATES, SHOTS, or EXPERIMENTS.", "TEMPLATES", "Import");
+                if (binName === null) return;
+
+                const finalBin = binName.trim().toUpperCase() || "TEMPLATES";
+                const cleanName = file.name.endsWith(".rad") ? file.name : `${file.name.replace(".json", "")}.rad`;
+
+                const workflowPath = `${finalBin}/${cleanName}`;
+
+                commitWorkflowToServer(workflowPath, finalContent, `Imported local file: ${file.name}`);
+            };
+
+            if (extension === "rad") {
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.readAsText(file);
+            }
+        }
+
+        // Bins filter interaction
+        sidebarBins.querySelectorAll(".nav-item").forEach(item => {
+            item.onclick = () => {
+                sidebarBins.querySelector(".nav-item.active").classList.remove("active");
+                item.classList.add("active");
+
+                activeBin = item.dataset.bin;
+
+                document.getElementById("cards-grid").style.display = "grid";
+
+                    let binTitle = "All Project Templates";
+                    if (activeBin === "TEMPLATES") binTitle = "Standard Templates";
+                    if (activeBin === "SHOTS") binTitle = "Active VFX Shots";
+                    if (activeBin === "EXPERIMENTS") binTitle = "Experiments & R&D";
+                    if (activeBin === "SYSTEM") binTitle = "Pipeline Utilities";
+
+                    document.getElementById("grid-category-title").textContent = binTitle;
+
+                    renderCards();
+            };
+        });
+
+        searchBar.oninput = debounce(() => renderCards(), 200);
+        sortSelect.onchange = () => renderCards();
+        btnPurgeVram.onclick = triggerVramPurge;
+        btnModalClose.onclick = closeModal;
+
+        btnActionLoad.onclick = () => loadWorkflowToCanvas(false);
+        btnActionAppend.onclick = () => loadWorkflowToCanvas(true);
+        btnActionExport.onclick = triggerLocalExport;
+        btnActionDelete.onclick = triggerDelete;
+
+        // Click outside modal to close
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+
+        // Esc key listener
+        window.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                if (window.parent && window.parent !== window && window.parent.closeRadianceDashboard) {
+                    window.parent.closeRadianceDashboard();
+                } else {
+                    closeModal();
+                    dragOverlay.classList.remove("active");
+                }
+            }
+        });
+
+        // Debouncer helper
+        function debounce(fn, ms) {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), ms);
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // DEMO / OFFLINE FALLBACKS DATA
+        // ═══════════════════════════════════════════════════════════════════════════════
+        function getDemoFallbacks() {
+            return [
+                {
+                    filename: "official/SDR_to_HDR_Uplift.rad",
+                    size: 45620,
+                    mtime: Date.now() / 1000 - 3600,
+                    metadata: {
+                        format: "v3",
+                        secure: true,
+                        has_preview: false,
+                        description: "Advanced Rec.709 footage color SCIENCE transformation pipeline into high dynamic ACEScg AP1 workspace.",
+                        pipeline: {
+                            node_count: 24,
+                            fps: 24,
+                            color_spaces: ["ACEScg (AP1)"],
+                            is_hdr: true,
+                            models: ["flux1-dev.safetensors", "hdr_uplift_lora.safetensors"]
+                        }
+                    }
+                },
+                {
+                    filename: "TEMPLATES/Basic_Empty_Canvas.rad",
+                    size: 12400,
+                    mtime: Date.now() / 1000 - 86400,
+                    metadata: {
+                        format: "v2",
+                        secure: true,
+                        has_preview: false,
+                        description: "Initial start canvas workspace featuring core loader, ksampler track, and visual output diagnostics.",
+                        pipeline: {
+                            node_count: 8,
+                            fps: 24,
+                            color_spaces: ["Linear sRGB"],
+                            is_hdr: false,
+                            models: ["sd_xl_base_1.0.safetensors"]
+                        }
+                    }
+                },
+                {
+                    filename: "SHOTS/sh010_grade_v001.rad",
+                    size: 34500,
+                    mtime: Date.now() / 1000 - 1800,
+                    metadata: {
+                        format: "v3",
+                        secure: true,
+                        has_preview: false,
+                        description: "Shot grading comp workflow for sequence sq010, sequence version bump v001 features metadata injections.",
+                        pipeline: {
+                            node_count: 18,
+                            fps: 24,
+                            color_spaces: ["ACEScg (AP1)"],
+                            is_hdr: true,
+                            models: ["sd_xl_refiner_1.0.safetensors"]
+                        }
+                    }
+                }
+            ];
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // ◎ END OF RADIANCE WORKFLOW LIBRARY ENGINE
+        // ═══════════════════════════════════════════════════════════════════════════════
+
+        // Initialize App
+        fetchLibrary();
+
+    </script>
+</body>
+</html>
