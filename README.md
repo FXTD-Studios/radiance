@@ -8,10 +8,11 @@
 [![Version](https://img.shields.io/badge/version-3.5.0-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.0)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green?style=for-the-badge)](LICENSE)
 [![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
+[![Hugging Face](https://img.shields.io/badge/Hugging_Face-RUDRA_models-ffd21e?style=for-the-badge)](https://huggingface.co/fxtdstudios/RUDRA)
 
 Radiance brings 147 visible nodes into your workflows for processing images and video, working with EXR and ACES, reviewing results, and delivering files to Nuke or DaVinci Resolve.
 
-[Install](#installation) · [Quick start](#quick-start) · [Example workflows](#example-workflows) · [Documentation](#documentation) · [Support](#support)
+[Install](#installation) · [Quick start](#quick-start) · [Models](#models-and-downloads) · [Example workflows](#example-workflows) · [Documentation](#documentation) · [Support](#support)
 
 </div>
 
@@ -93,11 +94,41 @@ Open the included [starter workflow](workflows/start.json) in ComfyUI.
 
 Select your FLUX.1-dev model, VAE, and text encoders in the Loader, enter your prompt, and run the workflow. Review the result in the Viewer and connect a Write node when you want to save it.
 
-The required model files are separate downloads.
+The required model files are separate downloads. See [Models and downloads](#models-and-downloads) below.
 
 <div align="center">
 <img src="basic_workflow.png" width="920" alt="Radiance starter workflow from model loading to HDR review">
 </div>
+
+## Models and downloads
+
+### RUDRA for SDR to HDR
+
+[RUDRA on Hugging Face](https://huggingface.co/fxtdstudios/RUDRA) provides the learned SDR-to-HDR model used by **SDR → HDR Universal** and **SDR → HDR Recover**. The default model downloads on first use when downloads are enabled.
+
+For manual or offline installation:
+
+| Model | Download | Save in |
+|---|---|---|
+| `sdr2hdr_shadow_v1.safetensors` | [Download default model](https://huggingface.co/fxtdstudios/RUDRA/resolve/main/sdr2hdr/sdr2hdr_shadow_v1.safetensors) | `ComfyUI/models/radiance/` |
+| Alternative RUDRA image checkpoints | [Browse available models](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `ComfyUI/models/radiance/` |
+
+Create the `radiance` folder if needed. Leave `pixel_checkpoint` empty to use the default model. To prevent automatic model downloads, set `RADIANCE_ALLOW_DOWNLOADS=0` before starting ComfyUI.
+
+**Model licence:** RUDRA weights are licensed for non-commercial use. Read the [RUDRA weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE) before use. This is separate from Radiance's GPL-3.0 code licence.
+
+### Models for the starter workflow
+
+The included [starter workflow](workflows/start.json) uses FLUX.1-dev. Download these files, place them in the folders below, and select them in the Loader:
+
+| File | Hugging Face download | Save in |
+|---|---|---|
+| `flux1-dev.safetensors` | [FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors) | `ComfyUI/models/diffusion_models/` |
+| `ae.safetensors` | [FLUX VAE](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/ae.safetensors) | `ComfyUI/models/vae/` |
+| `clip_l.safetensors` | [CLIP-L](https://huggingface.co/comfyanonymous/flux_text_encoders/blob/main/clip_l.safetensors) | `ComfyUI/models/text_encoders/` |
+| `t5xxl_fp16.safetensors` | [T5-XXL](https://huggingface.co/comfyanonymous/flux_text_encoders/blob/main/t5xxl_fp16.safetensors) | `ComfyUI/models/text_encoders/` |
+
+FLUX.1-dev requires accepting its licence on Hugging Face before downloading. Review each model's terms separately.
 
 ## Example workflows
 
