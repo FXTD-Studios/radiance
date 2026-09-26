@@ -10,7 +10,7 @@
 
 **Radiance** is a professional, VFX-grade 32-bit float color science suite for ComfyUI. Built for film colorists and VFX artists who require absolute precision in their AI-assisted workflows.
 
-[Installation](#installation) · [Getting Started](#getting-started) · [Node Reference](#node-reference) · [Quick Start](#quick-start) · [Viewer Shortcuts](#viewer-shortcuts) · [Documentation](https://radiance.fxtd.org) · [Support](https://github.com/fxtdstudios/radiance/issues)
+[Installation](#installation) · [Getting Started](#getting-started) · [Node Reference](#node-reference) · [Quick Start](#quick-start) · [Viewer Shortcuts](#viewer-shortcuts) · [Support](https://github.com/fxtd-studios/radiance/issues)
 
 </div>
 
@@ -134,7 +134,7 @@ The suite is organized into **11 specialized production zones** to mirror indust
 ### Option 2: Manual (Git)
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/fxtdstudios/radiance.git
+git clone https://github.com/fxtd-studios/radiance.git
 cd radiance
 pip install -r requirements_windows.txt  # Or linux/mac_silicon
 ```
@@ -151,7 +151,7 @@ If ComfyUI Manager refuses to install Radiance because only the default channel 
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/fxtdstudios/radiance.git
+git clone https://github.com/fxtd-studios/radiance.git
 cd radiance
 pip install -r requirements.txt
 ```
@@ -232,9 +232,8 @@ Radiance is backed by a professional team of VFX Technical Directors. Engage wit
 ---
 
 ### ◎ Technical Resources
-- **Documentation:** [radiance.fxtd.org](https://radiance.fxtd.org)
-- **Issue Tracker:** [GitHub Issues](https://github.com/fxtdstudios/radiance/issues)
-- **Official Site:** [fxtd.org](https://fxtd.org)
+- **Issue Tracker:** [GitHub Issues](https://github.com/fxtd-studios/radiance/issues)
+- **Official Site:** [fxtd.org](https://fxtdstudios.com)
 
 ---
 
