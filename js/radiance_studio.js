@@ -1,5 +1,8 @@
 import { app } from "../../scripts/app.js";
 
+// ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
+const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
  *                         RADIANCE STUDIO
@@ -39,6 +42,54 @@ const BACKDROP_PRESETS = [
     { label: "LoRA / Models", color: "Magenta", icon: "◎" },
 ];
 
+function promptRadianceStudio(titleText, message, defaultValue = "", confirmLabel = "Create") {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;inset:0;z-index:10001;display:grid;place-items:center;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);";
+        const dialog = document.createElement("div");
+        dialog.style.cssText = "width:min(420px,calc(100vw - 32px));padding:18px;background:rgba(18,18,24,0.96);color:#f5f5f7;border:1px solid rgba(255,255,255,0.1);border-radius:8px;box-shadow:0 18px 60px rgba(0,0,0,0.65);font:13px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+        const title = document.createElement("div");
+        title.textContent = titleText;
+        title.style.cssText = "font-size:15px;font-weight:700;margin-bottom:8px;";
+        const copy = document.createElement("div");
+        copy.textContent = message;
+        copy.style.cssText = "color:#b8c0cc;margin-bottom:12px;";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = defaultValue;
+        input.style.cssText = "width:100%;box-sizing:border-box;height:36px;margin-bottom:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06);color:#f5f5f7;padding:0 10px;outline:none;";
+        const actions = document.createElement("div");
+        actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#f5f5f7;cursor:pointer;";
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.textContent = confirmLabel;
+        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+        const close = (value) => {
+            overlay.remove();
+            resolve(value);
+        };
+        cancel.onclick = () => close(null);
+        confirm.onclick = () => close(input.value.trim());
+        input.onkeydown = (event) => {
+            if (event.key === "Enter") close(input.value.trim());
+            if (event.key === "Escape") close(null);
+        };
+        overlay.onclick = (event) => {
+            if (event.target === overlay) close(null);
+        };
+        actions.append(cancel, confirm);
+        dialog.append(title, copy, input, actions);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        input.focus();
+        input.select();
+    });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  EXTENSION REGISTRATION
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,8 +101,40 @@ app.registerExtension({
         const canvas = app.canvas;
         const graph = canvas.graph;
         const selectedNodes = Object.values(canvas.selected_nodes || {});
+        const projectManagerOptions = [
+            {
+                content: "Open Project Manager",
+                callback: () => {
+                    if (window.showRadianceDashboard) {
+                        window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+                    } else {
+                        window.open("${_EXT_BASE}/project_manager_dashboard.html", "_blank");
+                    }
+                }
+            },
+            {
+                content: "Open Workflow Library",
+                callback: () => {
+                    if (window.showRadianceDashboard) {
+                        window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+                    } else {
+                        window.open("${_EXT_BASE}/workspace_dashboard.html", "_blank");
+                    }
+                }
+            },
+        ];
 
-        if (selectedNodes.length === 0) return [];
+        if (selectedNodes.length === 0) {
+            return [
+                null,
+                {
+                    content: "◎ Radiance Studio",
+                    submenu: {
+                        options: projectManagerOptions,
+                    },
+                },
+            ];
+        }
 
         return [
             null, // Separator
@@ -59,6 +142,8 @@ app.registerExtension({
                 content: "◎ Radiance Studio",
                 submenu: {
                     options: [
+                        ...projectManagerOptions,
+                        null,
                         // ── Color Backdrop ────────────────────────
                         {
                             content: "Create Backdrop",
@@ -67,8 +152,8 @@ app.registerExtension({
                                     // Solid colors
                                     ...Object.entries(BACKDROP_COLORS).map(([name, color]) => ({
                                         content: `■ ${name}`,
-                                        callback: () => {
-                                            const title = prompt("Backdrop Name:", name);
+                                        callback: async () => {
+                                            const title = await promptRadianceStudio("Backdrop Name", "Name this production backdrop.", name, "Create");
                                             if (title === null) return;
                                             createBackdrop(graph, selectedNodes, title, color);
                                         }

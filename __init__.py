@@ -1,161 +1,164 @@
-"""
-═══════════════════════════════════════════════════════════════════════════════
-                    RADIANCE
-              Professional HDR Image Processing Suite
-                     Radiance © 2024-2026
+"""Radiance — HDR/VFX/Color pipeline for ComfyUI."""
+from __future__ import annotations
 
-GPU-accelerated nodes for HDR, color grading, film effects, and upscaling.
-═══════════════════════════════════════════════════════════════════════════════
-"""
-
-import os
-import importlib
 import logging
+import os
+import sys
 
-# Configure module logger
-logger = logging.getLogger("radiance")
-
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-# Enable OpenEXR support in OpenCV
+# OpenCV reads this once, the first time any code in the process touches an
+# EXR through cv2, and never again. Set to "1" before anything else so it is
+# on however Radiance is loaded; a "0" left in the environment would silently
+# disable every cv2 EXR fallback in the package.
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#                       DEPENDENCY VALIDATION
-# ═══════════════════════════════════════════════════════════════════════════════
+
+def _bootstrap_package_context() -> None:
+    """Make relative imports reliable when ComfyUI loads this file directly."""
+
+    global __package__, __path__
+
+    if not __package__:
+        __package__ = "radiance"
+        __path__ = [os.path.dirname(os.path.abspath(__file__))]
+
+    sys.modules.setdefault("radiance", sys.modules.get(__name__, type(sys)(__name__)))
 
 
-def check_dependencies():
-    """Check for optional dependencies and print helpful messages."""
-    missing = []
+_bootstrap_package_context()
 
-    # Core dependencies (should always be available)
-    try:
-        import torch  # pylint: disable=unused-import
-        import numpy  # pylint: disable=unused-import
-        from PIL import Image  # pylint: disable=unused-import
-    except ImportError as e:
-        logger.error(f"CRITICAL: Missing core dependency: {e}")
-        return
-
-    # Optional: OpenEXR for EXR I/O
-    try:
-        import OpenEXR  # pylint: disable=unused-import
-    except ImportError:
-        missing.append(("OpenEXR", "EXR file support", "pip install OpenEXR"))
-
-    # Optional: transformers for Depth Anything V2
-    try:
-        import transformers  # pylint: disable=unused-import
-    except ImportError:
-        missing.append(
-            ("transformers", "Depth Map Generator", "pip install transformers")
-        )
-
-    # Optional: colour-science for advanced color
-    try:
-        import colour  # pylint: disable=unused-import
-    except ImportError:
-        missing.append(
-            ("colour-science", "Advanced OCIO/color", "pip install colour-science")
-        )
-
-    # Optional: defusedxml for secure XML parsing
-    try:
-        import defusedxml  # pylint: disable=unused-import
-    except ImportError:
-        missing.append(
-            ("defusedxml", "Secure XML parsing (CDL)", "pip install defusedxml")
-        )
-
-    # Print optional dependency status
-    if missing:
-        logger.info("Optional dependencies not installed:")
-        for name, feature, cmd in missing:
-            logger.info(f"  • {name}: {feature} (Install: {cmd})")
-    else:
-        logger.debug("All optional dependencies available")
-
-
-check_dependencies()
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#                       DYNAMIC NODE LOADING
-# ═══════════════════════════════════════════════════════════════════════════════
-
-from . import (
-    nodes_denoise,
-    nodes_depth,
-    nodes_dna,
-    nodes_grade,
-    nodes_io,
-    nodes_layout,
-    nodes_loader,
-    nodes_nuke,
-    nodes_overlay,
-    nodes_prompt,
-    nodes_qc,
-    nodes_resolution,
-    nodes_radiance_mask,
-    nodes_radiance_viewer,
-    nodes_sampler,
-    nodes_scopes,
-    nodes_studio,
-    nodes_temporal,
-    nodes_text,
-    nodes_workspace,
-    color,
-    film,
-    image,
-    hdr
+from .config.constants import (
+    AUTHOR,
+    EXPECTED_MIN_NODE_COUNT,
+    VERSION,
+    WEB_DIRECTORY,
 )
+from .config.dependencies import validate_runtime_dependencies
+from .config.env import configure_runtime_environment
+from .core.logging import register_run_grouping, setup_radiance_logging
+from .nodes.registry import NodeLoadResult, NodeModuleSpec, load_node_mappings
 
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
-WEB_DIRECTORY = "./js"
+logger = setup_radiance_logging()
 
-modules = [
-    color,
-    film,
-    image,
-    hdr,
-    nodes_denoise,
-    nodes_depth,
-    nodes_dna,
-    nodes_grade,
-    nodes_io,
-    nodes_layout,
-    nodes_loader,
-    nodes_nuke,
-    nodes_overlay,
-    nodes_prompt,
-    nodes_qc,
-    nodes_resolution,
-    nodes_radiance_mask,
-    nodes_radiance_viewer,
-    nodes_sampler,
-    nodes_scopes,
-    nodes_studio,
-    nodes_temporal,
-    nodes_text,
-    nodes_workspace
+
+def _load_comfyui_nodes() -> NodeLoadResult:
+    """Load the organized node catalog."""
+
+    # One entry point, not two. `.nodes_radiance_viewer` was a second spec
+    # publishing RadianceViewer alongside `radiance.nodes.monitor` — the one
+    # genuine dual-publish the legacy layer had, and a live instance of the
+    # double import that `_radiance_route_once` exists to survive. The monitor
+    # group publishes the viewer; nothing else needs to.
+    entrypoint_modules = (
+        NodeModuleSpec(".nodes", package=__name__, required=True),
+    )
+    result = load_node_mappings(
+        entrypoint_modules,
+        logger=logger,
+        context="Radiance entry point",
+    )
+
+    # Fold in the catalog's own group failures. Without this the entry point
+    # sees only its two top-level specs, so a group that dropped 18 nodes on an
+    # optional-dependency error looked like a clean load from up here.
+    nested = getattr(sys.modules.get(f"{__name__}.nodes"), "NODE_LOAD_FAILURES", ())
+    if nested:
+        result = NodeLoadResult(
+            class_mappings=result.class_mappings,
+            display_name_mappings=result.display_name_mappings,
+            loaded_modules=result.loaded_modules,
+            failures=tuple(result.failures) + tuple(nested),
+        )
+    return result
+
+
+def report_node_load_health(
+    load_result: NodeLoadResult,
+    expected_minimum: int = EXPECTED_MIN_NODE_COUNT,
+    log: "logging.Logger | None" = None,
+) -> bool:
+    """Log the outcome of a registry load at a severity that matches reality.
+
+    The startup banner used to be an unconditional INFO -- "successfully loaded
+    N nodes" -- with no comparison against anything. A group import failure
+    drops every node in that group, so an 88% shortfall printed the same
+    reassuring line as a clean start, and the only trace was a WARNING several
+    hundred lines earlier that most users never scroll back to.
+
+    Returns True when the load looks healthy.
+    """
+
+    active = log or logger
+    loaded = len(load_result.class_mappings)
+    healthy = True
+
+    if load_result.failures:
+        healthy = False
+        active.error(
+            "Radiance: %d node module(s) failed to import; every node they "
+            "export is missing from ComfyUI.",
+            len(load_result.failures),
+        )
+        for failure in load_result.failures:
+            active.error(
+                "  - %s: %s: %s",
+                failure.source.label,
+                type(failure.error).__name__,
+                failure.error,
+            )
+
+    if loaded < expected_minimum:
+        healthy = False
+        shortfall = expected_minimum - loaded
+        active.error(
+            "Radiance: loaded %d of at least %d expected nodes (v%s) - %d "
+            "missing (%.0f%% of the catalog). This is a failed start, not a "
+            "small one: check the import errors above, then re-run with "
+            "RADIANCE_LOG_LEVEL=DEBUG for tracebacks.",
+            loaded,
+            expected_minimum,
+            __version__,
+            shortfall,
+            100.0 * shortfall / max(expected_minimum, 1),
+        )
+    else:
+        active.info(
+            "Radiance: successfully loaded %d nodes (v%s)", loaded, __version__
+        )
+
+    return healthy
+
+
+configure_runtime_environment()
+validate_runtime_dependencies(logger)
+
+
+def _configure_ocio() -> None:
+    """Automatic OCIO: $OCIO if set, else the ACES studio config. No setup."""
+    try:
+        from .color.ocio_setup import configure_ocio, summary
+        state = configure_ocio()
+        (logger.info if state.get("configured") else logger.warning)("[Radiance OCIO] %s", summary())
+    except Exception as exc:  # noqa: BLE001 - never block node registration
+        logger.warning("[Radiance OCIO] automatic setup failed: %s", exc)
+
+
+_configure_ocio()
+
+_LOAD_RESULT = _load_comfyui_nodes()
+NODE_CLASS_MAPPINGS = _LOAD_RESULT.class_mappings
+NODE_DISPLAY_NAME_MAPPINGS = _LOAD_RESULT.display_name_mappings
+
+__version__ = VERSION
+__author__ = AUTHOR
+__all__ = [
+    "NODE_CLASS_MAPPINGS",
+    "NODE_DISPLAY_NAME_MAPPINGS",
+    "WEB_DIRECTORY",
+    "report_node_load_health",
 ]
 
-for module in modules:
-    try:
-        if hasattr(module, "NODE_CLASS_MAPPINGS"):
-            NODE_CLASS_MAPPINGS.update(module.NODE_CLASS_MAPPINGS)
-        if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
-            NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
-        logger.debug(f"Loaded {module.__name__}")
-    except Exception as e:
-        logger.error(f"FAILED to load {module.__name__}: {e}")
-
-# Package info
-__version__ = "2.3.3"
-__author__ = "Radiance"
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
-
-logger.info(
-    f"Radiance: Successfully loaded {len(NODE_CLASS_MAPPINGS)} nodes (v{__version__})"
-)
+report_node_load_health(_LOAD_RESULT)
 logger.debug("Radiance Viewer JavaScript extension enabled")
+
+# Mark each prompt run with a console separator (no-op if the hook is absent).
+register_run_grouping()

@@ -1,11 +1,27 @@
 opencv-python>=4.8.0
 imageio>=2.31.0
 Pillow>=10.0.0
-OpenEXR>=3.2.0
-Imath>=3.1.0
+numpy>=1.22
+# No OpenEXR wheel exists for Python 3.14 yet; a source build there would fail
+# the whole `pip install -r`. EXR I/O falls back to OpenImageIO, then OpenCV.
+OpenEXR>=3.2.0; python_version < "3.14"
+# Imath ships inside the OpenEXR wheel — do NOT add a separate Imath dependency (PyPI imath maxes at 0.0.2).
+OpenImageIO>=3.0.0
+# DPX has no Pillow plugin; OpenImageIO is the VFX-industry-standard library for it.
 opencolorio>=2.3.0
-colour-science>=0.4.4
+# colour-science, einops and torchsde were declared here but imported nowhere
+# in the package; colour-science remains available via the `full` extra.
 transformers>=4.36.0
+# Multipass Estimate runs Marigold IID (materials and lighting) through diffusers;
+# accelerate lets its 1.7 GB UNets load without a second full-size copy in RAM.
+diffusers>=0.33.0
+accelerate>=0.26.0
 scipy>=1.10.0
 defusedxml>=0.7.1
-imageio-ffmpeg>=0.4.9
+imageio-ffmpeg>=0.4.9
+tqdm>=4.66.0
+aiohttp>=3.8.0
+# Sole writer/depth-probe for 16-bit and 32-bit float TIFF — deep-TIFF writes
+# refuse to run without it rather than silently downgrading to 8-bit.
+tifffile>=2023.7.10
+

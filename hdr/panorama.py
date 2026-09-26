@@ -15,6 +15,7 @@ logger = logging.getLogger("radiance.hdr.panorama")
 
 
 class HDR360Generate:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
     Generate 360° equirectangular panoramas for HDRI environment mapping in 3D applications.
     """
@@ -143,7 +144,7 @@ class HDR360Generate:
     RETURN_NAMES = ("panorama", "projection_map")
     OUTPUT_TOOLTIPS = ("Generated 360° panorama.", "UV projection map for debugging.")
     FUNCTION = "generate"
-    CATEGORY = "FXTD Studios/Radiance/Image"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Upscale"
     DESCRIPTION = "Generate 360° equirectangular panoramas for HDRI environment mapping in 3D applications."
 
     def _create_rotation_matrix(self, rx: float, ry: float, rz: float) -> np.ndarray:
@@ -438,9 +439,9 @@ class HDR360Generate:
 # =============================================================================
 
 NODE_CLASS_MAPPINGS = {
-    "HDR360Generate": HDR360Generate,
+    "RadianceHDR360Generate": HDR360Generate,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "HDR360Generate": "◎ HDR 360 Panorama Generate",
+    "RadianceHDR360Generate": "◎ HDR 360 Panorama Generate",
 }

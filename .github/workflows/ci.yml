@@ -1,0 +1,527 @@
+# .github/workflows/ci.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Radiance v3 — Continuous Integration
+#
+# Runs on every push and pull-request to main / dev / release branches.
+# Matrix: Python 3.10 · 3.11 · 3.12 · 3.13  ×  ubuntu-latest + windows-latest
+#
+# No GPU, no ComfyUI, no heavy model deps.
+# All torch-gated tests self-skip via @unittest.skipUnless(HAS_TORCH, …)
+# All ComfyUI imports are stubbed by tests/conftest.py.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+      - dev
+      - "release/**"
+  workflow_dispatch:
+
+# Cancel in-flight CI runs for the same ref when a new commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Use bash for every run step on every OS. Windows runners default to PowerShell,
+# where bash line-continuations (\\) and heredocs are syntax errors; git-bash is
+# preinstalled on windows-latest, so this keeps the steps portable.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Cost control: the full 4-Python x 2-OS matrix runs on public repositories.
+  # On private mirrors
+  # a slim Linux-only matrix keeps usage within the free minute allowance.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: |
+          if [ "${{ github.event.repository.private }}" = "false" ]; then
+            echo 'matrix={"python-version":["3.10","3.11","3.12","3.13"],"os":["ubuntu-latest","windows-latest"]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"python-version":["3.11","3.12"],"os":["ubuntu-latest"]}' >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Main test matrix ────────────────────────────────────────────────────────
+  test:
+    name: "pytest · Python ${{ matrix.python-version }} · ${{ matrix.os }}"
+    needs: setup
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # ── 2. Python ───────────────────────────────────────────────────────────
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # ── 3. Install test dependencies ────────────────────────────────────────
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "pytest>=7.4" \
+            "pytest-timeout>=2.1" \
+            "tomli>=2; python_version < '3.11'" \
+            "numpy>=1.22" \
+            "scipy>=1.9" \
+            "Pillow>=9.0" \
+            "defusedxml>=0.7" \
+            "opencv-python-headless>=4.7" \
+            "tqdm>=4.66" "tifffile>=2023.7.10" "PyYAML>=6" "aiohttp>=3.8" "psutil>=5.9"
+
+      # ── 4. Run test suite ────────────────────────────────────────────────────
+      #    conftest.py stubs torch + all comfy.* imports automatically.
+      #    No manual --ignore needed — torch-gated tests self-skip.
+      - name: Run tests
+        run: |
+          # Full suite on the lightweight matrix — no --ignore list.
+          #
+          # There used to be one, naming the files that import torch at module
+          # scope. It was hand-maintained and went stale the moment anyone added
+          # a torch-using test file: CI was red from 2026-07-10 to 2026-07-27
+          # with 13 failures in two files that were never added to it.
+          #
+          # tests/conftest.py now gates on real torch automatically — a module
+          # that binds torch at module scope skips itself here and runs in the
+          # test-full job below, and individual tests can opt in with
+          # @pytest.mark.real_torch. Nothing to keep in sync.
+          python -m pytest tests/ \
+            --tb=short \
+            --timeout=60 \
+            -q
+
+      # ── 5. Upload pytest log on failure ─────────────────────────────────────
+      - name: Upload pytest log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "pytest-log-py${{ matrix.python-version }}-${{ matrix.os }}"
+          path: |
+            .pytest_cache/
+          retention-days: 7
+
+  # ── Full suite with REAL runtime dependencies ───────────────────────────────
+  # Installs CPU torch + OpenEXR + OpenColorIO + colour-science so the EXR,
+  # color-math, ACES and sampler tests actually execute (they self-skip on the
+  # lightweight matrix above). This is the lane that catches HDR/EXR regressions.
+  test-full:
+    name: "pytest · real deps (torch+OpenEXR+OCIO)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install real runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install \
+            "numpy>=1.22" "scipy>=1.9" "Pillow>=9.0" "defusedxml>=0.7" \
+            "opencv-python-headless>=4.7" "tqdm>=4.66" \
+            "OpenEXR>=3.2.0" \
+            "OpenImageIO>=3.0.0" \
+            "opencolorio>=2.3.0" "colour-science>=0.4.4" \
+            "einops>=0.7.0" "safetensors>=0.4.0" \
+            "huggingface-hub>=0.23" \
+            "pytest>=7.4" "pytest-timeout>=2.1" "pytest-cov>=4.0" \
+            "tifffile>=2023.7.10" "imageio>=2.31" "imageio-ffmpeg>=0.4.9" "PyYAML>=6" "aiohttp>=3.8" "psutil>=5.9"
+          python -m pip install --no-deps -e .
+
+      - name: Run full test suite (real deps)
+        run: |
+          python -m pytest tests/ --tb=short --timeout=120 -q \
+            --cov=radiance --cov-report=xml:coverage.xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: unittests
+          fail_ci_if_error: false   # non-blocking until token is configured
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # `slow` is deselected by default (pyproject addopts). This is where the
+      # exhaustive checks still run, e.g. every video frame count from 1 to 100
+      # on H.264, H.265 10-bit and ProRes. A later -m overrides the default.
+      - name: Run slow tests (real deps)
+        run: |
+          python -m pytest tests/ -m slow --tb=short -q
+
+  # ── Import smoke-test ───────────────────────────────────────────────────────
+  # Verifies that pure-Python helpers import cleanly with minimal stubs,
+  # independent of the test suite (catches syntax errors, bad imports at
+  # module level, etc.)
+  smoke:
+    name: "Import smoke-test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install minimal deps
+        run: |
+          pip install numpy scipy Pillow defusedxml tqdm
+
+      - name: Smoke-test — module imports
+        run: |
+          python - << 'EOF'
+          import sys, types
+          from unittest.mock import MagicMock
+
+          # ── Minimal stubs ──────────────────────────────────────────────────
+          _stub_names = [
+              "torch", "torch.nn", "torch.nn.functional",
+              "comfy", "comfy.samplers", "comfy.sample",
+              "comfy.model_management", "comfy.utils", "comfy.model_base",
+              "comfy.sd", "comfy.latent_formats", "comfy.nested_tensor",
+              "folder_paths",
+          ]
+          for mod in _stub_names:
+              m = types.ModuleType(mod)
+              m.__dict__.update({a: MagicMock() for a in dir(MagicMock())})
+              # Any attribute we did not set explicitly resolves to a mock, so a
+              # module doing e.g. `torch.device(...)` at import time won't crash.
+              m.__getattr__ = lambda name: MagicMock()
+              sys.modules.setdefault(mod, m)
+
+          # Minimal real attributes needed by our nodes
+          sys.modules["torch"].Tensor        = object
+          sys.modules["torch"].float32       = "float32"
+          sys.modules["torch"].float16       = "float16"
+          sys.modules["torch"].bfloat16      = "bfloat16"
+          # nn.Module must be a real class so `class X(torch.nn.Module)` works.
+          sys.modules["torch.nn"].Module     = MagicMock
+          sys.modules["folder_paths"].models_dir      = "/tmp"
+          sys.modules["folder_paths"].output_directory = "/tmp"
+          sys.modules["comfy.samplers"].SAMPLER_NAMES   = []
+          sys.modules["comfy.samplers"].SCHEDULER_NAMES = []
+
+          sys.path.insert(0, ".")
+
+          # Map the import name `radiance` to the checkout root regardless of the
+          # repo/dir name (e.g. a mirror checked out as "radiance-beta"), so
+          # `import radiance.*` resolves the same way it does in a "radiance" dir.
+          import importlib.abc, importlib.util, os
+          _ROOT = os.path.abspath(".")
+          if os.path.exists(os.path.join(_ROOT, "__init__.py")):
+              class _RadianceNameFinder(importlib.abc.MetaPathFinder):
+                  def find_spec(self, name, path=None, target=None):
+                      if name != "radiance":
+                          return None
+                      return importlib.util.spec_from_file_location(
+                          "radiance", os.path.join(_ROOT, "__init__.py"),
+                          submodule_search_locations=[_ROOT])
+              sys.meta_path.insert(0, _RadianceNameFinder())
+
+          # ── Modules to smoke-test ──────────────────────────────────────────
+          # A spread of node modules that must import with nothing but the
+          # stubs above — no cv2, no OpenEXR, no real torch. The list is short
+          # and explicit on purpose; importing everything under nodes/ would
+          # fail on optional dependencies that are genuinely absent here.
+          _modules = [
+              ("radiance.nodes.ai.scene_cut",         "scene_cut"),
+              ("radiance.nodes.hdr.aces2",            "aces2"),
+              ("radiance.nodes.monitor.realtime",     "realtime"),
+              ("radiance.nodes.upscale.upscale",      "upscale"),
+              ("radiance.nodes.video.dit",            "dit"),
+              ("radiance.nodes.video.character",      "character"),
+          ]
+
+          ok = True
+          for pkg, label in _modules:
+              try:
+                  __import__(pkg)
+                  print(f"  ✓  {label}")
+              except Exception as exc:
+                  print(f"  ✗  {label}: {exc}")
+                  ok = False
+
+          sys.exit(0 if ok else 1)
+          EOF
+
+  # ── JavaScript unit tests ───────────────────────────────────────────────────
+  js-test:
+    name: "JS unit tests"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No test framework to install: node --test is built in, and the only
+      # devDependency (esbuild) is not needed to run these.
+      #
+      # js/tests/ocio_gpu.test.mjs skips here because Playwright is absent; the
+      # gpu-test job below installs it and runs that file for real.
+      # js/tests/module_parse.test.mjs is the first thing that matters here.
+      # `node --check foo.js` does not apply ES-module parsing to a .js file in
+      # a package without "type": "module", so it passed on a viewer that could
+      # not load in a browser at all. That test copies each module to .mjs first.
+      - name: Run JS unit tests
+        run: node --test js/tests/*.test.mjs
+
+  # ── GPU verification ────────────────────────────────────────────────────────
+  # The OpenColorIO display transform is spliced into a fragment shader, so the
+  # only way to know it is right is to compile it and render with it. This runs
+  # headless Chromium against SwiftShader — a software rasteriser, but a
+  # conformant one, and the behaviour under test is arithmetic.
+  #
+  # Separate job because it installs a browser and is an order of magnitude
+  # slower than the rest of the suite. Not optional: it is the only check that
+  # has caught the "compiles cleanly, renders black" class of bug here.
+  gpu-test:
+    name: "GPU: shaders and panels"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright and Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Render through OpenColorIO and compare against its CPU path
+        run: node --test js/tests/ocio_gpu.test.mjs
+
+      # The grade maths is emitted as GLSL and WGSL from one JS file. This
+      # compiles the emitted GLSL and checks it against the JS it was generated
+      # from -- it caught an integer literal in a clamp() that failed to link
+      # the whole composite shader.
+      - name: Compile the emitted grade shader and compare against the JS
+        run: node --test js/tests/grade_gpu.test.mjs
+
+      # The panels, built and operated in a real browser rather than asserted
+      # against the source. This is what would have caught the week the viewer
+      # node rendered with no UI: the module stopped parsing, so it stopped
+      # registering, and every text-level check still passed.
+      - name: Build and drive the viewer panels
+        run: node --test js/tests/panel_dom.test.mjs
+
+      # The WGSL half of the grade needs a different runtime. Headless Chromium
+      # has no navigator.gpu at all — not blocked, absent, under every flag
+      # combination including --enable-unsafe-webgpu with SwiftShader and with
+      # Vulkan — while WebGL2 works in the same browser. Deno ships WebGPU, and
+      # mesa-vulkan-drivers provides lavapipe, a software Vulkan device, so this
+      # needs no GPU on the runner.
+      - name: Install a software Vulkan driver for Deno's WebGPU
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Compile the emitted WGSL and compare against the JS
+        run: node --test js/tests/grade_wgsl_gpu.test.mjs
+
+  # ── YAML / TOML lint ────────────────────────────────────────────────────────
+  lint-config:
+    name: "Config lint"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install tomllib (stdlib 3.11+) or tomli
+        run: pip install tomli PyYAML
+
+      - name: Validate pyproject.toml
+        run: |
+          python - << 'EOF'
+          import sys
+          try:
+              import tomllib          # stdlib 3.11+
+          except ImportError:
+              import tomli as tomllib  # backport
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          assert "project" in data, "Missing [project] table"
+          assert "tool" in data,    "Missing [tool] table"
+          print("pyproject.toml  OK")
+          EOF
+
+      - name: Validate workflow YAML files
+        run: |
+          python - << 'EOF'
+          import sys, pathlib
+          try:
+              import yaml
+          except ImportError:
+              print("PyYAML not installed — skipping YAML lint")
+              sys.exit(0)
+          errors = []
+          for p in pathlib.Path(".github/workflows").glob("*.yml"):
+              try:
+                  yaml.safe_load(p.read_text())
+                  print(f"  ✓  {p.name}")
+              except Exception as exc:
+                  print(f"  ✗  {p.name}: {exc}")
+                  errors.append(p.name)
+          sys.exit(1 if errors else 0)
+          EOF
+
+  # ── Clean wheel build + completeness check ──────────────────────────────────
+  # Builds the wheel and verifies every importable package on disk actually made
+  # it into the artifact — catches the "new sub-package not added to pyproject"
+  # bug that source-tree tests cannot see.
+  build-install:
+    name: "Build wheel + verify packaging"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Build the wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+
+      - name: Verify wheel contains every source package
+        run: |
+          python - << 'EOF'
+          import os, glob, zipfile, sys
+
+          # Packages present on disk (dirs with __init__.py), as radiance.<dotted>.
+          exclude = {"tests", "docs", "build", "dist", "scripts", "examples", "__pycache__"}
+          disk = set()
+          for dp, dns, fns in os.walk("."):
+              dns[:] = [d for d in dns if d not in exclude and not d.startswith(".")]
+              rel = os.path.relpath(dp, ".").replace("\\", "/")
+              if rel == ".":
+                  if "__init__.py" in fns:
+                      disk.add("radiance")
+                  continue
+              if rel.split("/")[0] in exclude:
+                  continue
+              if "__init__.py" in fns:
+                  disk.add("radiance." + rel.replace("/", "."))
+
+          # Packages actually inside the built wheel.
+          whl = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          from pathlib import Path
+          assets = [p for p in Path("js").rglob("*") if p.is_file()
+                    and "tests" not in p.parts and p.suffix in {".js", ".mjs", ".css", ".html", ".wasm"}]
+          assets += [Path("js/vendor/ocio/LICENSE"), Path("js/vendor/ocio/THIRD_PARTY_NOTICES.md")]
+          missing_assets = [str(p) for p in assets if "radiance/" + p.as_posix() not in names]
+          assert not missing_assets, f"Runtime assets missing from wheel: {missing_assets}"
+          assert "radiance/tools/resolve_import.py" in names, "Resolve import worker missing from wheel"
+          assert "radiance/scripts/start_nuke_server.py" in names, "Nuke listener missing from wheel"
+
+          in_wheel = set()
+          for n in names:
+              if n.endswith("/__init__.py"):
+                  in_wheel.add(n[:-len("/__init__.py")].replace("/", "."))
+
+          missing = sorted(p for p in disk if p not in in_wheel)
+          if missing:
+              print("Packages on disk but MISSING from the built wheel:")
+              for p in missing:
+                  print(f"  {p}")
+              sys.exit(1)
+          print(f"OK — all {len(disk)} source packages are present in {os.path.basename(whl)}")
+          EOF
+
+  # ── Python lint (high-signal: undefined names + syntax) ─────────────────────
+  # Syntax errors and undefined names block the release.
+  lint:
+    name: "Ruff lint"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff (syntax errors + undefined names; skip tests & dev scripts)
+        run: ruff check --isolated --select E9,F82,F63,F7 --exclude tests,scripts .
+
+  # ── Security scan (advisory) ────────────────────────────────────────────────
+  # Non-blocking: surfaces dependency CVEs (pip-audit) and common security
+  # anti-patterns (bandit) without gating merges. Review findings in the job
+  # log; promote to gating once the baseline is clean.
+  security:
+    name: "Security scan (advisory)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: pip-audit — dependency CVEs
+        continue-on-error: true
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r requirements.txt || true
+
+      - name: bandit — static security lint (aiohttp routes, DCC bridge)
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r . -x ./tests,./scripts,./tools,./docs,./workflows -ll -q || true

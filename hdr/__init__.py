@@ -14,8 +14,6 @@ from .color import (
 
 from .tonemap import HDRExpandDynamicRange, HDRToneMap
 
-
-
 from .analysis import HDRHistogram
 
 from .processing import HDRExposureBlend, HDRShadowHighlightRecovery, GPUTensorOps
@@ -24,49 +22,55 @@ from .panorama import HDR360Generate
 
 from .recovery import RadianceHighlightSynthesis
 
-from .ocio import ACESConfigManager, ACESConfigManager, OCIOListColorspaces
+from .ocio import ACESConfigManager, OCIOColorTransform, OCIOListColorspaces
 
-from .vae import (
-    RadianceVAE4KEncode as RadianceVAEEncode,
-    RadianceVAE4KDecode as RadianceVAEDecode,
-)
+# ── All keys use the Radiance prefix convention ───────────────────────────────
+# Keys that previously lacked the prefix have been renamed to avoid collisions
+# with other packages and to appear under the Radiance namespace in ComfyUI.
 
 NODE_CLASS_MAPPINGS = {
-    "ImageToFloat32": ImageToFloat32,
-    "Float32ColorCorrect": Float32ColorCorrect,
-    "ColorSpaceConvert": ColorSpaceConvert,
-    "DaVinciWideGamut": DaVinciWideGamut,
-    "ARRIWideGamut4": ARRIWideGamut4,
-    "ACES2OutputTransform": ACES2OutputTransform,
-    "HDRExpandDynamicRange": HDRExpandDynamicRange,
-    "HDRToneMap": HDRToneMap,
-    "HDRHistogram": HDRHistogram,
-    "HDRExposureBlend": HDRExposureBlend,
-    "HDRShadowHighlightRecovery": HDRShadowHighlightRecovery,
-    "GPUTensorOps": GPUTensorOps,
-    "RadianceHighlightSynthesis": RadianceHighlightSynthesis,
-    "HDR360Generate": HDR360Generate,
-    "RadianceVAEEncode": RadianceVAEEncode,
-    "RadianceVAEDecode": RadianceVAEDecode,
-    
+    # hdr/color.py
+    "RadianceFloat32Convert":           ImageToFloat32,
+    "RadianceFloat32ColorCorrect":      Float32ColorCorrect,
+    "RadianceHDRColorConvert":          ColorSpaceConvert,   # avoids clash w/ RadianceColorSpaceConvert
+    "RadianceDaVinciWideGamut":         DaVinciWideGamut,
+    "RadianceARRIWideGamut4":           ARRIWideGamut4,
+    "RadianceACES2OutputTransform":     ACES2OutputTransform,
+    # hdr/tonemap.py
+    "RadianceHDRExpandDynamicRange":    HDRExpandDynamicRange,
+    "RadianceHDRToneMap":               HDRToneMap,
+    # hdr/analysis.py
+    "RadianceHDRHistogram":             HDRHistogram,
+    # hdr/processing.py
+    "RadianceHDRExposureBlend":         HDRExposureBlend,
+    "RadianceHDRShadowHighlight":       HDRShadowHighlightRecovery,
+    "RadianceGPUTensorOps":             GPUTensorOps,
+    # hdr/panorama.py
+    "RadianceHDR360Generate":           HDR360Generate,
+    # hdr/recovery.py
+    "RadianceHighlightSynthesis":       RadianceHighlightSynthesis,
+    # hdr/ocio.py
+    "RadianceACESConfigManager":        ACESConfigManager,
+    "RadianceHDROCIOTransform":         OCIOColorTransform,  # avoids clash w/ color/ RadianceOCIOColorTransform
+    "RadianceOCIOListColorspaces":      OCIOListColorspaces,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "ImageToFloat32": "◎ Radiance Image To Float32",
-    "Float32ColorCorrect": "◎ Radiance Float32 Color Correct",
-    "ColorSpaceConvert": "◎ Radiance Color Space Convert",
-    "DaVinciWideGamut": "◎ Radiance DaVinci Wide Gamut",
-    "ARRIWideGamut4": "◎ Radiance ARRI Wide Gamut 4",
-    "ACES2OutputTransform": "◎ Radiance ACES 2.0 Output Transform",
-    "HDRExpandDynamicRange": "◎ Radiance Expand Dynamic Range",
-    "HDRToneMap": "◎ Radiance HDR Tone Map",
-    "HDRHistogram": "◎ Radiance HDR Histogram",
-    "HDRExposureBlend": "◎ Radiance HDR Exposure Blend",
-    "HDRShadowHighlightRecovery": "◎ Radiance HDR Shadow/Highlight Recovery",
-    "GPUTensorOps": "◎ Radiance GPU Tensor Ops",
-    "RadianceHighlightSynthesis": "◎ Radiance Highlight Synthesis",
-    "HDR360Generate": "◎ Radiance HDR 360 Generate",
-    "RadianceVAEEncode": "◎ Radiance VAE Encode",
-    "RadianceVAEDecode": "◎ Radiance VAE Decode",
-    
+    "RadianceFloat32Convert":           "◎ Radiance Float32 Convert",
+    "RadianceFloat32ColorCorrect":      "◎ Radiance Float32 Color Correct",
+    "RadianceHDRColorConvert":          "◎ Radiance HDR Color Convert",
+    "RadianceDaVinciWideGamut":         "◎ Radiance DaVinci Wide Gamut",
+    "RadianceARRIWideGamut4":           "◎ Radiance ARRI Wide Gamut 4",
+    "RadianceACES2OutputTransform":     "◎ Radiance ACES 2.0 Output Transform",
+    "RadianceHDRExpandDynamicRange":    "◎ Radiance Expand Dynamic Range",
+    "RadianceHDRToneMap":               "◎ Radiance HDR Tone Map",
+    "RadianceHDRHistogram":             "◎ Radiance HDR Histogram",
+    "RadianceHDRExposureBlend":         "◎ Radiance HDR Exposure Blend",
+    "RadianceHDRShadowHighlight":       "◎ Radiance HDR Shadow / Highlight Recovery",
+    "RadianceGPUTensorOps":             "◎ Radiance GPU Tensor Ops",
+    "RadianceHDR360Generate":           "◎ Radiance HDR 360 Generate",
+    "RadianceHighlightSynthesis":       "◎ Radiance Highlight Synthesis",
+    "RadianceACESConfigManager":        "◎ Radiance ACES Config Manager",
+    "RadianceHDROCIOTransform":         "◎ Radiance OCIO Transform (HDR)",
+    "RadianceOCIOListColorspaces":      "◎ Radiance OCIO List Colorspaces",
 }

@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+  Sequence-load harness for the Viewer.
+
+  Builds a REAL RadianceViewer (constructor, canvas, renderer) inside a fake
+  LiteGraph node, feeds it a synthetic execution result (PNG + fp32 RHDR
+  sidecar served by the test's HTTP server), and reads back what is on screen.
+
+  The black-viewer regression this exists for: the bounded frame window
+  replaced the per-frame onload/then handlers, and nothing in the repo asserted
+  that a frame paged in through the window actually reaches the canvas.
+
+  Driven by js/tests/sequence_load.test.mjs.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance — sequence load harness</title>
+<style>html,body{margin:0;background:#222}#host{width:1200px;height:800px;display:flex}</style>
+</head>
+<body>
+<div id="host"></div>
+<div id="autohost" style="width:1200px;display:flex;flex-direction:column"></div>
+<script type="module">
+import "../radiance_viewer.js";
+
+const ext = (globalThis.__exts || []).find((e) => e.name === 'FXTD.RadianceViewer');
+
+class FakeNode {
+    constructor() {
+        this.id = 1;
+        this.size = [1200, 800];
+        this.widgets = [];
+        this.inputs = [];
+        this.outputs = [];
+        this.title = 'RadianceViewer';
+        this.type = 'RadianceViewer';
+        this.comfyClass = 'RadianceViewer';
+        this.graph = { setDirtyCanvas() {} };
+    }
+    addDOMWidget(name, type, el) {
+        document.getElementById('host').appendChild(el);
+        const w = { name, type, element: el };
+        this.widgets.push(w);
+        return w;
+    }
+    addWidget() { return { value: null }; }
+    setDirtyCanvas() {}
+    setSize(s) { this.size = s; }
+    computeSize() { return this.size; }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Sample the visible viewer canvas. Returns per-channel means and max. */
+function sampleCanvas(viewer) {
+    const src = viewer.canvas;
+    if (!src || !src.width || !src.height) return { error: 'no canvas', w: src?.width, h: src?.height };
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let r = 0, g = 0, b = 0, mx = 0, n = 0;
+    for (let i = 0; i < d.length; i += 16) {
+        r += d[i]; g += d[i + 1]; b += d[i + 2];
+        mx = Math.max(mx, d[i], d[i + 1], d[i + 2]);
+        n++;
+    }
+    return { w: c.width, h: c.height, mean: [r / n, g / n, b / n], max: mx };
+}
+
+window.__run = async function (opts) {
+    const out = { ok: false, log: [] };
+    const warn = console.warn.bind(console), err = console.error.bind(console);
+    console.warn = (...a) => { out.log.push('WARN ' + a.map(String).join(' ')); warn(...a); };
+    console.error = (...a) => { out.log.push('ERR ' + a.map(String).join(' ')); err(...a); };
+    try {
+        if (!ext) throw new Error('viewer extension not registered');
+        await ext.beforeRegisterNodeDef(FakeNode, { name: 'RadianceViewer' }, window.app);
+        const node = new FakeNode();
+        node.onNodeCreated();
+        const viewer = node.radianceViewer;
+        if (!viewer) throw new Error('viewer not constructed');
+        await sleep(300);
+        viewer.resize?.();
+        out.backend = viewer.renderer?.constructor?.name || null;
+        out.useWebGL = !!viewer.useWebGL;
+
+        node.onExecuted(opts.message);
+
+        // Wait for the frame to arrive through the window.
+        const t0 = performance.now();
+        while (performance.now() - t0 < opts.timeoutMs) {
+            if (viewer.frameHDRData?.[0] || viewer.frameImages?.[0]) break;
+            await sleep(50);
+        }
+        await sleep(400);
+        viewer.render();
+        await sleep(100);
+
+        out.totalFrames = viewer.totalFrames;
+        out.currentFrame = viewer.currentFrame;
+        out.hasHDR = !!viewer.hdrData;
+        out.hasImage = !!viewer.image;
+        out.imageSize = [viewer.imageWidth, viewer.imageHeight];
+        out.windowResident = viewer._frameWindow?.residentCount ?? null;
+        out.textureBound = !!viewer.renderer?.textures?.image;
+        out.badge = viewer.bitDepthInfo?.textContent || null;
+        out.fallbackReason = viewer._currentFallbackReason?.() || null;
+        out.pixels = sampleCanvas(viewer);
+        out.glPixels = viewer.glCanvas ? (() => {
+            const c = viewer.glCanvas;
+            try {
+                const cc = document.createElement('canvas'); cc.width = c.width; cc.height = c.height;
+                cc.getContext('2d').drawImage(c, 0, 0);
+                const d = cc.getContext('2d').getImageData(0, 0, cc.width, cc.height).data;
+                let mx = 0; for (let i = 0; i < d.length; i += 4) mx = Math.max(mx, d[i], d[i+1], d[i+2]);
+                return { w: c.width, h: c.height, max: mx };
+            } catch (e) { return { error: String(e) }; }
+        })() : null;
+
+        // Scrub to the second frame if there is one, and sample again.
+        if (viewer.totalFrames > 1) {
+            viewer.setFrame ? viewer.setFrame(1) : viewer.goToFrame?.(1);
+            const t1 = performance.now();
+            while (performance.now() - t1 < opts.timeoutMs) {
+                if (viewer.currentFrame === 1 && (viewer.frameHDRData?.[1] || viewer.frameImages?.[1])) break;
+                await sleep(50);
+            }
+            await sleep(300);
+            viewer.render();
+            out.frame1 = { currentFrame: viewer.currentFrame, hasHDR: !!viewer.hdrData, pixels: sampleCanvas(viewer) };
+        }
+        // Layout: an auto-height parent, which is how ComfyUI's Vue node
+        // frontend hosts a DOM widget (it grows the node to its content).
+        // The viewer must not inflate it: that grew a 1180x760 node to
+        // 1480x2286 live, and centred the frame off-screen.
+        {
+            const auto = document.getElementById('autohost');
+            const n2 = new FakeNode();
+            n2.id = 2;
+            n2.addDOMWidget = (name, type, el) => { auto.appendChild(el); return { name, type, element: el }; };
+            n2.onNodeCreated();
+            // 3.5.0: a new viewer opens in Simple, which hides the panels this
+            // measures. Advanced is the case that grew the node.
+            n2.radianceViewer?.setUIMode?.('advanced');
+            await sleep(300);
+            out.autoHostHeight = Math.round(auto.getBoundingClientRect().height);
+            out.autoContentHeight = Math.max(...[...auto.querySelectorAll('.radiance-right-control-panel, .radiance-pro-sidebar')]
+                .map((el) => el.scrollHeight), 0);
+            n2.radianceViewer?.destroy?.();
+        }
+        out.ok = true;
+    } catch (e) {
+        out.error = String(e && e.stack || e);
+    }
+    return out;
+};
+</script>
+</body>
+</html>

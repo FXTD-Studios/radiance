@@ -1,0 +1,143 @@
+# .github/workflows/publish.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Radiance v3 — ComfyUI Registry Publish
+#
+# Publishes to the ComfyUI Node Registry on:
+#   • Pushing a version tag  (e.g.  git tag v3.0.1 && git push origin v3.0.1)
+#   • Manual workflow_dispatch (for hotfixes / re-publishes)
+#
+# Prerequisites:
+#   • Set the repository secret  REGISTRY_ACCESS_TOKEN
+#     (ComfyUI personal access token from https://registry.comfy.org)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"        # v3.0.0, v3.1.2, …
+      - "v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+" # v3.1.0-rc1  (pre-release)
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to publish (e.g. v3.0.1)"
+        required: true
+        type: string
+
+# Only one publish can run at a time
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  # ── Gate: tests must pass before publishing ─────────────────────────────────
+  gate-tests:
+    name: "Run tests (publish gate)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies (real runtime deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install \
+            "pytest>=7.4" "pytest-timeout>=2.1" \
+            "numpy>=1.22" "scipy>=1.9" "Pillow>=9.0" \
+            "defusedxml>=0.7" "opencv-python-headless>=4.7" "tqdm>=4.66" \
+            "OpenEXR>=3.2.0" "OpenImageIO>=3.0.0" \
+            "opencolorio>=2.3.0" "colour-science>=0.4.4" "einops>=0.7.0" \
+            "safetensors>=0.4.0" "tifffile>=2023.7.10" \
+            "huggingface-hub>=0.23" \
+            "imageio>=2.31" "imageio-ffmpeg>=0.4.9" \
+            "PyYAML>=6" "aiohttp>=3.8" "psutil>=5.9"
+          python -m pip install --no-deps -e .
+
+      - name: Run full test suite (publish gate)
+        run: >
+          python -m pytest tests/
+          --tb=short
+          --timeout=120
+          -q
+
+  # ── Publish to ComfyUI registry ─────────────────────────────────────────────
+  publish:
+    name: "Publish to ComfyUI Registry"
+    needs: gate-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # The official ComfyUI publish action — publishes using pyproject.toml
+      # metadata and the [tool.comfy] section (PublisherId, DisplayName, …).
+      - name: Publish node pack
+        uses: Comfy-Org/publish-node-action@main
+        with:
+          ## Personal access token from https://registry.comfy.org
+          ## Store it as a repository secret named REGISTRY_ACCESS_TOKEN.
+          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+
+  # ── Post-publish: create GitHub Release ─────────────────────────────────────
+  release:
+    name: "Create GitHub Release"
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0   # full history for release notes
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          python - << 'PYEOF'
+          import re, pathlib, os
+          tag = os.environ.get("TAG", "")
+          version = tag.lstrip("v")
+          text = pathlib.Path("CHANGELOG.md").read_text()
+          # Find the block for this version
+          pattern = rf"## \[{re.escape(version)}\][^\n]*\n(.*?)(?=\n## \[|\Z)"
+          m = re.search(pattern, text, re.DOTALL)
+          notes = m.group(1).strip() if m else f"Release {tag}"
+          # Write to file so the shell step can read it
+          pathlib.Path("release_notes.md").write_text(notes)
+          print(f"Extracted {len(notes)} chars for version {version}")
+          PYEOF
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Radiance ${{ steps.version.outputs.version }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, '-rc') }}
