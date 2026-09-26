@@ -45,15 +45,15 @@ def test_node_reference_is_current():
         "RADIANCE_UPDATE_DOCS=1 python -m pytest tests/test_node_reference.py and commit.")
 
 
-def test_readme_section_counts_match_the_reference():
-    """The README's node-map counts are typed by hand; the reference is generated."""
+def test_readme_visible_count_matches_the_reference():
+    """The end-user README total agrees with the generated visible-node reference."""
     import re
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
     ref = (_ROOT / "docs" / "nodes" / "README.md").read_text(encoding="utf-8")
     row = re.compile(r"^\| \[([^\]]+)\]\((?:docs/nodes/)?([a-z-]+)\.md\) \| (\d+) \|", re.M)
-    in_readme = {m.group(2): int(m.group(3)) for m in row.finditer(readme)}
+    in_readme = re.search(r"(\d+) visible nodes", readme)
     in_ref = {m.group(2): int(m.group(3)) for m in row.finditer(ref)}
-    assert in_readme and in_readme == in_ref, f"README node map {in_readme} != reference {in_ref}"
+    assert in_readme and int(in_readme.group(1)) == sum(in_ref.values()), in_ref
 
 
 def test_local_links_in_the_docs_resolve():
