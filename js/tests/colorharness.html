@@ -1,0 +1,167 @@
+<!doctype html>
+<!--
+  Colour harness for the Viewer (3.5.0). Driven by viewer_color.test.mjs.
+  Builds a real RadianceViewer, feeds it tagged results and reads the centre
+  of the visible canvas back.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance colour harness</title>
+<style>html,body{margin:0;background:#222}.host{width:1200px;height:800px;display:flex}</style>
+</head>
+<body>
+<script type="module">
+import "../radiance_viewer.js";
+
+const ext = (globalThis.__exts || []).find((e) => e.name === 'FXTD.RadianceViewer');
+let nextId = 10;
+
+class FakeNode {
+    constructor() {
+        this.id = nextId++;
+        this.size = [1200, 800];
+        this.widgets = []; this.inputs = []; this.outputs = [];
+        this.title = 'RadianceViewer'; this.type = 'RadianceViewer'; this.comfyClass = 'RadianceViewer';
+        this.graph = { setDirtyCanvas() {} };
+        this.host = document.createElement('div');
+        this.host.className = 'host';
+        document.body.appendChild(this.host);
+    }
+    addDOMWidget(name, type, el) { this.host.appendChild(el); const w = { name, type, element: el }; this.widgets.push(w); return w; }
+    addWidget() { return { value: null }; }
+    setDirtyCanvas() {}
+    setSize(s) { this.size = s; }
+    computeSize() { return this.size; }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+window.__errors = [];
+const _err = console.error.bind(console);
+console.error = (...a) => { window.__errors.push(a.map(String).join(' ')); _err(...a); };
+
+function sample(viewer, fx = 0.5, fy = 0.5) {
+    const src = viewer.canvas;
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const cx = Math.floor(c.width * fx), cy = Math.floor(c.height * fy);
+    const d = ctx.getImageData(cx - 2, cy - 2, 5, 5).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const n = d.length / 4;
+    return [r / n, g / n, b / n];
+}
+
+let ready = null;
+async function makeViewer() {
+    if (!ready) { await ext.beforeRegisterNodeDef(FakeNode, { name: 'RadianceViewer' }, window.app); ready = true; }
+    const node = new FakeNode();
+    node.onNodeCreated();
+    await sleep(300);
+    node.radianceViewer.resize?.();
+    return node;
+}
+
+async function waitFor(fn, ms) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) { if (fn()) return true; await sleep(50); }
+    return false;
+}
+
+window.__viewMode = async function (mode) {
+    const v = window.__lastViewer;
+    v.setViewMode(mode);
+    if (mode === 'aces2') await waitFor(() => v.ocioActive && v._ocioAutoActive, 20000);
+    await sleep(200);
+    v.render();
+    const centre = sample(v);
+    const ex = v.renderer.readPixelsFloat32(32, 24, 1.0);
+    return { centre, exportRed: ex.data[(12 * 32 + 16) * 4] };
+};
+
+window.__show = async function (message, { waitOcio = false, timeoutMs = 20000, frames = null, flags = null, scopes = false } = {}) {
+    const out = { ok: false, log: [] };
+    try {
+        const node = await makeViewer();
+        const v = node.radianceViewer;
+        window.__lastViewer = v;
+        node.onExecuted(message);
+        await waitFor(() => v.frameHDRData?.[0] || v.frameImages?.[0], 8000);
+        if (waitOcio) out.ocioReady = await waitFor(() => v.ocioActive && v._ocioAutoActive, timeoutMs);
+        await sleep(400);
+        if (flags) Object.assign(v, flags);
+        v.render();
+        await sleep(150);
+        out.centre = sample(v);
+        if (scopes) {
+            const sig = v.renderer.readDisplaySignal(32, 24, 1.0, true);
+            out.signal = sig?.data ? [sig.data[(12 * 32 + 16) * 4], sig.data[(12 * 32 + 16) * 4 + 1], sig.data[(12 * 32 + 16) * 4 + 2]] : null;
+            out.centreAfterSignal = sample(v);
+            const ex = v.renderer.readPixelsFloat32(32, 24, 1.0);
+            out.exportValue = ex?.data ? ex.data[(12 * 32 + 16) * 4] : null;
+        }
+        out.left = sample(v, 0.25, 0.5);
+        out.state = {
+            viewMode: v.viewMode, effective: v._effectiveView(), displayLut: v.displayLut,
+            ocioActive: !!v.ocioActive, ocioAuto: !!v._ocioAutoActive, ocioView: v.ocioView,
+            ocioSource: v.ocioSource, source: v.sourceTag, fps: v.playbackFps,
+            isLinear: v.renderer?.isLinearTexture, compareMode: v.compareMode,
+            hasReference: !!v.renderer?.textures?.reference, backend: v.renderer?.constructor?.name,
+            gpuRenderer: (() => {
+                const gl = v.renderer?.gl;
+                const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+                return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : null;
+            })(),
+            status: v.ocioStatus?.text || null,
+            errors: window.__errors.slice(),
+        };
+        if (frames) {
+            out.frames = [];
+            for (const f of frames) {
+                v.setFrame(f);
+                await waitFor(() => v.currentFrame === f && (v.frameHDRData?.[f] || v.frameImages?.[f]), 8000);
+                await sleep(250);
+                v.render();
+                await sleep(100);
+                out.frames.push({ f, centre: sample(v) });
+            }
+        }
+        out.ok = true;
+    } catch (e) {
+        out.error = String(e && e.stack || e);
+    }
+    return out;
+};
+window.__keys = async function (message) {
+    const out = { ok: false };
+    try {
+        const n1 = await makeViewer(), n2 = await makeViewer();
+        const v1 = n1.radianceViewer, v2 = n2.radianceViewer;
+        n1.onExecuted(message); n2.onExecuted(message);
+        await waitFor(() => v2.frameHDRData?.[0] || v2.frameImages?.[0], 8000);
+        await sleep(300);
+        v2.container.dispatchEvent(new PointerEvent('pointerenter'));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '=', bubbles: true }));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }));
+        out.ev = [v1.viewExposure, v2.viewExposure];
+        // in/out + ping-pong on v2
+        v2.setFrame(1); v2.setInPoint(); v2.setFrame(2); v2.setOutPoint();
+        v2.loopMode = 'pingpong'; v2.playDirection = 1; v2.setFrame(1);
+        const seq = [];
+        for (let i = 0; i < 6; i++) { v2._advance(); seq.push(v2.currentFrame); }
+        out.seq = seq;
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+        out.home = v2.currentFrame;
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+        out.channel = v2.channel;
+        v2.container.dispatchEvent(new PointerEvent('pointerleave'));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '=', bubbles: true }));
+        out.afterLeave = v2.viewExposure;
+        out.ok = true;
+    } catch (e) { out.error = String(e && e.stack || e); }
+    return out;
+};
+window.__ready = true;
+</script>
+</body>
+</html>

@@ -1,0 +1,2127 @@
+{
+  "id": "eb335ae7-92b1-41ea-b0db-4f7fbd589a1a",
+  "revision": 0,
+  "last_node_id": 37,
+  "last_link_id": 37,
+  "nodes": [
+    {
+      "id": 4,
+      "type": "RadianceCinematicPromptEncoder",
+      "pos": [
+        -2358.1064704055652,
+        12892.32031816141
+      ],
+      "size": [
+        423,
+        482
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "model_meta",
+          "name": "model_meta",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "localized_name": "base_prompt",
+          "name": "base_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "base_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "style_preset",
+          "name": "style_preset",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "style_preset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "framing",
+          "name": "framing",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "framing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "camera_type",
+          "name": "camera_type",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "camera_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lens_focal",
+          "name": "lens_focal",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lens_focal"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aperture_dof",
+          "name": "aperture_dof",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "aperture_dof"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lighting",
+          "name": "lighting",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lighting"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "style_aesthetic",
+          "name": "style_aesthetic",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "style_aesthetic"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_grading",
+          "name": "color_grading",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_grading"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_strength",
+          "name": "negative_strength",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "negative_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_mode",
+          "name": "negative_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "negative_mode"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            10
+          ]
+        },
+        {
+          "localized_name": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            11
+          ]
+        },
+        {
+          "localized_name": "positive_text",
+          "name": "positive_text",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "negative_text",
+          "name": "negative_text",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "resolved_arch",
+          "name": "resolved_arch",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "token_count",
+          "name": "token_count",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceCinematicPromptEncoder"
+      },
+      "widgets_values": [
+        "A stunning fashion model walking confidently on a luxury runway, wearing an elegant flowing red haute couture gown, dramatic white stage spotlights illuminating the scene, high-end fashion show, glossy runway, audience softly blurred in the background, cinematic lighting, volumetric light beams, premium fashion photography, Vogue editorial style, ultra-realistic skin, natural facial features, intricate fabric details, realistic folds, perfect composition, full-body shot, shallow depth of field, HDR, 8K, crisp focus, professional runway atmosphere, luxury, elegance, high contrast, masterpiece.",
+        "None (Custom)",
+        "Medium Shot (MS)",
+        "ARRI Alexa 35",
+        "50mm Standard Prime",
+        "f/2.8 (Cinematic Separation)",
+        "God Rays (Crepuscular Rays)",
+        "Cinematic Movie Still",
+        "None",
+        "Standard",
+        "low quality, blurry, cartoon, CGI, illustration, painting, anime, deformed body, extra limbs, extra fingers, bad anatomy, duplicate person, watermark, logo, text, oversaturated, overexposed, noisy, distorted face, unrealistic proportions",
+        "Auto"
+      ],
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 18,
+      "type": "RadianceProjectManager",
+      "pos": [
+        -1305.3094552226798,
+        11907.922333862321
+      ],
+      "size": [
+        374.84375,
+        474
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "artist",
+          "name": "artist",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "artist"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceProjectManager",
+        "last_commit": "No commits yet",
+        "vram_peak": "0.0 GB",
+        "version": "v0.0"
+      },
+      "widgets_values": [
+        "shot01",
+        "radiance",
+        1,
+        ""
+      ],
+      "color": "#111111",
+      "bgcolor": "#111111"
+    },
+    {
+      "id": 10,
+      "type": "RadianceSamplerPro",
+      "pos": [
+        -1500.5491413395218,
+        12789.865919363723
+      ],
+      "size": [
+        418.46875,
+        998
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 19
+        },
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 10
+        },
+        {
+          "localized_name": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 11
+        },
+        {
+          "localized_name": "latent_image",
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 35
+        },
+        {
+          "localized_name": "refiner_model",
+          "name": "refiner_model",
+          "shape": 7,
+          "type": "MODEL",
+          "link": null
+        },
+        {
+          "localized_name": "noise_override",
+          "name": "noise_override",
+          "shape": 7,
+          "type": "LATENT",
+          "link": null
+        },
+        {
+          "localized_name": "sigmas_override",
+          "name": "sigmas_override",
+          "shape": 7,
+          "type": "SIGMAS",
+          "link": null
+        },
+        {
+          "localized_name": "custom_ays_anchors",
+          "name": "custom_ays_anchors",
+          "shape": 7,
+          "type": "SIGMAS",
+          "link": null
+        },
+        {
+          "localized_name": "restart_schedule",
+          "name": "restart_schedule",
+          "shape": 7,
+          "type": "SIGMAS",
+          "link": null
+        },
+        {
+          "localized_name": "sdr_reference",
+          "name": "sdr_reference",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "sdr_vae",
+          "name": "sdr_vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 14
+        },
+        {
+          "localized_name": "model_meta",
+          "name": "model_meta",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "localized_name": "preset",
+          "name": "preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "preset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_step",
+          "name": "start_step",
+          "type": "INT",
+          "widget": {
+            "name": "start_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_step",
+          "name": "end_step",
+          "type": "INT",
+          "widget": {
+            "name": "end_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_cfg",
+          "name": "audio_cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "audio_cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sampler",
+          "name": "sampler",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sampler_mode",
+          "name": "sampler_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "phase_split",
+          "name": "phase_split",
+          "type": "FLOAT",
+          "widget": {
+            "name": "phase_split"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scheduler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scheduler_mode",
+          "name": "scheduler_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "denoise",
+          "name": "denoise",
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "flux_shift",
+          "name": "flux_shift",
+          "type": "FLOAT",
+          "widget": {
+            "name": "flux_shift"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "flux_guidance",
+          "name": "flux_guidance",
+          "type": "FLOAT",
+          "widget": {
+            "name": "flux_guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "flux_guidance_profile",
+          "name": "flux_guidance_profile",
+          "type": "COMBO",
+          "widget": {
+            "name": "flux_guidance_profile"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pag_scale",
+          "name": "pag_scale",
+          "type": "FLOAT",
+          "widget": {
+            "name": "pag_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sigma_blend_steps",
+          "name": "sigma_blend_steps",
+          "type": "INT",
+          "widget": {
+            "name": "sigma_blend_steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance_rescale_phi",
+          "name": "guidance_rescale_phi",
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance_rescale_phi"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "preview_method",
+          "name": "preview_method",
+          "type": "COMBO",
+          "widget": {
+            "name": "preview_method"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "noise_type",
+          "name": "noise_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "noise_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "conditioning_clip_target",
+          "name": "conditioning_clip_target",
+          "type": "COMBO",
+          "widget": {
+            "name": "conditioning_clip_target"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "add_noise",
+          "name": "add_noise",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "add_noise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "return_with_leftover_noise",
+          "name": "return_with_leftover_noise",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "return_with_leftover_noise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ays_schedule",
+          "name": "ays_schedule",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "ays_schedule"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "tile_mode",
+          "name": "tile_mode",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "tile_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "tile_size",
+          "name": "tile_size",
+          "type": "INT",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "tile_overlap",
+          "name": "tile_overlap",
+          "type": "INT",
+          "widget": {
+            "name": "tile_overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "tile_blend",
+          "name": "tile_blend",
+          "type": "COMBO",
+          "widget": {
+            "name": "tile_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "terminal_sigma_to_zero",
+          "name": "terminal_sigma_to_zero",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "terminal_sigma_to_zero"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "force_exact_steps",
+          "name": "force_exact_steps",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "force_exact_steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "refiner_start_step",
+          "name": "refiner_start_step",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "refiner_start_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "_js_export_btn",
+          "name": "_js_export_btn",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "_js_export_btn"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "_js_import_btn",
+          "name": "_js_import_btn",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "_js_import_btn"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "_js_preset_info",
+          "name": "_js_preset_info",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "_js_preset_info"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "restart_count",
+          "name": "restart_count",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "restart_count"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "noise_alpha_start",
+          "name": "noise_alpha_start",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "noise_alpha_start"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "noise_alpha_end",
+          "name": "noise_alpha_end",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "noise_alpha_end"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sdr_blend",
+          "name": "sdr_blend",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "sdr_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sdr_inject_steps",
+          "name": "sdr_inject_steps",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "sdr_inject_steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sdr_decay",
+          "name": "sdr_decay",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "sdr_decay"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_window",
+          "name": "temporal_window",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "temporal_window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_overlap",
+          "name": "temporal_overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "temporal_overlap"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            31
+          ]
+        },
+        {
+          "localized_name": "sigmas",
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "links": null
+        },
+        {
+          "localized_name": "sigmas_remaining",
+          "name": "sigmas_remaining",
+          "type": "SIGMAS",
+          "links": null
+        },
+        {
+          "localized_name": "sigma_plot",
+          "name": "sigma_plot",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSamplerPro"
+      },
+      "widgets_values": [
+        "[F] Flux Cinematic (30 steps)",
+        30,
+        0,
+        0,
+        1,
+        0,
+        "euler",
+        "Standard",
+        0.4,
+        "simple",
+        "Manual",
+        1,
+        1,
+        4,
+        "Static",
+        635798887398420,
+        "randomize",
+        0,
+        "auto",
+        0,
+        0,
+        "None",
+        "Gaussian",
+        "Auto",
+        true,
+        false,
+        false,
+        false,
+        128,
+        16,
+        "feather",
+        false,
+        false,
+        20,
+        "",
+        "",
+        "",
+        0,
+        1,
+        1,
+        0.35,
+        6,
+        0.65,
+        0,
+        4,
+        null,
+        null,
+        "Cinema-grade 30-step Flux run with strong guidance."
+      ],
+      "color": "#182238",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 2,
+      "type": "RadianceUnifiedLoader",
+      "pos": [
+        -2700.9244206423577,
+        12599.55857756104
+      ],
+      "size": [
+        270,
+        498
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "lora_stack",
+          "name": "lora_stack",
+          "shape": 7,
+          "type": "LORA_STACK",
+          "link": null
+        },
+        {
+          "localized_name": "preset",
+          "name": "preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "preset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "unet_name",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "weight_dtype",
+          "name": "weight_dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "weight_dtype"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "vae_name",
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "clip_l",
+          "name": "clip_l",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_l"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "clip_g",
+          "name": "clip_g",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "t5xxl",
+          "name": "t5xxl",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "t5xxl"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "llm_encoder",
+          "name": "llm_encoder",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "llm_encoder"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "text_projection",
+          "name": "text_projection",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "text_projection"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "clip_dtype",
+          "name": "clip_dtype",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_dtype"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offload_mode",
+          "name": "offload_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "offload_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "check_vram",
+          "name": "check_vram",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "check_vram"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_cache",
+          "name": "use_cache",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "use_cache"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_on_error",
+          "name": "lora_on_error",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_on_error"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "auto_download",
+          "name": "auto_download",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "auto_download"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            19
+          ]
+        },
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            14,
+            36
+          ]
+        },
+        {
+          "localized_name": "lora_stack",
+          "name": "lora_stack",
+          "type": "LORA_STACK",
+          "links": null
+        },
+        {
+          "localized_name": "model_meta",
+          "name": "model_meta",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceUnifiedLoader"
+      },
+      "widgets_values": [
+        "Custom",
+        "flux1-dev.safetensors",
+        "default",
+        "Auto-Detect",
+        "ae.safetensors",
+        "clip_l.safetensors",
+        "None",
+        "t5xxl_fp16.safetensors",
+        "None",
+        "None",
+        "default",
+        "none",
+        "On",
+        "On",
+        "raise",
+        false
+      ],
+      "color": "#182238",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 37,
+      "type": "RadianceViewer",
+      "pos": [
+        13.78067886916699,
+        12301.967243455805
+      ],
+      "size": [
+        960,
+        640
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": 37
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "compare_image",
+          "locked": null,
+          "name": "compare_image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "zdepth",
+          "locked": null,
+          "name": "zdepth",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "exposure_bracketing",
+          "locked": null,
+          "name": "exposure_bracketing",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "input_space",
+          "locked": null,
+          "name": "input_space",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "float_precision",
+          "locked": null,
+          "name": "float_precision",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "fps",
+          "locked": null,
+          "name": "fps",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "IMAGE",
+          "pos": null,
+          "slot_index": null,
+          "links": null
+        }
+      ],
+      "title": "Viewer (Lite)",
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "simple"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 22,
+      "type": "RadianceViewer",
+      "pos": [
+        9.183506825539535,
+        13465.074712875241
+      ],
+      "size": [
+        1946.75,
+        1707.5
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 34
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": 24
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 23,
+      "type": "RadianceDepthMapGenerator",
+      "pos": [
+        -407.1711564653345,
+        13646.033392690137
+      ],
+      "size": [
+        270,
+        223.65625
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 33
+        },
+        {
+          "localized_name": "model_size",
+          "name": "model_size",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "normalize",
+          "name": "normalize",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "normalize"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "invert",
+          "name": "invert",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "invert"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "blur_edges",
+          "name": "blur_edges",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "blur_edges"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_gpu",
+          "name": "use_gpu",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "use_gpu"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "depth_map",
+          "name": "depth_map",
+          "type": "IMAGE",
+          "links": [
+            24
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceDepthMapGenerator"
+      },
+      "widgets_values": [
+        "Large (335M - Best)",
+        true,
+        false,
+        0,
+        true
+      ],
+      "color": "#122c1e",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 35,
+      "type": "RadianceHDRVAEDecode",
+      "pos": [
+        -930.9721386503362,
+        12763.941570553712
+      ],
+      "size": [
+        278.546875,
+        382
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "samples",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 31
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 36
+        },
+        {
+          "localized_name": "alpha",
+          "name": "alpha",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "crop_bbox",
+          "name": "crop_bbox",
+          "shape": 7,
+          "type": "BOUNDING_BOX",
+          "link": null
+        },
+        {
+          "localized_name": "target_space",
+          "name": "target_space",
+          "type": "COMBO",
+          "widget": {
+            "name": "target_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "tile_size",
+          "name": "tile_size",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlap",
+          "name": "overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_size",
+          "name": "temporal_size",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "temporal_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_overlap",
+          "name": "temporal_overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "temporal_overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exposure_adjust",
+          "name": "exposure_adjust",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "exposure_adjust"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_mode",
+          "name": "hdr_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "display_tonemap",
+          "name": "display_tonemap",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "display_tonemap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "inverse_tonemap",
+          "name": "inverse_tonemap",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "inverse_tonemap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "target_stops",
+          "name": "target_stops",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "target_stops"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "export_rhdr",
+          "name": "export_rhdr",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "export_rhdr"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "rhdr_precision",
+          "name": "rhdr_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "rhdr_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "source_space",
+          "name": "source_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "source_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_output",
+          "name": "hdr_output",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "hdr_output"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "decode_noise_scale",
+          "name": "decode_noise_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "decode_noise_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_scale_factor",
+          "name": "hdr_scale_factor",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_scale_factor"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "decode_mode",
+          "name": "decode_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "decode_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_peak_nits",
+          "name": "hdr_peak_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_peak_nits"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            37,
+            33,
+            34
+          ]
+        },
+        {
+          "localized_name": "metadata",
+          "name": "metadata",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceHDRVAEDecode"
+      },
+      "widgets_values": [
+        "sRGB",
+        "Auto",
+        128,
+        "Auto",
+        0,
+        0,
+        "Compress (Log)",
+        "ACES Filmic",
+        false,
+        12,
+        true,
+        "f32",
+        "ARRI LogC4",
+        true,
+        0,
+        1,
+        "Direct HDR",
+        1000
+      ],
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 36,
+      "type": "RadianceResolution",
+      "pos": [
+        -1877.417349487685,
+        13604.779249177094
+      ],
+      "size": [
+        329.875,
+        478
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "preset",
+          "name": "preset",
+          "type": "COMBO",
+          "widget": {
+            "name": "preset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "orientation",
+          "name": "orientation",
+          "type": "COMBO",
+          "widget": {
+            "name": "orientation"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "batch_size",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scale_factor",
+          "name": "scale_factor",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "scale_factor"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "latent_channels",
+          "name": "latent_channels",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "latent_channels"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "mp_target",
+          "name": "mp_target",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "mp_target"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "mp_aspect_ratio",
+          "name": "mp_aspect_ratio",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "mp_aspect_ratio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "enable_video",
+          "name": "enable_video",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_video"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "crop_to_broadcast_resolution",
+          "name": "crop_to_broadcast_resolution",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "crop_to_broadcast_resolution"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_computation",
+          "name": "frame_computation",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "frame_computation"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "duration_seconds",
+          "name": "duration_seconds",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "duration_seconds"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "video_frames",
+          "name": "video_frames",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "video_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_rate",
+          "name": "frame_rate",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            35
+          ]
+        },
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "channels",
+          "name": "channels",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "info",
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "frame_rate",
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "localized_name": "frame_count",
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "latent_format",
+          "name": "latent_format",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "duration_sec",
+          "name": "duration_sec",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "localized_name": "crop_bbox",
+          "name": "crop_bbox",
+          "type": "BOUNDING_BOX",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceResolution"
+      },
+      "widgets_values": [
+        "2K DCI (2048×1080)",
+        2048,
+        1080,
+        "As Preset",
+        "Flux / SD3 / Lumina2 / Z-Image (16ch)",
+        1,
+        1,
+        0,
+        0,
+        "16:9",
+        false,
+        true,
+        "Manual (Frames)",
+        5,
+        81,
+        24
+      ],
+      "color": "#1c223c",
+      "bgcolor": "#141419"
+    }
+  ],
+  "links": [
+    [
+      2,
+      2,
+      1,
+      4,
+      0,
+      "CLIP"
+    ],
+    [
+      10,
+      4,
+      0,
+      10,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      11,
+      4,
+      1,
+      10,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      14,
+      2,
+      2,
+      10,
+      10,
+      "VAE"
+    ],
+    [
+      19,
+      2,
+      0,
+      10,
+      0,
+      "MODEL"
+    ],
+    [
+      24,
+      23,
+      0,
+      22,
+      2,
+      "IMAGE"
+    ],
+    [
+      31,
+      10,
+      0,
+      35,
+      0,
+      "LATENT"
+    ],
+    [
+      33,
+      35,
+      0,
+      23,
+      0,
+      "IMAGE"
+    ],
+    [
+      34,
+      35,
+      0,
+      22,
+      0,
+      "IMAGE"
+    ],
+    [
+      35,
+      36,
+      0,
+      10,
+      3,
+      "LATENT"
+    ],
+    [
+      36,
+      2,
+      2,
+      35,
+      1,
+      "VAE"
+    ],
+    [
+      37,
+      35,
+      0,
+      37,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 2,
+      "title": "Generation",
+      "bounding": [
+        -2727.7502509398464,
+        12504.88761469853,
+        1687.5076085307358,
+        1815.5155964585574
+      ],
+      "color": "#3a2a5a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Conditioning",
+      "bounding": [
+        -1005.6085685938848,
+        12503.527465128755,
+        481.625,
+        1129.1664984533145
+      ],
+      "color": "#5a3a1a",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5937921772122439,
+      "offset": [
+        3516.892605548368,
+        -11786.685465288198
+      ]
+    },
+    "frontendVersion": "1.45.19",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

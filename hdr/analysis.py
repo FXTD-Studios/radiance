@@ -26,16 +26,32 @@ class HDRHistogram:
             "required": {
                 "image": ("IMAGE",),
                 "mode": (cls.MODES, {"default": "luminance"}),
-                "show_clipping": ("BOOLEAN", {"default": True}),
-                "stops_range": ("INT", {"default": 14, "min": 8, "max": 24}),
+                "show_clipping": ("BOOLEAN", {"default": True,
+                    "tooltip": "Highlight overexposed pixels in red on the waveform/vectorscope overlay.",
+                }),
+                "stops_range": ("INT", {"default": 14, "min": 8, "max": 24,
+                    "tooltip": "Dynamic range to display in the exposure waveform, measured in stops.",
+                }),
+                "hdr_zone_markers": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": (
+                        "Draw vertical lines at 1×, 2×, 4×, 8× EV (scene-linear 1.0/2.0/4.0/8.0) "
+                        "on the linear histogram. Essential for HDR authoring: shows where "
+                        "highlight data exceeds the SDR clip point."
+                    ),
+                }),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING")
-    RETURN_NAMES = ("histogram", "stats")
+    RETURN_TYPES = ("IMAGE", "STRING", "FLOAT")
+    RETURN_NAMES = ("histogram", "stats", "headroom_pct")
     FUNCTION = "analyze"
-    CATEGORY = "FXTD Studios/Radiance/Analyze"
-    DESCRIPTION = "Analyze HDR image histogram with dynamic range statistics, clipping indicators, and stops visualization."
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Display"
+    DESCRIPTION = (
+        "v2.4 — Analyze HDR image histogram with dynamic range statistics, clipping indicators, "
+        "HDR zone markers, x-axis tick labels on the linear panel, and per-stop gridlines "
+        "with EV axis labels on the log panel."
+    )
 
     def analyze(
         self,
@@ -43,7 +59,8 @@ class HDRHistogram:
         mode: str = "luminance",
         show_clipping: bool = True,
         stops_range: int = 14,
-    ) -> Tuple[torch.Tensor, str]:
+        hdr_zone_markers: bool = True,
+    ) -> Tuple[torch.Tensor, str, float]:
 
         logger.debug("HDRHistogram analyzing...")
         try:
@@ -79,8 +96,10 @@ class HDRHistogram:
             dynamic_range = np.log2(max(max_val, eps) / max(min_positive, eps))
 
             # Clipping analysis
-            clip_low = float(np.sum(img <= 0) / img.size * 100)
+            clip_low  = float(np.sum(img <= 0) / img.size * 100)
             clip_high = float(np.sum(img >= 1) / img.size * 100)
+            # Headroom: pixels above 1.0 (SDR clip) in scene-linear
+            headroom_pct_val = float(np.sum(luma > 1.0) / luma.size * 100)
 
             # FIX 3: stats string had mixed indentation — first separator was
             # flush-left while all data lines were indented, producing a ragged
@@ -96,6 +115,7 @@ class HDRHistogram:
                 "───────────────────────────────────\n"
                 f"Clipped Low:   {clip_low:.2f}%\n"
                 f"Clipped High:  {clip_high:.2f}%\n"
+                f"HDR Headroom:  {headroom_pct_val:.2f}% (>1.0 EV)\n"
                 "═══════════════════════════════════"
             )
 
@@ -190,13 +210,50 @@ class HDRHistogram:
                     fill=(0, 255, 255),
                     width=2,
                 )
-                # White clipping at normalized 1.0
+                # SDR clip at 1.0 / max_val
                 white_x = margin + int(graph_w * min(1.0 / max(max_val, 1), 1.0))
                 draw.line(
                     [(white_x, graph_top1), (white_x, graph_top1 + graph_h)],
                     fill=(255, 255, 0),
                     width=2,
                 )
+
+            # HDR zone markers: vertical lines at 1×, 2×, 4×, 8× scene-linear
+            if hdr_zone_markers and max_val > 1.0:
+                zone_colors = [
+                    (255, 200,  60),   # 1.0 EV  (SDR limit) — amber
+                    (255, 140,  20),   # 2.0 EV  (+1 stop)   — orange
+                    (255,  80,  20),   # 4.0 EV  (+2 stops)  — deep orange
+                    (220,  40,  40),   # 8.0 EV  (+3 stops)  — red
+                ]
+                zone_levels = [1.0, 2.0, 4.0, 8.0]
+                zone_labels = ["+0EV", "+1EV", "+2EV", "+3EV"]
+                for zval, zcolor, zlabel in zip(zone_levels, zone_colors, zone_labels):
+                    if zval <= max_val:
+                        zx = margin + int(graph_w * min(zval / max(max_val, 1e-8), 1.0))
+                        draw.line(
+                            [(zx, graph_top1), (zx, graph_top1 + graph_h)],
+                            fill=zcolor, width=1,
+                        )
+                        if zx + 2 < margin + graph_w:
+                            draw.text((zx + 2, graph_top1 + 4), zlabel, fill=zcolor)
+
+            # v2.4: X-axis tick labels for the linear histogram.
+            # Draw value ticks at the bottom edge of the graph panel at key
+            # scene-linear levels: 0, 0.5, 1.0 (SDR clip), 2, 4, 8, 16 (if in range).
+            # Each tick gets a small vertical mark and a numeric label below it.
+            _lin_ticks = [v for v in [0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+                          if v <= max_val * 1.02]
+            _tick_y_base = graph_top1 + graph_h
+            for tv in _lin_ticks:
+                tx = margin + int(graph_w * min(tv / max(max_val, 1e-8), 1.0))
+                # Tick mark (3 px tall)
+                draw.line([(tx, _tick_y_base), (tx, _tick_y_base + 4)],
+                          fill=(100, 100, 120), width=1)
+                # Label — "1.0" gets special amber colour (SDR clip)
+                tick_label = f"{tv:.1f}" if tv < 1.0 else f"{tv:.0f}"
+                tick_color = (255, 200, 60) if tv == 1.0 else (150, 150, 180)
+                draw.text((tx - 7, _tick_y_base + 5), tick_label, fill=tick_color)
 
             # Title
             draw.text(
@@ -234,13 +291,31 @@ class HDRHistogram:
                 y2 = graph_top2 + graph_h
                 draw.rectangle([x1, y1, x2, y2], fill=(15, 52, 96))
 
-            # Middle gray marker (0 stops = 18% gray)
+            # v2.4: Per-stop vertical gridlines on the log histogram.
+            # Every full stop gets a faint rule + axis label at the bottom.
+            # Even stops get slightly brighter lines for easier reading at a glance.
+            _stop_label_y = graph_top2 + graph_h + 3
+            for _s in range(int(min_stop), int(max_stop) + 1):
+                _sx = margin + int((_s - min_stop) / (max_stop - min_stop) * graph_w)
+                _line_col = (50, 50, 68) if (_s % 2 == 0) else (38, 38, 52)
+                draw.line([(_sx, graph_top2), (_sx, graph_top2 + graph_h)],
+                          fill=_line_col, width=1)
+                # Label every 2 stops (or every stop if range ≤ 12)
+                if (max_stop - min_stop) <= 12 or (_s % 2 == 0):
+                    _sl = f"{_s:+d}" if _s != 0 else "0 EV"
+                    _sc = (233, 69, 96) if _s == 0 else (100, 100, 130)
+                    draw.text((_sx - 7, _stop_label_y), _sl, fill=_sc)
+
+            # Middle gray marker (0 stops = 18% gray) — draw ON TOP of gridlines
             mid_x = margin + int(graph_w * (-min_stop) / (max_stop - min_stop))
             draw.line(
                 [(mid_x, graph_top2), (mid_x, graph_top2 + graph_h)],
                 fill=(233, 69, 96),
                 width=2,
             )
+
+            # v2.4: EV axis label at the top-left of the log panel
+            draw.text((margin, graph_top2 + 3), "EV (log₂)", fill=(120, 120, 150))
 
             # Title
             draw.text(
@@ -263,7 +338,7 @@ class HDRHistogram:
             # numpy_to_tensor_float32 returns (H, W, C) for a single frame;
             # without unsqueeze(0) downstream nodes crash on .shape batch index.
             hist_tensor = numpy_to_tensor_float32(hist_np).unsqueeze(0)
-            return (hist_tensor, stats)
+            return (hist_tensor, stats, float(headroom_pct_val))
 
         except Exception as e:
             logger.error(f"HDRHistogram error: {e}")
@@ -281,7 +356,7 @@ class HDRHistogram:
                 err_img = torch.zeros((H, W, C), dtype=torch.float32)
                 err_img[..., 0] = 1.0  # Red
 
-            return (err_img, f"Error: {str(e)}")
+            return (err_img, f"Error: {str(e)}", 0.0)
 
 
 # =============================================================================
@@ -291,9 +366,9 @@ class HDRHistogram:
 # =============================================================================
 
 NODE_CLASS_MAPPINGS = {
-    "HDRHistogram": HDRHistogram,
+    "RadianceHDRHistogram": HDRHistogram,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "HDRHistogram": "◎ HDR Histogram",
+    "RadianceHDRHistogram": "◎ HDR Histogram",
 }

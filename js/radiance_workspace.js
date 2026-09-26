@@ -4,9 +4,192 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
+import { escapeHtml } from "./radiance_dom_utils.js";
+
+// ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
+const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
+
 const HEADER = "RAD_WORKSPACE_V1::";
 const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
+
+// Listen for postMessage updates from Studio Dashboard
+window.addEventListener("message", (event) => {
+    // Reject cross-origin senders. Without this, any page that can get a handle
+    // to this window could load an arbitrary graph, or ask for the user's graph
+    // back via the radiance_save_project_version reply below. The sibling
+    // handler in project_manager_dashboard.mjs already does this check.
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === "radiance_load_workflow") {
+        try {
+            const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
+            app.loadGraphData(graphData, false);
+            showToast("Workflow loaded from dashboard!", "success");
+        } catch(err) {
+            showToast("Failed to parse loaded graph", "error");
+        }
+    } else if (event.data && event.data.type === "radiance_append_workflow") {
+        try {
+            const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
+            app.loadGraphData(graphData, true);
+            showToast("Workflow merged from dashboard!", "success");
+        } catch(err) {
+            showToast("Failed to parse merged graph", "error");
+        }
+    } else if (event.data && event.data.type === "radiance_save_project_version") {
+        try {
+            const projectId = event.data.projectId || "general";
+            const graphData = app.graph.serialize();
+
+            // Sync with the active canvas widgets if a RadianceWorkspace node is present
+            const wsNode = app.graph._nodes.find(n => n.type === "RadianceWorkspace");
+            let filename = undefined;
+            let artist = undefined;
+            if (wsNode) {
+                const filenameWidget = wsNode.widgets.find(w => w.name === "filename");
+                const artistWidget = wsNode.widgets.find(w => w.name === "artist");
+                if (filenameWidget?.value) filename = filenameWidget.value;
+                if (artistWidget?.value) artist = artistWidget.value;
+            }
+
+            const bodyPayload = {
+                content: JSON.stringify(graphData),
+                message: "Saved from Project Manager dashboard",
+                author: artist || localStorage.getItem("radiance_artist") || "Radiance Artist",
+            };
+            if (filename) bodyPayload.filename = filename;
+
+            const response = api.fetchApi(`/radiance/projects/${encodeURIComponent(projectId)}/save-version`, {
+                method: "POST",
+                body: JSON.stringify(bodyPayload),
+                headers: { "Content-Type": "application/json" },
+            });
+
+            response
+                .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok || !data.success) throw new Error(data.error || "Save failed");
+                    showToast("Project Manager saved the current canvas.", "success");
+                    event.source?.postMessage({ type: "radiance_project_action_result", action: "save-version", success: true }, window.location.origin);
+                })
+                .catch((err) => {
+                    showToast(`Project Manager save failed: ${err.message}`, "error");
+                    event.source?.postMessage({ type: "radiance_project_action_result", action: "save-version", success: false, error: err.message }, window.location.origin);
+                });
+        } catch(err) {
+            showToast(`Project Manager save failed: ${err.message}`, "error");
+        }
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//        IN-CANVAS DASHBOARD OVERLAY  (renders inside ComfyUI, not a new tab)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Opens a Radiance dashboard page (Project Manager / Workflow Library) as a modal
+// overlay layered on top of the ComfyUI canvas in the SAME tab. The page runs in
+// an <iframe>; it already posts load/save events to window.parent, which the
+// listener above handles — so "load into canvas" keeps working. Closeable via the
+// X button, the Esc key, or clicking the dimmed backdrop.
+if (!window.showRadianceDashboard) {
+    window.showRadianceDashboard = function (url, title = "Radiance") {
+        // Cache-bust so dashboard edits always load fresh (ComfyUI caches static files).
+        const bust = (u) => u + (u.includes("?") ? "&" : "?") + "t=" + Date.now();
+        // If one is already open, just bring focus / replace its source.
+        const existing = document.getElementById("radiance-dashboard-overlay");
+        if (existing) {
+            const fr = existing.querySelector("iframe");
+            if (fr && url) fr.src = bust(url);
+            return;
+        }
+
+        const overlay = document.createElement("div");
+        overlay.id = "radiance-dashboard-overlay";
+        Object.assign(overlay.style, {
+            position: "fixed", inset: "0", zIndex: "10000",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(4,4,4,0.72)", backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+        });
+
+        const panel = document.createElement("div");
+        Object.assign(panel.style, {
+            position: "relative",
+            width: "min(94vw, 1500px)", height: "min(92vh, 980px)",
+            display: "flex", flexDirection: "column",
+            background: "#0d0d0d",
+            border: "1px solid rgba(255,255,255,0.10)", borderRadius: "14px",
+            overflow: "hidden",
+            boxShadow: "0 40px 120px -40px rgba(0,0,0,0.9)",
+        });
+
+        const bar = document.createElement("div");
+        Object.assign(bar.style, {
+            display: "flex", alignItems: "center", gap: "10px",
+            padding: "12px 16px", flex: "0 0 auto",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#121212,#0d0d0d)",
+            fontFamily: "'Space Grotesk','Inter',sans-serif",
+        });
+        const dot = document.createElement("span");
+        Object.assign(dot.style, {
+            width: "9px", height: "9px", borderRadius: "50%",
+            background: "#c8a96e", boxShadow: "0 0 10px rgba(200,169,110,0.8)",
+        });
+        const label = document.createElement("div");
+        label.textContent = title;
+        Object.assign(label.style, {
+            color: "#fff", fontSize: "13px", fontWeight: "600",
+            letterSpacing: "0.04em", flex: "1 1 auto",
+        });
+        const openTab = document.createElement("button");
+        openTab.textContent = "Open in tab \u2197";
+        Object.assign(openTab.style, {
+            background: "transparent", color: "#888",
+            border: "1px solid rgba(255,255,255,0.12)", borderRadius: "7px",
+            padding: "5px 10px", cursor: "pointer", fontSize: "11px",
+            fontFamily: "inherit", letterSpacing: "0.03em",
+        });
+        openTab.onmouseenter = () => { openTab.style.color = "#fff"; openTab.style.borderColor = "rgba(255,255,255,0.3)"; };
+        openTab.onmouseleave = () => { openTab.style.color = "#888"; openTab.style.borderColor = "rgba(255,255,255,0.12)"; };
+        openTab.onclick = () => window.open(url, "_blank");
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "\u2715";
+        Object.assign(closeBtn.style, {
+            background: "transparent", color: "#bbb",
+            border: "1px solid rgba(255,255,255,0.12)", borderRadius: "7px",
+            width: "30px", height: "28px", cursor: "pointer",
+            fontSize: "14px", lineHeight: "1", fontFamily: "inherit",
+        });
+        closeBtn.onmouseenter = () => { closeBtn.style.color = "#fff"; closeBtn.style.background = "rgba(255,80,80,0.18)"; closeBtn.style.borderColor = "rgba(255,80,80,0.4)"; };
+        closeBtn.onmouseleave = () => { closeBtn.style.color = "#bbb"; closeBtn.style.background = "transparent"; closeBtn.style.borderColor = "rgba(255,255,255,0.12)"; };
+
+        const iframe = document.createElement("iframe");
+        iframe.src = bust(url);
+        Object.assign(iframe.style, {
+            flex: "1 1 auto", width: "100%", border: "0", background: "#0d0d0d",
+        });
+
+        const close = () => {
+            window.removeEventListener("keydown", onKey);
+            overlay.remove();
+        };
+        const onKey = (e) => { if (e.key === "Escape") close(); };
+        closeBtn.onclick = close;
+        overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+        window.addEventListener("keydown", onKey);
+
+        bar.appendChild(dot);
+        bar.appendChild(label);
+        bar.appendChild(openTab);
+        bar.appendChild(closeBtn);
+        panel.appendChild(bar);
+        panel.appendChild(iframe);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+    };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //                           ENCODING HELPERS
@@ -62,6 +245,124 @@ function showToast(message, type = "info") {
     }, TOAST_DURATION_MS);
 }
 
+function confirmRadianceAction(message, confirmLabel = "Continue") {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "radiance-modal-overlay";
+
+        const modal = document.createElement("div");
+        modal.className = "radiance-modal";
+        modal.style.maxWidth = "420px";
+
+        const title = document.createElement("h2");
+        title.textContent = "Confirm Action";
+
+        const copy = document.createElement("p");
+        copy.style.margin = "14px 0 22px";
+        copy.style.color = "#b8c0cc";
+        copy.style.lineHeight = "1.45";
+        copy.textContent = message;
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.justifyContent = "flex-end";
+        actions.style.gap = "10px";
+
+        const cancel = document.createElement("button");
+        cancel.className = "radiance-btn";
+        cancel.textContent = "Cancel";
+
+        const confirm = document.createElement("button");
+        confirm.className = "radiance-btn danger";
+        confirm.textContent = confirmLabel;
+
+        const close = (value) => {
+            overlay.remove();
+            resolve(value);
+        };
+
+        cancel.addEventListener("click", () => close(false));
+        confirm.addEventListener("click", () => close(true));
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) close(false);
+        });
+
+        actions.append(cancel, confirm);
+        modal.append(title, copy, actions);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+    });
+}
+
+function promptRadianceAction(titleText, message, defaultValue = "", confirmLabel = "Continue") {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "radiance-modal-overlay";
+
+        const modal = document.createElement("div");
+        modal.className = "radiance-modal";
+        modal.style.maxWidth = "420px";
+
+        const title = document.createElement("h2");
+        title.textContent = titleText;
+
+        const copy = document.createElement("p");
+        copy.style.margin = "14px 0 12px";
+        copy.style.color = "#b8c0cc";
+        copy.style.lineHeight = "1.45";
+        copy.textContent = message;
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = defaultValue;
+        input.style.cssText = `
+            width: 100%; box-sizing: border-box; height: 36px; margin-bottom: 18px;
+            border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06); color: #f5f5f7;
+            padding: 0 10px; outline: none;
+        `;
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.justifyContent = "flex-end";
+        actions.style.gap = "10px";
+
+        const cancel = document.createElement("button");
+        cancel.className = "radiance-btn";
+        cancel.textContent = "Cancel";
+
+        const confirm = document.createElement("button");
+        confirm.className = "radiance-btn";
+        confirm.textContent = confirmLabel;
+
+        const close = (value) => {
+            overlay.remove();
+            resolve(value);
+        };
+
+        cancel.addEventListener("click", () => close(null));
+        confirm.addEventListener("click", () => close(input.value.trim()));
+        input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") close(input.value.trim());
+            if (event.key === "Escape") close(null);
+        });
+        overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) close(null);
+        });
+
+        actions.append(cancel, confirm);
+        modal.append(title, copy, input, actions);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        input.focus();
+        input.select();
+    });
+}
+
+function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //                           DEBOUNCE UTILITY
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -107,7 +408,7 @@ style.textContent = `
         display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;
     }
-    .radiance-modal h2 { margin: 0; color: #fff; font-size: 1.5em; letter-spacing: -0.02em; }
+    .radiance-modal h2 { margin: 0; color: #fff; font-size: 1.5em; letter-spacing: 0; }
 
     .radiance-search-container { margin-bottom: 20px; }
     .radiance-search-input {
@@ -166,11 +467,33 @@ style.textContent = `
     }
 
     .radiance-modal-close { margin-top: 25px; width: 100%; padding: 12px; font-weight: bold; background: #333; }
-    
+
     .radiance-empty-state {
         text-align: center; padding: 40px 20px; opacity: 0.5;
     }
     .radiance-empty-state p { margin: 0; }
+
+    /* --- Control Deck HUD Styles --- */
+    .radiance-hud-container {
+        font-family: 'Roboto Mono', monospace;
+        color: #00f2ff;
+        font-size: 10px;
+        pointer-events: none;
+    }
+    .radiance-hud-label { color: #555; text-transform: uppercase; margin-right: 5px; }
+    .radiance-hud-value { color: #aaa; }
+    .radiance-hud-led {
+        display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+        margin-right: 6px; box-shadow: 0 0 5px rgba(0, 242, 255, 0.5);
+    }
+    .radiance-hud-led.active { background: #00f2ff; animation: radiance-pulse 2s infinite; }
+    .radiance-hud-led.idle { background: #333; box-shadow: none; }
+
+    @keyframes radiance-pulse {
+        0% { opacity: 1; box-shadow: 0 0 2px #00f2ff; }
+        50% { opacity: 0.4; box-shadow: 0 0 8px #00f2ff; }
+        100% { opacity: 1; box-shadow: 0 0 2px #00f2ff; }
+    }
 `;
 document.head.appendChild(style);
 
@@ -180,27 +503,83 @@ document.head.appendChild(style);
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.registerExtension({
-    name: "Radiance.Workspace",
+    name: "Radiance.ProjectManager",
 
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
-        const comfyClass = nodeType.comfyClass || nodeType.ComfyClass || nodeData.name;
-        if (comfyClass !== "RadianceWorkspace") return;
+        if (!["RadianceWorkspace", "RadianceProjectManager"].includes(nodeData.name)) return;
 
         const origOnNodeCreated = nodeType.prototype.onNodeCreated;
 
         nodeType.prototype.onNodeCreated = function () {
             origOnNodeCreated?.apply(this, arguments);
 
-            this.addWidget("button", "Export .rad", "export", () => this.exportRadWorkspace());
-            this.addWidget("button", "Import .rad", "import", () => this.importRadWorkspace());
-            this.addWidget("button", "Save to Library", "save_lib", () => this.saveToLibrary());
-            this.addWidget("button", "Open Library", "open_lib", () => this.openLibrary());
-            this.addWidget("button", "Docs", "docs_link", () => window.open("https://radiance.fxtd.org/", "_blank"));
-            this.addWidget("button", "FXTD Studios", "site_link", () => window.open("https://www.fxtd.org", "_blank"));
+            // Keep the Project Manager dashboard separate from the workflow library.
+            this.addWidget("button", "◎ PROJECT MANAGER", "launch_project_manager", () => {
+                window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+            });
+            this.addWidget("button", "WORKFLOW LIBRARY", "launch_dashboard", () => {
+                window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+            });
+            this.addWidget("button", "◎ ASSETS", "launch_assets", () => {
+                window.showRadianceDashboard("${_EXT_BASE}/assets_dashboard.html", "Radiance Assets");
+            });
+            this.addWidget("button", "QUICK SAVE", "quick_save", () => this.saveToLibrary());
+            this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
+            this.addWidget("button", "DOCUMENTATION", "docs_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
+            this.addWidget("button", "FXTD STUDIOS", "site_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
 
-            this.color = "#1a1c23";
-            this.bgcolor = "#1a1c23";
-            this.size = [300, 200];
+            this.color = "#111111";
+            this.bgcolor = "#111111";
+            this.size = [240, 300]; // Space for filename, artist, version widgets
+
+            this.properties = this.properties || {};
+            this.properties.last_commit = "No commits yet";
+            this.properties.vram_peak = "0.0 GB";
+            this.properties.version = "v0.0";
+        };
+
+        // --- Custom Drawing: Minimal Status HUD ---
+        const origOnDrawForeground = nodeType.prototype.onDrawForeground;
+        nodeType.prototype.onDrawForeground = function(ctx) {
+            origOnDrawForeground?.apply(this, arguments);
+            if (this.flags.collapsed) return;
+
+            ctx.save();
+
+            const y = this.size[1] - 25;
+
+            // 1. Draw elegant horizontal divider
+            ctx.strokeStyle = "rgba(0, 242, 255, 0.2)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(10, y - 5);
+            ctx.lineTo(this.size[0] - 10, y - 5);
+            ctx.stroke();
+
+            // 2. Neon Border Glow (Slight active canvas highlight)
+            ctx.strokeStyle = "#00f2ff";
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.15;
+            ctx.strokeRect(0, 0, this.size[0], this.size[1]);
+            ctx.globalAlpha = 1.0;
+
+            // 3. Status Pulse LED indicator
+            ctx.beginPath();
+            ctx.arc(20, y + 4, 3, 0, Math.PI * 2);
+            ctx.fillStyle = "#00f2ff";
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = "#00f2ff";
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 4. Compact Status Monospace Text
+            ctx.font = "bold 9px monospace";
+            ctx.fillStyle = "#555";
+            ctx.fillText("STUDIO LINK:", 32, y + 7);
+            ctx.fillStyle = "#00f2ff";
+            ctx.fillText("ACTIVE", 102, y + 7);
+
+            ctx.restore();
         };
 
         // ─── Serialization ───────────────────────────────────────────
@@ -227,13 +606,13 @@ app.registerExtension({
                     body: blob,
                     headers: { "Content-Type": "application/octet-stream" },
                 });
-                
+
                 const data = await response.json();
                 if (!data.success) throw new Error(data.error);
 
                 const graphData = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
                 app.loadGraphData(graphData, append);
-                
+
                 if (data.secure) {
                     console.log("[Radiance] Verified secure binary .rad workspace.");
                 } else {
@@ -251,16 +630,16 @@ app.registerExtension({
 
         nodeType.prototype.exportRadWorkspace = async function () {
             try {
-                const defaultName = `workspace_${Date.now()}`;
-                let chosenName = prompt("Enter a name for the workflow export:", defaultName);
+                const defaultName = `shot_${Date.now()}`;
+                let chosenName = await promptRadianceAction("Export Project", "Enter a name for the Project export.", defaultName, "Export");
 
                 if (chosenName === null) return;
                 chosenName = chosenName.trim() || defaultName;
                 if (!chosenName.endsWith(".rad")) chosenName += ".rad";
 
-                const description = prompt("Optional: Short description for this export:") || "";
+                const description = await promptRadianceAction("Project Description", "Optional description for this .rad export.", "", "Continue") || "";
                 showToast("Packing secure workflow...", "info");
-                
+
                 const blob = await this.buildRadContent(description);
                 const url = URL.createObjectURL(blob);
 
@@ -306,44 +685,135 @@ app.registerExtension({
             input.click();
         };
 
+        nodeType.prototype.purgeVram = async function () {
+            try {
+                showToast("Purging VRAM & Unloading Models...", "info");
+                const response = await api.fetchApi("/free", {
+                    method: "POST",
+                    body: JSON.stringify({ unload_models: true, free_memory: true }),
+                    headers: { "Content-Type": "application/json" },
+                });
+
+                if (response.ok) {
+                    showToast("GPU Cache Cleared. Radiance in Standby.", "success");
+                    this.properties.vram_peak = "0.0 GB (Purged)";
+                }
+            } catch (e) {
+                console.error("[Radiance] VRAM Purge failed:", e);
+                showToast("Purge failed.", "error");
+            }
+        };
+
         // ─── Library: Save ───────────────────────────────────────────
 
-        nodeType.prototype.saveToLibrary = async function () {
+        nodeType.prototype.saveToLibrary = async function (explicitName = null) {
             try {
-                const defaultName = `workspace_${Date.now()}`;
-                const artist = localStorage.getItem('radiance_artist') || "Guest";
-                const sanitizedArtist = artist.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                
-                let chosenName = prompt("Enter filename (e.g., Experiments/Test01):", `workspace_${Date.now()}`);
+                const filenameWidget = this.widgets.find(w => w.name === "filename");
+                const versionWidget = this.widgets.find(w => w.name === "version");
+                const artistWidget = this.widgets.find(w => w.name === "artist");
 
-                if (chosenName === null || chosenName.trim() === "") return;
-                
-                if (!chosenName.endsWith(".rad")) chosenName += ".rad";
+                const stem = filenameWidget?.value || "workflow";
+                const ver = versionWidget?.value || 1;
+                const verStr = `v${ver.toString().padStart(4, '0')}`;
+                const artist = artistWidget?.value || localStorage.getItem('radiance_artist') || "unknown";
+                if (artist && artist !== "unknown") {
+                    localStorage.setItem('radiance_artist', artist);
+                }
 
-                const description = prompt("Optional: Enter a short description for this workflow:") ?? "";
+                let chosenBin = "GENERAL";
+
+                if (explicitName) {
+                    chosenBin = this.properties.production_bin || "GENERAL";
+                } else {
+                    chosenBin = await promptRadianceAction("Production Bin", "Choose a bin, for example TEMPLATES, SHOTS, or EXPERIMENTS.", this.properties.production_bin || "GENERAL", "Save");
+                    if (chosenBin === null) return;
+                    chosenBin = chosenBin.trim().toUpperCase() || "GENERAL";
+                    this.properties.production_bin = chosenBin;
+                }
+
+                const chosenName = `${stem}_${artist}_${verStr}.rad`;
+
+                const message = explicitName
+                    ? `Incremental: ${chosenName}`
+                    : (await promptRadianceAction("Commit Message", "Why did you save this workflow version?", "Updated workflow logic", "Save") || "Auto-commit");
+                const description = explicitName
+                    ? ""
+                    : (await promptRadianceAction("Short Description", "Optional short description for the library entry.", "", "Continue") ?? "");
                 const graphData = app.graph.serialize();
+
+                // --- NEW: Generate Preview Image (Canvas Snapshot) ---
+                let previewImage = "";
+                try {
+                    const canvas = app.canvas.canvas;
+                    if (canvas) {
+                        // Create a small thumbnail version
+                        const thumbCanvas = document.createElement("canvas");
+                        thumbCanvas.width = 1280;
+                        thumbCanvas.height = 720;
+                        const tCtx = thumbCanvas.getContext("2d");
+                        tCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+                        previewImage = thumbCanvas.toDataURL("image/png", 0.7);
+                    }
+                } catch (e) {
+                    console.warn("[Radiance] Could not capture preview:", e);
+                }
+
+                // Get some basic stats for the "Rich" metadata
+                const stats = {
+                    node_count: app.graph._nodes.length,
+                    saved_at: Date.now(),
+                    os: navigator.platform
+                };
 
                 const response = await api.fetchApi("/radiance/workflows/save", {
                     method: "POST",
                     body: JSON.stringify({
-                        filename: chosenName,
+                        filename: `${chosenBin}/${chosenName}`,
                         content: JSON.stringify(graphData),
                         description: description,
-                        author: artist
+                        message: message,
+                        author: artist,
+                        stats: stats,
+                        preview_image: previewImage
                     }),
                     headers: { "Content-Type": "application/json" },
                 });
 
                 if (response.ok) {
-                    showToast(`Saved "${chosenName}" to library.`, "success");
+                    showToast(`Project Saved: "${chosenName}"`, "success");
+                    this.properties.last_commit = message.length > 15 ? message.substring(0, 12) + "..." : message;
+                    this.setDirtyCanvas(true);
                 } else {
                     const err = await response.json().catch(() => ({}));
-                    showToast(`Save failed: ${err.error || response.statusText}`, "error");
+                    showToast(`Commit failed: ${err.error || response.statusText}`, "error");
                 }
             } catch (e) {
                 console.error("[Radiance] Failed to save to library:", e);
                 showToast("Save failed — check console.", "error");
             }
+        };
+
+        nodeType.prototype.incrementalSave = async function () {
+            const filenameWidget = this.widgets.find(w => w.name === "filename");
+            const versionWidget = this.widgets.find(w => w.name === "version");
+
+            if (!filenameWidget || !versionWidget) {
+                showToast("Cannot perform incremental save: Missing filename/version widgets.", "error");
+                return;
+            }
+
+            const stem = filenameWidget.value || "workflow";
+            const ver = versionWidget.value;
+            const verStr = `v${ver.toString().padStart(4, '0')}`;
+
+            const incFilename = `${stem}_${verStr}`;
+
+            // Execute the save
+            await this.saveToLibrary(incFilename);
+
+            // Increment for next time
+            versionWidget.value = ver + 1;
+            this.setDirtyCanvas(true);
         };
 
         // ─── Portal: Sync ────────────────────────────────────────────
@@ -353,7 +823,7 @@ app.registerExtension({
 
         nodeType.prototype.openLibrary = async function () {
             try {
-                showToast("Scanning Library...", "info");
+                showToast("Scanning Project Library...", "info");
 
                 // Fetch local workflows
                 const localResp = await api.fetchApi("/radiance/workflows/list");
@@ -363,7 +833,7 @@ app.registerExtension({
                 this.showLibraryModal(allWorkflows);
             } catch (e) {
                 console.error("[Radiance] Failed to load library:", e);
-                showToast("Failed to open Assets Library.", "error");
+                showToast("Failed to open Project Library.", "error");
             }
         };
 
@@ -383,7 +853,8 @@ app.registerExtension({
                 content = data.content;
                 metadata = data.metadata;
 
-                const success = this.parseAndLoadRadContent(content, append);
+                app.loadGraphData(typeof content === 'string' ? JSON.parse(content) : content, append);
+                const success = true;
                 if (success) {
                     const action = append ? "Appended" : "Loaded";
                     showToast(`${action} workflow: ${wf.name || wf.filename}`, "success");
@@ -393,11 +864,10 @@ app.registerExtension({
                 showToast("Failed to load workflow from library.", "error");
             }
         };
-        
+
         // Helper to handle the library modal data binding
         nodeType.prototype.showLibraryModal = function (workflows) {
-            // Existing modal logic... 
-            // I need to ensure the renderList part uses wf.origin/is_cloud
+            this._showLibraryModal(workflows);
         };
 
         nodeType.prototype.deleteFromLibrary = async function (filename) {
@@ -417,9 +887,9 @@ app.registerExtension({
 
         // ─── Library: Modal UI ───────────────────────────────────────
 
-        nodeType.prototype.showLibraryModal = function (initialWorkflows) {
+        nodeType.prototype._showLibraryModal = function (initialWorkflows) {
             // Mutable reference that the delete handler can update
-            let workflows = initialWorkflows;
+            const state = { workflows: initialWorkflows };
 
             const overlay = document.createElement("div");
             overlay.className = "radiance-modal-overlay";
@@ -431,7 +901,7 @@ app.registerExtension({
             const headerDiv = document.createElement("div");
             headerDiv.className = "radiance-modal-header";
             const title = document.createElement("h2");
-            title.textContent = "Radiance Assets Library";
+            title.textContent = "◎ Radiance Project Library";
             headerDiv.appendChild(title);
 
             const refreshBtn = document.createElement("button");
@@ -442,7 +912,7 @@ app.registerExtension({
                 showToast("Refreshing Library...", "info");
                 const resp = await api.fetchApi("/radiance/workflows/list");
                 const data = await resp.json();
-                workflows = (data.workflows || []).map(w => ({ ...w, origin: "local" }));
+                state.workflows = (data.workflows || []).map(w => ({ ...w, origin: "local" }));
                 renderList(searchInput.value);
             };
             headerDiv.appendChild(refreshBtn);
@@ -474,11 +944,71 @@ app.registerExtension({
             };
             document.addEventListener("keydown", onKeyDown);
 
+            // ── History View helper ──
+            const showHistory = async (wf) => {
+                showToast(`Fetching history for ${wf.filename}...`, "info");
+                const resp = await api.fetchApi(`/radiance/workflows/history?filename=${encodeURIComponent(wf.filename)}`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    showToast("Failed to load history.", "error");
+                    return;
+                }
+
+                // Temporary override modal content with history list
+                const originalContent = modal.innerHTML;
+                modal.innerHTML = `
+                    <div class="radiance-modal-header">
+                        <h2>History: ${escapeHtml(wf.filename.split('/').pop())}</h2>
+                        <button class="radiance-btn" id="history-back">← Back</button>
+                    </div>
+                    <div class="radiance-workflow-list" style="margin-top:20px;">
+                        ${data.history.map(v => `
+                            <div class="radiance-workflow-item">
+                                <div class="radiance-workflow-info">
+                                    <span class="radiance-workflow-name">${escapeHtml(v.message || "Manual Backup")}</span>
+                                    <span class="radiance-workflow-desc">Author: ${escapeHtml(v.author || "Unknown")}</span>
+                                    <span class="radiance-workflow-meta">${escapeHtml(new Date(v.timestamp * 1000).toLocaleString())} • ${escapeHtml(v.version_file)}</span>
+                                </div>
+                                <div class="radiance-actions">
+                                    <button class="radiance-btn primary history-restore" data-file="${escapeAttr(v.version_file)}">Restore</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                modal.querySelector("#history-back").onclick = () => {
+                    modal.innerHTML = originalContent;
+                    // Re-bind search and other logic
+                    this._rebindLibraryLogic(modal, state, renderList, closeModal);
+                };
+
+                modal.querySelectorAll(".history-restore").forEach(btn => {
+                    btn.onclick = async () => {
+                        const vFile = btn.dataset.file;
+                        if (await confirmRadianceAction("Restore workflow to this version? Current state will be backed up.", "Restore")) {
+                            const restResp = await api.fetchApi("/radiance/workflows/restore", {
+                                method: "POST",
+                                body: JSON.stringify({ filename: wf.filename, version_file: vFile }),
+                                headers: { "Content-Type": "application/json" }
+                            });
+                            const restData = await restResp.json();
+                            if (restData.success) {
+                                showToast("Restoration complete!", "success");
+                                this.loadFromLibrary(wf, false);
+                                closeModal();
+                            }
+                        }
+                    };
+                });
+            };
+
             // ── Render list ──
             const renderList = (filter = "") => {
                 list.innerHTML = "";
                 const lowerFilter = filter.toLowerCase();
-                const filtered = workflows.filter((wf) => {
+                const filtered = state.workflows.filter((wf) => {
                     const haystack = `${wf.filename} ${wf.name || ""} ${wf.metadata?.description || ""}`.toLowerCase();
                     return haystack.includes(lowerFilter);
                 });
@@ -512,14 +1042,18 @@ app.registerExtension({
 
                     const header = document.createElement("div");
                     header.className = "radiance-folder-header";
-                    
-                    let categoryLabel = folder === "Root" ? "General" : folder;
+                    header.style.background = "rgba(0, 242, 255, 0.03)";
+                    header.style.padding = "6px 12px";
+                    header.style.borderRadius = "4px";
+                    header.style.borderLeft = "3px solid #00f2ff";
+
+                    let categoryLabel = folder === "Root" ? "GENERAL BIN" : `${folder.toUpperCase()} BIN`;
                     if (folder.toLowerCase().startsWith("official")) {
-                        categoryLabel = "◎ Official Radiance";
+                        categoryLabel = "◎ OFFICIAL RADIANCE BUNDLE";
                     } else if (folder.toLowerCase().startsWith("system")) {
-                        categoryLabel = "⚙ System Workflows";
+                        categoryLabel = "⚙ SYSTEM UTILITIES";
                     }
-                    
+
                     header.textContent = categoryLabel;
                     groupDiv.appendChild(header);
 
@@ -529,6 +1063,52 @@ app.registerExtension({
                     for (const wf of groups[folder]) {
                         const li = document.createElement("li");
                         li.className = "radiance-workflow-item";
+                        li.style.flexDirection = "column";
+                        li.style.alignItems = "stretch";
+
+                        const mainRow = document.createElement("div");
+                        mainRow.style.display = "flex";
+                        mainRow.style.justifyContent = "space-between";
+                        mainRow.style.alignItems = "center";
+                        li.appendChild(mainRow);
+
+                        // Thumbnail Preview
+                        if (wf.metadata?.has_preview) {
+                            const thumbContainer = document.createElement("div");
+                            thumbContainer.style.width = "100%";
+                            thumbContainer.style.height = "120px";
+                            thumbContainer.style.background = "#000";
+                            thumbContainer.style.marginBottom = "10px";
+                            thumbContainer.style.borderRadius = "4px";
+                            thumbContainer.style.overflow = "hidden";
+                            thumbContainer.style.position = "relative";
+
+                            const img = document.createElement("img");
+                            // Use correct path prefix for ComfyUI API
+                            img.src = `./radiance/workflows/preview?filename=${encodeURIComponent(wf.filename)}`;
+                            img.style.width = "100%";
+                            img.style.height = "100%";
+                            img.style.objectFit = "cover";
+                            img.style.opacity = "0.7";
+                            thumbContainer.appendChild(img);
+
+                            // Stats Overlay
+                            if (wf.metadata?.stats) {
+                                const statsOverlay = document.createElement("div");
+                                statsOverlay.style.position = "absolute";
+                                statsOverlay.style.bottom = "5px";
+                                statsOverlay.style.right = "5px";
+                                statsOverlay.style.background = "rgba(0,0,0,0.7)";
+                                statsOverlay.style.padding = "2px 6px";
+                                statsOverlay.style.fontSize = "9px";
+                                statsOverlay.style.color = "#00f2ff";
+                                statsOverlay.style.fontFamily = "monospace";
+                                statsOverlay.textContent = `${wf.metadata.stats.vram_peak || "N/A"} VRAM`;
+                                thumbContainer.appendChild(statsOverlay);
+                            }
+
+                            li.insertBefore(thumbContainer, mainRow);
+                        }
 
                         const info = document.createElement("div");
                         info.className = "radiance-workflow-info";
@@ -559,6 +1139,48 @@ app.registerExtension({
 
                         info.appendChild(nameSpan);
 
+                        // --- NEW: Technical Pipeline Badges ---
+                        const pipeData = wf.metadata?.pipeline;
+                        if (pipeData) {
+                            const badgeRow = document.createElement("div");
+                            badgeRow.style.display = "flex";
+                            badgeRow.style.gap = "4px";
+                            badgeRow.style.marginTop = "4px";
+                            badgeRow.style.flexWrap = "wrap";
+
+                            const addBadge = (text, color = "#00f2ff") => {
+                                const b = document.createElement("span");
+                                b.style.background = "rgba(0, 242, 255, 0.05)";
+                                b.style.color = color;
+                                b.style.border = `1px solid ${color}44`;
+                                b.style.padding = "1px 5px";
+                                b.style.borderRadius = "3px";
+                                b.style.fontSize = "9px";
+                                b.style.fontWeight = "bold";
+                                b.style.textTransform = "uppercase";
+                                b.textContent = text;
+                                badgeRow.appendChild(b);
+                            };
+
+                            if (pipeData.resolutions?.length) {
+                                pipeData.resolutions.forEach(r => addBadge(`${r}P`));
+                            }
+                            if (pipeData.fps) {
+                                addBadge(`${pipeData.fps} FPS`, "#34c759");
+                            }
+                            if (pipeData.color_spaces?.length) {
+                                pipeData.color_spaces.forEach(cs => {
+                                    const label = cs.length > 8 ? cs.substring(0, 6) + ".." : cs;
+                                    addBadge(label, "#ff9500");
+                                });
+                            }
+                            if (pipeData.is_hdr) {
+                                addBadge("HDR", "#af52de");
+                            }
+
+                            info.appendChild(badgeRow);
+                        }
+
                         if (wf.metadata?.description) {
                             const descDiv = document.createElement("div");
                             descDiv.className = "radiance-workflow-desc";
@@ -572,11 +1194,18 @@ app.registerExtension({
                         const sizeKB = Math.round(wf.size / 1024);
                         metaSpan.textContent = `${date}  •  ${sizeKB} KB`;
                         info.appendChild(metaSpan);
-                        li.appendChild(info);
+                        mainRow.appendChild(info);
 
                         // Action buttons
                         const actions = document.createElement("div");
                         actions.className = "radiance-actions";
+
+                        const historyBtn = document.createElement("button");
+                        historyBtn.className = "radiance-btn";
+                        historyBtn.innerHTML = "<span>🕗</span>";
+                        historyBtn.title = "View Version History";
+                        historyBtn.onclick = () => showHistory(wf);
+                        actions.appendChild(historyBtn);
 
                         const appendBtn = document.createElement("button");
                         appendBtn.className = "radiance-btn";
@@ -589,8 +1218,8 @@ app.registerExtension({
                         const loadBtn = document.createElement("button");
                         loadBtn.className = "radiance-btn primary";
                         loadBtn.textContent = "Load";
-                        loadBtn.onclick = () => {
-                            if (confirm(`Replace current graph with "${displayName}"?`)) {
+                        loadBtn.onclick = async () => {
+                            if (await confirmRadianceAction(`Replace current graph with "${displayName}"?`, "Replace")) {
                                 this.loadFromLibrary(wf, false);
                                 closeModal();
                             }
@@ -603,7 +1232,7 @@ app.registerExtension({
                             updateBtn.style.color = "#28a745";
                             updateBtn.textContent = "Update";
                             updateBtn.onclick = async () => {
-                                if (confirm(`Overwrite System Workflow "${displayName}" with your current canvas?`)) {
+                                if (await confirmRadianceAction(`Overwrite System Workflow "${displayName}" with your current canvas?`, "Overwrite")) {
                                     const graphData = app.graph.serialize();
                                     const response = await api.fetchApi("/radiance/workflows/save", {
                                         method: "POST",
@@ -626,17 +1255,17 @@ app.registerExtension({
                         delBtn.className = "radiance-btn danger";
                         delBtn.textContent = "Delete";
                         delBtn.onclick = async () => {
-                            if (!confirm(`Permanently delete "${wf.filename}"?`)) return;
+                            if (!await confirmRadianceAction(`Permanently delete "${wf.filename}"?`, "Delete")) return;
                             await this.deleteFromLibrary(wf.filename);
 
                             // Refresh list from server
                             try {
                                 const response = await api.fetchApi("/radiance/workflows/list");
                                 const data = await response.json();
-                                workflows = data.workflows || [];
+                                state.workflows = data.workflows || [];
                             } catch {
                                 // Remove locally as fallback
-                                workflows = workflows.filter((w) => w.filename !== wf.filename);
+                                state.workflows = state.workflows.filter((w) => w.filename !== wf.filename);
                             }
                             renderList(searchInput.value);
                         };
@@ -644,7 +1273,7 @@ app.registerExtension({
                         actions.appendChild(appendBtn);
                         actions.appendChild(loadBtn);
                         actions.appendChild(delBtn);
-                        li.appendChild(actions);
+                        mainRow.appendChild(actions);
                         groupList.appendChild(li);
                     }
 
@@ -674,6 +1303,27 @@ app.registerExtension({
 
             // Focus search on open
             requestAnimationFrame(() => searchInput.focus());
+        };
+
+        // Internal helper to re-bind search logic after history-back
+        nodeType.prototype._rebindLibraryLogic = function(modal, state, renderList, closeModal) {
+            const searchInput = modal.querySelector(".radiance-search-input");
+            const refreshBtn = modal.querySelector(".radiance-btn");
+            const closeBtn = modal.querySelector(".radiance-modal-close");
+
+            searchInput.oninput = debounce((e) => renderList(e.target.value), SEARCH_DEBOUNCE_MS);
+
+            refreshBtn.onclick = async () => {
+                showToast("Refreshing Library...", "info");
+                const resp = await api.fetchApi("/radiance/workflows/list");
+                const data = await resp.json();
+                state.workflows = (data.workflows || []).map(w => ({ ...w, origin: "local" }));
+                renderList(searchInput.value);
+            };
+
+            closeBtn.onclick = closeModal;
+            requestAnimationFrame(() => searchInput.focus());
+            renderList(searchInput.value);
         };
     },
 });

@@ -4,7 +4,7 @@ import hashlib
 import numpy as np
 from typing import Dict, Any, Optional, List, Tuple
 
-logger = logging.getLogger("◎ Radiance.ocio")
+logger = logging.getLogger("radiance.ocio")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #                        OCIO AVAILABILITY
@@ -34,6 +34,8 @@ except ImportError:
 _OCIO_SEARCH_PATHS = [
     # Environment variable (highest priority, industry standard)
     lambda: os.environ.get("OCIO"),
+    # The config Radiance set up automatically (ocio_setup)
+    lambda: os.path.join(os.path.dirname(os.path.realpath(__file__)), "ACES", "studio-config.ocio"),
     # ACES configs in common locations
     lambda: _find_file("/usr/share/ocio", "config.ocio"),
     lambda: _find_file(os.path.expanduser("~/.config/ocio"), "config.ocio"),
@@ -60,39 +62,28 @@ def _find_file(directory: str, filename: str) -> Optional[str]:
             sub = os.path.join(directory, entry, filename)
             if os.path.isfile(sub):
                 return sub
-    except OSError:
-        pass
+    except OSError as _exc:
+        logger.debug(
+            "[Radiance] _find_file(): ignoring %s from `for entry in os.listdir(directory):`: %s",
+            type(_exc).__name__, _exc,
+        )
     return None
 
 
 def _download_default_config() -> Optional[str]:
-    """Download the official ACES 2.0 CG Config if none is found."""
-    import urllib.request
+    """The config used when none is found. Name kept for callers.
+
+    It used to download the ACES CG config from GitHub at startup, without
+    download consent. OpenColorIO ships the ACES studio config built in, so
+    nothing is fetched: radiance.color.ocio_setup writes it to
+    ACES/studio-config.ocio (or falls back to the bundled CG config).
+    """
     try:
-        # Modern stable URL for ACES 2.0 CG Config (OCIO v2.5)
-        url = "https://raw.githubusercontent.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/main/src/opencolorio_config_aces/config/aces/2.0/cg-config-v4.0.0_aces-v2.0_ocio-v2.5.ocio"
-        
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        aces_dir = os.path.join(current_dir, "ACES")
-        
-        if not os.path.exists(aces_dir):
-            os.makedirs(aces_dir)
-            
-        target_path = os.path.join(aces_dir, "config.ocio")
-        
-        if os.path.isfile(target_path):
-            return target_path
-            
-        logger.info("[Radiance OCIO] No config detected. Auto-downloading standard ACES 2.0 CG config...")
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            with open(target_path, 'wb') as f:
-                f.write(response.read())
-                
-        logger.info(f"[Radiance OCIO] Successfully downloaded and auto-configured to: {target_path}")
-        return os.path.abspath(target_path)
-    except Exception as e:
-        logger.error(f"[Radiance OCIO] Failed to auto-download standard OCIO config: {e}")
+        from radiance.color.ocio_setup import configure_ocio
+        state = configure_ocio()
+        return state["path"] if state.get("configured") else None
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[Radiance OCIO] automatic config setup failed: {e}")
         return None
 
 
@@ -103,7 +94,7 @@ def discover_ocio_config() -> Optional[str]:
     Search order:
       1. $OCIO environment variable (industry standard)
       2. Common system paths (/usr/share/ocio, ~/ocio, etc.)
-      3. Auto-download ACES CG config if none found
+      3. The ACES studio config Radiance sets up automatically (no download)
 
     Returns:
         Absolute path to config.ocio, or None if not found.
@@ -126,6 +117,7 @@ def discover_ocio_config() -> Optional[str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class OCIOConfigManager:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Utilities"
     """
     Manages a single OCIO config and caches baked 3D LUTs.
 
@@ -244,7 +236,8 @@ class OCIOConfigManager:
             return []
         try:
             return list(self.config.getViews(display))
-        except Exception:
+        except Exception as exc:
+            logger.warning("[radiance_ocio] get_views: %s", exc)
             return []
 
     def get_display_view_pairs(self) -> List[Dict[str, str]]:
@@ -285,9 +278,29 @@ class OCIOConfigManager:
                 )
                 if cs:
                     roles[role_name] = cs.getName()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[radiance_ocio] get_roles: %s", exc)
+        
+        # Heuristic for common missing roles in older configs
+        if "scene_linear" not in roles:
+            # Look for ACEScg or linear spaces
+            for cs in self.config.getColorSpaces():
+                name = cs.getName().lower()
+                if "acescg" in name or ("linear" in name and "srgb" not in name):
+                    roles["scene_linear"] = cs.getName()
+                    break
+        
         return roles
+
+    def get_processor(self, src: str, dst: str):
+        """Get an OCIO processor for a transform between two spaces/roles."""
+        if not self.is_loaded:
+            return None
+        try:
+            return self.config.getProcessor(src, dst)
+        except Exception as e:
+            logger.error(f"[Radiance OCIO] getProcessor failed ({src} -> {dst}): {e}")
+            return None
 
     def get_config_info(self) -> Dict[str, Any]:
         """Full config summary for the frontend."""
@@ -355,11 +368,7 @@ class OCIOConfigManager:
                 ).getName()
 
             # Build the OCIO processor
-            processor = self.config.getProcessor(
-                OCIO.DisplayViewTransformDirection.DISPLAY_VIEW_FORWARD
-                if hasattr(OCIO, "DisplayViewTransformDirection")
-                else None,
-            ) if False else self._build_processor(display, view, input_space)
+            processor = self._build_processor(display, view, input_space)
 
             if processor is None:
                 return None
@@ -411,7 +420,7 @@ class OCIOConfigManager:
             return None
 
         cache_key = hashlib.md5(
-            f"cs:{src_space}:{dst_space}:{lut_size}".encode()
+            repr(("cs", src_space, dst_space, lut_size)).encode()
         ).hexdigest()
 
         if cache_key in self._lut_cache:
@@ -474,44 +483,43 @@ class OCIOConfigManager:
             np.ndarray of shape (size*size*size, 3), dtype float32
         """
         n = size
-        total = n * n * n
 
-        # Build lattice coordinates: R fastest, then G, then B
-        # This matches OpenGL texImage3D(TEXTURE_3D) memory layout
-        coords = np.zeros((total, 3), dtype=np.float32)
-        idx = 0
-        for b in range(n):
-            for g in range(n):
-                for r in range(n):
-                    coords[idx, 0] = r / (n - 1)
-                    coords[idx, 1] = g / (n - 1)
-                    coords[idx, 2] = b / (n - 1)
-                    idx += 1
+        # Lattice: R fastest, then G, then B, matching texImage3D(TEXTURE_3D)
+        # memory layout. Built with numpy rather than a triple loop -- at 65
+        # that loop was 274,625 iterations to produce a fixed ramp.
+        axis = np.arange(n, dtype=np.float32) / (n - 1)
+        coords = np.stack([
+            np.tile(axis, n * n),                  # R cycles every element
+            np.repeat(np.tile(axis, n), n),        # G every n
+            np.repeat(axis, n * n),                # B every n*n
+        ], axis=1).astype(np.float32)
 
-        # Apply the OCIO transform to every lattice point
-        # OCIO's applyRGB operates in-place on a packed float array
-        if hasattr(cpu_processor, "applyRGB"):
-            # Process each pixel (safest, works with all OCIO versions)
-            result = coords.copy()
-            for i in range(total):
-                pixel = result[i].tolist()
-                transformed = cpu_processor.applyRGB(pixel)
-                result[i, 0] = transformed[0]
-                result[i, 1] = transformed[1]
-                result[i, 2] = transformed[2]
-        else:
-            # Batch API if available (OCIO v2.2+)
-            result = coords.copy()
-            flat = result.ravel()
-            cpu_processor.apply(flat)
-            result = flat.reshape(total, 3)
-
+        # Apply on the array, not pixel by pixel.
+        #
+        # This used to build a Python list per lattice point and call
+        # applyRGB(list). OCIO's binding converts a list to a temporary buffer,
+        # transforms that, and discards it -- the list is not modified. So the
+        # loop wrote the input straight back and every baked LUT was an exact
+        # identity: 18% grey through ACEScg -> sRGB Display came out as 0.18
+        # instead of 0.47, and the viewer showed an untransformed picture under
+        # the name of the transform the user had picked.
+        #
+        # Given a contiguous float32 array, applyRGB does modify in place, and
+        # it is also ~35x faster than the loop was. The `hasattr(applyRGB)`
+        # branch that used to guard a "batch API if available" fallback is gone
+        # with it: applyRGB has always been present, so the fallback was
+        # unreachable and the slow path was the only path.
+        result = np.ascontiguousarray(coords)
+        cpu_processor.applyRGB(result)
         return result.astype(np.float32)
 
     def _make_cache_key(
         self, display: str, view: str, input_space: Optional[str], size: int
     ) -> str:
-        raw = f"dv:{display}:{view}:{input_space or 'default'}:{size}"
+        # repr of a tuple, not a colon-joined string: a display or view name
+        # containing a colon would otherwise let two different transforms hash
+        # to the same key and serve each other's LUT.
+        raw = repr(("dv", display, view, input_space, size))
         return hashlib.md5(raw.encode()).hexdigest()
 
     def clear_cache(self):
@@ -529,6 +537,41 @@ class OCIOConfigManager:
 # Auto-initialize on module load — the config manager is lightweight when
 # no config is found (no OCIO calls until explicitly needed).
 _ocio_manager: Optional[OCIOConfigManager] = None
+
+
+#: Directories an OCIO config may be loaded from over the HTTP route.
+#:
+#: Defaults to the bundled ACES config and the ComfyUI models tree. Add more
+#: with RADIANCE_OCIO_ROOTS (os.pathsep-separated), or with the standard $OCIO
+#: environment variable, which a studio will already have set.
+def _allowed_ocio_roots():
+    roots = [os.path.join(os.path.dirname(os.path.abspath(__file__)), "ACES")]
+    for var in ("RADIANCE_OCIO_ROOTS", "OCIO"):
+        value = os.environ.get(var, "")
+        for part in value.split(os.pathsep):
+            part = part.strip().strip('"')
+            if not part:
+                continue
+            roots.append(part if os.path.isdir(part) else os.path.dirname(part))
+    try:
+        import folder_paths  # type: ignore
+        _models_dir = getattr(folder_paths, "models_dir", None)
+        if isinstance(_models_dir, str) and _models_dir:
+            roots.append(_models_dir)
+    except Exception:
+        pass
+    return [os.path.abspath(os.path.expanduser(r)) for r in roots if r]
+
+
+def _is_inside_allowed_ocio_root(path: str) -> bool:
+    resolved = os.path.realpath(path)
+    for root in _allowed_ocio_roots():
+        try:
+            if os.path.commonpath([resolved, os.path.realpath(root)]) == os.path.realpath(root):
+                return True
+        except ValueError:      # different drives on Windows
+            continue
+    return False
 
 
 def get_ocio_manager() -> OCIOConfigManager:
@@ -552,6 +595,12 @@ def register_ocio_routes():
         logger.warning("[Radiance OCIO] Cannot register routes — server not available")
         return
 
+    # Idempotent: re-running this (duplicate import) would crash ComfyUI startup
+    # with "method HEAD is already registered". Register the OCIO routes once.
+    if getattr(PromptServer.instance, "_radiance_ocio_routes_registered", False):
+        return
+    PromptServer.instance._radiance_ocio_routes_registered = True
+
     @PromptServer.instance.routes.get("/radiance/ocio/config")
     async def ocio_config_endpoint(request):
         """Return full OCIO config info for the frontend HUD."""
@@ -570,11 +619,29 @@ def register_ocio_routes():
                     {"error": "Missing 'path' parameter", "status": "error"}
                 )
 
-            # Security: resolve and validate path
-            config_path = os.path.abspath(config_path)
+            # Containment, not just resolution.
+            #
+            # The comment here said "resolve and validate path" and then only
+            # called abspath + isfile, so this unauthenticated route accepted an
+            # arbitrary absolute path and answered "File not found" or "loaded"
+            # -- a file-existence oracle for anything on the host, and an
+            # invitation to hand a parser a file it was never meant to see.
+            config_path = os.path.abspath(os.path.expanduser(config_path))
+            if not _is_inside_allowed_ocio_root(config_path):
+                logger.warning(
+                    "[Radiance OCIO] Rejected a config load outside the allowed "
+                    "roots: %s", config_path,
+                )
+                return web.json_response(
+                    {"error": "Path is outside the allowed OCIO directories. "
+                              "Set RADIANCE_OCIO_ROOTS to add locations.",
+                     "status": "error"},
+                    status=403,
+                )
             if not os.path.isfile(config_path):
                 return web.json_response(
-                    {"error": f"File not found: {config_path}", "status": "error"}
+                    {"error": f"File not found: {config_path}", "status": "error"},
+                    status=404,
                 )
 
             mgr = get_ocio_manager()
@@ -726,15 +793,13 @@ def apply_ocio_transform(
         out = img[..., :3].astype(np.float32).copy()
         h, w = out.shape[:2]
 
-        # Apply per-pixel (compatible with all OCIO versions)
+        # applyRGB mutates a contiguous float32 buffer in place. Handed a
+        # Python list it transforms a temporary and discards it, which is how
+        # this function returned its input unchanged for every pixel, the same
+        # defect the LUT bake carried. Give it the array.
         if hasattr(cpu, "applyRGB"):
-            flat = out.reshape(-1, 3)
-            for i in range(flat.shape[0]):
-                pixel = flat[i].tolist()
-                result = cpu.applyRGB(pixel)
-                flat[i, 0] = result[0]
-                flat[i, 1] = result[1]
-                flat[i, 2] = result[2]
+            flat = np.ascontiguousarray(out.reshape(-1, 3), dtype=np.float32)
+            cpu.applyRGB(flat)
             out = flat.reshape(h, w, 3)
 
         return out

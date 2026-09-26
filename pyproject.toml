@@ -1,26 +1,245 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "radiance"
-description = "Radiance is a 32-bit color space collection of nodes for ComfyUI."
-version = "2.3.3"
-license = {file = "LICENSE"} 
-requires-python = ">=3.9"
+description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to HDR, HDR VAE encode and decode, OCIO colour management, EXR I/O, a pro Viewer, and Nuke / Resolve handoff."
+# Keep in step with config/constants.py VERSION, package.json and CHANGELOG.md;
+# tests/test_version_sync.py fails if they drift.
+version = "3.5.0"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"   # ComfyUI's own floor
+authors = [
+    { name = "FXTD Studios" },
+]
+keywords = [
+    "comfyui",
+    "custom-nodes",
+    "vfx",
+    "hdr",
+    "aces",
+    "ocio",
+    "openexr",
+    "nuke",
+    "davinci-resolve",
+    "sdr-to-hdr",
+    "exr",
+    "vfx",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Environment :: GPU :: Apple Metal",
     "Topic :: Scientific/Engineering :: Image Processing",
-    "Framework :: ComfyUI"
+    "Topic :: Multimedia :: Video",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
 ]
 
-dependencies = ["opencv-python", "imageio", "Pillow", "OpenEXR", "Imath", "opencolorio", "colour-science", "transformers", "scipy", "defusedxml", "imageio-ffmpeg"]
+# Runtime deps mirror requirements.txt so registry/pip installs match ComfyUI installs.
+# ComfyUI itself provides torch; Radiance validates it at runtime without installing it here.
+dependencies = [
+    "opencv-python>=4.8.0",
+    "imageio>=2.31.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.22",
+    "OpenEXR>=3.2.0; python_version < '3.14'",   # no cp314 wheel yet; EXR falls back to OpenImageIO
+    "OpenImageIO>=3.0.0",
+    "opencolorio>=2.3.0",
+    "transformers>=4.36.0",
+    "diffusers>=0.33.0",    # Multipass Estimate: Marigold IID materials and lighting
+    "accelerate>=0.26.0",   # low-memory loading of the Marigold UNets
+    "scipy>=1.10.0",
+    "defusedxml>=0.7.1",
+    "imageio-ffmpeg>=0.4.9",
+    "tqdm>=4.66.0",
+    "aiohttp>=3.8.0",
+    # Sole writer/depth-probe for 16-bit and 32-bit float TIFF. Without it the
+    # Write node refuses deep-TIFF requests rather than silently emitting 8-bit.
+    "tifffile>=2023.7.10",
+    # colour-science, einops and torchsde used to sit here. Nothing in the
+    # package imports any of them, so they only ever cost install time and
+    # resolver conflicts. colour-science is still offered via the `full` extra.
+]
+
+[project.optional-dependencies]
+# Minimal headless CI test environment — no GPU, no ComfyUI, no model weights.
+test = [
+    "build>=1.2",
+    "psutil>=5.9",
+    "aiohttp>=3.8",
+    "PyYAML>=6",
+    "tomli>=2; python_version < '3.11'",
+    "pytest>=7.4",
+    "pytest-timeout>=2.1",
+    "pytest-cov>=4.0",
+    "numpy>=1.22",
+    "scipy>=1.9",
+    "Pillow>=9.0",
+    "defusedxml>=0.7",
+    "opencv-python-headless>=4.7",
+    "safetensors>=0.4.0",
+    "tqdm>=4.66",
+    "tifffile>=2023.7.10",
+]
+# Full production stack (installed in ComfyUI custom_nodes environment)
+full = [
+    "opencv-python>=4.7",
+    "OpenEXR>=3.0",
+    "OpenImageIO>=3.0",
+    "opencolorio>=2.2",
+    "tifffile>=2023.7.10",
+    "colour-science>=0.4",
+    "transformers>=4.35",
+    "openai>=1.0",       # audio: transcription
+    # diffusers and accelerate are core dependencies now (Multipass Estimate).
+    # anthropic, google-generativeai and peft were listed here and imported
+    # nowhere in the package.
+]
 
 [project.urls]
-Repository = "https://github.com/fxtdstudios/radiance"
-Documentation = "https://radiance.fxtd.org/index.html"
-"Bug Tracker" = "https://radiance.fxtd.org/faq.html"
+Homepage      = "https://www.fxtdstudios.com"
+Repository    = "https://github.com/fxtd-studios/radiance"
+Documentation = "https://www.fxtdstudios.com/radiance-comfyui.html"
+Changelog     = "https://github.com/fxtd-studios/radiance/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/fxtd-studios/radiance/issues"
+Models        = "https://huggingface.co/fxtdstudios/RUDRA"
 
 [tool.comfy]
-PublisherId = "fxtdstudios"
-DisplayName = "radiance"
-Icon = "https://raw.githubusercontent.com/fxtdstudios/radiance/main/r_icon.png"
+PublisherId      = "fxtdstudios"
+DisplayName      = "Radiance"
+Icon             = "https://raw.githubusercontent.com/fxtd-studios/radiance/main/r_icon.png"
 requires-comfyui = ">=0.2.2"
 
+[tool.setuptools]
+package-dir = { "radiance" = "." }
+packages = [
+    "radiance",
+    "radiance.color",
+    "radiance.config",
+    "radiance.core",
+    "radiance.core.system",
+    "radiance.core.tensor",
+    "radiance.delivery",
+    "radiance.film",
+    "radiance.gpu",
+    "radiance.hdr",
+    "radiance.image",
+    "radiance.io",
+    "radiance.model",
+    "radiance.nodes",
+    "radiance.nodes.ai",
+    "radiance.nodes.color",
+    "radiance.nodes.generate",
+    "radiance.nodes.hdr",
+    "radiance.nodes.io",
+    "radiance.nodes.monitor",
+    "radiance.nodes.pipeline",
+    "radiance.nodes.upscale",
+    "radiance.nodes.vfx",
+    "radiance.nodes.vfx.multipass",
+    "radiance.nodes.video",
+    "radiance.tools",
+]
+include-package-data = true
+
+[tool.setuptools.package-data]
+radiance = [
+    "RADIANCE.png",
+    "r_icon.png",
+    "viewer.png",
+    "basic_workflow.png",
+    "ACES/*.ocio",
+    "js/*.js",
+    "js/*.css",
+    "js/*.html",
+    "js/*.mjs",
+    "js/vendor/ocio/*.js",
+    "js/vendor/ocio/*.wasm",
+    "js/vendor/ocio/LICENSE",
+    "js/vendor/ocio/THIRD_PARTY_NOTICES.md",
+    # Ship the starter graph and the shipped templates only.
+    #
+    # These globs used to be workflows/*.rad and workflows/*/*.rad, which swept
+    # up whatever the developer happened to have saved: a build made on a
+    # working machine shipped that person's own shot files, and .versions/
+    # snapshots with them. .gitignore already calls workflows/*.rad "user /
+    # project data (keep local; not shipped in the package)" -- the package-data
+    # globs just did not agree with it.
+    "workflows/*.json",
+    "workflows/official/*.json",
+    "workflows/TEMPLATES/*.json",
+    "workflows/TEMPLATES/*.rad",
+    "scripts/training/train_temporal_rudra.py",
+    "scripts/start_nuke_server.py",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# pytest
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths      = ["tests"]
+python_files   = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Per-test timeout — guards against infinite loops in node code (CI & local)
+timeout = 30
+
+# `slow` tests are opt-in: `pytest -m slow` runs them (a later -m wins). The
+# 1-to-100 frame-count sweep is marked slow and used to run on every plain
+# `pytest`, 68 s of a 245 s suite, although the README and the test itself
+# said it was deselected. CI runs the slow set in its own step.
+addopts = "-m 'not slow'"
+
+# Registered markers (suppresses PytestUnknownMarkWarning)
+markers = [
+    "slow: marks tests as slow — skip in fast CI with `-m 'not slow'`",
+    "gpu: marks tests that require a real CUDA device",
+    "integration: marks end-to-end tests that need ComfyUI or model weights",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Coverage (pytest-cov)
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source   = ["radiance"]
+omit     = [
+    "*/tests/*",
+    "*/conftest.py",
+    "*/dataset_hdr_lora.py",
+    "*/train_hdr_lora.py",
+]
+branch   = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# The ONE coverage floor. There used to be three disagreeing numbers: this one,
+# a --cov-fail-under=15 on the ci.yml command line (which overrides this one, so
+# this one never applied), and 53% advertised in the README. CI therefore passed
+# at 22% against a floor of 15 while the README claimed 53.
+#
+# 54 sits just under the 55.96% measured on the full dependency lane (16689 of
+# 28018 statements, with branch=true above, so this figure folds branches in).
+# Close enough that dropping a module's tests trips it, far enough that
+# ordinary work does not. It is enforced in the one place the real number can
+# be measured: the test-full job, which installs torch,
+# OpenEXR, OpenColorIO and the rest. The lightweight matrix cannot execute half
+# the suite, so it measures nothing worth gating on and no longer runs coverage.
+# Re-measure before raising this.
+fail_under   = 54
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

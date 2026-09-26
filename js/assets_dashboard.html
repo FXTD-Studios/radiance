@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radiance Assets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c; --line: rgba(255,255,255,0.06); --line2: rgba(255,255,255,0.09);
+            --text: #ededf0; --dim: #767a82; --mute: #6b7079; --faint: #5b616b; --accent: #c8a96e;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --display: 'Space Grotesk', 'Inter', sans-serif;
+            --t-image: #6f9bc4; --t-video: #9cc4e6; --t-sequence: #c9a35e; --t-hdri: #a99ad0;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+        body { background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+        .dsp { font-family: var(--display); }
+        ::-webkit-scrollbar { width: 9px; height: 9px; }
+        ::-webkit-scrollbar-thumb { background: #222; border-radius: 5px; border: 2px solid var(--bg); }
+        .ast-shell { display: flex; height: 100vh; overflow: hidden; }
+
+        .ast-sidebar { width: 168px; flex: 0 0 168px; border-right: 1px solid var(--line); padding: 24px 0; display: flex; flex-direction: column; }
+        .ast-brand { display: flex; align-items: center; gap: 9px; padding: 0 22px 26px; }
+        .ast-brand img { width: 18px; height: 18px; object-fit: contain; opacity: .9; }
+        .ast-brand span { font-family: var(--display); font-size: 12px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: #c9ccd2; }
+        .ast-label { padding: 0 22px 9px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); display: flex; justify-content: space-between; align-items: center; }
+        .ast-label.mt { padding-top: 20px; }
+        .ast-newbin { background: none; border: 0; color: var(--accent); font-size: 15px; cursor: pointer; line-height: 1; padding: 0; }
+        .ast-nav { display: flex; flex-direction: column; font-size: 13px; }
+        .ast-nav-item { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; background: none; border: 0; border-left: 2px solid transparent; padding: 7px 22px; color: var(--dim); font-family: inherit; font-size: 13px; cursor: pointer; }
+        .ast-nav-item:hover { color: #c9ccd2; }
+        .ast-nav-item.is-active { color: var(--text); border-left-color: var(--accent); }
+        .ast-nav-count { color: var(--faint); font-size: 12px; }
+        .ast-foot { margin-top: auto; padding: 0 22px; font-size: 11px; color: var(--faint); line-height: 1.7; }
+
+        .ast-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .ast-topbar { display: flex; align-items: flex-end; justify-content: space-between; padding: 28px 32px 0; }
+        .ast-crumb { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--mute); margin-bottom: 7px; }
+        .ast-title { font-size: 25px; font-weight: 500; letter-spacing: -.01em; }
+        .ast-tools { display: flex; gap: 18px; align-items: center; font-size: 12px; color: var(--mute); }
+        .ast-search { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--line2); padding: 3px 2px; }
+        .ast-search input { background: none; border: 0; outline: 0; color: var(--text); font-family: inherit; font-size: 12.5px; width: 150px; }
+        .ast-search input::placeholder { color: var(--faint); }
+        .ast-import { color: var(--accent); border-bottom: 1px solid rgba(200,169,110,0.4); padding-bottom: 2px; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; font-size: 12px; }
+
+        .ast-content { padding: 24px 32px 40px; overflow-y: auto; flex: 1; }
+        .ast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 24px 16px; }
+        .ast { cursor: pointer; }
+        .ast-thumb { aspect-ratio: 16/10; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; position: relative; margin-bottom: 9px; overflow: hidden; background: #0d0d10; }
+        .ast-thumb.is-seq { box-shadow: 4px 4px 0 -1px #15151a, 4px 4px 0 rgba(255,255,255,0.08); }
+        .ast-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: .85; }
+        .ast-tag { position: absolute; top: 6px; left: 7px; font-size: 8.5px; font-family: monospace; letter-spacing: .05em; }
+        .ast-tag.ast-image { color: var(--t-image); }
+        .ast-tag.ast-video { color: var(--t-video); }
+        .ast-tag.ast-sequence { color: var(--t-sequence); }
+        .ast-tag.ast-hdri { color: var(--t-hdri); }
+        .ast-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: rgba(255,255,255,0.45); }
+        .ast-play svg { width: 20px; height: 20px; }
+        .ast-range { position: absolute; bottom: 6px; left: 7px; font-size: 9px; font-family: monospace; color: #5a5e66; }
+        .ast-name { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ast-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
+        .ast-sub { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
+        .ast-drop { display: flex; align-items: center; justify-content: center; aspect-ratio: 16/10; border: 1px dashed rgba(200,169,110,0.4); border-radius: 5px; color: var(--accent); font-size: 11px; cursor: pointer; }
+        .ast-drop:hover { background: rgba(200,169,110,0.04); }
+        .ast-empty { color: var(--faint); font-size: 12px; padding: 40px 0; text-align: center; grid-column: 1 / -1; }
+
+        .ast-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(12px); background: #16161a; border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 12.5px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+        .ast-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        #ast-drawer { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+        #ast-drawer.is-open { pointer-events: auto; }
+        .ast-bd { position: absolute; inset: 0; background: rgba(0,0,0,0.5); opacity: 0; transition: opacity .2s; }
+        #ast-drawer.is-open .ast-bd { opacity: 1; }
+        .ast-panel { position: absolute; top: 0; right: 0; height: 100%; width: 380px; max-width: 92vw; background: #0c0c0f; border-left: 1px solid var(--line2); transform: translateX(100%); transition: transform .22s ease; display: flex; flex-direction: column; }
+        #ast-drawer.is-open .ast-panel { transform: translateX(0); }
+        .ast-ph { display: flex; align-items: center; gap: 12px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
+        .ast-ph > div:first-child { flex: 1; min-width: 0; }
+        .ast-ph-title { font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ast-x { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 13px; }
+        .ast-x:hover { color: var(--text); }
+        .ast-pb { padding: 22px 24px; overflow-y: auto; flex: 1; }
+        .ast-preview { aspect-ratio: 16/10; border: 1px solid var(--line2); border-radius: 5px; margin-bottom: 18px; overflow: hidden; background: #0d0d10; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 11px; }
+        .ast-preview img { width: 100%; height: 100%; object-fit: contain; }
+        .ast-kv { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+        .ast-kv span:first-child { color: var(--mute); }
+        .ast-kv span:last-child { color: var(--text); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ast-sec-label { font-size: 11px; color: var(--mute); letter-spacing: .12em; text-transform: uppercase; margin: 20px 0 10px; }
+        .ast-binbtn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--line2); color: var(--dim); border-radius: 6px; padding: 5px 10px; font-family: inherit; font-size: 12px; cursor: pointer; margin: 0 6px 6px 0; }
+        .ast-binbtn:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+    </style>
+</head>
+<body>
+    <div id="radiance-assets" class="ast-shell"></div>
+    <div id="ast-drawer"></div>
+    <script type="module" src="./assets_dashboard.mjs?v=3"></script>
+</body>
+</html>

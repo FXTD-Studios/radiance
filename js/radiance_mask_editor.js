@@ -39,11 +39,17 @@ class RadianceMaskEditor {
         this.brushOpacity = 1.0;
         this.brushHardness = 0.2;
         this.isDrawing = false;
+        this.lastPaintPos = null; // Track last paint coordinate for stroke interpolation
 
         // Vector State
         this.polygons = [];       // Array of { points: [{x,y}], closed: bool, feather: float }
         this.currentPoly = null;
         this.activePoint = null;
+
+        // Vertex Dragging State
+        this.isDraggingVertex = false;
+        this.draggingPoly = null;
+        this.draggingPointIndex = -1;
 
         // View Mode
         this.viewMode = 'overlay'; // overlay, matte, false_color
@@ -412,10 +418,8 @@ class RadianceMaskEditor {
             }
 
             if (this.tool === 'polygon') {
-                if (!this.currentPoly) this.startPolygon();
-
-                // Check if clicking near start point to close
-                if (this.currentPoly.points.length > 2) {
+                // 1. Check if clicking near start point of current polygon to close
+                if (this.currentPoly && this.currentPoly.points.length > 2) {
                     const first = this.currentPoly.points[0];
                     const dist = Math.hypot(first.x - pos.x, first.y - pos.y);
                     if (dist * this.zoom < POINT_HIT_RADIUS_PX) {
@@ -424,6 +428,23 @@ class RadianceMaskEditor {
                     }
                 }
 
+                // 2. Check if clicking near any existing point in any polygon to drag
+                for (const poly of this.polygons) {
+                    for (let i = 0; i < poly.points.length; i++) {
+                        const p = poly.points[i];
+                        const dist = Math.hypot(p.x - pos.x, p.y - pos.y);
+                        if (dist * this.zoom < POINT_HIT_RADIUS_PX) {
+                            this.isDraggingVertex = true;
+                            this.draggingPoly = poly;
+                            this.draggingPointIndex = i;
+                            this.canvasContainer.style.cursor = 'grabbing';
+                            return;
+                        }
+                    }
+                }
+
+                // 3. Otherwise, append point
+                if (!this.currentPoly) this.startPolygon();
                 this.currentPoly.points.push({ x: pos.x, y: pos.y });
                 this.saveUndoState();
                 this.drawDisplay();
@@ -432,22 +453,27 @@ class RadianceMaskEditor {
 
             if (e.button === 0) {
                 this.isDrawing = true;
+                this.lastPaintPos = pos; // Set initial paint position
                 this.saveUndoState();
                 this.paint(e);
             }
         });
 
         this.canvasContainer.addEventListener('pointermove', (e) => {
+            const pos = this.getLogicalPos(e.clientX, e.clientY);
             if (this.isPanning) {
                 this.panX += e.movementX;
                 this.panY += e.movementY;
                 this.updateCanvasTransform();
+            } else if (this.isDraggingVertex) {
+                this.draggingPoly.points[this.draggingPointIndex] = { x: pos.x, y: pos.y };
+                this._scheduleDisplayUpdate();
             } else if (this.isDrawing) {
                 this.paint(e);
             } else {
                 // Interactive hover for polygon
                 if (this.tool === 'polygon' && this.currentPoly && !this.currentPoly.closed) {
-                    this.drawDisplay(this.getLogicalPos(e.clientX, e.clientY));
+                    this.drawDisplay(pos);
                 }
             }
         });
@@ -481,8 +507,16 @@ class RadianceMaskEditor {
     _attachActiveListeners() {
         this._addGlobalListener(window, 'pointerup', () => {
             this.isPanning = false;
+            if (this.isDraggingVertex) {
+                this.isDraggingVertex = false;
+                this.draggingPoly = null;
+                this.draggingPointIndex = -1;
+                this.saveUndoState();
+                this.drawDisplay();
+            }
             if (this.isDrawing) {
                 this.isDrawing = false;
+                this.lastPaintPos = null; // Reset continuous paint
                 this.drawDisplay(); // Final commit draw
             }
             this.canvasContainer.style.cursor = 'crosshair';
@@ -548,17 +582,34 @@ class RadianceMaskEditor {
         }
 
         const radius = (this.brushSize / 2) * pressure;
-        const grad = ctx.createRadialGradient(pos.x, pos.y, radius * this.brushHardness, pos.x, pos.y, radius);
-
         const opac = this.brushOpacity * pressure;
-        grad.addColorStop(0, `rgba(255,255,255, ${opac})`);
-        grad.addColorStop(1, `rgba(255,255,255, 0)`);
 
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-        ctx.fill();
+        const drawStamp = (cx, cy) => {
+            const grad = ctx.createRadialGradient(cx, cy, radius * this.brushHardness, cx, cy, radius);
+            grad.addColorStop(0, `rgba(255,255,255, ${opac})`);
+            grad.addColorStop(1, `rgba(255,255,255, 0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.fill();
+        };
+
+        if (this.lastPaintPos) {
+            const dist = Math.hypot(pos.x - this.lastPaintPos.x, pos.y - this.lastPaintPos.y);
+            const step = Math.max(1, radius * 0.1); // Stamp every 10% of the radius
+            if (dist > step) {
+                for (let d = 0; d < dist; d += step) {
+                    const t = d / dist;
+                    const cx = this.lastPaintPos.x + (pos.x - this.lastPaintPos.x) * t;
+                    const cy = this.lastPaintPos.y + (pos.y - this.lastPaintPos.y) * t;
+                    drawStamp(cx, cy);
+                }
+            }
+        }
+        drawStamp(pos.x, pos.y);
         ctx.restore();
+
+        this.lastPaintPos = pos;
 
         // RAF-gated display update — avoids compositing on every single pointermove
         this._scheduleDisplayUpdate();
@@ -590,7 +641,7 @@ class RadianceMaskEditor {
         if (this.currentPoly && this.currentPoly.points.length > 2) {
             this.saveUndoState();
             this.currentPoly.closed = true;
-            this.bakePolygon(this.currentPoly);
+            // No longer bake directly to raster canvas to keep vector roto non-destructive
             this.currentPoly = null;
             this.drawDisplay();
         }
@@ -601,14 +652,11 @@ class RadianceMaskEditor {
             this.saveUndoState();
             this.polygons.pop();
             this.currentPoly = null;
-            // Since we baked to raster, deleting requires undo to revert.
-            // rebuildMaskFromState falls through to undo correctly.
-            this.rebuildMaskFromState();
+            this.drawDisplay();
         }
     }
 
-    bakePolygon(poly) {
-        const ctx = this.maskCtx;
+    bakePolygon(poly, ctx = this.maskCtx) {
         ctx.save();
         ctx.fillStyle = "rgba(255,255,255,1)";
         ctx.beginPath();
@@ -625,6 +673,24 @@ class RadianceMaskEditor {
         }
         ctx.fill();
         ctx.restore();
+    }
+
+    getCombinedMaskCanvas() {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = this.maskCanvas.width;
+        tempCanvas.height = this.maskCanvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // 1. Draw the raster paint mask
+        tempCtx.drawImage(this.maskCanvas, 0, 0);
+
+        // 2. Draw all closed dynamic vector polygons
+        this.polygons.forEach(poly => {
+            if (poly.closed && poly.points.length > 2) {
+                this.bakePolygon(poly, tempCtx);
+            }
+        });
+        return tempCanvas;
     }
 
     rebuildMaskFromState() {
@@ -931,26 +997,29 @@ class RadianceMaskEditor {
             ctx.putImageData(imgData, 0, 0);
         }
 
-        // 2. Overlay Base Mask
+        // 2. Overlay Base Mask (using Combined Mask canvas!)
+        const combinedCanvas = this.getCombinedMaskCanvas();
+        const combinedCtx = combinedCanvas.getContext('2d');
+
         ctx.save();
         if (this.viewMode === 'overlay') {
             // Ruby Red overlay common in Nuke
             const tempCanvas = document.createElement("canvas");
-            tempCanvas.width = this.maskCanvas.width; tempCanvas.height = this.maskCanvas.height;
+            tempCanvas.width = combinedCanvas.width; tempCanvas.height = combinedCanvas.height;
             const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(this.maskCanvas, 0, 0);
+            tempCtx.drawImage(combinedCanvas, 0, 0);
             tempCtx.globalCompositeOperation = 'source-in';
             tempCtx.fillStyle = 'rgba(255, 30, 30, 0.45)';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             ctx.drawImage(tempCanvas, 0, 0);
 
         } else if (this.viewMode === 'matte') {
-            ctx.drawImage(this.maskCanvas, 0, 0);
+            ctx.drawImage(combinedCanvas, 0, 0);
 
         } else if (this.viewMode === 'false_color') {
             // Per-pixel alpha-to-color-ramp (Flame/Nuke-style false color)
             // Maps mask alpha: 0=black, low=blue, mid=green, high=red, 1.0=white
-            const maskData = this.maskCtx.getImageData(0, 0, this.maskCanvas.width, this.maskCanvas.height);
+            const maskData = combinedCtx.getImageData(0, 0, combinedCanvas.width, combinedCanvas.height);
             const md = maskData.data;
             const outData = ctx.getImageData(0, 0, this.displayCanvas.width, this.displayCanvas.height);
             const od = outData.data;
@@ -1031,11 +1100,28 @@ class RadianceMaskEditor {
     //                       LIFECYCLE: LOAD / SHOW / HIDE / SAVE
     // ═══════════════════════════════════════════════════════════════════════════
 
+    showToast(message, tone = "info") {
+        const toast = document.createElement("div");
+        const color = tone === "error" ? "#ff6b6b" : tone === "success" ? "#4cd964" : "#00a8ff";
+        toast.textContent = message;
+        toast.style.cssText = `
+            position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+            z-index: 10020; max-width: 460px; padding: 10px 14px;
+            color: #f5f5f7; background: rgba(18,18,24,0.96);
+            border: 1px solid ${color}66; border-radius: 8px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+            font: 12px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            pointer-events: none;
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3200);
+    }
+
     async load(node) {
         this.node = node;
         const imgWidget = node.widgets.find(w => w.name === "image");
         if (!imgWidget || !imgWidget.value) {
-            alert("Please upload/select an image first.");
+            this.showToast("Please upload or select an image first.", "info");
             return;
         }
 
@@ -1066,7 +1152,7 @@ class RadianceMaskEditor {
         };
         this.imageEl.onerror = () => {
             console.error("[Radiance] Failed to load source image:", filename);
-            alert("Failed to load source image.");
+            this.showToast("Failed to load source image.", "error");
         };
         this.imageEl.src = imgUrl;
 
@@ -1102,7 +1188,7 @@ class RadianceMaskEditor {
         // Close any open polygon before saving
         if (this.currentPoly && !this.currentPoly.closed && this.currentPoly.points.length > 2) {
             this.currentPoly.closed = true;
-            this.bakePolygon(this.currentPoly);
+            // No longer bake directly to raster canvas to keep vector roto non-destructive
             this.currentPoly = null;
         }
 
@@ -1114,8 +1200,9 @@ class RadianceMaskEditor {
         const compMaskName = `${pureName}_radmask.png`;
         const metaName = `${pureName}_radmask_meta.json`;
 
-        // Save Raster Mask
-        this.maskCanvas.toBlob(async (blob) => {
+        // Save Combined Mask (Dynamic Vector Polygons + Raster Paint Canvas)
+        const combinedCanvas = this.getCombinedMaskCanvas();
+        combinedCanvas.toBlob(async (blob) => {
             if (!blob) {
                 console.error("[Radiance] Failed to create mask blob.");
                 return;
@@ -1150,7 +1237,7 @@ class RadianceMaskEditor {
                 this.hide();
             } catch (error) {
                 console.error("[Radiance] Save error:", error);
-                alert("Failed to save mask. Check console for details.");
+                this.showToast("Failed to save mask. Check console for details.", "error");
             }
         }, "image/png");
     }
