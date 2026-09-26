@@ -1,0 +1,240 @@
+<!doctype html>
+<!--
+  DOM harness for the viewer panels.
+
+  The panel code used to be held by source assertions -- probe_wiring,
+  scope_wiring and ocio_wiring all read radiance_viewer.js as text and grep it,
+  because the module imports ComfyUI's app.js and api.js and so cannot be
+  imported in Node. Reading source proves a line exists. It does not prove the
+  panel builds, and it did not stop the module going unparseable for seven
+  commits while every check reported success.
+
+  This loads radiance_viewer.js in a real browser against stubbed ComfyUI
+  modules, builds each panel into a detached container, and then operates the
+  controls -- changes the selects, clicks the toggles -- and checks what
+  actually happened to the instance and to the DOM.
+
+  The instance is Object.create'd rather than constructed. A real construction
+  needs a LiteGraph node, a canvas, a renderer and a running ComfyUI; the panel
+  builders need a handful of fields, and supplying exactly those keeps the
+  harness about the panels instead of about ComfyUI.
+
+  Driven by js/tests/panel_dom.test.mjs.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance — panel DOM harness</title></head>
+<body>
+<script type="module">
+import "../radiance_viewer.js";
+import { SCOPE_SCALES } from "../radiance_scope_units.js";
+
+// Theme colours are read all over the panel code. A Proxy answers whatever is
+// asked for, so the harness can never drift out of date with the real theme --
+// a stub object with a fixed key list would have to be maintained in step.
+const THEME = new Proxy({}, {
+    get: (_, k) => (k === 'font' || k === 'mono' ? 'monospace' : '#888'),
+});
+
+function makeInstance() {
+    const V = window.RadianceViewer;
+    const v = Object.create(V.prototype);
+    Object.assign(v, {
+        theme: THEME,
+        // Framing
+        safeAreaPreset: 'modern', matteMode: 'off', pixelFilter: 'linear',
+        timeDisplay: 'frames', currentFrame: 0, totalFrames: 100, fps: 24,
+        // Scopes
+        scopeScale: 'cv10', scopeLevels: 'data', scopeMeasurePoint: 'display',
+        // Probe
+        probeEnabled: false, probeMode: 'point', probeRadius: 0, probeSpace: 'scene',
+        // Masks. The same shape the constructor sets, because these field
+        // names are read straight into the shader uniforms -- a stub that
+        // invented its own would build a panel that cannot exist.
+        maskState: {
+            type: 0, center: [0.5, 0.5], scale: [0.3, 0.3],
+            feather: 0.2, rotation: 0.0, invert: false, showOverlay: false,
+        },
+        // The HDR widget returns early without data, which is correct
+        // behaviour and also means an empty panel that passes. Real frame data
+        // instead, and _hdrZoneStats deliberately left unset: the widget calls
+        // _computeHDRZoneStats() when it is missing, so the statistics are the
+        // viewer's own rather than eighteen fields copied here to go stale.
+        hdrData: (() => {
+            const px = 16 * 16, data = new Float32Array(px * 3);
+            for (let i = 0; i < px; i++) {
+                const v = (i / px) * 6;            // 0..6, so there is over-range
+                data[i * 3] = v; data[i * 3 + 1] = v * 0.8; data[i * 3 + 2] = v * 0.6;
+            }
+            return { data, width: 16, height: 16, channels: 3 };
+        })(),
+        // Enough of the rest to let the builders run
+        settings: {}, node: { id: 1 }, image: null, imageWidth: 0, imageHeight: 0,
+        renderer: null, requestRender() {},
+        renderOverlay() {}, renderContent() {}, updateScopes() {},
+        _lastRenderContent() {}, _scopeCtx() { return { peak: 1000, levels: this.scopeLevels }; },
+        togglePixelFilter() {
+            this.pixelFilter = this.pixelFilter === 'nearest' ? 'linear' : 'nearest';
+        },
+        cycleTimeDisplay() {
+            const order = ['frames', 'seconds', 'timecode'];
+            this.timeDisplay = order[(order.indexOf(this.timeDisplay) + 1) % order.length];
+        },
+        formatFramePosition() { return 'POS'; },
+    });
+    return v;
+}
+
+/** Every select in a container, by the label of the row it sits in. */
+function selectsByLabel(container) {
+    const map = {};
+    for (const sel of container.querySelectorAll('select')) {
+        const row = sel.closest('div');
+        const label = row?.firstElementChild?.textContent?.trim() || '';
+        (map[label] ||= []).push(sel);
+    }
+    return map;
+}
+
+// Dispatch a real event rather than calling the handler property. The panels
+// assign el.onchange, so a dispatched event reaches them the same way a user's
+// click would -- and if one is ever converted to addEventListener, this keeps
+// working while a direct handler call would silently stop testing anything.
+function fire(el, type) {
+    el.dispatchEvent(new Event(type, { bubbles: true }));
+}
+
+window.__run = () => {
+    const V = window.RadianceViewer;
+    const out = { built: {}, driven: {}, presets: {} };
+
+    // What the panel is supposed to offer, read from the definitions rather
+    // than retyped here. If a preset is added and the panel does not show it,
+    // that is the failure this catches.
+    out.presets.safeArea = V.SAFE_AREA_PRESETS.map((p) => ({ id: p.id, label: p.label, note: p.note }));
+    out.presets.matte = V.MATTE_PRESETS.map((p) => ({ id: p.id, label: p.label }));
+    out.presets.scopeScales = SCOPE_SCALES.map((s) => s.id);
+
+    // Discovered from the prototype, not listed here. A hardcoded list is how
+    // this harness covered five of the fourteen panels while reading as though
+    // it covered the viewer: a panel added later joined nothing. The test
+    // asserts a floor on the count, so losing one is a failure too.
+    out.panels = Object.getOwnPropertyNames(V.prototype)
+        .filter((n) => /^render[A-Z].*(Tab|Section|Widget)$/.test(n))
+        .sort();
+
+    for (const m of out.panels) {
+        const c = document.createElement('div');
+        document.body.appendChild(c);
+        try {
+            makeInstance()[m](c);
+            out.built[m] = {
+                ok: true,
+                selects: c.querySelectorAll('select').length,
+                inputs: c.querySelectorAll('input').length,
+                nodes: c.querySelectorAll('*').length,
+                text: c.textContent.replace(/\s+/g, ' ').trim(),
+            };
+        } catch (e) {
+            out.built[m] = { ok: false, error: String(e && e.message || e) };
+        }
+    }
+
+    // ── Driving the framing controls ────────────────────────────────────────
+    {
+        const v = makeInstance();
+        const c = document.createElement('div');
+        document.body.appendChild(c);
+        v.renderFramingSection(c);
+        const byLabel = selectsByLabel(c);
+        const safe = byLabel['Safe areas']?.[0];
+        const matte = byLabel['Matte']?.[0];
+        const d = out.driven.framing = {};
+
+        d.safeOptions = safe ? [...safe.options].map((o) => ({ value: o.value, text: o.textContent })) : null;
+        d.matteOptions = matte ? [...matte.options].map((o) => ({ value: o.value, text: o.textContent })) : null;
+
+        // The note under the select, before and after a change. A panel that
+        // updates the state but not the caption is showing one preset's name
+        // over another preset's description.
+        const noteBefore = c.textContent.includes(V.SAFE_AREA_PRESETS[0].note);
+        localStorage.removeItem('radiance_safe_preset');
+        safe.value = 'legacy';
+        fire(safe, 'change');
+        d.safeState = v.safeAreaPreset;
+        d.safeStored = localStorage.getItem('radiance_safe_preset');
+        d.noteWasFirst = noteBefore;
+        d.noteNowMatchesSelection = c.textContent.includes(V.SAFE_AREA_PRESETS[1].note);
+
+        localStorage.removeItem('radiance_matte');
+        matte.value = '2.39';
+        fire(matte, 'change');
+        d.matteState = v.matteMode;
+        d.matteStored = localStorage.getItem('radiance_matte');
+
+        // The magnify toggle: state and label have to move together, or the
+        // button reports the mode it is about to leave.
+        const buttons = [...c.querySelectorAll('div')].filter((el) => typeof el.onclick === 'function');
+        const magnify = buttons.find((el) => /NEAREST|LINEAR/.test(el.textContent));
+        d.magnifyBefore = { state: v.pixelFilter, label: magnify?.textContent };
+        magnify?.onclick();
+        d.magnifyAfter = { state: v.pixelFilter, label: magnify?.textContent };
+
+        const position = buttons.find((el) => /FRAMES|SECONDS|TIMECODE/.test(el.textContent));
+        d.positionBefore = { state: v.timeDisplay, label: position?.textContent };
+        position?.onclick();
+        d.positionAfter = { state: v.timeDisplay, label: position?.textContent };
+    }
+
+    // ── Driving the scope scale selector ────────────────────────────────────
+    {
+        const v = makeInstance();
+        const c = document.createElement('div');
+        document.body.appendChild(c);
+        v.renderScopesTab(c);
+        const d = out.driven.scopes = {};
+        const byLabel = selectsByLabel(c);
+        const scale = Object.values(byLabel).flat()
+            .find((s) => [...s.options].some((o) => o.value === 'nits-pq'));
+        d.found = !!scale;
+        if (scale) {
+            d.options = [...scale.options].map((o) => o.value);
+            localStorage.removeItem('radiance_scope_scale');
+            scale.value = 'nits-pq';
+            fire(scale, 'change');
+            d.state = v.scopeScale;
+            d.stored = localStorage.getItem('radiance_scope_scale');
+        }
+    }
+
+    // ── Driving the mask type ───────────────────────────────────────────────
+    {
+        const v = makeInstance();
+        const c = document.createElement('div');
+        document.body.appendChild(c);
+        v.renderMasksTab(c);
+        const d = out.driven.masks = {};
+        const sel = [...c.querySelectorAll('select')]
+            .find((s) => [...s.options].map((o) => o.textContent).join() === 'None,Circle,Box');
+        d.found = !!sel;
+        if (sel) {
+            d.before = v.maskState.type;
+            sel.value = '1';
+            fire(sel, 'change');
+            d.after = v.maskState.type;
+            // The widget stores an int; a string here means the whole shader
+            // comparison downstream is against the wrong type.
+            d.type = typeof v.maskState.type;
+        }
+    }
+
+    // ── OCIO stays lazy ─────────────────────────────────────────────────────
+    // 4.7 MB of WebAssembly must not be fetched just because a panel was drawn.
+    out.driven.ocioWasmRequested = performance.getEntriesByType('resource')
+        .some((r) => /ocio-wasm\.wasm/.test(r.name));
+
+    out.ok = true;
+    return out;
+};
+</script>
+</body>
+</html>

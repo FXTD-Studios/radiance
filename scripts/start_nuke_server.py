@@ -5,12 +5,53 @@ import struct
 import threading
 import json
 import ast
+import os
 import urllib.request
 import urllib.error
 import random
 
-PORT = 1986
-COMFY_URL = "http://127.0.0.1:8188"
+PORT = int(os.environ.get("RADIANCE_NUKE_PORT", "1986"))
+# v1.1: Configurable via env vars for studio/farm deployments.
+# Bind host: 127.0.0.1 by default (loopback only — safe).
+# Set RADIANCE_NUKE_BIND_HOST=0.0.0.0 only when Nuke runs on a separate machine.
+BIND_HOST = os.environ.get("RADIANCE_NUKE_BIND_HOST", os.environ.get("RADIANCE_NUKE_HOST", "127.0.0.1"))
+# ComfyUI base URL for history/prompt API calls.
+COMFY_URL = os.environ.get("RADIANCE_COMFY_URL", "http://127.0.0.1:8188")
+def load_or_create_token():
+    """The token shared with ComfyUI: RADIANCE_DCC_AUTH_TOKEN, else
+    ~/.radiance/dcc_token, created on first use. A copy of
+    radiance.core.dcc_auth.load_or_create_token (this script runs inside Nuke,
+    where the package is not importable); keep the two identical."""
+    import secrets
+    tok = (os.environ.get("RADIANCE_DCC_AUTH_TOKEN") or "").strip()
+    if tok:
+        return tok
+    path = os.path.join(os.path.expanduser("~"), ".radiance", "dcc_token")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            tok = fh.read().strip()
+        if tok:
+            return tok
+    except OSError:
+        pass
+    tok = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(tok)
+    except FileExistsError:
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+    return tok
+
+
+# Commands must be signed with this token. It used to be read only from
+# RADIANCE_DCC_AUTH_TOKEN, unset by default, so the listener refused every
+# command until both Nuke and ComfyUI were given the same variable.
+DCC_AUTH_TOKEN = load_or_create_token()
 RUNNING = True
 _SERVER_THREAD = None
 
@@ -19,7 +60,8 @@ _SERVER_THREAD = None
 
 def safe_message(msg):
     """Safely show message in Nuke UI from any thread."""
-    nuke.executeInMainThread(lambda: nuke.message(msg))
+    if nuke.GUI:
+        nuke.executeInMainThread(lambda: nuke.message(msg))
 
 
 # execute_in_main removed - logic inlined in handle_client
@@ -69,6 +111,7 @@ _BLOCKED_PATTERNS = [
 
 # Allowed top-level module names (Nuke API + standard safe modules)
 _ALLOWED_IMPORTS = {"nuke", "nukescripts", "json", "math", "random"}
+_ALLOWED_STRUCTURED_ACTIONS = {"ping", "set_frame", "get_info", "load_exr"}
 
 
 def _validate_command(command):
@@ -103,97 +146,245 @@ def _validate_command(command):
     return True, "OK"
 
 
+def _parse_structured_command(command):
+    try:
+        payload = json.loads(command)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("action") not in _ALLOWED_STRUCTURED_ACTIONS:
+        return None
+    return payload
+
+
+def _set_knob_if_exists(node, knob_name, value):
+    if knob_name in node.knobs():
+        node[knob_name].setValue(value)
+
+
+def _execute_structured_command(payload):
+    """Run whitelisted bridge actions without eval/exec."""
+
+    if not isinstance(payload, dict):
+        return None
+
+    action = payload.get("action")
+    if action == "ping":
+        return "RADIANCE_PONG"
+
+    if action == "set_frame":
+        frame = int(payload.get("frame", nuke.frame()))
+        nuke.frame(frame)
+        return f"frame={frame}"
+
+    if action == "get_info":
+        root = nuke.root()
+        fmt = root.format()
+        return json.dumps({
+            "version": nuke.NUKE_VERSION_STRING,
+            "project": root.name(),
+            "fps": root["fps"].value(),
+            "first": int(root["first_frame"].value()),
+            "last": int(root["last_frame"].value()),
+            "format": str(fmt.name()),
+            "width": fmt.width(),
+            "height": fmt.height(),
+        })
+
+    if action == "load_exr":
+        filepath = str(payload.get("filepath", "")).replace("\\", "/").strip()
+        node_name = str(payload.get("node_name", "RadianceStream")).strip()
+        if not filepath:
+            raise ValueError("load_exr requires filepath")
+        if not node_name:
+            node_name = "RadianceStream"
+
+        first_frame = int(payload.get("first_frame", 1))
+        last_frame = int(payload.get("last_frame", first_frame))
+        current_frame = int(payload.get("current_frame", first_frame))
+        raw = bool(payload.get("raw", True))
+        color_space = str(payload.get("color_space", "linear"))
+        connect_viewer = bool(payload.get("connect_viewer", True))
+
+        node = nuke.toNode(node_name)
+        if node is None or node.Class() != "Read":
+            node = nuke.createNode("Read", inpanel=False)
+            node.setName(node_name)
+
+        _set_knob_if_exists(node, "file", filepath)
+        _set_knob_if_exists(node, "first", first_frame)
+        _set_knob_if_exists(node, "last", last_frame)
+        _set_knob_if_exists(node, "origfirst", first_frame)
+        _set_knob_if_exists(node, "origlast", last_frame)
+        _set_knob_if_exists(node, "raw", raw)
+        if not raw:
+            _set_knob_if_exists(node, "colorspace", color_space)
+        if "reload" in node.knobs():
+            node["reload"].execute()
+
+        if connect_viewer:
+            viewer = nuke.toNode("Viewer1")
+            if viewer is None:
+                viewer = nuke.createNode("Viewer", inpanel=False)
+            viewer.setInput(0, node)
+            nuke.frame(current_frame)
+
+        return f"{node_name}: loaded {filepath} [{first_frame}-{last_frame}]"
+
+    return None
+
+
 def handle_client(conn):
     """Handle individual client connection with binary protocol support."""
     try:
         conn.settimeout(5.0)
 
-        # Read header: MAGIC(4) + VERSION(1) + LENGTH(4) = 9 bytes
-        header_data = b""
-        while len(header_data) < 9:
-            chunk = conn.recv(9 - len(header_data))
+        # First, read the first 5 bytes of the header to determine magic and version
+        prefix_data = b""
+        while len(prefix_data) < 5:
+            chunk = conn.recv(5 - len(prefix_data))
             if not chunk:
                 break
-            header_data += chunk
+            prefix_data += chunk
 
-        command = ""
+        # v1.1 FIX-4: Reject connections that don't present the RCMD magic.
+        if len(prefix_data) < 5 or prefix_data[:4] != RADIANCE_MAGIC:
+            msg = "ERROR: Protocol mismatch — expected RCMD magic header"
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
 
-        # Check protocol
-        if len(header_data) == 9 and header_data[:4] == RADIANCE_MAGIC:
-            # Binary Protocol
-            cmd_length = struct.unpack("<I", header_data[5:9])[0]
-            cmd_data = b""
-            while len(cmd_data) < cmd_length:
-                chunk = conn.recv(min(32768, cmd_length - len(cmd_data)))
+        version = prefix_data[4]
+
+        if version == 1:
+            # Read remaining 4 bytes of length for Version 1
+            length_data = b""
+            while len(length_data) < 4:
+                chunk = conn.recv(4 - len(length_data))
                 if not chunk:
                     break
-                cmd_data += chunk
-            command = cmd_data.decode("utf-8", errors="replace").strip()
+                length_data += chunk
+            if len(length_data) < 4:
+                conn.sendall(("ERROR: Incomplete header" + RADIANCE_END).encode("utf-8"))
+                return
+            cmd_length = struct.unpack("<I", length_data)[0]
+            sig_received = None
+        elif version == 2:
+            # Read remaining 36 bytes (32 signature + 4 length) for Version 2
+            remaining_data = b""
+            while len(remaining_data) < 36:
+                chunk = conn.recv(36 - len(remaining_data))
+                if not chunk:
+                    break
+                remaining_data += chunk
+            if len(remaining_data) < 36:
+                conn.sendall(("ERROR: Incomplete header" + RADIANCE_END).encode("utf-8"))
+                return
+            sig_received = remaining_data[:32]
+            cmd_length = struct.unpack("<I", remaining_data[32:36])[0]
         else:
-            # Legacy / Raw Protocol
-            remaining = conn.recv(32768)
-            command = (
-                (header_data + remaining).decode("utf-8", errors="replace").strip()
-            )
+            conn.sendall((f"ERROR: Unsupported protocol version: {version}" + RADIANCE_END).encode("utf-8"))
+            return
+
+        # Sanity-cap: reject absurdly large payloads (> 1 MB)
+        if cmd_length > 1_048_576:
+            conn.sendall(("ERROR: Payload too large" + RADIANCE_END).encode("utf-8"))
+            return
+
+        # Read command payload
+        cmd_data = b""
+        while len(cmd_data) < cmd_length:
+            chunk = conn.recv(min(32768, cmd_length - len(cmd_data)))
+            if not chunk:
+                break
+            cmd_data += chunk
+        command = cmd_data.decode("utf-8", errors="replace").strip()
+
+        # Authentication is mandatory. It used to be skipped entirely whenever
+        # RADIANCE_DCC_AUTH_TOKEN was unset -- which is the default -- so any
+        # client that could reach the port was trusted.
+        if not DCC_AUTH_TOKEN:
+            msg = ("ERROR: No shared token: set RADIANCE_DCC_AUTH_TOKEN or make "
+                   "~/.radiance/dcc_token writable; refusing all commands.")
+            print(f"[Radiance Security] {msg}")
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
+
+        if version != 2 or not sig_received:
+            msg = "ERROR: Authentication required — connection is unauthenticated."
+            print(f"[Radiance Security] {msg}")
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
+
+        # HMAC, not SHA256(token || command): the bare-hash construction was
+        # length-extendable and had no nonce, so any observed pair replayed.
+        import hmac
+        import hashlib
+        expected_sig = hmac.new(
+            DCC_AUTH_TOKEN.encode("utf-8"), command.encode("utf-8"), hashlib.sha256
+        ).digest()
+        if not hmac.compare_digest(sig_received, expected_sig):
+            msg = "ERROR: Authentication failed — Invalid security token signature."
+            print(f"[Radiance Security] {msg}")
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
 
         if command:
-            # ── Security: Validate command before execution ──
-            is_safe, reason = _validate_command(command)
-            if not is_safe:
-                msg = f"ERROR: Command rejected by security sandbox — {reason}"
-                print(f"[Radiance Security] {msg}")
-                conn.sendall((msg + RADIANCE_END).encode("utf-8"))
-                return
+            structured_payload = _parse_structured_command(command)
+            if structured_payload is None:
+                # ── Security: Validate raw Python before execution ──
+                is_safe, reason = _validate_command(command)
+                if not is_safe:
+                    msg = f"ERROR: Command rejected by security sandbox — {reason}"
+                    print(f"[Radiance Security] {msg}")
+                    conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+                    return
 
             # Execute in main thread and capture result
             result_box = [None]
             error_box = [None]
             done_event = threading.Event()
 
-            # Build a restricted global scope for execution
-            safe_globals = {
-                "nuke": nuke,
-                "nukescripts": nukescripts,
-                "json": json,
-                "math": __import__("math"),
-                "random": random,
-            }
+            # There is deliberately no eval/exec sandbox here any more.
+            # The restricted-__builtins__ dict that used to sit at this
+            # point was dead weight once the eval/exec fallback was removed:
+            # it protected nothing and read like an active defence, which is
+            # worse than no defence at all. Commands are structured or
+            # ast.literal_eval'd; nothing else runs.
 
             def execute_wrapper():
                 try:
-                    # Try ast.literal_eval first for safe literals (satisfies security checks)
+                    structured = _parse_structured_command(command)
+                    structured_result = _execute_structured_command(structured)
+                    if structured_result is not None:
+                        result_box[0] = structured_result
+                        return
+
+                    # Literals only. The eval/exec fallback that used to live
+                    # here was guarded by a substring blocklist, which a single
+                    # space defeated ("open (" does not contain "open("), as did
+                    # module chaining through the permitted `json` global. Both
+                    # bypasses gave arbitrary code execution inside Nuke. Only
+                    # structured commands and literal payloads are accepted now.
                     try:
                         val = ast.literal_eval(command)
                         result_box[0] = str(val)
                     except (ValueError, SyntaxError):
-                        # Fallback to eval for Nuke expressions
-                        try:
-                            val = eval(command, safe_globals)  # noqa: S307
-                            result_box[0] = str(val)
-                        except SyntaxError:
-                            # Fallback to exec for multi-line scripts
-                            exec(command, safe_globals)  # noqa: S102
-                            
-                            # Check if last line is an expression to return its value
-                            lines = command.strip().split("\n")
-                            if lines:
-                                last = lines[-1].strip()
-                                # Only eval if it looks like a string or simple expression
-                                if last.startswith(("'","\"","(")) or last[0].isdigit():
-                                    try:
-                                        result_box[0] = str(eval(last, safe_globals))  # noqa: S307
-                                    except Exception:
-                                        result_box[0] = "OK"
-                                else:
-                                    result_box[0] = "OK"
-                            else:
-                                result_box[0] = "OK"
+                        error_box[0] = (
+                            "ERROR: Only structured commands and literal values are accepted. "
+                            "Arbitrary Python execution has been removed for security reasons."
+                        )
+                        return
                 except Exception as e:
                     error_box[0] = f"ERROR: {e}"
                 finally:
                     done_event.set()
 
-            nuke.executeInMainThread(execute_wrapper)
+            if nuke.GUI:
+                nuke.executeInMainThread(execute_wrapper)
+            else:
+                execute_wrapper()
             done_event.wait(timeout=10.0)
 
             response = (
@@ -214,26 +405,45 @@ def handle_client(conn):
 
 
 def start_radiance_server():
-    """Start listening for Radiance commands on localhost."""
+    """Listen for commands; terminal Nuke must call this on its main thread."""
     global PORT
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.settimeout(0.5)
 
+    if BIND_HOST not in ("127.0.0.1", "localhost", "::1") and not DCC_AUTH_TOKEN:
+        msg = (f"Radiance Bridge: refusing to bind {BIND_HOST} without "
+               f"RADIANCE_DCC_AUTH_TOKEN set. Falling back to 127.0.0.1.")
+        print(msg)
+        safe_message(msg)
+        bind_host = "127.0.0.1"
+    else:
+        bind_host = BIND_HOST
+
     try:
-        # Binds to 0.0.0.0 to allow pipeline communication across the network
-        server.bind(("0.0.0.0", PORT))  # nosec B104 (intentional network binding)
+        # v1.1: Bind to bind_host (default 127.0.0.1 — loopback only).
+        # Set RADIANCE_NUKE_BIND_HOST=0.0.0.0 for cross-machine studio pipelines;
+        # a token is mandatory in that case.
+        server.bind((bind_host, PORT))  # nosec B104
         server.listen(5)
 
-        msg = f"Radiance Bridge listening on port {PORT}..."
+        msg = f"Radiance Bridge listening on {bind_host}:{PORT}..."
         print(msg)
         safe_message(msg)
 
         while RUNNING:
             try:
                 conn, addr = server.accept()
-                handle_client(conn)
+                # v1.1 FIX-3: Spawn a thread per connection so slow Nuke commands
+                # don't block the accept loop. Previously a single slow client
+                # would prevent any second connection until it finished.
+                if nuke.GUI:
+                    t = threading.Thread(target=handle_client, args=(conn,), daemon=True)
+                    t.start()
+                else:
+                    # Terminal Nuke has no GUI dispatcher; serialize node edits.
+                    handle_client(conn)
             except socket.timeout:
                 continue
             except Exception as e:
@@ -251,17 +461,35 @@ def start_radiance_server():
 
 
 def start_bridge():
-    """Start the bridge server in a thread if not already running."""
+    """Start the GUI listener in a thread, or run terminal Nuke synchronously."""
     global _SERVER_THREAD, RUNNING
 
+    if not nuke.GUI:
+        RUNNING = True
+        start_radiance_server()
+        return
+
     if _SERVER_THREAD and _SERVER_THREAD.is_alive():
-        nuke.message(f"Radiance Bridge is already running on port {PORT}")
+        nuke.message(f"Radiance Bridge is already running on {BIND_HOST}:{PORT}")
         return
 
     RUNNING = True
     _SERVER_THREAD = threading.Thread(target=start_radiance_server)
     _SERVER_THREAD.daemon = True
     _SERVER_THREAD.start()
+
+
+def stop_bridge():
+    """Stop the bridge server cleanly."""
+    global RUNNING, _SERVER_THREAD
+    if not (_SERVER_THREAD and _SERVER_THREAD.is_alive()):
+        nuke.message("Radiance Bridge is not running.")
+        return
+    RUNNING = False
+    _SERVER_THREAD.join(timeout=2.0)
+    _SERVER_THREAD = None
+    print("Radiance Bridge stopped.")
+    nuke.message("Radiance Bridge stopped.")
 
 
 # --- ComfyUI Interaction Logic ---
@@ -273,7 +501,7 @@ def fetch_last_history_item():
         url = f"{COMFY_URL}/history"
         if not url.startswith(("http://", "https://")):
             return None
-        with urllib.request.urlopen(url) as response:  # nosec B310
+        with urllib.request.urlopen(url, timeout=10) as response:  # nosec B310
             if response.status != 200:
                 return None
             data = json.loads(response.read().decode("utf-8"))
@@ -315,7 +543,10 @@ def find_cinematic_node(graph):
 def submit_prompt(graph):
     """Submit a graph to ComfyUI."""
     try:
-        data = json.dumps({"prompt": graph}).encode("utf-8")
+        # v1.1 FIX-6: Include client_id so ComfyUI routes execution events
+        # back correctly. Without it, execution_start/cached events are broadcast
+        # to all clients and the 'fired before prompt was made' warning fires.
+        data = json.dumps({"prompt": graph, "client_id": "radiance_nuke_bridge"}).encode("utf-8")
         req = urllib.request.Request(
             f"{COMFY_URL}/prompt",
             data=data,
@@ -324,7 +555,7 @@ def submit_prompt(graph):
         url = req.full_url
         if not url.startswith(("http://", "https://")):
             return
-        with urllib.request.urlopen(req) as resp:  # nosec B310
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
             if resp.status == 200:
                 print("ComfyUI Queued Successfully")
             else:
@@ -379,6 +610,7 @@ def queue_last_run():
 
 
 class RadiancePromptPanel(nukescripts.PythonPanel):
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Pipeline"
     def __init__(self):
         super(RadiancePromptPanel, self).__init__("Radiance Cinematic")
 
@@ -453,11 +685,20 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
             "CFG++ (Perpendicular)",
         ]
 
-        self.vaes = [
+        # v1.1 FIX: Query available VAEs from ComfyUI at panel init instead of
+        # a hardcoded 3-item list. Falls back to the static list if unavailable.
+        _vae_fallback = [
             "ae.safetensors",
             "vae-ft-mse-840000-ema-pruned.safetensors",
             "sdxl_vae.safetensors",
         ]
+        try:
+            _vae_url = f"{COMFY_URL}/models/vae"
+            with urllib.request.urlopen(_vae_url, timeout=5) as _r:  # nosec B310
+                _fetched = json.loads(_r.read().decode("utf-8"))
+                self.vaes = _fetched if isinstance(_fetched, list) and _fetched else _vae_fallback
+        except Exception:
+            self.vaes = _vae_fallback
 
         self.samplers = [
             "euler",
@@ -487,41 +728,46 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
             "Large (335M - Best)",
         ]
 
-        # --- UI Elements ---
+        # --- UI Elements & Layout ---
 
-        # Section: Prompt
+        # --- TAB 1: CREATIVE & COMPOSITION ---
+        self.creative_tab = nuke.Tab_Knob("creative_tab", "Creative & Composition")
+        self.addKnob(self.creative_tab)
+
+        self.creative_hdr = nuke.Text_Knob(
+            "creative_hdr", "",
+            "<span style='color:#ffa500; font-size:12px; font-weight:bold;'>◎ CREATIVE & COMPOSITION</span>"
+        )
+        self.addKnob(self.creative_hdr)
+
         self.prompt_knob = nuke.Multiline_Eval_String_Knob("base_prompt", "Prompt")
         self.addKnob(self.prompt_knob)
 
-        self.div1 = nuke.Text_Knob("div1", "")
-        self.addKnob(self.div1)
-
-        # Section: Camera
         self.camera_knob = nuke.Enumeration_Knob("camera", "Camera", self.cameras)
         self.addKnob(self.camera_knob)
 
         self.lens_knob = nuke.Enumeration_Knob("lens", "Lens / Focal", self.lenses)
         self.addKnob(self.lens_knob)
 
-        self.aperture_knob = nuke.Enumeration_Knob(
-            "aperture", "Aperture", self.apertures
-        )
+        self.aperture_knob = nuke.Enumeration_Knob("aperture", "Aperture", self.apertures)
         self.addKnob(self.aperture_knob)
 
         self.framing_knob = nuke.Enumeration_Knob("framing", "Framing", self.framings)
         self.addKnob(self.framing_knob)
 
-        self.div2 = nuke.Text_Knob("div2", "")
-        self.addKnob(self.div2)
+        # --- TAB 2: RENDER & SAMPLER ---
+        self.sampler_tab = nuke.Tab_Knob("sampler_tab", "Render & Sampler")
+        self.addKnob(self.sampler_tab)
 
-        # Section: Resolution
-        self.res_knob = nuke.Enumeration_Knob("resolution", "Resolution", self.presets)
+        self.sampler_hdr = nuke.Text_Knob(
+            "sampler_hdr", "",
+            "<span style='color:#00ffff; font-size:12px; font-weight:bold;'>◎ CORE RENDER & SAMPLING</span>"
+        )
+        self.addKnob(self.sampler_hdr)
+
+        self.res_knob = nuke.Enumeration_Knob("resolution", "Resolution Preset", self.presets)
         self.addKnob(self.res_knob)
 
-        self.div3 = nuke.Text_Knob("div3", "")
-        self.addKnob(self.div3)
-
-        # Section: Sampler
         self.steps_knob = nuke.Int_Knob("steps", "Steps")
         self.addKnob(self.steps_knob)
 
@@ -533,20 +779,27 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
         self.denoise_knob.setRange(0.0, 1.0)
         self.addKnob(self.denoise_knob)
 
-        self.sampler_knob = nuke.Enumeration_Knob(
-            "sampler_name", "Sampler", self.samplers
-        )
+        self.sampler_knob = nuke.Enumeration_Knob("sampler_name", "Sampler", self.samplers)
         self.addKnob(self.sampler_knob)
 
-        self.scheduler_knob = nuke.Enumeration_Knob(
-            "scheduler_name", "Scheduler", self.schedulers
-        )
+        self.scheduler_knob = nuke.Enumeration_Knob("scheduler_name", "Scheduler", self.schedulers)
         self.addKnob(self.scheduler_knob)
 
-        self.sampler_mode_knob = nuke.Enumeration_Knob(
-            "sampler_mode", "Mode", self.sampler_modes
-        )
+        self.sampler_mode_knob = nuke.Enumeration_Knob("sampler_mode", "Mode", self.sampler_modes)
         self.addKnob(self.sampler_mode_knob)
+
+        self.vae_knob = nuke.Enumeration_Knob("vae", "VAE Model", self.vaes)
+        self.addKnob(self.vae_knob)
+
+        # --- TAB 3: FLUX & AI DEPTH ---
+        self.flux_depth_tab = nuke.Tab_Knob("flux_depth_tab", "Flux & AI Depth Settings")
+        self.addKnob(self.flux_depth_tab)
+
+        self.flux_hdr = nuke.Text_Knob(
+            "flux_hdr", "",
+            "<span style='color:#39ff14; font-size:12px; font-weight:bold;'>◎ FLUX CORE CONFIGURATION</span>"
+        )
+        self.addKnob(self.flux_hdr)
 
         self.guidance_knob = nuke.Double_Knob("guidance", "Guidance (Distilled)")
         self.guidance_knob.setRange(0.0, 10.0)
@@ -558,23 +811,16 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
         self.mu_knob.setValue(1.0)
         self.addKnob(self.mu_knob)
 
-        self.div4 = nuke.Text_Knob("div4", "")
-        self.addKnob(self.div4)
+        self.depth_hdr = nuke.Text_Knob(
+            "depth_hdr", "",
+            "<span style='color:#ff00ff; font-size:12px; font-weight:bold;'>◎ AI DEPTH GENERATION</span>"
+        )
+        self.addKnob(self.depth_hdr)
 
-        # Section: VAE
-        self.vae_knob = nuke.Enumeration_Knob("vae", "VAE", self.vaes)
-        self.addKnob(self.vae_knob)
-
-        self.div_vae = nuke.Text_Knob("div_vae", "")
-        self.addKnob(self.div_vae)
-
-        # Section: Depth (New)
-        self.depth_label = nuke.Text_Knob("depth_label", "<b>Depth Generation</b>")
+        self.depth_label = nuke.Text_Knob("depth_label", "Depth Pass Status")
         self.addKnob(self.depth_label)
 
-        self.depth_model_knob = nuke.Enumeration_Knob(
-            "depth_model", "Depth Model", self.depth_models
-        )
+        self.depth_model_knob = nuke.Enumeration_Knob("depth_model", "Depth Model", self.depth_models)
         self.addKnob(self.depth_model_knob)
 
         self.depth_blur_knob = nuke.Double_Knob("depth_blur", "Edge Blur")
@@ -584,10 +830,10 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
         self.depth_invert_knob = nuke.Boolean_Knob("depth_invert", "Invert Depth")
         self.addKnob(self.depth_invert_knob)
 
-        self.div5 = nuke.Text_Knob("div5", "")
-        self.addKnob(self.div5)
+        # Bottom Global Actions Block
+        self.actions_tab = nuke.Tab_Knob("actions_tab", "◎ Trigger Controls")
+        self.addKnob(self.actions_tab)
 
-        # Section: Actions
         self.refresh_btn = nuke.PyScript_Knob("refresh", "Sync from Last Run")
         self.addKnob(self.refresh_btn)
 
@@ -602,14 +848,30 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
         self.sampler_node_id = None
         self.depth_node_id = None
 
-        # Attempt initial sync
+        # Attempt initial sync & visibility refresh
         self.sync_from_last()
+        self.update_flux_visibility()
 
     def knobChanged(self, knob):
         if knob == self.refresh_btn:
             self.sync_from_last()
         elif knob == self.generate_btn:
             self.generate()
+        elif knob == self.res_knob:
+            self.update_flux_visibility()
+
+    def update_flux_visibility(self):
+        is_flux = "Flux" in self.res_knob.value()
+        self.flux_hdr.setVisible(is_flux)
+        self.guidance_knob.setVisible(is_flux)
+        self.mu_knob.setVisible(is_flux)
+
+        has_depth = self.depth_node_id is not None
+        self.depth_hdr.setVisible(has_depth)
+        self.depth_label.setVisible(has_depth)
+        self.depth_model_knob.setVisible(has_depth)
+        self.depth_blur_knob.setVisible(has_depth)
+        self.depth_invert_knob.setVisible(has_depth)
 
     def sync_from_last(self):
         item = fetch_last_history_item()
@@ -725,10 +987,13 @@ class RadiancePromptPanel(nukescripts.PythonPanel):
             )
             self.depth_blur_knob.setValue(dinputs.get("blur_edges", 0.0))
             self.depth_invert_knob.setValue(dinputs.get("invert", False))
-            self.depth_label.setValue("<b>Depth Generation (Active)</b>")
+            self.depth_label.setValue("Depth Pass Status: Active")
             print(f"Synced with Depth Node {did}")
         else:
-            self.depth_label.setValue("<b>Depth Generation (Not Found)</b>")
+            self.depth_label.setValue("Depth Pass Status: Not Found")
+
+        # Update visibility states dynamically
+        self.update_flux_visibility()
 
     def generate(self):
         if not self.last_graph:
@@ -802,6 +1067,7 @@ def show_radiance_panel():
 def add_radiance_menu():
     radiance_menu = nuke.menu("Nuke").addMenu("Radiance")
     radiance_menu.addCommand("Start Bridge", start_bridge)
+    radiance_menu.addCommand("Stop Bridge", stop_bridge)
     radiance_menu.addCommand("Queue Last Run", queue_last_run, "F5")
     radiance_menu.addCommand("Cinematic Encoder", show_radiance_panel, "Shift+F5")
 

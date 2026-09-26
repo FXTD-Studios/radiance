@@ -10,8 +10,68 @@ from dataclasses import dataclass, field
 logger = logging.getLogger("radiance.color.lut")
 
 
+# ── What the LUT expects as input ────────────────────────────────────────────
+#
+# Most show and camera LUTs take a camera log signal (LogC3, S-Log3, ...) and
+# the graph carries scene-linear light. 3.5.0: log_space used to raise the
+# pixels to a power (10^x, 2^x, e^x), which matches no camera curve, so those
+# LUTs could not be used correctly. It now encodes the linear image into the
+# LUT's input space through color/encodings (OCIO when available, the analytic
+# curve and gamut matrix otherwise), the same code Read and Write use.
+#
+# The old names stay accepted so saved graphs render as before; they are no
+# longer offered in the menu.
+
+_LEGACY_EXPONENTS = {"Log10": 10.0, "Log2": 2.0, "Natural Log (Ln)": float(np.e)}
+
+
+def _lut_input_choices() -> List[str]:
+    try:
+        from .encodings import ENCODINGS
+    except Exception:  # pragma: no cover - encodings always ships with the package
+        return ["ARRI LogC3"]
+    linear = {"Linear Rec.709 (sRGB)", "Linear Rec.2020", "Linear P3-D65", "ACEScg", "ACES2065-1"}
+    names = [n for n in ENCODINGS if n not in linear]
+    # the common show-LUT inputs first
+    first = ["ARRI LogC3", "ARRI LogC4", "Sony S-Log3", "Panasonic V-Log", "RED Log3G10",
+             "Canon Log 3", "DaVinci Intermediate", "ACEScct"]
+    return [n for n in first if n in names] + [n for n in names if n not in first]
+
+
+def _working_spaces() -> List[str]:
+    try:
+        from .encodings import WORKING_SPACES
+        return list(WORKING_SPACES)
+    except Exception:  # pragma: no cover
+        return ["Linear Rec.709 (sRGB)"]
+
+
+def encode_for_lut(image: torch.Tensor, lut_input: str,
+                   working_space: str = "Linear Rec.709 (sRGB)") -> torch.Tensor:
+    """Scene-linear ``working_space`` RGB -> the signal the LUT was built for.
+
+    Alpha (and any channel past the third) is passed through untouched."""
+    if lut_input in _LEGACY_EXPONENTS:
+        base = torch.as_tensor(_LEGACY_EXPONENTS[lut_input], dtype=image.dtype, device=image.device)
+        return torch.cat([torch.pow(base, image[..., :3]), image[..., 3:]], dim=-1)
+    from .encodings import encode
+    rgb = image[..., :3].detach().float().cpu().numpy()
+    out, _path = encode(rgb, lut_input, working_space)
+    enc = torch.from_numpy(np.ascontiguousarray(out)).to(device=image.device, dtype=image.dtype)
+    if image.shape[-1] > 3:
+        enc = torch.cat([enc, image[..., 3:]], dim=-1)
+    return enc
+
+
+def _validate_lut_input(log_encoding) -> "bool | str":
+    if log_encoding in _LEGACY_EXPONENTS or log_encoding in _lut_input_choices():
+        return True
+    return f"unknown LUT input encoding {log_encoding!r}"
+
+
 @dataclass
 class LUTData:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """Container for parsed LUT information with metadata."""
 
     lut_tensor: torch.Tensor
@@ -86,33 +146,35 @@ class LUTCache:
 
 
 class RadianceLUTApply:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """
     Apply a 3D LUT (.cube) to an image with professional-grade color transformation.
     """
 
-    LOG_ENCODINGS = ["Log10", "Log2", "Natural Log (Ln)"]
+    LOG_ENCODINGS = _lut_input_choices()
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "lut_file": (cls.get_lut_files(),),
+                "image": ("IMAGE", {"tooltip": "Image to transform. Values should be in the encoding the LUT expects; anything outside the LUT's DOMAIN_MIN/MAX (0 to 1 by default) is clamped to its edge before lookup."}),
+                "lut_file": (cls.get_lut_files(), {"tooltip": "3D .cube LUT from ComfyUI's models/luts folder."}),
                 "strength": (
                     "FLOAT",
-                    {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01},
+                    {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Mix between the original image (0) and the full LUT result (1)."},
                 ),
                 "log_space": (
                     "BOOLEAN",
                     {
                         "default": False,
-                        "label_on": "Log Input",
-                        "label_off": "Linear/sRGB Input",
+                        "label_on": "Encode to LUT input",
+                        "label_off": "Image as is",
+                        "tooltip": "On: the image is scene-linear (in working_space) and is encoded into log_encoding, the input the LUT was built for, before the lookup. Use this for show and camera LUTs such as LogC3 to Rec.709. Off: the pixels go into the LUT unchanged, for an image already in the LUT's input space.",
                     },
                 ),
             },
             "optional": {
-                "log_encoding": (cls.LOG_ENCODINGS, {"default": "Log10"}),
+                "log_encoding": (cls.LOG_ENCODINGS, {"default": "ARRI LogC3", "tooltip": "The encoding the LUT expects as input (camera log, ACEScct, sRGB, PQ...). Used when log_space is on."}),
                 "clamp_output": (
                     "BOOLEAN",
                     {"default": False, "tooltip": "Clamp to 0-1. Disable for HDR."},
@@ -121,17 +183,24 @@ class RadianceLUTApply:
                     ["Trilinear", "Tetrahedral"],
                     {
                         "default": "Trilinear",
-                        "tooltip": "Tetrahedral is more accurate but slightly slower",
+                        "tooltip": "LUT interpolation between grid points. Tetrahedral is more accurate on hue and neutral axes but slightly slower.",
                     },
                 ),
+                "working_space": (_working_spaces(), {"default": "Linear Rec.709 (sRGB)", "tooltip": "The linear space the image is in, used when log_space is on to reach the LUT's input primaries."}),
             },
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, log_encoding="ARRI LogC3"):
+        # Saved graphs may hold the pre-3.5.0 names (Log10, Log2, Ln), which
+        # are no longer in the menu but still run as before.
+        return _validate_lut_input(log_encoding)
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "apply_lut"
-    CATEGORY = "FXTD Studios/Radiance/Color"
-    DESCRIPTION = "Apply a 3D LUT (.cube) with trilinear or tetrahedral interpolation. Supports log-space input and HDR (unclamped) output."
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
+    DESCRIPTION = "Apply a 3D LUT (.cube) with trilinear or tetrahedral interpolation. Encodes a scene-linear image into the LUT's input (LogC, S-Log3, ACEScct...) when asked, and keeps HDR (unclamped) output."
 
     @staticmethod
     def get_lut_files() -> List[str]:
@@ -140,17 +209,23 @@ class RadianceLUTApply:
 
             # Safe check avoiding KeyError if 'luts' isn't registered
             if "luts" not in folder_paths.folder_names_and_paths:
-                # Attempt to register standard models/luts path
-                luts_path = os.path.join(folder_paths.models_dir, "luts")
-                if os.path.exists(luts_path):
-                    folder_paths.add_model_folder_path("luts", luts_path)
-                else:
-                    # Create if it doesn't exist to prevent future errors
-                    try:
-                        os.makedirs(luts_path, exist_ok=True)
-                        folder_paths.add_model_folder_path("luts", luts_path)
-                    except Exception:
-                        return ["No LUTs found"]
+                # isinstance, not truthiness: a test that stubs folder_paths
+                # with a bare MagicMock makes models_dir a truthy Mock, and
+                # joining it created a literal "MagicMock/mock.models_dir/<id>/"
+                # tree on disk. This runs from INPUT_TYPES(), so it fired on
+                # every catalog load.
+                models_dir = getattr(folder_paths, "models_dir", None)
+                if not isinstance(models_dir, str) or not models_dir:
+                    return ["No LUTs found"]
+
+                luts_path = os.path.join(models_dir, "luts")
+                if not os.path.isdir(luts_path):
+                    # Do NOT create it here. ComfyUI calls INPUT_TYPES() on
+                    # every node at startup and on every /object_info request;
+                    # a widget enumerator must not have filesystem side
+                    # effects. The directory is created on demand instead.
+                    return ["No LUTs found"]
+                folder_paths.add_model_folder_path("luts", luts_path)
 
             luts = folder_paths.get_filename_list("luts")
             return luts if luts else ["No LUTs found"]
@@ -395,25 +470,34 @@ class RadianceLUTApply:
         self,
         image,
         lut_file,
-        strength,
-        log_space,
-        log_encoding="Log10",
+        strength=1.0,
+        log_space=False,
+        log_encoding="ARRI LogC3",
         clamp_output=False,
         interpolation="Trilinear",
+        working_space="Linear Rec.709 (sRGB)",
     ):
         if strength == 0.0:
             return (image,)
 
-        try:
-            import folder_paths
-
-            lut_path = folder_paths.get_full_path("luts", lut_file)
-        except Exception as e:
-            logger.error(f"Failed to resolve LUT path for '{lut_file}': {e}")
+        if not lut_file:
             return (image,)
+
+        lut_path = None
+        if os.path.isabs(lut_file):
+            lut_path = lut_file
+            if not os.path.exists(lut_path):
+                raise FileNotFoundError(f"LUT file not found: {lut_path}")
+        else:
+            try:
+                import folder_paths
+                lut_path = folder_paths.get_full_path("luts", lut_file)
+            except Exception as e:
+                logger.error(f"Failed to resolve LUT path for '{lut_file}': {e}")
+                return (image,)
 
         if not lut_path or not os.path.exists(lut_path):
-            return (image,)
+            raise FileNotFoundError(f"LUT file not found: {lut_file}")
 
         # Cache lookup
         lut_data = LUTCache.get(lut_path)
@@ -430,12 +514,7 @@ class RadianceLUTApply:
         img_proc = image.clone()
 
         if log_space:
-            if log_encoding == "Log10":
-                img_proc = torch.pow(10.0, img_proc)
-            elif log_encoding == "Log2":
-                img_proc = torch.pow(2.0, img_proc)
-            elif log_encoding == "Natural Log (Ln)":
-                img_proc = torch.exp(img_proc)
+            img_proc = encode_for_lut(img_proc, log_encoding, working_space)
 
         # FIX #3: use cached device tensor — avoids repeated host→device transfer
         lut_tensor = lut_data.get_tensor_for_device(device)
@@ -466,6 +545,7 @@ class RadianceLUTApply:
 
 
 class RadianceLUTBlend:
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """
     Blend two LUTs together with various blend modes. Allows creative combination
     of color grades and seamless transitions between different looks.
@@ -478,9 +558,9 @@ class RadianceLUTBlend:
         lut_files = RadianceLUTApply.get_lut_files()
         return {
             "required": {
-                "image": ("IMAGE",),
-                "lut_a": (lut_files,),
-                "lut_b": (lut_files,),
+                "image": ("IMAGE", {"tooltip": "Image to transform through both LUTs. Values outside each LUT's domain are clamped to its edge before lookup."}),
+                "lut_a": (lut_files, {"tooltip": "First .cube LUT from models/luts. It is the base look: the non-Linear modes keep its luminance or chroma."}),
+                "lut_b": (lut_files, {"tooltip": "Second .cube LUT from models/luts, blended towards by blend_factor."}),
                 "blend_factor": (
                     "FLOAT",
                     {
@@ -491,12 +571,12 @@ class RadianceLUTBlend:
                         "tooltip": "0.0 = LUT A only, 1.0 = LUT B only",
                     },
                 ),
-                "blend_mode": (cls.BLEND_MODES, {"default": "Linear"}),
+                "blend_mode": (cls.BLEND_MODES, {"default": "Linear", "tooltip": "Linear: mix the two results. Luminosity: A's colour with mixed luminance. Saturation: mixed chroma at A's luminance. Hue: mixed chroma direction with A's chroma amount and luminance."}),
             },
             "optional": {
                 "strength": (
                     "FLOAT",
-                    {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01},
+                    {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Mix between the original image (0) and the blended LUT result (1)."},
                 ),
                 "clamp_output": (
                     "BOOLEAN",
@@ -507,23 +587,28 @@ class RadianceLUTBlend:
                     "BOOLEAN",
                     {
                         "default": False,
-                        "label_on": "Log Input",
-                        "label_off": "Linear/sRGB Input",
-                        "tooltip": "Decode log-encoded input before applying LUTs.",
+                        "label_on": "Encode to LUT input",
+                        "label_off": "Image as is",
+                        "tooltip": "On: the image is scene-linear (in working_space) and is encoded into log_encoding, the input both LUTs were built for, before the lookups. Off: the pixels go into the LUTs unchanged.",
                     },
                 ),
-                "log_encoding": (RadianceLUTApply.LOG_ENCODINGS, {"default": "Log10"}),
+                "log_encoding": (RadianceLUTApply.LOG_ENCODINGS, {"default": "ARRI LogC3", "tooltip": "The encoding both LUTs expect as input (camera log, ACEScct, sRGB, PQ...). Used when log_space is on."}),
                 "interpolation": (
                     ["Trilinear", "Tetrahedral"],
-                    {"default": "Trilinear"},
+                    {"default": "Trilinear", "tooltip": "LUT interpolation used for both lookups. Tetrahedral is more accurate but slightly slower."},
                 ),
+                "working_space": (_working_spaces(), {"default": "Linear Rec.709 (sRGB)", "tooltip": "The linear space the image is in, used when log_space is on to reach the LUTs' input primaries."}),
             },
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, log_encoding="ARRI LogC3"):
+        return _validate_lut_input(log_encoding)
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "blend_luts"
-    CATEGORY = "FXTD Studios/Radiance/Color"
+    CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Blend two LUTs with various blend modes for creative color grading."
 
     def blend_luts(
@@ -536,8 +621,9 @@ class RadianceLUTBlend:
         strength=1.0,
         clamp_output=False,
         log_space=False,
-        log_encoding="Log10",
+        log_encoding="ARRI LogC3",
         interpolation="Trilinear",
+        working_space="Linear Rec.709 (sRGB)",
     ):
         if strength == 0.0:
             return (image,)
@@ -545,10 +631,10 @@ class RadianceLUTBlend:
         # FIX #17: pass log_space and interpolation through to each apply_lut call
         lut_applier = RadianceLUTApply()
         result_a = lut_applier.apply_lut(
-            image, lut_a, 1.0, log_space, log_encoding, False, interpolation
+            image, lut_a, 1.0, log_space, log_encoding, False, interpolation, working_space
         )[0]
         result_b = lut_applier.apply_lut(
-            image, lut_b, 1.0, log_space, log_encoding, False, interpolation
+            image, lut_b, 1.0, log_space, log_encoding, False, interpolation, working_space
         )[0]
 
         if blend_mode == "Linear":
