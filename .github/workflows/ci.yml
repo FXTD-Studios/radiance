@@ -240,7 +240,7 @@ jobs:
           # `import radiance.*` resolves the same way it does in a "radiance" dir.
           import importlib.abc, importlib.util, os
           _ROOT = os.path.abspath(".")
-          if os.path.basename(_ROOT) != "radiance" and os.path.exists(os.path.join(_ROOT, "__init__.py")):
+          if os.path.exists(os.path.join(_ROOT, "__init__.py")):
               class _RadianceNameFinder(importlib.abc.MetaPathFinder):
                   def find_spec(self, name, path=None, target=None):
                       if name != "radiance":
