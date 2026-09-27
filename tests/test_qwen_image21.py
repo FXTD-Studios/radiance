@@ -120,3 +120,29 @@ class TestQwenImage21Loader:
     def test_prompt_enhancers_are_not_catalogued_as_encoders(self):
         from radiance.config.model_map import RADIANCE_MODEL_MAP
         assert not [f for f in RADIANCE_MODEL_MAP if "_pe_" in f]
+
+
+class TestQwenImage21Resolution:
+
+    MODEL_TYPE = "Qwen-Image 2.1 (64ch)"
+
+    def test_tables_agree_on_the_model_type(self):
+        from radiance.nodes.generate import resolution as R
+        assert self.MODEL_TYPE in R.MODEL_TYPES
+        assert R.LATENT_FORMAT_MAP[self.MODEL_TYPE] == "qwen_image21"
+        assert R.LATENT_CHANNELS[self.MODEL_TYPE] == 64
+        assert R.SPATIAL_SCALE[self.MODEL_TYPE] == 16
+        assert self.MODEL_TYPE not in R.VIDEO_MODEL_TYPES
+        assert self.MODEL_TYPE not in R.SPATIAL_ALIGN
+
+    @pytest.mark.parametrize("w, h", [(1024, 1024), (1280, 720), (2048, 2048)])
+    def test_latent_is_64ch_at_one_sixteenth_and_keeps_the_size(self, w, h):
+        """720 rows is a 45-row latent. The DiT has no patchify, so an odd
+        latent is valid and 1280x720 stays exact."""
+        from radiance.nodes.generate.resolution import RadianceResolution
+        latent, out_w, out_h, c, _info, _fr, _frames, fmt, *_ = RadianceResolution().generate(
+            preset="Custom", width=w, height=h, orientation="As Preset",
+            model_type=self.MODEL_TYPE, batch_size=1, unique_id="test",
+        )["result"]
+        assert tuple(latent["samples"].shape) == (1, 64, h // 16, w // 16)
+        assert (out_w, out_h, c, fmt) == (w, h, 64, "qwen_image21")

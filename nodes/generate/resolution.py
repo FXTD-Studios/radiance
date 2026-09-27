@@ -122,6 +122,8 @@ LATENT_FORMAT_MAP = {
     # the Flux VAE; HunyuanImage 2.1 is 64ch at 32px; HunyuanVideo 1.5 is
     # 32ch at 16px / 4 frames; Kandinsky 5 video uses the HunyuanVideo VAE.
     "Qwen-Image / Krea 2 (16ch)": "qwen_image",
+    # ALBABIT-FIX: Qwen-Image 2.1 has its own VAE (64ch, 16x), unlike Qwen-Image.
+    "Qwen-Image 2.1 (64ch)": "qwen_image21",
     "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)": "flux",
     "HunyuanImage 2.1 (64ch)": "hunyuan_image",
     "HunyuanVideo 1.5 (32ch)": "hunyuan_video_15",
@@ -166,6 +168,7 @@ MODEL_TYPES = [
     "MiniMax H3 (24ch)",
     # 3.5: ComfyUI 0.32 families.
     "Qwen-Image / Krea 2 (16ch)",
+    "Qwen-Image 2.1 (64ch)",
     "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)",
     "HunyuanImage 2.1 (64ch)",
     "HunyuanVideo 1.5 (32ch)",
@@ -198,6 +201,7 @@ LATENT_CHANNELS = {
     "MiniMax H3 (24ch)": 24,
     # 3.5 families (comfy/latent_formats.py).
     "Qwen-Image / Krea 2 (16ch)": 16,
+    "Qwen-Image 2.1 (64ch)": 64,
     "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)": 16,
     "HunyuanImage 2.1 (64ch)": 64,
     "HunyuanVideo 1.5 (32ch)": 32,
@@ -231,6 +235,9 @@ SPATIAL_SCALE = {
     # spacial_downscale_ratio = 16). The other new families are 8x.
     "HunyuanImage 2.1 (64ch)": 32,
     "HunyuanVideo 1.5 (32ch)": 16,
+    # ALBABIT-FIX: Qwen-Image 2.1 (comfy latent_formats.QwenImage21). Its DiT has
+    # no patchify and takes any latent size, so no SPATIAL_ALIGN entry.
+    "Qwen-Image 2.1 (64ch)": 16,
     # ALBABIT-FIX: "Manual" uses scale=1 -> _align_up is a no-op, so width/height
     # are fully unconstrained (no rounding, +/- step of 1) for experimental models.
     "Manual": 1,
