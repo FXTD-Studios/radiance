@@ -39,12 +39,10 @@ function setWidgetVisible(widget, visible, node) {
  *          mp_target > 0, alongside the existing video/batch toggle.
  */
 
-// ALBABIT-FIX: Mirrors the temporal stride logic in resolution.py's generate()
-// (n*stride + 1 frame counts) so video_frames <-> duration_seconds stay in sync
-// when the user toggles frame_computation.
-// ALBABIT-FIX follow-up: mirrors VIDEO_MODEL_TYPES in resolution.py —
-// model_types that emit 5D video latents and should auto-enable "enable_video".
-const VIDEO_MODEL_TYPES_JS = new Set(["WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)"]);
+// ALBABIT-FIX: mirrors resolution.py's VIDEO_MODEL_TYPES: model_types that emit
+// 5D video latents and switch on "enable_video" (test_resolution_js_mirror.py).
+const VIDEO_MODEL_TYPES_JS = new Set(["WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)",
+                                      "HunyuanVideo 1.5 (32ch)", "Kandinsky 5 Video (16ch)"]);
 
 // ALBABIT-FIX follow-up: mirrors SPATIAL_SCALE/_align_up in resolution.py —
 // recompute width/height instantly when model_type changes, instead of waiting
@@ -60,6 +58,11 @@ const SPATIAL_SCALE_JS = {
     // ALBABIT-FIX: MiniMax H3 mirrors resolution.py's SPATIAL_ALIGN (32px, not
     // its 16x compression): keyframe latents need an even latent size.
     "MiniMax H3 (24ch)": 32,
+    // ALBABIT-FIX: Qwen-Image 2.1's VAE is 16x, see resolution.py's SPATIAL_SCALE.
+    "Qwen-Image 2.1 (64ch)": 16,
+    // ALBABIT-FIX: 3.5 families, missing here so the widgets snapped to 8px.
+    "HunyuanImage 2.1 (64ch)": 32,
+    "HunyuanVideo 1.5 (32ch)": 16,
     // ALBABIT-FIX: "Manual" -> scale=1, _alignUp is a no-op and the +/- step
     // becomes 1, so width/height are fully unconstrained.
     "Manual": 1,
@@ -195,14 +198,9 @@ function _syncDurationSecondsStep(modelTypeW, durSecW, frameRateW) {
     _setWidgetStep(durSecW, stepSeconds);
     if (!durSecW.options) durSecW.options = {};
     durSecW.options.precision = 2;
-    // ALBABIT-FIX: options.step/step2 only drive the +/- click delta. The
-    // native widget commit path snaps independently via options.round,
-    // which stayed at Python's declared 0.1 default and silently knocked an
-    // already grid-aligned click result back off-grid on every click,
-    // before durSecW.callback's own correction even ran (root cause of the
-    // intermittent "-" stall: each click compounded on that corrupted
-    // value instead of the aligned one). Syncing round to the same grid
-    // step stops the corruption at the source.
+    // ALBABIT-FIX: step/step2 only set the +/- delta; the commit path snaps with
+    // options.round, left at Python's 0.1, which knocked each aligned click back
+    // off-grid (the intermittent "-" stall). round now uses the grid step too.
     durSecW.options.round = stepSeconds;
 }
 
@@ -410,12 +408,9 @@ app.registerExtension({
                 durSecW.callback = function () {
                     if (orig) orig.apply(this, arguments);
 
-                    // ALBABIT-FIX: now that _syncDurationSecondsStep keeps
-                    // options.round grid-aligned, a +/- click already lands
-                    // correctly by the time orig.apply() above returns, so
-                    // this rarely has to do anything. Left as a fallback for
-                    // values that aren't grid-aligned yet (typed or pasted
-                    // directly, or a model_type switch landing mid-grid).
+                    // ALBABIT-FIX: with options.round on the grid, a +/- click
+                    // already lands on it; this stays for typed or pasted values
+                    // and model_type switches that land mid-grid.
                     if (frameModeW?.value === "Auto (Seconds)" && VIDEO_MODEL_TYPES_JS.has(modelTypeW?.value)) {
                         const { frames, fps } = _autoSecondsFrames(modelTypeW.value, durSecW.value, frameRateW?.value);
                         const precise = Math.round((frames / fps) * 100) / 100;
