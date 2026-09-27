@@ -892,12 +892,14 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         # RUDRA 0.9.0-beta.2 highlight-grain correction. It operates in
         # mastering nits, only on flat highlights, and scales luminance so
         # source hue and edges remain unchanged.
-        if str(pixel_recovery_mode) != "off":
+        if recovery_applied and str(pixel_recovery_mode) != "off":
             from radiance.model.highlight_grain import settle_highlight_grain
             hdr_np = (hdr.detach().float().cpu().numpy() * float(reference_white_nits))
             sdr_np = rgb.detach().float().cpu().numpy()
+            grain_mask = h_conf.detach().float().cpu().numpy().clip(0.0, 1.0)
             settled = np.stack([
-                settle_highlight_grain(hdr_np[i], sdr_np[i])
+                hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
+                * grain_mask[i][..., None]
                 for i in range(hdr_np.shape[0])
             ], axis=0)
             hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
