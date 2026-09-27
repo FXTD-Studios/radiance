@@ -60,6 +60,8 @@ const SPATIAL_SCALE_JS = {
     // ALBABIT-FIX: MiniMax H3 mirrors resolution.py's SPATIAL_ALIGN (32px, not
     // its 16x compression): keyframe latents need an even latent size.
     "MiniMax H3 (24ch)": 32,
+    // ALBABIT-FIX: Qwen-Image 2.1's VAE is 16x, see resolution.py's SPATIAL_SCALE.
+    "Qwen-Image 2.1 (64ch)": 16,
     // ALBABIT-FIX: "Manual" -> scale=1, _alignUp is a no-op and the +/- step
     // becomes 1, so width/height are fully unconstrained.
     "Manual": 1,
