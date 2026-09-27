@@ -329,10 +329,8 @@ _CLIP_TYPE_VARIANTS = {
     # ALBABIT-FIX: Flux.2 Klein shares CLIPType.FLUX2 with Flux.2 Dev (the
     # auto-generated "FLUX2-KLEIN" enum name doesn't exist).
     "flux2-klein": ["FLUX2"],
-    # ALBABIT-FIX: "minimax" deliberately has no entry here. comfy.sd.CLIPType.
-    # MINIMAX already exists (verified directly), and get_clip_type_enum()'s
-    # own generic fallback (model_type.upper()) already produces "MINIMAX"
-    # unaided, so no override candidates are needed.
+    # ALBABIT-FIX: no "minimax" entry needed: get_clip_type_enum()'s fallback,
+    # model_type.upper(), already gives comfy.sd.CLIPType.MINIMAX.
     # ALBABIT-FIX: Qwen-Image 2.1 shares CLIPType.QWEN_IMAGE. comfy.sd routes the
     # Qwen3-VL-8B file by CLIPType, so any other type loads a different encoder.
     "qwen_image21": ["QWEN_IMAGE"],

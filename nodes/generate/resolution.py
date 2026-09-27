@@ -51,20 +51,10 @@ PRESETS: Dict[str, Tuple[int, int, str, str]] = {
 
 PRESET_NAMES = ["Custom"] + list(PRESETS.keys())
 
-# ALBABIT-FIX: model-specific behavior is now driven entirely by `model_type`
-# (SPATIAL_SCALE, VIDEO_MODEL_TYPES, LATENT_FORMAT_MAP below), not preset
-# category. Presets are now plain Cinema/Social resolutions, model-agnostic.
-#
-# Deferred:
-#  - WAN lost its 16px alignment heuristic, falls back to the 8px default now
-#    (no SPATIAL_SCALE entry). Revisit if 16px is actually needed.
-#  - VIDEO_MODEL_TYPES audited vs comfy_extras/ (2026-06-12), verified
-#    TEMPORAL_SCALE: LTXV/Cosmos 8, WAN/HunyuanVideo/CogVideoX 4, Mochi 6
-#    ((length-1)//6+1 per nodes_mochi.py). Cosmos Predict2 (stride 4) NOT covered.
-#  - Flux.1 vs Flux.2 alignment not further split beyond existing entries.
-#  - MiniMax H3 audited (2026-08-18): 17k+5 frame grid has no TEMPORAL_SCALE
-#    entry (_minimax_align_frame_count/_minimax_video_latent_t instead).
-#    Audio (32ch stereo) out of scope for this node.
+# ALBABIT-FIX: model-specific behaviour comes from model_type alone (the tables
+# below); presets are plain, model-agnostic resolutions. Not covered: WAN's old
+# 16px heuristic (8px now), Cosmos Predict2's 4x temporal stride, MiniMax H3's
+# audio latent (its 17k+5 frame grid is in the _minimax_* helpers).
 
 # Model types that emit 5D latent (1, C, T, H, W)
 VIDEO_MODEL_TYPES = {"WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)",
@@ -252,11 +242,9 @@ SPATIAL_ALIGN = {
 }
 
 # ── Per-model latent temporal downscale factor (3D VAE compression) ─────────────
-# ALBABIT-FIX: Restored from previous radiance version — without this, the empty
-# video latent's temporal dimension was set to the raw pixel-space frame count
-# (e.g. 241 for LTXV), instead of the compressed latent frame count (31), causing
-# the sampler to process ~8x more "frames" than necessary. 4 is the default for
-# any video model_type not listed here.
+# ALBABIT-FIX: without it the empty video latent took the raw frame count (241
+# for LTXV) instead of the compressed one (31), about 8x the work. Video
+# model_types not listed here default to 4.
 TEMPORAL_SCALE = {
     # ALBABIT-FIX: 8x temporal, confirmed identical for LTX 2.3 and 2.5 --
     # comfy/sd.py's downscale_ratio formula for the real diffusion-decoder VAE
