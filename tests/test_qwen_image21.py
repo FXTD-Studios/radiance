@@ -146,3 +146,36 @@ class TestQwenImage21Resolution:
         )["result"]
         assert tuple(latent["samples"].shape) == (1, 64, h // 16, w // 16)
         assert (out_w, out_h, c, fmt) == (w, h, 64, "qwen_image21")
+
+
+class TestQwenImage21Sampler:
+
+    def test_tables_follow_the_official_template(self):
+        from radiance.sampler_utils import MODEL_DEFAULTS, MODEL_TYPES, CFG_GUIDED_MODELS, GUIDANCE_EMBED_MODELS
+        d = MODEL_DEFAULTS["qwen_image21"]
+        assert (d["cfg"], d["sampler"], d["scheduler"], d["steps"]) == (1.0, "euler", "simple", 25)
+        assert "qwen_image21" in MODEL_TYPES
+        assert "qwen_image21" in CFG_GUIDED_MODELS
+        assert "qwen_image21" not in GUIDANCE_EMBED_MODELS
+
+    def test_detected_from_its_model_config(self):
+        """Without model_meta only detect_by_sampling matched, and it reports
+        every flow model with 0-1 sigmas as "flux"."""
+        from radiance.sampler_utils import detect_model_type
+
+        class QwenImage21:
+            pass
+
+        model = types.SimpleNamespace(model=types.SimpleNamespace(model_config=QwenImage21()))
+        assert detect_model_type(model) == "qwen_image21"
+
+    def test_auto_preset_applies_the_defaults_from_model_meta(self):
+        import json
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        meta = json.dumps({"arch": "qwen_image21", "unet_file": "qwen_image_2.1_bf16.safetensors"})
+        detected, kwargs, _ = RadianceSamplerPro()._configure_model_and_defaults(
+            None, "auto", "Auto", model_meta=meta, cfg=1.0, flux_guidance=3.5, steps=20,
+            sampler="euler", scheduler="normal", scheduler_mode="Auto (Match Steps)",
+        )
+        assert detected == "qwen_image21"
+        assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (1.0, 25, "euler", "simple")

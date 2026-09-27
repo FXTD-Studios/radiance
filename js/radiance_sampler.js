@@ -874,6 +874,7 @@ const LOADER_PRESET_MODEL_TYPE = {
     "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
+    "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
 };
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS. "guidance" here is
@@ -968,6 +969,8 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // BasicScheduler=simple/20 steps). cfg=1.0 is inert (BasicGuider has no
     // cfg input at all); the widget itself hides regardless, see applyFolding.
     minimax:       { cfg: 1.0,  sampler: "res_multistep", scheduler: "simple", guidance: 0.0, steps: 20 },
+    // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS["qwen_image21"].
+    qwen_image21:  { cfg: 1.0,  sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 25 },
 };
 
 function _resolveLoaderModelType(loaderNode) {

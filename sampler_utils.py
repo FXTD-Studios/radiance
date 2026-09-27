@@ -79,6 +79,7 @@ MODEL_TYPES = [
     # 3.5: ComfyUI 0.32 families (see model/detect.py).
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "longcat_image", "kandinsky5", "kandinsky5_image",
+    "qwen_image21",  # ALBABIT-FIX: Qwen-Image 2.1, matches Resolution/Loader model types
 ]
 
 VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi", "minimax",
@@ -105,7 +106,8 @@ CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3",
                      # 3.5: every one of these runs a plain KSampler / CFGGuider with
                      # a real cfg in its official Comfy-Org template.
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
-                     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image"}
+                     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image",
+                     "qwen_image21"}  # ALBABIT-FIX: same evidence, its template's KSampler cfg
 
 # ALBABIT-FIX: "minimax" belongs in neither set above on purpose. Its reference
 # pipeline uses BasicGuider, which has no cfg input and no guidance-embed
@@ -369,6 +371,18 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 20,
         "guidance_type": "cfg",
     },
+    # ALBABIT-FIX: Qwen-Image 2.1: image_qwen_image_2_1_t2i.json (KSampler 25
+    # steps, cfg 1, euler/simple, no shift node: the model keeps its own 0.69).
+    # Qwen's own pipeline runs 40-50 steps.
+    "qwen_image21": {
+        "cfg": 1.0,
+        "scheduler": "simple",
+        "guidance": 0.0,
+        "shift": 1.0,
+        "sampler": "euler",
+        "steps": 25,
+        "guidance_type": "cfg",
+    },
     # Krea 2 Turbo: image_krea2_turbo_t2i.json (KSampler 8 steps, cfg 1, euler/simple).
     "krea2": {
         "cfg": 1.0,
@@ -616,6 +630,8 @@ def detect_by_config(model) -> Optional[str]:
             "CogVideoX": "cogvideox", "CogVideo": "cogvideox",
             "Mochi": "mochi",  # ALBABIT-FIX: Mochi-1 config class detection
             "MiniMaxH3": "minimax",  # ALBABIT-FIX: MiniMax H3 config class detection
+            # ALBABIT-FIX: without it, detect_by_sampling reported Qwen-Image 2.1 as "flux".
+            "QwenImage21": "qwen_image21",
         }
         for pattern, mtype in config_map.items():
             if pattern in config_cls: return mtype
