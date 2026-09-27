@@ -93,7 +93,7 @@ The SDR-to-HDR model downloads on first use when downloads are enabled.
 
 Open the included [starter workflow](workflows/start.json) in ComfyUI.
 
-Select your FLUX.1-dev model, VAE, and text encoders in the Loader, enter your prompt, and run the workflow. Review the result in the Viewer and connect a Write node when you want to save it.
+Select the FLUX.2 Klein 4B distilled model, FLUX.2 VAE, and Qwen3 4B text encoder in the Loader, enter your prompt, and run the workflow. Review the result in the Viewer and connect a Write node when you want to save it.
 
 The required model files are separate downloads. See [Models and downloads](#models-and-downloads) below.
 
@@ -120,16 +120,15 @@ Create the `radiance` folder if needed. Leave `pixel_checkpoint` empty to use th
 
 ### Models for the starter workflow
 
-The included [starter workflow](workflows/start.json) uses FLUX.1-dev. Download these files, place them in the folders below, and select them in the Loader:
+The included [starter workflow](workflows/start.json) uses **FLUX.2 Klein 4B distilled**, with 4 sampling steps at 1024 × 1024. Download these three files, place them in the folders below, and select them in the Loader:
 
 | File | Hugging Face download | Save in |
 |---|---|---|
-| `flux1-dev.safetensors` | [FLUX.1-dev](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors) | `ComfyUI/models/diffusion_models/` |
-| `ae.safetensors` | [FLUX VAE](https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/ae.safetensors) | `ComfyUI/models/vae/` |
-| `clip_l.safetensors` | [CLIP-L](https://huggingface.co/comfyanonymous/flux_text_encoders/blob/main/clip_l.safetensors) | `ComfyUI/models/text_encoders/` |
-| `t5xxl_fp16.safetensors` | [T5-XXL](https://huggingface.co/comfyanonymous/flux_text_encoders/blob/main/t5xxl_fp16.safetensors) | `ComfyUI/models/text_encoders/` |
+| `flux-2-klein-4b-fp8.safetensors` | [FLUX.2 Klein 4B distilled](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/main/flux-2-klein-4b-fp8.safetensors) | `ComfyUI/models/diffusion_models/` |
+| `flux2-vae.safetensors` | [FLUX.2 VAE](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | `ComfyUI/models/vae/` |
+| `qwen_3_4b.safetensors` | [Qwen3 4B text encoder](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | `ComfyUI/models/text_encoders/` |
 
-FLUX.1-dev requires accepting its licence on Hugging Face before downloading. Review each model's terms separately.
+Use the distilled model listed above, not the `base` variant, which needs different sampling settings. Update ComfyUI for FLUX.2 Klein support and review each model's licence. See the [official ComfyUI guide](https://docs.comfy.org/tutorials/flux/flux-2-klein) for more details.
 
 ## Example workflows
 
