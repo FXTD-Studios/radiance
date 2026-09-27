@@ -129,6 +129,31 @@ class TestAlphaRoundTrip:
         assert mask_out is not None and mask_out.abs().max().item() > 0.5, \
             f"{fmt}: alpha not written/read correctly"
 
+    def test_broadcast_safe_limits_the_colour_not_the_alpha(self, tmp_path):
+        """The legal-range clamp squeezed an RGBA image's alpha too:
+        transparent came out 6% opaque and opaque 92%."""
+        from PIL import Image
+        ramp = np.tile(np.linspace(0, 1, 16, dtype=np.float32), (16, 1))[..., None]
+        img = np.concatenate([ramp] * 4, axis=-1)
+        writer = nodes_io.RadianceWrite()
+        writer.write(image=torch.from_numpy(img[None]), output_path=str(tmp_path / "legal"),
+                     format="IMG │ PNG (8-bit)", broadcast_safe=True, overwrite=True)
+        out = np.asarray(Image.open(next(tmp_path.glob("legal*"))), np.float32) / 255
+        assert out[..., :3].min() >= 16 / 255 - 1e-6 and out[..., :3].max() <= 235 / 255 + 1e-6
+        assert np.abs(out[..., 3] - ramp[..., 0]).max() <= 1 / 255
+
+    def test_a_connected_mask_replaces_the_image_alpha(self, tmp_path):
+        """With an RGBA image the mask was ignored and the image's own alpha
+        written instead."""
+        from PIL import Image
+        img = np.concatenate([np.full((16, 16, 3), 0.5, np.float32), np.ones((16, 16, 1), np.float32)], axis=-1)
+        mask = np.linspace(0, 1, 16 * 16, dtype=np.float32).reshape(1, 16, 16)
+        writer = nodes_io.RadianceWrite()
+        writer.write(image=torch.from_numpy(img[None]), output_path=str(tmp_path / "masked"),
+                     format="IMG │ PNG (8-bit)", mask=torch.from_numpy(mask), overwrite=True)
+        out = np.asarray(Image.open(next(tmp_path.glob("masked*"))), np.float32) / 255
+        assert np.abs(out[..., 3] - mask[0]).max() <= 1 / 255
+
 
 class Test16BitPrecisionPreservation:
     """Guards the RGB 16-bit read fix -- a genuine 16-bit source must not be
@@ -189,6 +214,22 @@ class TestVideoFormats:
         arr = np.frombuffer(result.stdout, dtype="<u2").reshape(h, w, 3)
         levels = len(np.unique(arr[0, :, 0]))
         assert levels > 256, "ProRes 422 HQ precision capped at 8-bit again!"
+
+    def test_prores_4444_keeps_the_image_alpha(self, tmp_path):
+        """ProRes 4444 took its alpha from the mask alone, so an RGBA image
+        written without a mask came out opaque."""
+        w, h = 320, 192
+        alpha = np.tile(np.linspace(0, 1, w, dtype=np.float32), (h, 1))
+        frame = np.concatenate([np.full((h, w, 3), 0.5, np.float32), alpha[..., None]], axis=-1)
+        writer = nodes_io.RadianceWrite()
+        writer.write(image=torch.from_numpy(np.stack([frame] * 2)), output_path=str(tmp_path / "p4444"),
+                     format="VID │ MOV (ProRes 4444)", fps=24.0, overwrite=True)
+        produced = next(tmp_path.glob("p4444*"))
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(produced), "-f", "rawvideo",
+               "-pix_fmt", "rgba64le", "-frames:v", "1", "pipe:1"]
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        arr = np.frombuffer(result.stdout, dtype="<u2").reshape(h, w, 4)
+        assert np.abs(arr[..., 3] / 65535 - alpha).max() < 0.01
 
     def test_audio_mux(self, tmp_path):
         sr = 44100
