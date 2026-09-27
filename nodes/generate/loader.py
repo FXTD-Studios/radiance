@@ -159,6 +159,8 @@ MODEL_TYPES = [
     # 3.5: ComfyUI 0.32 families (see model/detect.py for the tables).
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "longcat_image", "kandinsky5", "kandinsky5_image",
+    # ALBABIT-FIX: Qwen-Image 2.1 (64ch RGBA VAE, Qwen3-VL-8B), see model/detect.py.
+    "qwen_image21",
 ]
 
 WEIGHT_DTYPES = ["default", "fp8_e4m3fn", "fp8_e5m2", "fp16", "bf16", "fp32"]

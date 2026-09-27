@@ -83,3 +83,40 @@ class TestQwenImage21Tables:
         )
         monkeypatch.setattr(D.comfy.sd, "CLIPType", clip_type, raising=False)
         assert D.get_clip_type_enum("qwen_image21") == "QWEN_IMAGE"
+
+
+class TestQwenImage21Loader:
+
+    def test_both_presets_select_the_model_type_with_default_dtypes(self):
+        from radiance.config.model_map import CHECKPOINT_PRESETS
+        for name in ("Qwen-Image 2.1", "Qwen-Image 2.1 (Low VRAM)"):
+            assert CHECKPOINT_PRESETS[name] == {
+                "model_type": "qwen_image21", "weight_dtype": "default", "clip_dtype": "default",
+            }
+
+    def test_offered_by_the_image_loader_not_the_video_loader(self):
+        from radiance.config.model_map import VIDEO_PRESET_NAMES, VIDEO_MODEL_TYPES
+        from radiance.nodes.generate.loader import MODEL_TYPES
+        assert "qwen_image21" in MODEL_TYPES
+        assert "qwen_image21" not in VIDEO_MODEL_TYPES
+        assert not {"Qwen-Image 2.1", "Qwen-Image 2.1 (Low VRAM)"} & VIDEO_PRESET_NAMES
+
+    def test_catalogue_pins_the_official_files(self):
+        from radiance.config.model_map import RADIANCE_MODEL_MAP
+        expected = {
+            "qwen_image_2.1_bf16.safetensors": "diffusion_models",
+            "qwen_image_2.1_int8_convrot.safetensors": "diffusion_models",
+            "qwen3vl_8b_bf16.safetensors": "text_encoders",
+            "qwen3vl_8b_int8_convrot.safetensors": "text_encoders",
+            "qwen3vl_8b_w4a8.safetensors": "text_encoders",
+            "qwen_image_2.1_vae_bf16.safetensors": "vae",
+        }
+        for fname, kind in expected.items():
+            entry = RADIANCE_MODEL_MAP[fname]
+            assert entry["type"] == kind
+            assert entry["url"].startswith("https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/")
+            assert entry["url"].endswith(f"{kind}/{fname}")
+
+    def test_prompt_enhancers_are_not_catalogued_as_encoders(self):
+        from radiance.config.model_map import RADIANCE_MODEL_MAP
+        assert not [f for f in RADIANCE_MODEL_MAP if "_pe_" in f]
