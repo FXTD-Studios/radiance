@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
+import numpy as np
 import torch
 
 from radiance.color.ops import (
@@ -888,6 +889,21 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         # needed. `hdr` aliases one of `lin` / `expanded_hdr` unless a learned
         # backend replaced it, so dropping these names frees whichever of the
         # two is not the one in use, and both once `hdr` itself is consumed.
+        # RUDRA 0.9.0-beta.2 highlight-grain correction. It operates in
+        # mastering nits, only on flat highlights, and scales luminance so
+        # source hue and edges remain unchanged.
+        if str(pixel_recovery_mode) != "off":
+            from radiance.model.highlight_grain import settle_highlight_grain
+            hdr_np = (hdr.detach().float().cpu().numpy() * float(reference_white_nits))
+            sdr_np = rgb.detach().float().cpu().numpy()
+            settled = np.stack([
+                settle_highlight_grain(hdr_np[i], sdr_np[i])
+                for i in range(hdr_np.shape[0])
+            ], axis=0)
+            hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
+                device=hdr.device, dtype=hdr.dtype
+            )
+
         n_frames = int(img.shape[0])
         has_extra = extra.shape[-1] > 0
         del lin, expanded_hdr, luma, rgb
