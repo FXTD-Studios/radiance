@@ -44,7 +44,9 @@ function setWidgetVisible(widget, visible, node) {
 // when the user toggles frame_computation.
 // ALBABIT-FIX follow-up: mirrors VIDEO_MODEL_TYPES in resolution.py —
 // model_types that emit 5D video latents and should auto-enable "enable_video".
-const VIDEO_MODEL_TYPES_JS = new Set(["WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)"]);
+// ALBABIT-FIX: + HunyuanVideo 1.5 / Kandinsky 5 Video, added to the Python set in 3.5.
+const VIDEO_MODEL_TYPES_JS = new Set(["WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)",
+                                      "HunyuanVideo 1.5 (32ch)", "Kandinsky 5 Video (16ch)"]);
 
 // ALBABIT-FIX follow-up: mirrors SPATIAL_SCALE/_align_up in resolution.py —
 // recompute width/height instantly when model_type changes, instead of waiting
@@ -62,6 +64,9 @@ const SPATIAL_SCALE_JS = {
     "MiniMax H3 (24ch)": 32,
     // ALBABIT-FIX: Qwen-Image 2.1's VAE is 16x, see resolution.py's SPATIAL_SCALE.
     "Qwen-Image 2.1 (64ch)": 16,
+    // ALBABIT-FIX: 3.5 families, missing here so the widgets snapped to 8px.
+    "HunyuanImage 2.1 (64ch)": 32,
+    "HunyuanVideo 1.5 (32ch)": 16,
     // ALBABIT-FIX: "Manual" -> scale=1, _alignUp is a no-op and the +/- step
     // becomes 1, so width/height are fully unconstrained.
     "Manual": 1,
