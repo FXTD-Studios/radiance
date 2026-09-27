@@ -96,6 +96,13 @@ class TestMiniMaxH3Registration:
     def test_fps_matches_native_node_hardcoded_constant(self):
         assert MINIMAX_H3_FPS == 24
 
+    def test_vram_estimate_uses_the_minimax_tables(self):
+        """latent_format "minimax_h3" is not the "minimax" key of the VRAM
+        tables: the readout showed the flat 6 GB default for a 66 GB model."""
+        from radiance.model.detect import _BASE_VRAM, _BASE_CLIP_VRAM
+        est = resolution_module._estimate_vram(1344, 768, 24, 1, "minimax_h3", 16)
+        assert est >= _BASE_VRAM["minimax"] + _BASE_CLIP_VRAM["minimax"]
+
 
 class TestMinimaxAlignFrameCount:
     """Mirrors comfy_extras/nodes_minimax_h3.py's align_frame_count()."""

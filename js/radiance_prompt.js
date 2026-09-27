@@ -45,6 +45,46 @@ function _liveMiniMaxState(node) {
     return false;
 }
 
+// ALBABIT-FIX: ComfyUI skips the uncond pass at cfg 1, so the negative is unused
+// when every sampler it feeds runs at cfg 1. Still read there: *_cfg_pp samplers,
+// LTX-AV's audio_cfg, a Self-Attention Guidance patch. Any consumer this cannot
+// read (a node in between, cfg on an input) keeps the field editable.
+const CFG_ONE_SAMPLERS = { RadianceSamplerPro: "sampler", KSampler: "sampler_name", KSamplerAdvanced: "sampler_name" };
+
+function _modelChainHasSag(graph, sampler) {
+    let node = sampler;
+    for (let depth = 0; node && depth < 32; depth++) {
+        if (node.comfyClass === "SelfAttentionGuidance") return true;
+        const link = graph.links[node.inputs?.find(i => i.name === "model")?.link];
+        node = link ? graph.getNodeById(link.origin_id) : null;
+    }
+    return false;
+}
+
+function _samplerIgnoresNegative(graph, sampler) {
+    const samplerField = CFG_ONE_SAMPLERS[sampler.comfyClass];
+    if (!samplerField || sampler.inputs?.find(i => i.name === "cfg")?.link != null) return false;
+    const value = name => sampler.widgets?.find(w => w.name === name)?.value;
+    const audioCfg = sampler.widgets?.find(w => w.name === "audio_cfg");
+    return Math.abs(Number(value("cfg")) - 1) < 1e-9  // comfy's math.isclose(cfg, 1.0)
+        && !String(value(samplerField)).includes("cfg_pp")
+        && !(audioCfg && !audioCfg.hidden && audioCfg.value > 0 && audioCfg.value !== 1)
+        && !_modelChainHasSag(graph, sampler);
+}
+
+// ALBABIT-FIX: node.graph, not app.graph: it is the graph holding this node's
+// links, a subgraph in the Comfy-Org templates.
+function _negativeUnusedDownstream(node) {
+    const graph = node.graph;
+    const output = name => node.outputs?.find(o => o.name === name);
+    if (!graph || output("negative_text")?.links?.length) return false;
+    const samplers = (output("negative")?.links ?? [])
+        .map(id => graph.links[id])
+        .map(link => link && graph.getNodeById(link.target_id))
+        .filter(n => n && n.mode !== 2 && n.mode !== 4);
+    return samplers.length > 0 && samplers.every(n => _samplerIgnoresNegative(graph, n));
+}
+
 // ALBABIT-FIX: same disabled + inputEl + opacity/pointerEvents combination
 // already proven in radiance_sampler.js's updateSigmaLocks(). Skips
 // reassignment when already correct, this runs from a 250ms poll and would
@@ -78,22 +118,22 @@ function _applyNegStrengthLock(node, hidden) {
     refreshNodeSize(node);
 }
 
-// ALBABIT-FIX: shared by the poll loop and onConfigure below, which used to
-// each inline this same sequence.
+// ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
+// Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
 function _refreshLiveState(node) {
     updatePresetDivergenceMarkers(node);
     const liveState = _liveMiniMaxState(node);
-    if (liveState !== null) {
-        _applyNegPromptLock(node, liveState);
-        _applyNegStrengthLock(node, liveState);
-    }
+    const cfgOne = _negativeUnusedDownstream(node);
+    const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;
+    _applyNegPromptLock(node, locked);
+    _applyNegStrengthLock(node, locked);
+    const negW = node.widgets?.find(w => w.name === "negative_prompt");
+    _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
 }
 
-// ALBABIT-FIX: apply_style_preset() used to overwrite these 7 widgets on
-// every execution, not just on selection (same bug class as the Sampler's
-// _apply_presets). This file fills them once on selection and flags a later
-// edit with a "✎" marker. film_stock/shutter_speed/aspect_ratio have no
-// widget here, so Python keeps applying the preset for those.
+// ALBABIT-FIX: apply_style_preset() overwrote these 7 widgets on every run. They
+// are now filled once on selection and a later edit gets a "✎" marker; preset
+// fields with no widget here are still applied by Python.
 //
 // 3.5.0: the preset table comes from Python (nodes/generate/prompt.py,
 // /radiance/prompt/presets) instead of a copy kept here by hand. If the
@@ -228,19 +268,13 @@ app.registerExtension({
             setTimeout(() => _refreshLiveState(self), 600);
         };
 
-        // ALBABIT-FIX: label marker always reflects the last real run. The
-        // lock is a fallback, only for the one live-undeterminable case
-        // (Auto-Detect); anything else was already resolved live above.
+        // ALBABIT-FIX: the last real run's arch verdict, read by
+        // _refreshLiveState for the label marker and the Auto-Detect lock.
         const onExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             if (onExecuted) onExecuted.apply(this, arguments);
-            const weakNeg = !!message?.weak_neg_arch?.[0];
-            const negW = this.widgets?.find(w => w.name === "negative_prompt");
-            _setLabelMarker(negW, weakNeg ? WEAK_NEG_MARKER : null);
-            if (_liveMiniMaxState(this) === null) {
-                _applyNegPromptLock(this, weakNeg);
-                _applyNegStrengthLock(this, weakNeg);
-            }
+            this._radWeakNeg = !!message?.weak_neg_arch?.[0];
+            _refreshLiveState(this);
             this.setDirtyCanvas?.(true, true);
         };
     }

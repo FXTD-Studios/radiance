@@ -446,6 +446,44 @@ RADIANCE_MODEL_MAP: dict = {
         "size": 51506295256,
         "type": "text_encoders",
     },
+    # ALBABIT-FIX: Qwen-Image 2.1, the official Comfy-Org files. The repo's
+    # qwen3.5_9b_*_pe_* files are prompt enhancers for TextGenerate, not encoders.
+    "qwen_image_2.1_bf16.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/diffusion_models/qwen_image_2.1_bf16.safetensors",
+        "sha256": "89f4158d066cc33906a199fca85634f766892dd78f49b6698dabf187ac86c4bc",
+        "size": 14230280616,
+        "type": "diffusion_models",
+    },
+    "qwen_image_2.1_int8_convrot.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+        "sha256": "cb74113cb03faecd79611b01fd7fd642f0aa60d6f0b95086abee214d75eaa57d",
+        "size": 7256783064,
+        "type": "diffusion_models",
+    },
+    "qwen3vl_8b_bf16.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/text_encoders/qwen3vl_8b_bf16.safetensors",
+        "sha256": "68bdc82bc1b66851162ae656225e7e2068166b603db19bd5d5a3b90eb12669a9",
+        "size": 17534334616,
+        "type": "text_encoders",
+    },
+    "qwen3vl_8b_int8_convrot.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+        "sha256": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f",
+        "size": 9350798360,
+        "type": "text_encoders",
+    },
+    "qwen3vl_8b_w4a8.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/text_encoders/qwen3vl_8b_w4a8.safetensors",
+        "sha256": "7754425e55e7bea2bfde4dde59a4cc236cb44e5ee9c215ea66ef8d47012824eb",
+        "size": 6312105364,
+        "type": "text_encoders",
+    },
+    "qwen_image_2.1_vae_bf16.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/9a44dbdb47cefd046be9c0a13476192f34c8db8e/vae/qwen_image_2.1_vae_bf16.safetensors",
+        "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
+        "size": 675509688,
+        "type": "vae",
+    },
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1078,6 +1116,18 @@ CHECKPOINT_PRESETS: dict = {
         "model_type": "pixart",
         "weight_dtype": "fp16",
         "clip_dtype": "fp16",
+    },
+    # ALBABIT-FIX: default dtypes on both, like MiniMax H3: int8_convrot and
+    # w4a8 are quantized files comfy.sd detects natively, not dtype casts.
+    "Qwen-Image 2.1": {
+        "model_type": "qwen_image21",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "Qwen-Image 2.1 (Low VRAM)": {
+        "model_type": "qwen_image21",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
     },
     "SD 1.5": {
         "model_type": "sd1.5",
