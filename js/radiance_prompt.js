@@ -45,11 +45,10 @@ function _liveMiniMaxState(node) {
     return false;
 }
 
-// ALBABIT-FIX: ComfyUI skips the negative (uncond) pass at cfg 1 for every model,
-// so the field is unused when every sampler fed by the "negative" output runs at
-// cfg 1. Still read at cfg 1: *_cfg_pp samplers, LTX-AV's audio_cfg, a Self-
-// Attention Guidance patch on the model. Any consumer this cannot read (another
-// node in between, cfg on an input) keeps the field editable.
+// ALBABIT-FIX: ComfyUI skips the uncond pass at cfg 1, so the negative is unused
+// when every sampler it feeds runs at cfg 1. Still read there: *_cfg_pp samplers,
+// LTX-AV's audio_cfg, a Self-Attention Guidance patch. Any consumer this cannot
+// read (a node in between, cfg on an input) keeps the field editable.
 const CFG_ONE_SAMPLERS = { RadianceSamplerPro: "sampler", KSampler: "sampler_name", KSamplerAdvanced: "sampler_name" };
 
 function _modelChainHasSag(graph, sampler) {
@@ -73,8 +72,8 @@ function _samplerIgnoresNegative(graph, sampler) {
         && !_modelChainHasSag(graph, sampler);
 }
 
-// node.graph, not app.graph: it is the graph holding this node's links, a
-// subgraph in the Comfy-Org templates.
+// ALBABIT-FIX: node.graph, not app.graph: it is the graph holding this node's
+// links, a subgraph in the Comfy-Org templates.
 function _negativeUnusedDownstream(node) {
     const graph = node.graph;
     const output = name => node.outputs?.find(o => o.name === name);
@@ -132,11 +131,9 @@ function _refreshLiveState(node) {
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
 }
 
-// ALBABIT-FIX: apply_style_preset() used to overwrite these 7 widgets on
-// every execution, not just on selection (same bug class as the Sampler's
-// _apply_presets). This file fills them once on selection and flags a later
-// edit with a "✎" marker. film_stock/shutter_speed/aspect_ratio have no
-// widget here, so Python keeps applying the preset for those.
+// ALBABIT-FIX: apply_style_preset() overwrote these 7 widgets on every run. They
+// are now filled once on selection and a later edit gets a "✎" marker; preset
+// fields with no widget here are still applied by Python.
 //
 // 3.5.0: the preset table comes from Python (nodes/generate/prompt.py,
 // /radiance/prompt/presets) instead of a copy kept here by hand. If the

@@ -235,11 +235,9 @@ class RadianceUnifiedLoader:
                                 "architecture. Override manually if detection fails."},
                 ),
                 # ── VAE ──
-                # ALBABIT-FIX: "Baked VAE (from UNET)" lets checkpoint-style
-                # files (e.g. SD3.5) skip the standalone vae_name file, same
-                # mechanism as RadianceVideoLoader's LTX 2.3. Appended, not
-                # prepended, so the raw combo default stays unchanged for
-                # architectures with real separate VAE files.
+                # ALBABIT-FIX: "Baked VAE (from UNET)" lets checkpoint-style files
+                # (SD3.5) skip vae_name, as LTX 2.3 does. Appended, so the combo
+                # default stays a real VAE file.
                 "vae_name": (
                     folder_paths.get_filename_list("vae") + ["Baked VAE (from UNET)"],
                     {"tooltip": "VAE for encoding/decoding latents. "
