@@ -2,7 +2,7 @@
   "id": "eb335ae7-92b1-41ea-b0db-4f7fbd589a1a",
   "revision": 0,
   "last_node_id": 37,
-  "last_link_id": 37,
+  "last_link_id": 39,
   "nodes": [
     {
       "id": 4,
@@ -30,7 +30,7 @@
           "name": "model_meta",
           "shape": 7,
           "type": "STRING",
-          "link": null
+          "link": 38
         },
         {
           "localized_name": "base_prompt",
@@ -370,7 +370,7 @@
           "name": "model_meta",
           "shape": 7,
           "type": "STRING",
-          "link": null
+          "link": 39
         },
         {
           "localized_name": "preset",
@@ -813,8 +813,8 @@
         "Node name for S&R": "RadianceSamplerPro"
       },
       "widgets_values": [
-        "[F] Flux Cinematic (30 steps)",
-        30,
+        "Auto",
+        4,
         0,
         0,
         1,
@@ -826,7 +826,7 @@
         "Manual",
         1,
         1,
-        4,
+        1,
         "Static",
         635798887398420,
         "randomize",
@@ -860,7 +860,7 @@
         4,
         null,
         null,
-        "Cinema-grade 30-step Flux run with strong guidance."
+        "FLUX.2 Klein 4B distilled: 4 steps, guidance 1.0."
       ],
       "color": "#182238",
       "bgcolor": "#141419"
@@ -1079,7 +1079,10 @@
           "localized_name": "model_meta",
           "name": "model_meta",
           "type": "STRING",
-          "links": null
+          "links": [
+            38,
+            39
+          ]
         }
       ],
       "properties": {
@@ -1087,14 +1090,14 @@
       },
       "widgets_values": [
         "Custom",
-        "flux1-dev.safetensors",
+        "flux-2-klein-4b-fp8.safetensors",
         "default",
         "Auto-Detect",
-        "ae.safetensors",
-        "clip_l.safetensors",
+        "flux2-vae.safetensors",
         "None",
-        "t5xxl_fp16.safetensors",
         "None",
+        "None",
+        "qwen_3_4b.safetensors",
         "None",
         "default",
         "none",
@@ -1963,16 +1966,16 @@
         "Node name for S&R": "RadianceResolution"
       },
       "widgets_values": [
-        "2K DCI (2048×1080)",
-        2048,
-        1080,
+        "Custom",
+        1024,
+        1024,
         "As Preset",
-        "Flux / SD3 / Lumina2 / Z-Image (16ch)",
+        "Flux.2 / Flux.2 Klein (128ch)",
         1,
         1,
         0,
         0,
-        "16:9",
+        "1:1",
         false,
         true,
         "Manual (Frames)",
@@ -2080,6 +2083,22 @@
       37,
       0,
       "IMAGE"
+    ],
+    [
+      38,
+      2,
+      4,
+      4,
+      1,
+      "STRING"
+    ],
+    [
+      39,
+      2,
+      4,
+      10,
+      11,
+      "STRING"
     ]
   ],
   "groups": [

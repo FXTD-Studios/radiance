@@ -102,7 +102,17 @@ def test_start_graph_is_wired():
     loader = next(n for n in nodes.values() if n["type"] == "RadianceUnifiedLoader")
     widgets = [e[0] for e in _expected_widgets(_mappings()["RadianceUnifiedLoader"])]
     vals = dict(zip(widgets, loader["widgets_values"]))
-    assert vals["clip_l"] != "None" and vals["t5xxl"] != "None", "Flux.1 needs both clip_l and t5xxl"
+    assert vals["unet_name"] == "flux-2-klein-4b-fp8.safetensors"
+    assert vals["vae_name"] == "flux2-vae.safetensors"
+    assert vals["llm_encoder"] == "qwen_3_4b.safetensors"
+    assert vals["clip_l"] == vals["t5xxl"] == "None"
+    sampler = next(n for n in nodes.values() if n["type"] == "RadianceSamplerPro")
+    values = dict(zip([e[0] for e in _expected_widgets(_mappings()[sampler["type"]])], sampler["widgets_values"]))
+    assert values["steps"] == 4 and values["flux_guidance"] == 1
+    meta_link = next(i["link"] for i in sampler["inputs"] if i["name"] == "model_meta")
+    assert any(link[0] == meta_link and link[1] == loader["id"] and link[2] == 4 for link in wf["links"])
+    resolution = next(n for n in nodes.values() if n["type"] == "RadianceResolution")
+    assert resolution["widgets_values"][:5] == ["Custom", 1024, 1024, "As Preset", "Flux.2 / Flux.2 Klein (128ch)"]
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)
