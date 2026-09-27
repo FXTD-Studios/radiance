@@ -207,3 +207,7 @@ class TestQwenImage21VaeDecodeHDR:
         )["result"][0]
         assert image.shape[-1] == 4
         assert torch.allclose(image[..., 3], vae.decode(latent)[..., 3])
+
+    def test_latent_format_label_reads_the_vae_channel_count(self):
+        from radiance.hdr.vae import detect_latent_format
+        assert detect_latent_format(_RGBAVae()) == "qwen_image21_64ch"
