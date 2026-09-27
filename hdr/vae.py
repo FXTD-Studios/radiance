@@ -1716,6 +1716,12 @@ class RadianceVAE4KEncode:
         # Color pipeline
         img = self._prepare_for_vae(img, source_space, exposure, hdr_mode)
 
+        # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) encodes the alpha too. Only the
+        # RGB went in, so comfy padded it opaque and transparency never reached the
+        # latent. The alpha joins after the colour pipeline, as on decode.
+        if getattr(vae, "output_channels", 3) == 4:
+            img = torch.cat([img, alpha.to(img)], dim=-1)
+
         # Pad to multiple of vae_factor (minimum 8 for all known VAEs)
         pad_multiple = max(vae_factor, 8)
         img, (pad_h, pad_w) = TileEngine.pad_to_multiple(img, pad_multiple)
