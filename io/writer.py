@@ -1192,9 +1192,13 @@ def transform_stream(
     for i, fr in enumerate(frames):
         fr = colour.apply(fr)
         if apply_legal_range:
-            fr = np.clip(fr, 16 / 255.0, 235 / 255.0)
-        if alpha is not None and i < len(alpha) and fr.ndim == 3 and fr.shape[-1] == 3:
-            fr = np.concatenate([fr, alpha[i][..., None]], axis=-1)   # RGB -> RGBA
+            # ALBABIT-FIX: legal range limits the colour. It also squeezed the
+            # alpha of an RGBA image (transparent became 6% opaque, opaque 92%).
+            fr = np.concatenate([np.clip(fr[..., :3], 16 / 255.0, 235 / 255.0), fr[..., 3:]], axis=-1)
+        # ALBABIT-FIX: a connected mask is the alpha. It was ignored when the
+        # image already carried one (an RGBA VAE's output).
+        if alpha is not None and i < len(alpha) and fr.ndim == 3 and fr.shape[-1] in (3, 4):
+            fr = np.concatenate([fr[..., :3], alpha[i][..., None]], axis=-1)
         yield fr
 
 
@@ -1301,13 +1305,15 @@ def write_frames(
             effective_audio_source = temp_audio_wav
 
     try:
+        # ALBABIT-FIX: ProRes 4444 took its alpha from the mask alone, so an
+        # RGBA image written without a mask lost its own.
         saved, count = dispatch_write(
             out_frames, output_path, format,
             fps, quality, exr_compression,
             start_frame, frame_padding,
             effective_audio_source, overwrite,
             prompt, extra_pnginfo,
-            frame_count=n, colour=colour, has_alpha=alpha is not None,
+            frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
         )
         log.info("RadianceWrite: saved %d frame(s) → %s  [%s]", count, saved, colour.how or colour.label)
         # Return the saved path so programmatic callers (delivery/handler.py)
