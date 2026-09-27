@@ -75,6 +75,9 @@ _NEW_FAMILY_HEURISTICS = [
     # Qwen-Image: txt_norm 3584 wide (Mage-Flow shares the key at 2560).
     (lambda ks, f: any(k == "txt_norm.weight" for k in ks)
      and _tensor_dim(f, ks, "txt_norm.weight") == 3584, "qwen_image"),
+    # ALBABIT-FIX: Qwen-Image 2.1 is its own family (64ch VAE, Qwen3-VL-8B).
+    # txt_in.text_norm is the key comfy/model_detection.py matches it on.
+    (lambda ks, f: any("txt_in.text_norm.weight" in k for k in ks), "qwen_image21"),
 ]
 
 _ARCH_HEURISTICS = _NEW_FAMILY_HEURISTICS + [
@@ -170,6 +173,8 @@ LATENT_CHANNELS = {
     "qwen_image": 16, "krea2": 16, "kandinsky5": 16, "kandinsky5_image": 16,
     "hidream": 16, "omnigen2": 16, "longcat_image": 16,
     "hunyuan_image": 64, "hunyuan_video_15": 32,
+    # ALBABIT-FIX: Qwen-Image 2.1's own RGBA VAE (comfy latent_formats.QwenImage21).
+    "qwen_image21": 64,
 }
 
 # Spatial (and temporal) VAE factors that differ from the 8px default, for
@@ -177,7 +182,7 @@ LATENT_CHANNELS = {
 # and the HDR VAE decode tile maths.
 VAE_SPATIAL_FACTOR = {
     "ltxv": 32, "ltxav": 32, "flux2": 16, "flux2-klein": 16,
-    "wan_ti2v": 16, "minimax": 16,
+    "wan_ti2v": 16, "minimax": 16, "qwen_image21": 16,
     "hunyuan_image": 32, "hunyuan_video_15": 16,
 }
 VAE_TEMPORAL_FACTOR = {
@@ -254,6 +259,8 @@ CLIP_SLOT_ORDER = {
     "hunyuan_video_15": ["llm_encoder", "text_projection"],
     "hidream": ["clip_l", "clip_g", "t5xxl", "llm_encoder"],
     "kandinsky5": ["llm_encoder", "clip_l"], "kandinsky5_image": ["llm_encoder", "clip_l"],
+    # ALBABIT-FIX: Qwen-Image 2.1 takes one Qwen3-VL-8B file.
+    "qwen_image21": ["llm_encoder"],
 }
 
 #: Slots an architecture cannot run without. comfy.sd.load_clip picks the text
@@ -326,6 +333,9 @@ _CLIP_TYPE_VARIANTS = {
     # MINIMAX already exists (verified directly), and get_clip_type_enum()'s
     # own generic fallback (model_type.upper()) already produces "MINIMAX"
     # unaided, so no override candidates are needed.
+    # ALBABIT-FIX: Qwen-Image 2.1 shares CLIPType.QWEN_IMAGE. comfy.sd routes the
+    # Qwen3-VL-8B file by CLIPType, so any other type loads a different encoder.
+    "qwen_image21": ["QWEN_IMAGE"],
 }
 
 _BASE_CLIP_VRAM = {
@@ -348,6 +358,8 @@ _BASE_CLIP_VRAM = {
     "qwen_image": 15.0, "krea2": 15.0, "omnigen2": 6.0, "longcat_image": 15.0,
     "hunyuan_image": 16.0, "hunyuan_video_15": 16.0, "hidream": 20.0,
     "kandinsky5": 16.0, "kandinsky5_image": 16.0,
+    # ALBABIT-FIX: the real qwen3vl_8b bf16 file is 17.5 GB (int8_convrot 9.4 GB).
+    "qwen_image21": 17.5,
 }
 
 _DTYPE_MULT = {
@@ -387,6 +399,9 @@ _BASE_VRAM = {
     "qwen_image": 40.0, "krea2": 28.0, "omnigen2": 8.0, "longcat_image": 12.0,
     "hunyuan_image": 34.0, "hunyuan_video_15": 17.0, "hidream": 34.0,
     "kandinsky5": 40.0, "kandinsky5_image": 12.0,
+    # ALBABIT-FIX: the real bf16 checkpoint is 14.2 GB. int8_convrot (7.3 GB) is a
+    # separate file, so this over-estimates it, like "minimax" above.
+    "qwen_image21": 14.2,
 }
 
 # ALBABIT-FIX: per-architecture key remap before handing an audio-VAE state
@@ -417,7 +432,7 @@ _COMFY_CONFIG_TO_ARCH = {
     "WAN22_T2V": "wan_ti2v", "CogVideoX_T2V": "cogvideox", "CogVideoX_I2V": "cogvideox",
     "CogVideoX_Inpaint": "cogvideox",
     "HiDream": "hidream", "Omnigen2": "omnigen2", "Krea2": "krea2",
-    "QwenImage": "qwen_image", "LongCatImage": "longcat_image",
+    "QwenImage": "qwen_image", "QwenImage21": "qwen_image21", "LongCatImage": "longcat_image",
     "Kandinsky5": "kandinsky5", "Kandinsky5Image": "kandinsky5_image",
 }
 
@@ -581,7 +596,7 @@ def get_clip_type_enum(model_type: str):
     # _CLIP_TYPE_VARIANTS override above, since "FLUX2-KLEIN" isn't a real enum).
     for name in ("hunyuan_video", "wan", "wan_ti2v", "ltxv", "ltxav", "pixart", "aura_flow", "lumina2", "z_image",  # ALBABIT-FIX: "ltx" → "ltxv"
                   "cosmos", "cogvideox", "mochi", "chroma", "flux2", "flux2-klein",
-                  "qwen_image", "krea2", "omnigen2", "longcat_image", "hunyuan_image",
+                  "qwen_image", "qwen_image21", "krea2", "omnigen2", "longcat_image", "hunyuan_image",
                   "hunyuan_video_15", "hidream", "kandinsky5", "kandinsky5_image"):
         enum_name = name.upper().replace(".", "_")
         auto_variants = [enum_name, name.upper(), name.title().replace("_", "")]
