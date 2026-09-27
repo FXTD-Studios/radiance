@@ -206,7 +206,9 @@ const LTX_PRESETS = [
 // official workflow's KSampler uses cfg=4, no guidance-embed node either),
 // apparently missed when lumina2 got the same fix. Confirmed against
 // Comfy-Org's own bundled "image_z_image.json" template directly.
-const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "flux2-klein", "ltxv"]);
+// ALBABIT-FIX: longcat_image, and below the 3.5 families and mochi, were only in
+// sampler_utils.py (tests/test_sampler_js_mirror.py now compares the copies).
+const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "flux2-klein", "ltxv", "longcat_image"]);
 // ALBABIT-FIX: lumina2 added -- classic external CFG, confirmed via its
 // official example workflow (plain KSampler cfg=4, no guidance-embed node)
 // ALBABIT-FIX: "sd15" renamed to "sd1.5" -- same rationale as "sd35" -> "sd3.5"
@@ -215,7 +217,9 @@ const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "flux2-klein", "ltxv"]);
 // ALBABIT-FIX: wan_ti2v added -- same CFG-guided convention as "wan".
 const CFG_GUIDED_MODELS = new Set([
     "wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5",
-    "ltxav", "cogvideox", "lumina2", "z_image"
+    "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
+    "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
+    "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
 ]);
 const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 
@@ -224,6 +228,7 @@ const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 // below), which nodes_sampler.py silently falls back to Standard for.
 const VIDEO_MODEL_TYPES = new Set([
     "wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi",
+    "minimax", "hunyuan_video_15", "kandinsky5",
 ]);
 
 // ALBABIT-FIX: mirrors sampler_utils.py's SamplerMode string constants --
@@ -530,7 +535,9 @@ function applyFolding(node) {
     // 3.5c. Guidance rescale only has an effect when cfg > 1.0 (nodes_sampler.py
     // gates it on that exact condition) -- moot for guidance-embed models,
     // whose cfg is pinned at 1.0 by design.
-    if (usesGuidanceEmbed) hiddenNames.add("guidance_rescale_phi");
+    // ALBABIT-FIX: gated on the live cfg too: LongCat embeds guidance and still
+    // runs a real cfg (4), where the rescale does apply.
+    if (usesGuidanceEmbed && Number(find("cfg")?.value) <= 1) hiddenNames.add("guidance_rescale_phi");
 
     // 3.5c-2. MiniMax H3's reference pipeline uses BasicGuider, which has no
     // cfg input at all. Unlike guidance-embed models (flux_guidance stands
@@ -971,6 +978,16 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     minimax:       { cfg: 1.0,  sampler: "res_multistep", scheduler: "simple", guidance: 0.0, steps: 20 },
     // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS["qwen_image21"].
     qwen_image21:  { cfg: 1.0,  sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 25 },
+    // ALBABIT-FIX: the 3.5 families, same values as sampler_utils.py's MODEL_DEFAULTS.
+    qwen_image:         { cfg: 2.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
+    krea2:              { cfg: 1.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 8 },
+    hunyuan_image:      { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
+    hunyuan_video_15:   { cfg: 6.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
+    hidream:            { cfg: 5.0, sampler: "uni_pc",          scheduler: "simple", guidance: 0.0, steps: 50 },
+    omnigen2:           { cfg: 5.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
+    longcat_image:      { cfg: 4.0, sampler: "euler",           scheduler: "simple", guidance: 4.0, steps: 20 },
+    kandinsky5:         { cfg: 5.0, sampler: "euler_ancestral", scheduler: "beta",   guidance: 0.0, steps: 50 },
+    kandinsky5_image:   { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
 };
 
 function _resolveLoaderModelType(loaderNode) {
