@@ -58,6 +58,9 @@ const PRESET_SLOTS = {
     "MiniMax H3 (Low VRAM)": ["llm_encoder"],
     "Mochi": ["t5xxl"],
     "PixArt Sigma": ["t5xxl"],
+    // ALBABIT-FIX: Qwen-Image 2.1 takes one Qwen3-VL-8B file.
+    "Qwen-Image 2.1": ["llm_encoder"],
+    "Qwen-Image 2.1 (Low VRAM)": ["llm_encoder"],
     "SD 1.5": ["clip_l"],
     "SD3.5": ["clip_l", "clip_g", "t5xxl"],
     "SDXL": ["clip_l", "clip_g"],
@@ -414,6 +417,34 @@ const PRESET_CONFIGS = {
         "clip_hints":    {
             "t5xxl": ["t5xxl_fp16", "t5xxl_fp8_e4m3fn", "t5xxl"],
         },
+    },
+    // ALBABIT-FIX: quality-first like MiniMax H3; the Low VRAM preset never lists
+    // bf16. Hints stay specific: the prompt-enhancer files also contain
+    // "qwen_image_2.1", and Qwen-Image's own VAE is qwen_image_vae.
+    "Qwen-Image 2.1": {
+        "unet_hints": [
+            "qwen_image_2.1_bf16.safetensors", "qwen_image_2.1_int8_convrot.safetensors",
+            "qwen_image_2.1", "qwen-image-2.1",
+        ],
+        "vae_hints":     ["qwen_image_2.1_vae", "qwen-image-2.1-vae"],
+        "clip_hints":    {
+            "llm_encoder": [
+                "qwen3vl_8b_bf16.safetensors", "qwen3vl_8b_int8_convrot.safetensors",
+                "qwen3vl_8b_w4a8.safetensors", "qwen3vl_8b", "qwen-image-2.1-text_encoder",
+            ],
+        },
+    },
+    "Qwen-Image 2.1 (Low VRAM)": {
+        "unet_hints":    ["qwen_image_2.1_int8_convrot.safetensors", "qwen-image-2.1-int8", "qwen-image-2.1-fp8"],
+        "vae_hints":     ["qwen_image_2.1_vae", "qwen-image-2.1-vae"],
+        "clip_hints":    {
+            "llm_encoder": [
+                "qwen3vl_8b_w4a8.safetensors", "qwen3vl_8b_int8_convrot.safetensors",
+                "qwen-image-2.1-text_encoder-fp8",
+            ],
+        },
+        "extra_widgets": ["offload_mode"],
+        "offload_mode": "cpu_offload",
     },
     "SD 1.5": {
         "unet_hints":    ["v1-5", "v1_5", "sd15", "sd-1-5", "sd_1.5"],

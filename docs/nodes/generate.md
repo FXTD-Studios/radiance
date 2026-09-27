@@ -144,10 +144,10 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `SD 1.5`, and 3 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image 2.1`, and 5 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
 | `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
-| `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 10 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
+| `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 11 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
 | `vae_name` | choice |  | `Baked VAE (from UNET)` | VAE for encoding/decoding latents. 'Baked VAE (from UNET)' extracts it from the checkpoint, for architectures whose standard release bundles the VAE into the main file instead of shipping it separately. |
 | `clip_l` (optional) | choice | `None` | `None` | CLIP-L (text encoder). Used by: SD1.5, SDXL, Flux, SD3. |
 | `clip_g` (optional) | choice | `None` | `None` | CLIP-G (text encoder). Used by: SDXL, SD3, SD3.5. |
