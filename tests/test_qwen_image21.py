@@ -182,10 +182,16 @@ class TestQwenImage21Sampler:
 
 
 class _RGBAVae:
-    """Stands in for Qwen-Image 2.1's VAE: 64 latent channels at 16x, decoding
-    to RGBA with a left-to-right alpha gradient."""
+    """Stands in for Qwen-Image 2.1's VAE: 64 latent channels at 16x, RGBA in
+    and out, decoding a left-to-right alpha gradient."""
     downscale_ratio = 16
     latent_channels = 64
+    output_channels = 4
+
+    def encode(self, pixels):
+        self.encoded = pixels
+        b, h, w, _ = pixels.shape
+        return torch.zeros(b, 64, h // 16, w // 16)
 
     def decode(self, latent):
         b, _, h, w = latent.shape
@@ -211,3 +217,22 @@ class TestQwenImage21VaeDecodeHDR:
     def test_latent_format_label_reads_the_vae_channel_count(self):
         from radiance.hdr.vae import detect_latent_format
         assert detect_latent_format(_RGBAVae()) == "qwen_image21_64ch"
+
+
+class TestQwenImage21VaeEncodeHDR:
+
+    def test_the_alpha_reaches_an_rgba_vae(self):
+        """Only the RGB used to go in, so comfy padded the alpha opaque and
+        transparency never reached the latent."""
+        from radiance.nodes.generate.engine import RadianceHDRVAEEncode
+        vae, pixels = _RGBAVae(), torch.rand(1, 32, 32, 4)
+        RadianceHDRVAEEncode().encode(pixels, vae, source_space="sRGB", hdr_mode="Clip (SDR)")
+        assert vae.encoded.shape[-1] == 4
+        assert torch.allclose(vae.encoded[..., 3].cpu(), pixels[..., 3])
+
+    def test_an_rgb_vae_still_gets_rgb(self):
+        from radiance.nodes.generate.engine import RadianceHDRVAEEncode
+        vae = _RGBAVae()
+        vae.output_channels = 3
+        RadianceHDRVAEEncode().encode(torch.rand(1, 32, 32, 4), vae, source_space="sRGB", hdr_mode="Clip (SDR)")
+        assert vae.encoded.shape[-1] == 3
