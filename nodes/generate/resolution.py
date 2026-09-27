@@ -373,6 +373,9 @@ def _estimate_vram(w: int, h: int, c: int, b: int, format_key: str = "flux", spa
     # estimate_vram_usage() uses -- keeps this node's readout consistent with
     # the Loader's, instead of a separately-drifting local table.
     key = format_key.lower()
+    # ALBABIT-FIX: MiniMax H3's latent_format is comfy's "minimax_h3", its table
+    # key is "minimax": the lookup missed and showed the 6 GB default.
+    key = "minimax" if key == "minimax_h3" else key
     base_gb = _BASE_VRAM.get(key, 4.0) + _BASE_CLIP_VRAM.get(key, 2.0)
     # Total
     return latent_gb + base_gb
