@@ -79,33 +79,28 @@ MODEL_TYPES = [
     # 3.5: ComfyUI 0.32 families (see model/detect.py).
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "longcat_image", "kandinsky5", "kandinsky5_image",
+    "qwen_image21",  # ALBABIT-FIX: Qwen-Image 2.1, matches Resolution/Loader model types
 ]
 
 VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi", "minimax",
                      "hunyuan_video_15", "kandinsky5"}
 
-# ALBABIT-FIX: flux2/flux2-klein use guidance_embed like flux (not external CFG)
-# ALBABIT-FIX: lumina2 removed -- its official workflow uses a plain KSampler
-# cfg, no guidance-embed node (unlike Flux's FluxGuidance) -- see CFG_GUIDED_MODELS
-# ALBABIT-FIX: z_image removed too -- exact same situation as lumina2 (its
-# official workflow's KSampler uses cfg=4, no guidance-embed node either),
-# apparently missed when lumina2 got the same fix. Confirmed against
-# Comfy-Org's own bundled "image_z_image.json" template directly.
+# ALBABIT-FIX: flux2/flux2-klein embed guidance like flux. lumina2 and z_image
+# are not here: their official templates run a plain KSampler cfg (4) with no
+# guidance-embed node (see CFG_GUIDED_MODELS).
 # 3.5: LongCat-Image is a Flux transformer and its official template drives it
 # through FluxGuidance (4.0) like Flux.1, with cfg held at 4 under CFGNorm.
 GUIDANCE_EMBED_MODELS = {"flux", "flux2", "flux2-klein", "ltxv", "longcat_image"}
 
-# ALBABIT-FIX: "sd35" renamed to "sd3.5" for consistency with Loader/detect.py
-# ALBABIT-FIX: lumina2 added -- classic external CFG, confirmed via its
-# official example workflow (plain KSampler cfg=4, no guidance-embed node)
-# ALBABIT-FIX: z_image added -- same evidence class as lumina2 above.
-# ALBABIT-FIX: wan_ti2v added -- same CFG-guided convention as "wan" (its
-# official workflow's KSampler uses a real cfg value, no guidance-embed node).
+# ALBABIT-FIX: "sd35" renamed "sd3.5" (the Loader/detect.py name). lumina2,
+# z_image and wan_ti2v run a real KSampler cfg with no guidance-embed node in
+# their official workflows.
 CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
                      # 3.5: every one of these runs a plain KSampler / CFGGuider with
                      # a real cfg in its official Comfy-Org template.
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
-                     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image"}
+                     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image",
+                     "qwen_image21"}  # ALBABIT-FIX: same evidence, its template's KSampler cfg
 
 # ALBABIT-FIX: "minimax" belongs in neither set above on purpose. Its reference
 # pipeline uses BasicGuider, which has no cfg input and no guidance-embed
@@ -123,14 +118,10 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "steps": 20,
     },
-    # ALBABIT-FIX: Flux.2 Dev and Flux.2 Klein — guidance_embed models like Flux.1,
-    # same sampling defaults (scheduler=simple, cfg=1.0, guidance_embed). guidance
-    # verified against BFL's own example code (4.0, not Flux.1's 3.5). Klein's
-    # value is a fallback for when model_meta isn't connected -- Base (undistilled,
-    # guidance=4.0) and distilled (guidance~1.0) are architecturally identical and
-    # only distinguishable via model_meta's unet_file (see refine_distillation_from_meta).
-    # ALBABIT-FIX: steps=20 added, verified against Comfy-Org's official
-    # Flux.2 Dev/Klein workflow templates.
+    # ALBABIT-FIX: guidance 4.0 per BFL's example code, steps 20 per Comfy-Org's
+    # Flux.2 Dev/Klein templates. Klein's entry is the fallback without
+    # model_meta: Base (4.0) and distilled (~1.0) differ only by file name, which
+    # refine_distillation_from_meta() reads.
     "flux2": {
         "cfg": 1.0,
         "scheduler": "simple",
@@ -158,12 +149,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "steps": 30,
     },
-    # ALBABIT-FIX: renamed from "sd35" to "sd3.5" for consistency with Loader/detect.py.
-    # cfg/sampler verified against Comfy-Org's own official SD3.5 Large workflow
-    # (sd3.5-t2i-fp8-scaled-workflow.json) -- sampler was "dpmpp_2m" (wrong,
-    # should be "euler"); cfg confirmed against Albabit's own ComfyUI workflow (4.0).
-    # ALBABIT-FIX: steps=20 added, verified against Comfy-Org's official
-    # SD3.5 Large workflow template (same source already used for cfg/sampler).
+    # ALBABIT-FIX: key renamed "sd35" -> "sd3.5". sampler euler (was dpmpp_2m)
+    # and steps 20 per Comfy-Org's official SD3.5 Large workflow; cfg 4.0 checked
+    # in a real ComfyUI workflow.
     "sd3.5": {
         "cfg": 4.0,
         "scheduler": "sgm_uniform",
@@ -172,12 +160,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "steps": 20,
     },
-    # ALBABIT-FIX: cfg 7.0->8.0, sampler dpmpp_2m->euler, scheduler
-    # karras->normal, matching ComfyUI's own official SDXL example workflow
-    # (sdxl_simple_example.json). steps=20 added from the same file (base
-    # stage runs steps 0-20 of a nominal 25-step schedule with the optional
-    # refiner stage disabled by default -- we don't have a 2-stage refiner
-    # split, so 20 is the actual number of steps that workflow runs).
+    # ALBABIT-FIX: cfg 8.0, euler, normal and 20 steps, per ComfyUI's official
+    # sdxl_simple_example.json (its base stage runs steps 0-20 of 25; the refiner
+    # stage that takes the rest is off by default).
     "sdxl": {
         "cfg": 8.0,
         "scheduler": "normal",
@@ -245,12 +230,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps=20 added, from the same official ComfyUI HunyuanVideo
-    # workflow already used for shift/sampler/scheduler. Note: Tencent's own
-    # CLI README recommends 50 steps -- a real divergence between the
-    # ComfyUI-native default and the creator's own recommendation, not
-    # resolved here (kept internally consistent with the single source
-    # already used for this architecture's other values).
+    # ALBABIT-FIX: steps 20 from the official ComfyUI HunyuanVideo workflow, the
+    # source of this entry's other values. Tencent's README recommends 50.
     "hunyuan_video": {
         "cfg": 6.0,
         "scheduler": "simple",
@@ -260,12 +241,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 20,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: Lumina2's official example workflow shows a plain KSampler
-    # cfg=4 with no guidance-embed node at all (unlike Flux's FluxGuidance) --
-    # it's classic external CFG, not embedded guidance. cfg 1.0->4.0,
-    # sampler euler->res_multistep, guidance_type embedding->cfg, steps=25
-    # added (matches the workflow's saved value; its own Note claims "36
-    # steps" as the official recommendation but the workflow itself uses 25).
+    # ALBABIT-FIX: Lumina2's official workflow runs a plain KSampler (cfg 4,
+    # res_multistep, 25 steps) with no guidance-embed node, so this is classic
+    # CFG. Its note says 36 steps; the saved workflow uses 25.
     "lumina2": {
         "cfg": 4.0,
         "scheduler": "simple",
@@ -275,14 +253,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 25,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps=25 verified against Comfy-Org's official Z-Image
-    # (Base) workflow template -- its Turbo variant uses 8 steps instead, see
-    # refine_distillation_from_meta() below. Same template's KSampler also
-    # showed cfg=1.0/sampler="euler"/guidance_type="embedding" here were all
-    # wrong -- plain KSampler cfg=4, sampler="res_multistep", no
-    # guidance-embed node at all (exact same situation lumina2 was already
-    # fixed for, apparently missed for z_image at the time -- both share the
-    # same "lumina2" CLIPLoader type, consistent with a related architecture).
+    # ALBABIT-FIX: per Comfy-Org's official Z-Image (Base) template: plain
+    # KSampler cfg 4, res_multistep, 25 steps, no guidance-embed node, like
+    # Lumina2. Turbo's 8 steps come from refine_distillation_from_meta().
     "z_image": {
         "cfg": 4.0,
         "scheduler": "simple",
@@ -367,6 +340,18 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "shift": 3.1,
         "sampler": "euler",
         "steps": 20,
+        "guidance_type": "cfg",
+    },
+    # ALBABIT-FIX: Qwen-Image 2.1: image_qwen_image_2_1_t2i.json (KSampler 25
+    # steps, cfg 1, euler/simple, no shift node: the model keeps its own 0.69).
+    # Qwen's own pipeline runs 40-50 steps.
+    "qwen_image21": {
+        "cfg": 1.0,
+        "scheduler": "simple",
+        "guidance": 0.0,
+        "shift": 1.0,
+        "sampler": "euler",
+        "steps": 25,
         "guidance_type": "cfg",
     },
     # Krea 2 Turbo: image_krea2_turbo_t2i.json (KSampler 8 steps, cfg 1, euler/simple).
@@ -468,12 +453,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "steps": 20,
     },
-    # ALBABIT-FIX: previously fell back to "sd1.5" -- cfg/sampler verified
-    # against multiple independent community sources (weaker than AuraFlow's
-    # direct official workflow, moderate confidence). scheduler/shift kept at
-    # sd1.5-equivalent values, no better source found. steps=20 added, from
-    # the diffusers pipeline's own default parameter (no official ComfyUI
-    # workflow found for PixArt Sigma -- moderate confidence, same tier as cfg).
+    # ALBABIT-FIX: used to fall back to "sd1.5". No official ComfyUI workflow
+    # exists: cfg/sampler from community sources, steps 20 from the diffusers
+    # pipeline default, scheduler/shift left at the sd1.5 values.
     "pixart": {
         "cfg": 4.5,
         "scheduler": "normal",
@@ -616,6 +598,8 @@ def detect_by_config(model) -> Optional[str]:
             "CogVideoX": "cogvideox", "CogVideo": "cogvideox",
             "Mochi": "mochi",  # ALBABIT-FIX: Mochi-1 config class detection
             "MiniMaxH3": "minimax",  # ALBABIT-FIX: MiniMax H3 config class detection
+            # ALBABIT-FIX: without it, detect_by_sampling reported Qwen-Image 2.1 as "flux".
+            "QwenImage21": "qwen_image21",
         }
         for pattern, mtype in config_map.items():
             if pattern in config_cls: return mtype

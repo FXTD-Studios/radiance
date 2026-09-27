@@ -153,7 +153,11 @@ LATENT_FORMAT_MAP: Dict[int, str] = {
     8:   "sd3_8ch",       # SD3 medium (8-ch)
     12:  "mochi_12ch",    # Mochi (Genmo) causal video VAE
     16:  "flux_16ch",     # Flux, SD3 large, WAN, Chroma, HunyuanVideo
+    # ALBABIT-FIX: same names as model/detect.py's latent formats.
+    24:  "minimax_24ch",  # MiniMax H3 video
     32:  "cascade_32ch",  # Stable Cascade
+    48:  "wan_ti2v_48ch", # WAN 2.2 TI2V-5B
+    64:  "qwen_image21_64ch",  # Qwen-Image 2.1 (RGBA), also HunyuanImage 2.1
     128: "ltx_128ch",     # LTX-Video (all versions), Flux.2 Klein
 }
 
@@ -631,10 +635,14 @@ def detect_latent_format(vae: Any) -> str:
     v2.0: Return a format string e.g. 'flux_16ch' based on VAE latent channels.
     Compatible with the Radiance Sampler latent_format input socket.
     """
-    # Try to get channel count from VAE
-    channels = None
+    # ALBABIT-FIX: comfy.sd.VAE states latent_channels for every VAE it loads.
+    # The probes below miss the Wan-type VAEs (Wan, Qwen-Image, Qwen-Image 2.1),
+    # which fell through to "sd_4ch".
+    channels = getattr(vae, "latent_channels", None)
+    if not isinstance(channels, int) or channels <= 0:
+        channels = None
     model = getattr(vae, "first_stage_model", None)
-    if model is not None:
+    if channels is None and model is not None:
         # Typical attr names across ComfyUI VAE wrappers
         for attr in ("z_channels", "latent_channels", "out_channels"):
             val = getattr(model, attr, None)
@@ -1707,6 +1715,12 @@ class RadianceVAE4KEncode:
 
         # Color pipeline
         img = self._prepare_for_vae(img, source_space, exposure, hdr_mode)
+
+        # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) encodes the alpha too. Only the
+        # RGB went in, so comfy padded it opaque and transparency never reached the
+        # latent. The alpha joins after the colour pipeline, as on decode.
+        if getattr(vae, "output_channels", 3) == 4:
+            img = torch.cat([img, alpha.to(img)], dim=-1)
 
         # Pad to multiple of vae_factor (minimum 8 for all known VAEs)
         pad_multiple = max(vae_factor, 8)
@@ -3229,14 +3243,20 @@ class RadianceVAE4KDecode:
             else:
                 img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
 
+        # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) decodes an alpha channel. The
+        # colour transform curves every channel, so a linear or log target bent
+        # the alpha too (0.5 became 0.23 in Linear). It now sees RGB only.
+        vae_alpha = img[..., 3:] if img.shape[-1] == 4 else None
         img = self._vae_output_to_target(
-            img, target_space, hdr_mode,
+            img[..., :3], target_space, hdr_mode,
             exposure_adjust, inverse_tonemap, target_stops,
             source_space=source_space,
             hdr_output=hdr_output,
             display_tonemap=display_tonemap,
             working_gamut=working_gamut,
         )
+        if vae_alpha is not None:
+            img = torch.cat([img, vae_alpha.to(img)], dim=-1)
 
         # v2.3 FIX (BUG-B enhanced): Guard for NaN/Inf *introduced by* the color
         # transform. With v2.3's soft shoulder + denoise pipeline, this should be
