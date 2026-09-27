@@ -3229,14 +3229,20 @@ class RadianceVAE4KDecode:
             else:
                 img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
 
+        # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) decodes an alpha channel. The
+        # colour transform curves every channel, so a linear or log target bent
+        # the alpha too (0.5 became 0.23 in Linear). It now sees RGB only.
+        vae_alpha = img[..., 3:] if img.shape[-1] == 4 else None
         img = self._vae_output_to_target(
-            img, target_space, hdr_mode,
+            img[..., :3], target_space, hdr_mode,
             exposure_adjust, inverse_tonemap, target_stops,
             source_space=source_space,
             hdr_output=hdr_output,
             display_tonemap=display_tonemap,
             working_gamut=working_gamut,
         )
+        if vae_alpha is not None:
+            img = torch.cat([img, vae_alpha.to(img)], dim=-1)
 
         # v2.3 FIX (BUG-B enhanced): Guard for NaN/Inf *introduced by* the color
         # transform. With v2.3's soft shoulder + denoise pipeline, this should be
