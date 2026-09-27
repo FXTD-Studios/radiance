@@ -179,3 +179,31 @@ class TestQwenImage21Sampler:
         )
         assert detected == "qwen_image21"
         assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (1.0, 25, "euler", "simple")
+
+
+class _RGBAVae:
+    """Stands in for Qwen-Image 2.1's VAE: 64 latent channels at 16x, decoding
+    to RGBA with a left-to-right alpha gradient."""
+    downscale_ratio = 16
+    latent_channels = 64
+
+    def decode(self, latent):
+        b, _, h, w = latent.shape
+        image = torch.full((b, h * 16, w * 16, 4), 0.5)
+        image[..., 3] = torch.linspace(0.0, 1.0, w * 16)
+        return image
+
+
+class TestQwenImage21VaeDecodeHDR:
+
+    @pytest.mark.parametrize("target", ["sRGB", "Linear", "ACEScg", "ARRI LogC4"])
+    def test_colour_targets_leave_the_alpha_alone(self, target):
+        """The colour transform curved every channel: an alpha of 0.5 came
+        out at 0.23 in Linear."""
+        from radiance.nodes.generate.engine import RadianceHDRVAEDecode
+        vae, latent = _RGBAVae(), torch.zeros(1, 64, 2, 2)
+        image = RadianceHDRVAEDecode().apply(
+            {"samples": latent}, vae, decode_mode="Sampler (SDR-safe)", target_space=target,
+        )["result"][0]
+        assert image.shape[-1] == 4
+        assert torch.allclose(image[..., 3], vae.decode(latent)[..., 3])
