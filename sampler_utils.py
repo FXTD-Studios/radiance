@@ -710,6 +710,10 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str) -> Optiona
     # above, same for both Base and Turbo).
     if detected_type == "z_image" and "turbo" in name:
         return {"cfg": 1.0, "steps": 8}
+    # ALBABIT-FIX: Qwen-Image Edit 2511 shares qwen_image. Its official templates
+    # feed the KSampler 40 steps, cfg 4 (Qwen's values) through their switches.
+    if detected_type == "qwen_image" and "edit" in name and "2511" in name:
+        return {"cfg": 4.0, "steps": 40}
     return None
 
 def gradual_sigma_blend(

@@ -4,6 +4,8 @@ Tests for Qwen-Image Edit 2511 support.
 Qwen-Image Edit 2511 is a Qwen-Image checkpoint: same DiT keys, same 16ch
 VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves it to qwen_image.
 """
+import json
+
 from radiance.config.model_map import (
     CHECKPOINT_PRESETS, RADIANCE_MODEL_MAP, VIDEO_MODEL_TYPES, VIDEO_PRESET_NAMES,
 )
@@ -36,3 +38,18 @@ class TestQwenImageEditLoader:
             assert entry["type"] == kind
             assert entry["url"].startswith(f"https://huggingface.co/Comfy-Org/{repo}/resolve/")
             assert entry["url"].endswith(f"split_files/{kind}/{fname}")
+
+
+class TestQwenImageEditSampler:
+
+    def test_auto_preset_applies_the_template_values_from_model_meta(self):
+        """Qwen-Image's own defaults are 20 steps, cfg 2.5; only the file name
+        tells the Edit checkpoint apart."""
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        meta = json.dumps({"arch": "qwen_image", "unet_file": "qwen_image_edit_2511_int8_convrot.safetensors"})
+        detected, kwargs, _ = RadianceSamplerPro()._configure_model_and_defaults(
+            None, "auto", "Auto", model_meta=meta, cfg=1.0, flux_guidance=3.5, steps=20,
+            sampler="euler", scheduler="normal", scheduler_mode="Auto (Match Steps)",
+        )
+        assert detected == "qwen_image"
+        assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (4.0, 40, "euler", "simple")
