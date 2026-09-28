@@ -2,6 +2,8 @@ import { app } from "../../scripts/app.js";
 
 import {
     forceWidgetReinsert as _forceWidgetReinsert,
+    isInputLive,
+    liveSourceNode,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
 
@@ -638,15 +640,9 @@ function updateUILocks(node, presetName) {
     node.setDirtyCanvas(true, true);
 }
 
-// ALBABIT-FIX: returns true when sigmas_override has an active (non-muted, non-bypassed) link.
+// ALBABIT-FIX: true when sigmas_override is fed by a node that runs.
 function isSigmaOverrideActive(node) {
-    const sigmasInput = node.inputs?.find(inp => inp.name === "sigmas_override");
-    if (!sigmasInput || !sigmasInput.link) return false;
-    const link = app.graph.links[sigmasInput.link];
-    if (!link) return false;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    // mode 2 = Muted, mode 4 = Bypassed — treat as inactive
-    return originNode && originNode.mode !== 2 && originNode.mode !== 4;
+    return isInputLive(node, node.inputs?.find(inp => inp.name === "sigmas_override"));
 }
 
 // ALBABIT-FIX: disable/re-enable the widgets that become inert when sigmas_override is active.
@@ -758,13 +754,7 @@ function updatePresetDivergenceMarkers(node) {
 const LINKED_MARKER = " 🧲";
 
 function _findModelMetaSourceNode(node) {
-    const input = node.inputs?.find(i => i.name === "model_meta");
-    if (!input || !input.link) return null;
-    const link = app.graph.links[input.link];
-    if (!link) return null;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    if (!originNode || originNode.mode === 2 || originNode.mode === 4) return null;
-    return originNode;
+    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
 }
 
 // ALBABIT-FIX: LTXVConcatAVLatent sits directly in front of latent_image on

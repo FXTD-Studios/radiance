@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { isInputLive, setWidgetVisible } from "./radiance_widget_utils.js";
+import { isInputLive, liveSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -15,16 +15,9 @@ function _setLabelMarker(widget, marker) {
     if (widget.label !== wanted) widget.label = wanted;
 }
 
-// Mirrors radiance_sampler.js's own copy exactly (each file keeps its own,
-// same convention as the small widget helpers above).
+// Same lookup as radiance_sampler.js, through the shared liveSourceNode.
 function _findModelMetaSourceNode(node) {
-    const input = node.inputs?.find(i => i.name === "model_meta");
-    if (!input || !input.link) return null;
-    const link = app.graph.links[input.link];
-    if (!link) return null;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    if (!originNode || originNode.mode === 2 || originNode.mode === 4) return null;
-    return originNode;
+    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
 }
 
 // ALBABIT-FIX: live read of the connected Loader's preset/model_type. No
