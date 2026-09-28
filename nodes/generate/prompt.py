@@ -1923,7 +1923,9 @@ _REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein")
 # templates: the first scaled to a Kontext resolution, which also sizes the
 # empty latent. The native encoder takes 3 images and scales them itself.
 def _qwen_edit_images(references):
-    ordered = list(references.values())
+    # RGB only, as the native encoder hands the VAE: Qwen2.5-VL's vision
+    # tower normalises three channels and fails on an alpha channel.
+    ordered = [image if image.shape[-1] <= 3 else image[:, :, :, :3] for image in references.values()]
     if len(ordered) > 3:
         raise ValueError(f"Prompt: Qwen-Image Edit reads 3 reference images and {len(ordered)} "
                          f"are connected. Disconnect image_4 and above.")
@@ -1935,6 +1937,13 @@ def _qwen_edit_images(references):
 # ALBABIT-FIX: Flux.2 reference images, wired as the official Dev and Klein edit
 # templates: each scaled to about 1 megapixel and VAE-encoded, the empty latent
 # sized on image_1.
+def _qwen_unet_file(model_meta):
+    try:
+        return str(json.loads(model_meta or "{}").get("unet_file") or "")
+    except (ValueError, AttributeError):
+        return ""
+
+
 def _flux2_references(vae, references):
     latents, empty = [], None
     for image in references.values():
@@ -2037,14 +2046,6 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                             "run those models above CFG 1 with a negative. Zero: never encode "
                             "the negative.",
                 ),
-                # ALBABIT-FIX: reference images for Qwen-Image 2.1, Qwen-Image Edit and
-                # Flux.2 editing, wired as the native nodes. image_1 is the image to edit.
-                io.Vae.Input(
-                    "vae", optional=True,
-                    tooltip="Encodes the reference images into the latents the model edits "
-                            "from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without "
-                            "it read the images through the text encoder only.",
-                ),
                 # ALBABIT-FIX: forceInput -- this is always a wired value from the
                 # Loader, never hand-typed; matches the other model_meta inputs
                 # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
@@ -2053,6 +2054,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                     tooltip="Optional JSON metadata from Radiance Read Models. "
                             "When connected, architecture detection uses this before "
                             "tokenizer heuristics.",
+                ),
+                # ALBABIT-FIX: reference images for Qwen-Image 2.1, Qwen-Image Edit and
+                # Flux.2 editing, wired as the native nodes. image_1 is the image to edit.
+                # After model_meta, the last V1 input, so its slot index is unchanged.
+                io.Vae.Input(
+                    "vae", optional=True,
+                    tooltip="Encodes the reference images into the latents the model edits "
+                            "from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without "
+                            "it read the images through the text encoder only.",
                 ),
                 io.Int.Input(
                     "resolution", default=1024, min=0, max=4096, step=32, optional=True,
@@ -2132,6 +2142,16 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit and "
                 f"Flux.2 only, and the text encoder resolves to '{resolved_arch}'. Connect "
                 f"model_meta from the Loader, or disconnect the images.")
+        # qwen_image is also plain Qwen-Image, which has no image input. The
+        # weights do not tell the two apart, so the file name is the only hint;
+        # a warning, not an error, so a renamed Edit checkpoint still runs.
+        unet_file = _qwen_unet_file(model_meta) if references and resolved_arch == "qwen_image" else ""
+        if unet_file and "edit" not in unet_file.lower():
+            logger.warning(
+                "[Encoder] Reference images on '%s', which looks like plain Qwen-Image: "
+                "only Qwen-Image Edit reads them, and plain Qwen-Image gives an off-target "
+                "result. Load a Qwen-Image Edit checkpoint, or disconnect the images.",
+                unet_file)
         if references and resolved_arch not in ("qwen_image21", "qwen_image") and vae is None:
             raise ValueError("Prompt: Flux.2 reads reference images as VAE latents. "
                              "Connect the vae input.")
@@ -2229,8 +2249,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         elif references and resolved_arch == "qwen_image21":
             negative_cond = native_negative
         elif qwen_edit_images:
+            # The vae only adds reference_latents, the same for both prompts:
+            # reuse the positive's instead of VAE-encoding every image again.
             negative_cond = nodes_qwen.TextEncodeQwenImageEditPlus.execute(
-                clip=clip, prompt=negative_prompt, vae=vae, **qwen_edit_images).args[0]
+                clip=clip, prompt=negative_prompt, **qwen_edit_images).args[0]
+            negative_cond = _with_reference_latents(
+                negative_cond, positive_cond[0][1].get("reference_latents") or [])
         else:
             safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
             negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))

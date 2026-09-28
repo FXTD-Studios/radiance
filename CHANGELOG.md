@@ -2,6 +2,35 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [3.5.2] - 2026-09-28
+
+3.5.1 did not reach the Comfy Registry: its tag pointed at a commit that
+still carried version 3.5.0. 3.5.2 is the first Registry release with the
+3.5.1 changes below, plus these.
+
+### Added
+
+- Qwen-Image Edit 2511: Loader preset with the official template files, and
+  Sampler Pro defaults for it.
+- Prompt reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) and
+  Flux.2 Dev / Klein editing, through the native encoders, with a `vae` input
+  and a `latent` output sized on image_1.
+
+### Fixed
+
+- Qwen-Image latents are sampled in 5D as the native KSampler does, and a
+  single-frame 5D latent is tiled again in tile_mode, takes a 4D
+  noise_override, and decodes as independent images rather than a clip.
+- Qwen-Image Edit reference images reach the encoder as RGB; an alpha channel
+  broke Qwen2.5-VL's normalisation. The negative reuses the positive's
+  reference latents instead of VAE-encoding every image again.
+- Reference images on a plain Qwen-Image checkpoint log a warning. The Prompt's
+  `vae` input follows `model_meta`, so saved workflows keep its slot.
+- Sampler Pro names the Prompt's empty latent output instead of calling it an
+  IMAGE, and warns on seed 0 with Qwen-Image 2.1 (default seed is now 1).
+- Bypassed nodes are followed to the input ComfyUI actually forwards when the
+  Prompt and Sampler read the Loader's model_meta.
+
 ## [3.5.1] - 2026-09-28
 
 ### Fixed
