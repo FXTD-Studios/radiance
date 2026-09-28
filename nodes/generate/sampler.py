@@ -794,7 +794,9 @@ class RadianceSamplerPro:
                         "ramp ends so the middle reaches 1.0x when the step range includes it. "
                         "Short or partial runs may omit phases. Ignored in tile_mode.")},
                 ),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
+                # ALBABIT-FIX: default 1, not 0. With seed 0 Qwen-Image 2.1 edits fail
+                # or come out oversaturated, with the native nodes too.
+                "seed": ("INT", {"default": 1, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
                     "tooltip": "Random seed for reproducible results. Use the control below it (randomize / increment / fixed) to vary the seed between runs."
                 }),
 

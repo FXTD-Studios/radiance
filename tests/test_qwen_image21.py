@@ -236,3 +236,12 @@ class TestQwenImage21VaeEncodeHDR:
         vae.output_channels = 3
         RadianceHDRVAEEncode().encode(torch.rand(1, 32, 32, 4), vae, source_space="sRGB", hdr_mode="Clip (SDR)")
         assert vae.encoded.shape[-1] == 3
+
+
+class TestSamplerSeedDefault:
+
+    def test_the_seed_defaults_to_one(self):
+        """With seed 0 Qwen-Image 2.1 edits fail or come out oversaturated,
+        with the native nodes too."""
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        assert RadianceSamplerPro.INPUT_TYPES()["required"]["seed"][1]["default"] == 1

@@ -77,12 +77,14 @@ const PRESET_CONFIGS = {
         denoise: 1.0, flux_shift: 2.37, flux_guidance: 0.0,
         description: "LTX-V standard — shift=2.37 per spec.",
     },
+    // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
+    // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
     "▶ LTX 2.3 LowRes (20 steps)": {
         steps: 20, start_step: 0, end_step: 0, cfg: 3.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -96,7 +98,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: idem
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -113,7 +115,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -126,7 +128,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
