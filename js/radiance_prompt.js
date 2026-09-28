@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { isInputLive, liveSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { isInputLive, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -15,17 +15,11 @@ function _setLabelMarker(widget, marker) {
     if (widget.label !== wanted) widget.label = wanted;
 }
 
-// Same lookup as radiance_sampler.js, through the shared liveSourceNode.
-function _findModelMetaSourceNode(node) {
-    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
-}
-
 // ALBABIT-FIX: live read of the connected Loader's preset/model_type. No
 // source (unconnected or bypassed) means false, not null, same as
 // isSigmaOverrideActive() in radiance_sampler.js. null is reserved for a
 // connected, live Loader in Auto-Detect, resolved server-side only.
-function _liveMiniMaxState(node) {
-    const sourceNode = _findModelMetaSourceNode(node);
+function _liveMiniMaxState(node, sourceNode = modelMetaSourceNode(node)) {
     if (!sourceNode) return false;
     const presetW = sourceNode.widgets?.find(w => w.name === "preset");
     if (!presetW) return false;
@@ -115,8 +109,7 @@ function _applyNegStrengthLock(node, hidden) {
 // or its Custom model_type. Another preset or no Loader: "", unknown.
 const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image Edit", "qwen_image"]];
 
-function _loaderModelType(node) {
-    const source = _findModelMetaSourceNode(node);
+function _loaderModelType(source) {
     const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");
     const preset = value("preset");
     if (preset === "Custom") return value("model_type");
@@ -126,10 +119,10 @@ function _loaderModelType(node) {
 // ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
 // stays hidden until one arrives from a node that runs, and under the models
 // that size them on their own.
-function _applyResolutionVisibility(node) {
+function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
     const resW = node.widgets?.find(w => w.name === "resolution");
     const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
-        && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(node));
+        && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(source));
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
     refreshNodeSize(node);
@@ -140,10 +133,10 @@ function _applyResolutionVisibility(node) {
 // and a connected one stays for the run to report.
 const REFERENCE_LIMITS = { qwen_image: 3 };
 
-function _applyReferenceLimit(node) {
+function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;
     if (!grow) return;
-    const max = REFERENCE_LIMITS[_loaderModelType(node)] ?? grow.names.length;
+    const max = REFERENCE_LIMITS[_loaderModelType(source)] ?? grow.names.length;
     if (grow.max === max) return;
     const raised = max > grow.max;
     grow.max = max;
@@ -163,11 +156,13 @@ function _applyReferenceLimit(node) {
 
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
 // Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
+// The model_meta source is resolved once per call and shared by the helpers.
 function _refreshLiveState(node) {
     updatePresetDivergenceMarkers(node);
-    _applyResolutionVisibility(node);
-    _applyReferenceLimit(node);
-    const liveState = _liveMiniMaxState(node);
+    const source = modelMetaSourceNode(node);
+    _applyResolutionVisibility(node, source);
+    _applyReferenceLimit(node, source);
+    const liveState = _liveMiniMaxState(node, source);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;
     _applyNegPromptLock(node, locked);

@@ -236,6 +236,26 @@ class TestHDRVAEDecodeContract(unittest.TestCase):
         self.assertFalse(result["ui"]["log_overexposure_risk"][0])
 
     @pytest.mark.real_torch
+    def test_only_a_multi_frame_latent_decodes_as_a_clip(self):
+        """Qwen-Image samples in 5D with one frame: its batch holds independent
+        images, and pixel HDR must not smooth the knee across them."""
+        seen = []
+
+        def fake_pixel(sdr, peak, is_video=False):
+            seen.append(is_video)
+            return sdr, "mode: Hybrid", "SDR->HDR expansion only"
+
+        orig = RadianceHDRVAEDecode.__dict__["_pixel_hdr"]
+        RadianceHDRVAEDecode._pixel_hdr = staticmethod(fake_pixel)
+        try:
+            for shape in ((4, 16, 1, 2, 2), (1, 16, 5, 2, 2)):
+                RadianceHDRVAEDecode().apply(
+                    {"samples": torch.zeros(*shape)}, object(), decode_mode="Direct HDR")
+        finally:
+            RadianceHDRVAEDecode._pixel_hdr = orig
+        self.assertEqual(seen, [False, True])
+
+    @pytest.mark.real_torch
     def test_auto_mode_recognizes_direct_hdr_encode_metadata(self):
         lat = torch.zeros(1, 4, 2, 2)
         samples = {
