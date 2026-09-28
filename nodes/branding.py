@@ -382,6 +382,25 @@ def apply_radiance_branding(
         _inject_search_aliases(node_class, node_key, raw)
 
 
+# ALBABIT-FIX: V3 nodes (the Prompt first) take their names from here.
+def schema_branding(node_key: str, raw_name: str) -> dict:
+    """display_name, category and search_aliases for a V3 node's io.Schema.
+
+    ComfyUI reads these three from a V3 schema and ignores what
+    apply_radiance_branding writes in the mappings and on the class.
+    """
+
+    section = classify_menu_section(node_key, None, raw_name)
+    display_name = compose_display_name(node_key, raw_name, section)
+    return {
+        "display_name": display_name,
+        "category": category_path(section),
+        # Both names, as the catalog's two branding passes give a V1 node.
+        "search_aliases": _merge_aliases(_search_aliases(node_key, raw_name),
+                                         _search_aliases(node_key, display_name)),
+    }
+
+
 def compose_display_name(node_key: str, display_name: Any, section: str) -> str:
     """Build the Option C display name: bare for comp sections, prefixed for gen."""
 
@@ -416,19 +435,26 @@ def _base_label(node_key: str, display_name: Any) -> str:
     return label
 
 
+def _search_aliases(node_key: str, raw: Any) -> list:
+    words = _searchable_text(_base_label(node_key, raw))
+    return ["radiance", f"radiance {words}".strip(), words]
+
+
+def _merge_aliases(*groups) -> list:
+    merged = []
+    for a in (alias for group in groups for alias in group):
+        a = str(a).strip()
+        if a and a.lower() not in {m.lower() for m in merged}:
+            merged.append(a)
+    return merged
+
+
 def _inject_search_aliases(node_class: Any, node_key: str, raw: Any) -> None:
     """Keep nodes findable by 'radiance' even when the display name is bare."""
 
     try:
         existing = list(getattr(node_class, "SEARCH_ALIASES", []) or [])
-        words = _searchable_text(_base_label(node_key, raw))
-        extras = ["radiance", f"radiance {words}".strip(), words]
-        merged = []
-        for a in existing + extras:
-            a = str(a).strip()
-            if a and a.lower() not in {m.lower() for m in merged}:
-                merged.append(a)
-        setattr(node_class, "SEARCH_ALIASES", merged)
+        setattr(node_class, "SEARCH_ALIASES", _merge_aliases(existing, _search_aliases(node_key, raw)))
     except Exception:
         return
 
@@ -557,4 +583,5 @@ __all__ = [
     "classify_menu_section",
     "compose_display_name",
     "normalize_display_name",
+    "schema_branding",
 ]

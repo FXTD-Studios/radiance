@@ -794,7 +794,10 @@ class RadianceSamplerPro:
                         "ramp ends so the middle reaches 1.0x when the step range includes it. "
                         "Short or partial runs may omit phases. Ignored in tile_mode.")},
                 ),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
+                # ALBABIT-FIX: 1 and fixed by default. Seed 0 breaks Qwen-Image 2.1 edits,
+                # native nodes too; fixed reruns reproduce the last image.
+                "seed": ("INT", {"default": 1, "min": 0, "max": 0xFFFFFFFFFFFFFFFF,
+                    "control_after_generate": "fixed",
                     "tooltip": "Random seed for reproducible results. Use the control below it (randomize / increment / fixed) to vary the seed between runs."
                 }),
 
@@ -1663,6 +1666,12 @@ class RadianceSamplerPro:
                     "schedule. It does not make SamplerPro identical to the native "
                     "video sampler path."
                 )
+        # ALBABIT-FIX: Qwen-Image samples in Wan 2.1's 5D format (B, C, 1, H, W).
+        # Squeezed to 4D, its process_in broadcast the latent into 16 frames of
+        # noise. The latent format decides, as in comfy.sample.fix_empty_latent_channels.
+        elif model.get_model_object("latent_format").latent_dimensions == 3:
+            latent_samples = ensure_5d(latent_samples, "RadianceSamplerPro")
+            frames = None
         else:
             latent_samples = ensure_4d(latent_samples, "RadianceSamplerPro")
             frames = None

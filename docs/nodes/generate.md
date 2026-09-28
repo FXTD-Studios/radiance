@@ -144,7 +144,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image 2.1`, and 5 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image 2.1`, and 6 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
 | `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
 | `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 11 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
@@ -228,7 +228,10 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `negative_strength` (optional) | choice | `Standard` | `Off`, `Soft`, `Standard`, `Aggressive` | Auto-negative strength. 'Soft' is recommended for Flux. |
 | `negative_prompt` (optional) | string |  | multi-line text | Custom negative prompt. Appended after auto-negatives. |
 | `negative_mode` (optional) | choice | `Auto` | `Auto`, `Always encode`, `Zero (skip encode)` | Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) with no custom negative, return a zeroed negative instead of encoding one: ComfyUI never reads the negative at CFG 1, so this saves a full text-encoder pass. Always encode: pick this if you run those models above CFG 1 with a negative. Zero: never encode the negative. |
+| `vae` (optional) | VAE |  |  | Encodes the reference images into the latents the model edits from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without it read the images through the text encoder only. |
 | `model_meta` (optional) | string |  |  | Optional JSON metadata from Radiance Read Models. When connected, architecture detection uses this before tokenizer heuristics. |
+| `resolution` (optional) | int | 1024 | 0 to 4096, step 32 | Qwen-Image 2.1: reference images are resized to about resolution x resolution pixels, at multiples of 32, keeping their aspect ratio. 0 keeps each at its own size, rounded to a multiple of 32. Flux.2 and Qwen-Image Edit size them on their own. |
+| `images` (optional) | IMAGE |  | `image_1` to `image_16`, added as they are connected | Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) and Flux.2 editing. image_1 is the image to edit, the others are references. With Qwen-Image 2.1, cite them in the prompt as <image1>, <image2>... |
 
 **Outputs**
 
@@ -240,6 +243,7 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `negative_text` | STRING | Final negative prompt text that was encoded. |
 | `resolved_arch` | STRING | Detected architecture used to choose prose vs CLIP-style prompting. |
 | `token_count` | INT | Tokenizer-derived positive prompt token count after safety handling. |
+| `latent` | LATENT | Empty latent at image_1's size after the resize. Sample on it to edit: any other size shifts the edit. None without reference images. |
 
 ## Regional Grid
 
@@ -368,7 +372,7 @@ Universal diffusion sampler. Auto-detects model type (Flux, SD3, SDXL, WAN, LTX,
 | `flux_shift` | float | 1 | 0.01 to 10, step 0.1 | Extra time-shift applied to the sigma schedule, shift*s / (1 + (shift-1)*s), on top of the model's own shift. 1.0 = off; higher spends more steps at high noise. Intended for flow-matching models (sigmas 0-1). Auto/Custom preserve this value. |
 | `flux_guidance` | float | 3.5 | 0 to 20, step 0.1 | Embedded guidance written into the positive conditioning for Flux, Flux.2, LTXV and LongCat; ignored by other models. Auto/Custom replace 3.5 with the model default (for example 0 for Schnell). |
 | `flux_guidance_profile` | choice | `Static` | `Static`, `Dynamic (Creative Start/End)` | Static: one value for the whole run. Dynamic: splits the run into stages; guidance-embedded models start at 0.6x flux_guidance and end slightly lower, CFG models start at 1.2x cfg and end at 0.7x (cfg above 1.0 only). Stage boundaries include ramp ends so the middle reaches 1.0x when the step range includes it. Short or partial runs may omit phases. Ignored in tile_mode. |
-| `seed` | int | 0 | 0 to 18446744073709551615 | Random seed for reproducible results. Use the control below it (randomize / increment / fixed) to vary the seed between runs. |
+| `seed` | int | 1 | 0 to 18446744073709551615 | Random seed for reproducible results. Use the control below it (randomize / increment / fixed) to vary the seed between runs. |
 | `pag_scale` | float | 0 | 0 to 5, step 0.1 | Perturbed-attention guidance strength (0 = off). It perturbs the unconditional pass, so it only works with cfg above 1.0. |
 | `model_type` | choice | `auto` | `auto`, `flux`, `flux2`, `flux2-klein`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `wan`, `wan_ti2v`, and 20 more | Model family used for defaults, guidance handling and schedules. auto detects it from the model (or from model_meta when connected); set it by hand if detection is wrong. |
 | `sigma_blend_steps` | int | 0 | 0 to 10, step 1 | Smooth sigma transition steps at phase-shift boundary |

@@ -484,6 +484,32 @@ RADIANCE_MODEL_MAP: dict = {
         "size": 675509688,
         "type": "vae",
     },
+    # ALBABIT-FIX: Qwen-Image Edit 2511, the files of the two official ComfyUI
+    # templates (Image Edit: int8_convrot, Material Replacement: fp8mixed).
+    "qwen_image_edit_2511_int8_convrot.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/f68ace85e60b4a02a323e394253731947657b7d2/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors",
+        "sha256": "11b5af5ac601821d73930c84846c9a158e67177356daf927ce1c8d10f3963829",
+        "size": 20499083824,
+        "type": "diffusion_models",
+    },
+    "qwen_image_edit_2511_fp8mixed.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/f68ace85e60b4a02a323e394253731947657b7d2/split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+        "sha256": "c9fdc158e46d3b61ef75f21ae866ca2fe808bf4a53643120d1c1e87c19280a4e",
+        "size": 20533762817,
+        "type": "diffusion_models",
+    },
+    "qwen_2.5_vl_7b_fp8_scaled.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/1405a2b738c29b890cf6d03fc038d8d3e92eeed7/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+        "size": 9384670680,
+        "type": "text_encoders",
+    },
+    "qwen_image_vae.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/1f12b17be14c89b026c51a91d67c32f84bb047bc/split_files/vae/qwen_image_vae.safetensors",
+        "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+        "size": 253806246,
+        "type": "vae",
+    },
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1126,6 +1152,12 @@ CHECKPOINT_PRESETS: dict = {
     },
     "Qwen-Image 2.1 (Low VRAM)": {
         "model_type": "qwen_image21",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    # ALBABIT-FIX: int8_convrot, fp8mixed and fp8_scaled are quantized files, default dtypes.
+    "Qwen-Image Edit 2511": {
+        "model_type": "qwen_image",
         "weight_dtype": "default",
         "clip_dtype": "default",
     },

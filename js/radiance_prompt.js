@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { setWidgetVisible } from "./radiance_widget_utils.js";
+import { isInputLive, liveSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -15,16 +15,9 @@ function _setLabelMarker(widget, marker) {
     if (widget.label !== wanted) widget.label = wanted;
 }
 
-// Mirrors radiance_sampler.js's own copy exactly (each file keeps its own,
-// same convention as the small widget helpers above).
+// Same lookup as radiance_sampler.js, through the shared liveSourceNode.
 function _findModelMetaSourceNode(node) {
-    const input = node.inputs?.find(i => i.name === "model_meta");
-    if (!input || !input.link) return null;
-    const link = app.graph.links[input.link];
-    if (!link) return null;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    if (!originNode || originNode.mode === 2 || originNode.mode === 4) return null;
-    return originNode;
+    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
 }
 
 // ALBABIT-FIX: live read of the connected Loader's preset/model_type. No
@@ -118,10 +111,62 @@ function _applyNegStrengthLock(node, hidden) {
     refreshNodeSize(node);
 }
 
+// ALBABIT-FIX: the model type the Loader on model_meta selects, from its preset
+// or its Custom model_type. Another preset or no Loader: "", unknown.
+const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image Edit", "qwen_image"]];
+
+function _loaderModelType(node) {
+    const source = _findModelMetaSourceNode(node);
+    const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");
+    const preset = value("preset");
+    if (preset === "Custom") return value("model_type");
+    return PRESET_MODEL_TYPES.find(([prefix]) => preset.startsWith(prefix))?.[1] ?? "";
+}
+
+// ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
+// stays hidden until one arrives from a node that runs, and under the models
+// that size them on their own.
+function _applyResolutionVisibility(node) {
+    const resW = node.widgets?.find(w => w.name === "resolution");
+    const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
+        && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(node));
+    if (!resW || !resW.hidden === show) return;
+    setWidgetVisible(resW, show, node, { fallbackType: "number" });
+    refreshNodeSize(node);
+}
+
+// ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
+// slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
+// and a connected one stays for the run to report.
+const REFERENCE_LIMITS = { qwen_image: 3 };
+
+function _applyReferenceLimit(node) {
+    const grow = node.comfyDynamic?.autogrow?.images;
+    if (!grow) return;
+    const max = REFERENCE_LIMITS[_loaderModelType(node)] ?? grow.names.length;
+    if (grow.max === max) return;
+    const raised = max > grow.max;
+    grow.max = max;
+    const slots = node.inputs.filter(i => i.name.startsWith("images."));
+    if (raised) {
+        // The frontend adds the next slot when the last one connects: replay it.
+        const last = slots.at(-1);
+        const link = last?.link != null ? node.graph?.links?.[last.link] : null;
+        if (link) node.onConnectionsChange?.(LiteGraph.INPUT, node.inputs.indexOf(last), true, link, last);
+    } else {
+        for (const slot of slots.slice(max).reverse()) {
+            if (slot.link == null) node.removeInput(node.inputs.indexOf(slot));
+        }
+    }
+    refreshNodeSize(node);
+}
+
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
 // Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
 function _refreshLiveState(node) {
     updatePresetDivergenceMarkers(node);
+    _applyResolutionVisibility(node);
+    _applyReferenceLimit(node);
     const liveState = _liveMiniMaxState(node);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;
