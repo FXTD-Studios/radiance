@@ -111,23 +111,54 @@ function _applyNegStrengthLock(node, hidden) {
     refreshNodeSize(node);
 }
 
-// ALBABIT-FIX: the Loader on model_meta says Flux.2, which scales its reference
-// images to about 1 megapixel. Auto-Detect or no Loader: unknown, false.
-function _loaderIsFlux2(node) {
+// ALBABIT-FIX: the model type the Loader on model_meta selects, from its preset
+// or its Custom model_type. Another preset or no Loader: "", unknown.
+const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image Edit", "qwen_image"]];
+
+function _loaderModelType(node) {
     const source = _findModelMetaSourceNode(node);
     const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");
     const preset = value("preset");
-    return preset === "Custom" ? value("model_type").startsWith("flux2") : preset.startsWith("Flux.2");
+    if (preset === "Custom") return value("model_type");
+    return PRESET_MODEL_TYPES.find(([prefix]) => preset.startsWith(prefix))?.[1] ?? "";
 }
 
 // ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
-// stays hidden until one arrives from a node that runs, and under Flux.2.
+// stays hidden until one arrives from a node that runs, and under the models
+// that size them on their own.
 function _applyResolutionVisibility(node) {
     const resW = node.widgets?.find(w => w.name === "resolution");
     const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
-        && !_loaderIsFlux2(node);
+        && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(node));
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
+    refreshNodeSize(node);
+}
+
+// ALBABIT-FIX: the reference images a model reads, where it has a limit
+// (Qwen-Image Edit's native encoder takes 3). The frontend's Autogrow adds a
+// slot only below comfyDynamic.autogrow max, so no image_4 appears; empty slots
+// past a lowered limit go, a connected one stays and the run reports it.
+const REFERENCE_LIMITS = { qwen_image: 3 };
+
+function _applyReferenceLimit(node) {
+    const grow = node.comfyDynamic?.autogrow?.images;
+    if (!grow) return;
+    const max = REFERENCE_LIMITS[_loaderModelType(node)] ?? grow.names.length;
+    if (grow.max === max) return;
+    const raised = max > grow.max;
+    grow.max = max;
+    const slots = node.inputs.filter(i => i.name.startsWith("images."));
+    if (raised) {
+        // The frontend adds the next slot when the last one connects: replay it.
+        const last = slots.at(-1);
+        const link = last?.link != null ? node.graph?.links?.[last.link] : null;
+        if (link) node.onConnectionsChange?.(LiteGraph.INPUT, node.inputs.indexOf(last), true, link, last);
+    } else {
+        for (const slot of slots.slice(max).reverse()) {
+            if (slot.link == null) node.removeInput(node.inputs.indexOf(slot));
+        }
+    }
     refreshNodeSize(node);
 }
 
@@ -136,6 +167,7 @@ function _applyResolutionVisibility(node) {
 function _refreshLiveState(node) {
     updatePresetDivergenceMarkers(node);
     _applyResolutionVisibility(node);
+    _applyReferenceLimit(node);
     const liveState = _liveMiniMaxState(node);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;

@@ -721,7 +721,8 @@ def _make_comfy_stubs():
     # that sends images patches the classes it needs in.
     comfy_extras = types.ModuleType("comfy_extras")
     extras = {name: types.ModuleType(f"comfy_extras.{name}")
-              for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing")}
+              for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing",
+                           "nodes_sd3")}
     for name, module in extras.items():
         setattr(comfy_extras, name, module)
 
