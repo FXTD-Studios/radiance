@@ -309,3 +309,7 @@ class TestSamplerSeedDefault:
         with the native nodes too."""
         from radiance.nodes.generate.sampler import RadianceSamplerPro
         assert RadianceSamplerPro.INPUT_TYPES()["required"]["seed"][1]["default"] == 1
+
+    def test_the_seed_control_defaults_to_fixed(self):
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        assert RadianceSamplerPro.INPUT_TYPES()["required"]["seed"][1]["control_after_generate"] == "fixed"
