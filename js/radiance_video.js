@@ -11,20 +11,15 @@
 // (dit_config only provides latent_scale — no user-facing widget is overridden).
 
 import { app } from "../../scripts/app.js";
+import { isInputLive } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: widgets that become inert when an active dit_config is connected.
 // Same four params for all three targeted nodes.
 const DIT_CONFIG_WIDGETS = ["steps", "cfg", "sampler_name", "scheduler"];
 
-// ALBABIT-FIX: returns true when dit_config has an active (non-muted, non-bypassed) link.
+// ALBABIT-FIX: true when dit_config is fed by a node that runs.
 function isDitConfigActive(node) {
-    const ditInput = node.inputs?.find(inp => inp.name === "dit_config");
-    if (!ditInput || !ditInput.link) return false;
-    const link = app.graph.links[ditInput.link];
-    if (!link) return false;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    // mode 2 = Muted, mode 4 = Bypassed — treat as inactive
-    return originNode && originNode.mode !== 2 && originNode.mode !== 4;
+    return isInputLive(node, node.inputs?.find(inp => inp.name === "dit_config"));
 }
 
 // ALBABIT-FIX: disable/re-enable the widgets that become inert when dit_config is active.
