@@ -71,6 +71,36 @@ class TestQwenImageEditSampler:
         call = rec.calls[0]
         assert call["latent_image"].shape == call["noise"].shape == (1, 16, 1, 8, 8)
 
+    def test_tile_mode_tiles_the_single_frame_5d_latent(self):
+        """The 5D latent used to skip tiling: every check read ndim == 4."""
+        (samples, *_), rec = run_sampler(
+            latent={"samples": torch.zeros(1, 16, 1, 64, 64)},
+            model=FakeModelPatcher(latent_dimensions=3), model_type="qwen_image",
+            tile_mode=True, tile_size=32, tile_overlap=8)
+        assert len(rec.calls) > 1
+        assert all(c["latent_image"].shape[:3] == (1, 16, 1) for c in rec.calls)
+        assert all(c["latent_image"].shape[-2:] == (32, 32) for c in rec.calls)
+        assert samples["samples"].shape == (1, 16, 1, 64, 64)
+        assert torch.isfinite(samples["samples"]).all()
+
+    def test_a_4d_noise_override_fits_the_5d_latent(self):
+        noise = torch.randn(1, 16, 8, 8)
+        _, rec = run_sampler(
+            latent=make_latent((1, 16, 8, 8)), model=FakeModelPatcher(latent_dimensions=3),
+            model_type="qwen_image", noise_override={"samples": noise})
+        assert torch.equal(rec.calls[0]["noise"], noise.unsqueeze(2))
+
+    def test_a_missing_latent_names_the_prompt_output(self):
+        """Prompt.latent is None without reference images; it used to be called an IMAGE."""
+        from _sampler_harness import DEFAULT_KWARGS, SamplerEnv, make_cond
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        kwargs = {**DEFAULT_KWARGS, "model_type": "qwen_image"}
+        with SamplerEnv(), pytest.raises(RuntimeError, match="image_1") as exc:
+            RadianceSamplerPro().sample(model=FakeModelPatcher(latent_dimensions=3),
+                                        positive=make_cond(), negative=make_cond(),
+                                        latent_image=None, **kwargs)
+        assert "IMAGE" not in str(exc.value)
+
 
 class _FakeClip:
     def tokenize(self, text, **kwargs):
@@ -122,10 +152,64 @@ class TestQwenImageEditPromptReferences:
         pos, neg, text, neg_text, arch, _count, latent = self._run(
             {"image_2": fur, "image_1": torch.zeros(1, 30, 40, 3)}, vae="vae", negative_strength="Off")
         assert [call[0] for call in encoded] == [text, neg_text]
-        for _prompt, vae, image1, image2, image3 in encoded:
-            assert vae == "vae" and image1 is self.SCALED and image2 is fur and image3 is None
+        # The negative reuses the positive's reference latents, so only the
+        # positive VAE-encodes the images.
+        assert [call[1] for call in encoded] == ["vae", None]
+        for _prompt, _vae, image1, image2, image3 in encoded:
+            assert image1 is self.SCALED and image2 is fur and image3 is None
         assert (pos, neg) == ([[f"cond:{text}", {}]], [[f"cond:{neg_text}", {}]])
         assert (arch, latent) == ("qwen_image", {"samples": ("empty", 80, 48)})
+
+    def test_alpha_is_dropped_before_the_encoder(self, encoded):
+        rgba = torch.ones(1, 20, 20, 4)
+        self._run({"image_1": torch.zeros(1, 30, 40, 3), "image_2": rgba}, vae="vae")
+        assert all(call[3].shape[-1] == 3 for call in encoded)
+
+    def test_the_negative_carries_the_positives_reference_latents(self, monkeypatch):
+        from radiance.nodes.generate.prompt import nodes_edit_model  # noqa: F401
+        vae_calls = []
+
+        class _EditPlus:
+            @classmethod
+            def execute(cls, clip, prompt, vae=None, image1=None, image2=None, image3=None):
+                vae_calls.append(vae)
+                refs = {"reference_latents": ["ref1"]} if vae is not None else {}
+                return io.NodeOutput([[f"cond:{prompt}", refs]])
+
+        class _RefLatent:
+            @classmethod
+            def execute(cls, conditioning, latent):
+                return io.NodeOutput([[c[0], {**c[1], "reference_latents": [
+                    *c[1].get("reference_latents", []), latent["samples"]]}] for c in conditioning])
+
+        monkeypatch.setattr(prompt.nodes_flux, "FluxKontextImageScale",
+                            type("S", (), {"execute": classmethod(lambda cls, image: io.NodeOutput(image))}),
+                            raising=False)
+        monkeypatch.setattr(prompt.nodes_sd3, "EmptySD3LatentImage",
+                            type("E", (), {"execute": classmethod(
+                                lambda cls, width, height, batch_size=1: io.NodeOutput({"samples": None}))}),
+                            raising=False)
+        monkeypatch.setattr(prompt.nodes_qwen, "TextEncodeQwenImageEditPlus", _EditPlus, raising=False)
+        monkeypatch.setattr(prompt.nodes_edit_model, "ReferenceLatent", _RefLatent, raising=False)
+        pos, neg, *_ = self._run({"image_1": torch.zeros(1, 30, 40, 3)}, vae="vae", negative_strength="Off")
+        assert vae_calls == ["vae", None]
+        assert neg[0][1]["reference_latents"] == pos[0][1]["reference_latents"] == ["ref1"]
+
+    def test_plain_qwen_image_with_references_warns(self, encoded, caplog):
+        meta = json.dumps({"arch": "qwen_image", "unet_file": "qwen_image_fp8_e4m3fn.safetensors"})
+        with caplog.at_level("WARNING"):
+            prompt.RadianceCinematicPromptEncoder.execute(
+                _FakeClip(), base_prompt="x", model_meta=meta,
+                images={"image_1": torch.zeros(1, 30, 40, 3)})
+        assert any("plain Qwen-Image" in r.getMessage() for r in caplog.records)
+
+    def test_the_edit_checkpoint_does_not_warn(self, encoded, caplog):
+        meta = json.dumps({"arch": "qwen_image", "unet_file": "qwen_image_edit_2511_fp8mixed.safetensors"})
+        with caplog.at_level("WARNING"):
+            prompt.RadianceCinematicPromptEncoder.execute(
+                _FakeClip(), base_prompt="x", model_meta=meta,
+                images={"image_1": torch.zeros(1, 30, 40, 3)})
+        assert not any("plain Qwen-Image" in r.getMessage() for r in caplog.records)
 
     def test_the_vae_is_optional(self, encoded):
         """As on the native encoder: the images then reach the model through the text encoder only."""

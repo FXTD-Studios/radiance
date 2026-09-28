@@ -1235,6 +1235,11 @@ class RadianceSamplerPro:
     def _prepare_noise(self, latent_samples, seed, noise_type, noise_override, device, frames):
         if noise_override is not None:
             noise = noise_override["samples"]
+            # A single-frame 5D latent (Qwen-Image) and its 4D form hold the
+            # same noise; an override made from an empty 4D latent still fits.
+            if (torch.is_tensor(noise) and noise.ndim == 4 and latent_samples.ndim == 5
+                    and latent_samples.shape[2] == 1):
+                noise = noise.unsqueeze(2)
             if noise.shape != latent_samples.shape:
                 raise ValueError(f"noise_override shape {noise.shape} mismatch with latent {latent_samples.shape}")
         else:
@@ -1633,7 +1638,25 @@ class RadianceSamplerPro:
         # already used for the cfg/steps/sampler override above.
         use_sd_turbo_schedule = detected_type == "sdxl" and "turbo" in meta_unet_file.lower()
 
+        # The seed default moved to 1 for this, but decrement, randomize or a
+        # typed 0 still reach seed 0; say why the edit breaks when one does.
+        if detected_type == "qwen_image21" and int(seed) == 0:
+            logger.warning(
+                "[RadianceSamplerPro] seed 0 on Qwen-Image 2.1: edits at this seed "
+                "fail or come out oversaturated, with the native nodes too. Use any "
+                "other seed."
+            )
+
         # 3. Latent Preparation
+        # The Prompt's latent output is empty without reference images; say
+        # so instead of calling the missing latent an IMAGE.
+        if latent_image is None:
+            raise RuntimeError(
+                "No latent reached latent_image.\n\n"
+                "If it comes from the Prompt's latent output, connect a reference "
+                "image to image_1: that output is empty without one. For text to "
+                "image, connect an Empty Latent Image instead."
+            )
         if not isinstance(latent_image, dict) or "samples" not in latent_image:
             _got = type(latent_image).__name__
             raise RuntimeError(
@@ -1675,6 +1698,13 @@ class RadianceSamplerPro:
         else:
             latent_samples = ensure_4d(latent_samples, "RadianceSamplerPro")
             frames = None
+        # An image model sampling in 5D (Qwen-Image) still carries one frame:
+        # the batch holds independent images, and the frame axis is the only
+        # difference from 4D, so tiling applies to it as it does to 4D.
+        tileable = tile_mode and (
+            latent_samples.ndim == 4
+            or (not is_video and latent_samples.ndim == 5 and latent_samples.shape[2] == 1)
+        )
         timings["latent_prep"] = time.time() - t0
 
         device = comfy.model_management.get_torch_device()
@@ -2298,7 +2328,7 @@ class RadianceSamplerPro:
             )
 
         try:
-            if tile_mode and latent_samples.ndim == 4:
+            if tileable:
                 # DEFECT: tile_mode called tile_sample once with the FULL sigma
                 # schedule and the primary sampler, then `break`-ed out of the
                 # stage loop. Six settings were discarded in silence:
@@ -2417,7 +2447,7 @@ class RadianceSamplerPro:
                 _ltxav_mr_base.memory_required = _ltxav_memory_required
 
             for plan_idx, stage in enumerate(planned_stages):
-                if tile_mode and latent_samples.ndim == 4:
+                if tileable:
                     break
                 t_stage = time.time()
                 i = stage.index
@@ -2637,10 +2667,10 @@ class RadianceSamplerPro:
                 zero_noise = None
                 noise = None
 
-            if not (tile_mode and latent_samples.ndim == 4):
+            if not tileable:
                 timings["sampling"] = time.time() - t0
 
-            if tile_mode and latent_samples.ndim == 5:
+            if tile_mode and not tileable:
                 logger.warning(
                     "[Radiance] Tile sampling ignored for 5D video latents."
                 )
