@@ -812,6 +812,8 @@ function _deriveDistillationOverride(filename, detectedType) {
     // "res_multistep", inherited unchanged from MODEL_TYPE_SAMPLING_DEFAULTS
     // .z_image above, same for both Base and Turbo).
     if (detectedType === "z_image" && f.includes("turbo")) return { cfg: 1.0, steps: 8 };
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511.
+    if (detectedType === "qwen_image" && f.includes("edit") && f.includes("2511")) return { cfg: 4.0, steps: 40 };
     return null;
 }
 
