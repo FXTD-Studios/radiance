@@ -58,10 +58,12 @@ def _prepare_noise_like_comfy(latent_image, seed, noise_inds=None):
 class FakeModelPatcher:
     """Enough of comfy.model_patcher.ModelPatcher for the sampler's use of it."""
 
-    def __init__(self, latent_format: str = "flux", context_dim: Optional[int] = None):
+    def __init__(self, latent_format: str = "flux", context_dim: Optional[int] = None,
+                 latent_dimensions: int = 2):
         self.model_options: Dict[str, Any] = {}
         self.load_device = "cpu"
         self.clone_count = 0
+        self.latent_dimensions = latent_dimensions
         self.model = types.SimpleNamespace(
             latent_format=latent_format,
             model_config=types.SimpleNamespace(
@@ -74,6 +76,7 @@ class FakeModelPatcher:
         other.model_options = dict(self.model_options)
         other.model = self.model
         other.load_device = self.load_device
+        other.latent_dimensions = self.latent_dimensions
         other.clone_count = self.clone_count + 1
         return other
 
@@ -93,6 +96,8 @@ class FakeModelPatcher:
     def get_model_object(self, name):
         if name == "model_sampling":
             return types.SimpleNamespace(sigma_min=0.002, sigma_max=14.6)
+        if name == "latent_format":
+            return types.SimpleNamespace(latent_dimensions=self.latent_dimensions)
         # LTX-AV probing looks for diffusion_model; a plain model has none.
         raise AttributeError(name)
 

@@ -258,6 +258,145 @@ if "server" not in sys.modules:
     _server.PromptServer = _FakePromptServer
     sys.modules["server"] = _server
 
+if "comfy_api" not in sys.modules:
+    # ALBABIT-FIX: the V3 node API (comfy_api.latest.io), for Radiance's V3 nodes.
+    # A node class derives INPUT_TYPES, RETURN_* and FUNCTION from its schema in
+    # the V1 form real ComfyUI gives it: lists, "COMBO" with an options list,
+    # FUNCTION "EXECUTE_NORMALIZED" returning a NodeOutput.
+    _io = _mark_stub(types.ModuleType("comfy_api.latest.io"))
+
+    class _classproperty:
+        def __init__(self, fget):
+            self.fget = fget
+
+        def __get__(self, obj, owner):
+            return self.fget(owner)
+
+    class _V3Input:
+        io_type = None
+
+        def __init__(self, id, display_name=None, optional=False, tooltip=None, **options):
+            self.id, self.optional = id, optional
+            self.options = {"tooltip": tooltip, **options}
+
+        def as_v1(self):
+            return (self.io_type, {k: v for k, v in self.options.items() if v is not None})
+
+    class _V3StringInput(_V3Input):
+        def __init__(self, id, multiline=False, placeholder=None, default=None,
+                     dynamic_prompts=None, force_input=None, **kw):
+            super().__init__(id, default=default, multiline=multiline, placeholder=placeholder,
+                             dynamicPrompts=dynamic_prompts, forceInput=force_input, **kw)
+
+    class _V3ComboInput(_V3Input):
+        def __init__(self, id, options=(), default=None, **kw):
+            super().__init__(id, default=default, multiselect=False, options=list(options), **kw)
+
+    class _V3IntInput(_V3Input):
+        def __init__(self, id, default=None, min=None, max=None, step=None, **kw):
+            super().__init__(id, default=default, min=min, max=max, step=step, **kw)
+
+    class _V3Output:
+        io_type = None
+
+        def __init__(self, id=None, display_name=None, tooltip=None, is_output_list=False):
+            self.display_name, self.tooltip = display_name, tooltip
+
+    def _v3_type(name, io_type, input_cls=_V3Input):
+        return type(name, (), {
+            "io_type": io_type,
+            "Input": type("Input", (input_cls,), {"io_type": io_type}),
+            "Output": type("Output", (_V3Output,), {"io_type": io_type}),
+        })
+
+    _io.Clip = _v3_type("Clip", "CLIP")
+    _io.String = _v3_type("String", "STRING", _V3StringInput)
+    _io.Combo = _v3_type("Combo", "COMBO", _V3ComboInput)
+    _io.Int = _v3_type("Int", "INT", _V3IntInput)
+    _io.Conditioning = _v3_type("Conditioning", "CONDITIONING")
+    _io.Vae = _v3_type("Vae", "VAE")
+    _io.Image = _v3_type("Image", "IMAGE")
+    _io.Latent = _v3_type("Latent", "LATENT")
+
+    class _Autogrow:
+        io_type = "COMFY_AUTOGROW_V3"
+
+        class TemplateNames:
+            def __init__(self, input, names, min=1):
+                self.input, self.names, self.min = input, list(names), min
+
+            def as_dict(self):
+                section = "optional" if self.input.optional else "required"
+                return {"input": {section: {self.input.id: self.input.as_v1()}},
+                        "names": self.names, "min": self.min}
+
+        class Input(_V3Input):
+            io_type = "COMFY_AUTOGROW_V3"
+
+            def __init__(self, id, template, **kw):
+                super().__init__(id, template=template.as_dict(), **kw)
+
+    _io.Autogrow = _Autogrow
+
+    class _NodeOutput:
+        def __init__(self, *args, ui=None, expand=None, block_execution=None):
+            self.args, self.ui, self.expand = args, ui, expand
+
+        @property
+        def result(self):
+            return self.args if self.args else None
+
+        @classmethod
+        def from_dict(cls, data):
+            return cls(*data.get("result", ()), ui=data.get("ui"), expand=data.get("expand"))
+
+        def __getitem__(self, index):
+            return self.args[index]
+
+    class _Schema:
+        def __init__(self, node_id, display_name=None, category="sd", description="",
+                     search_aliases=None, inputs=(), outputs=(), is_output_node=False,
+                     is_deprecated=False, **_):
+            self.node_id, self.display_name, self.category = node_id, display_name, category
+            self.description, self.search_aliases = description, search_aliases
+            self.inputs, self.outputs = list(inputs), list(outputs)
+            self.is_output_node, self.is_deprecated = is_output_node, is_deprecated
+
+    class _ComfyNode:
+        FUNCTION = "EXECUTE_NORMALIZED"
+        CATEGORY = _classproperty(lambda cls: cls.define_schema().category)
+        DESCRIPTION = _classproperty(lambda cls: cls.define_schema().description)
+        DEPRECATED = _classproperty(lambda cls: cls.define_schema().is_deprecated)
+        OUTPUT_NODE = _classproperty(lambda cls: cls.define_schema().is_output_node)
+        RETURN_TYPES = _classproperty(lambda cls: [o.io_type for o in cls.define_schema().outputs])
+        RETURN_NAMES = _classproperty(
+            lambda cls: [o.display_name or o.io_type for o in cls.define_schema().outputs])
+        OUTPUT_TOOLTIPS = _classproperty(lambda cls: [o.tooltip for o in cls.define_schema().outputs])
+
+        @classmethod
+        def INPUT_TYPES(cls):
+            out = {"required": {}, "optional": {}}
+            for i in cls.define_schema().inputs:
+                out["optional" if i.optional else "required"][i.id] = i.as_v1()
+            return out
+
+        @classmethod
+        def EXECUTE_NORMALIZED(cls, *args, **kwargs):
+            out = cls.execute(*args, **kwargs)
+            if isinstance(out, dict):
+                return _NodeOutput.from_dict(out)
+            if isinstance(out, tuple):
+                return _NodeOutput(*out)
+            return out
+
+    _io.ComfyNode, _io.Schema, _io.NodeOutput = _ComfyNode, _Schema, _NodeOutput
+    _comfy_api = _mark_stub(types.ModuleType("comfy_api"))
+    _comfy_api_latest = _mark_stub(types.ModuleType("comfy_api.latest"))
+    _comfy_api.latest, _comfy_api_latest.io = _comfy_api_latest, _io
+    sys.modules["comfy_api"] = _comfy_api
+    sys.modules["comfy_api.latest"] = _comfy_api_latest
+    sys.modules["comfy_api.latest.io"] = _io
+
 # AUDIT-FIX (2026-09): this stub used to be installed unconditionally, which
 # meant the real radiance_ocio.py (370 statements) was never imported by the
 # suite even on the lane where PyOpenColorIO IS installed: 0% coverage on the
@@ -578,6 +717,15 @@ def _make_comfy_stubs():
     cldm.control_types = control_types
     comfy.cldm = cldm
 
+    # comfy_extras: the Prompt hands reference images to native nodes; a test
+    # that sends images patches the classes it needs in.
+    comfy_extras = types.ModuleType("comfy_extras")
+    extras = {name: types.ModuleType(f"comfy_extras.{name}")
+              for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing",
+                           "nodes_sd3")}
+    for name, module in extras.items():
+        setattr(comfy_extras, name, module)
+
     # folder_paths stub
     folder_paths = types.ModuleType("folder_paths")
     folder_paths.get_filename_list = MagicMock(return_value=[])
@@ -602,6 +750,8 @@ def _make_comfy_stubs():
         "comfy.nested_tensor": nested_tensor,
         "comfy.cldm": cldm,
         "comfy.cldm.control_types": control_types,
+        "comfy_extras": comfy_extras,
+        **{f"comfy_extras.{name}": module for name, module in extras.items()},
         "folder_paths": folder_paths,
     }
     for _mod in stubs.values():

@@ -45,6 +45,23 @@ export function getWidget(node, name) {
     return node?.widgets?.find(w => w.name === name) ?? null;
 }
 
+// ALBABIT-FIX: the node that actually feeds 'input', or null. A muted node
+// (mode 2) sends nothing; a bypassed one (mode 4) forwards its first input of
+// the same type, as ComfyUI does. node.graph, so it works inside subgraphs.
+export function liveSourceNode(node, input, depth = 0) {
+    const graph = node?.graph;
+    const link = input?.link != null ? graph?.links?.[input.link] : null;
+    const origin = link && graph.getNodeById(link.origin_id);
+    if (!origin || origin.mode === 2 || depth > 32) return null;
+    if (origin.mode !== 4) return origin;
+    return liveSourceNode(origin, origin.inputs?.find(i => i.type === link.type), depth + 1);
+}
+
+/** True when 'input' is fed by a node that runs (see liveSourceNode). */
+export function isInputLive(node, input) {
+    return liveSourceNode(node, input) !== null;
+}
+
 /**
  * Show or hide a widget, collapsing its row when hidden.
  *
@@ -134,4 +151,4 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     return false;
 }
 
-export default { forceWidgetReinsert, getWidget, setWidgetVisible };
+export default { forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, setWidgetVisible };

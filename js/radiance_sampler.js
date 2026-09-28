@@ -2,6 +2,8 @@ import { app } from "../../scripts/app.js";
 
 import {
     forceWidgetReinsert as _forceWidgetReinsert,
+    isInputLive,
+    liveSourceNode,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
 
@@ -77,12 +79,14 @@ const PRESET_CONFIGS = {
         denoise: 1.0, flux_shift: 2.37, flux_guidance: 0.0,
         description: "LTX-V standard — shift=2.37 per spec.",
     },
+    // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
+    // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
     "▶ LTX 2.3 LowRes (20 steps)": {
         steps: 20, start_step: 0, end_step: 0, cfg: 3.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -96,7 +100,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: idem
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -113,7 +117,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -126,7 +130,7 @@ const PRESET_CONFIGS = {
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 0, control_after_generate: "fixed",
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
@@ -636,15 +640,9 @@ function updateUILocks(node, presetName) {
     node.setDirtyCanvas(true, true);
 }
 
-// ALBABIT-FIX: returns true when sigmas_override has an active (non-muted, non-bypassed) link.
+// ALBABIT-FIX: true when sigmas_override is fed by a node that runs.
 function isSigmaOverrideActive(node) {
-    const sigmasInput = node.inputs?.find(inp => inp.name === "sigmas_override");
-    if (!sigmasInput || !sigmasInput.link) return false;
-    const link = app.graph.links[sigmasInput.link];
-    if (!link) return false;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    // mode 2 = Muted, mode 4 = Bypassed — treat as inactive
-    return originNode && originNode.mode !== 2 && originNode.mode !== 4;
+    return isInputLive(node, node.inputs?.find(inp => inp.name === "sigmas_override"));
 }
 
 // ALBABIT-FIX: disable/re-enable the widgets that become inert when sigmas_override is active.
@@ -756,13 +754,7 @@ function updatePresetDivergenceMarkers(node) {
 const LINKED_MARKER = " 🧲";
 
 function _findModelMetaSourceNode(node) {
-    const input = node.inputs?.find(i => i.name === "model_meta");
-    if (!input || !input.link) return null;
-    const link = app.graph.links[input.link];
-    if (!link) return null;
-    const originNode = app.graph.getNodeById(link.origin_id);
-    if (!originNode || originNode.mode === 2 || originNode.mode === 4) return null;
-    return originNode;
+    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
 }
 
 // ALBABIT-FIX: LTXVConcatAVLatent sits directly in front of latent_image on
@@ -820,6 +812,8 @@ function _deriveDistillationOverride(filename, detectedType) {
     // "res_multistep", inherited unchanged from MODEL_TYPE_SAMPLING_DEFAULTS
     // .z_image above, same for both Base and Turbo).
     if (detectedType === "z_image" && f.includes("turbo")) return { cfg: 1.0, steps: 8 };
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511.
+    if (detectedType === "qwen_image" && f.includes("edit") && f.includes("2511")) return { cfg: 4.0, steps: 40 };
     return null;
 }
 
@@ -857,6 +851,7 @@ const LOADER_PRESET_MODEL_TYPE = {
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
+    "Qwen-Image Edit 2511": "qwen_image",
 };
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).

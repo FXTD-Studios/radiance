@@ -77,7 +77,17 @@ def _describe_input(entry: Any, name: str = "") -> Tuple[str, str, str, str]:
     """(type, default, range or choices, tooltip) for one INPUT_TYPES entry."""
     kind = entry[0] if isinstance(entry, (list, tuple)) and entry else entry
     opts = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 and isinstance(entry[1], dict) else {}
+    # ALBABIT-FIX: a V3 node lists its choices as ("COMBO", {"options": [...]}).
+    if kind == "COMBO" and isinstance(opts.get("options"), list):
+        kind = opts["options"]
     tooltip = opts.get("tooltip", "")
+    # ALBABIT-FIX: a V3 Autogrow input adds its sockets as they are connected.
+    if kind == "COMFY_AUTOGROW_V3":
+        template = opts.get("template", {})
+        slots = [spec for group in template.get("input", {}).values() for spec in group.values()]
+        names = template.get("names") or []
+        rng = f"`{names[0]}` to `{names[-1]}`, added as they are connected" if names else ""
+        return str(slots[0][0]) if slots else "", "", rng, tooltip
     default = opts.get("default", "")
 
     comfy_list = _COMFY_LISTS.get(name)

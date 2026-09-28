@@ -44,6 +44,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import unittest.mock as mock
 
+from comfy_api.latest import io
+
 # ── Path setup ────────────────────────────────────────────────────────────────
 RADIANCE_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(RADIANCE_ROOT))
@@ -902,16 +904,17 @@ class TestNodeStructural(unittest.TestCase):
         cls = _ALL_NODES[key]
         ctx = f"[{key}] from {cls.__module__}"
 
-        # RETURN_TYPES — tuple of strings
+        # RETURN_TYPES — tuple of strings (a V3 node derives a list from its schema)
+        sequence = (tuple, list) if issubclass(cls, io.ComfyNode) else tuple
         self.assertTrue(hasattr(cls, "RETURN_TYPES"),
                         f"{ctx}: missing RETURN_TYPES")
-        self.assertIsInstance(cls.RETURN_TYPES, tuple,
+        self.assertIsInstance(cls.RETURN_TYPES, sequence,
                               f"{ctx}: RETURN_TYPES must be a tuple")
 
         # RETURN_NAMES — tuple of strings, same length as RETURN_TYPES
         self.assertTrue(hasattr(cls, "RETURN_NAMES"),
                         f"{ctx}: missing RETURN_NAMES")
-        self.assertIsInstance(cls.RETURN_NAMES, tuple,
+        self.assertIsInstance(cls.RETURN_NAMES, sequence,
                               f"{ctx}: RETURN_NAMES must be a tuple")
         self.assertEqual(len(cls.RETURN_TYPES), len(cls.RETURN_NAMES),
                          f"{ctx}: RETURN_TYPES length {len(cls.RETURN_TYPES)} != "
