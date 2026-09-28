@@ -69,9 +69,11 @@ test('no image connected hides it, a later disconnect hides it again', () => {
     assert.equal(shown(node), false);
 });
 
-test('a Flux.2 Loader hides it: Flux.2 scales its references itself', () => {
+test('a Flux.2 or Qwen-Image Edit Loader hides it: they size their references themselves', () => {
     assert.equal(shown(prompt(0, undefined, { preset: 'Flux.2' })), false);
     assert.equal(shown(prompt(0, undefined, { preset: 'Custom', model_type: 'flux2-klein' })), false);
+    assert.equal(shown(prompt(0, undefined, { preset: 'Qwen-Image Edit 2511' })), false);
+    assert.equal(shown(prompt(0, undefined, { preset: 'Custom', model_type: 'qwen_image' })), false);
 });
 
 test('a Qwen-Image 2.1 Loader, or one still auto-detecting, keeps it', () => {
