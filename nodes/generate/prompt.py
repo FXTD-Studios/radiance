@@ -98,9 +98,12 @@ import weakref
 import torch
 from typing import Optional
 
+from comfy_api.latest import io
+
 logger = logging.getLogger("radiance.prompt")
 
 from radiance.config.constants import VERSION as __version__  # noqa: E402
+from radiance.nodes.branding import schema_branding  # noqa: E402
 
 
 class CinematicDatasets:
@@ -1624,7 +1627,7 @@ def build_cinematic_prompt_v3(
 
     ``target_arch`` MUST be a pre-resolved architecture string (e.g. "flux",
     "sdxl", "wan").  Passing "Auto" is a programming error — the caller
-    (``encode_cinematic``) is responsible for resolving arch via
+    (``RadianceCinematicPromptEncoder.execute``) is responsible for resolving arch via
     ``_detect_arch_from_clip()`` before calling this function.  Passing "Auto"
     here now raises ValueError so misuse is caught immediately rather than
     silently falling back to "sdxl" and producing wrong output.  [FIX-2]
@@ -1901,14 +1904,12 @@ def _zero_conditioning(cond):
 _TRAINED_TOKEN_WINDOW = {"flux": 512, "wan": 512, "sd3": 256, "sd3.5": 256}
 
 
-class RadianceCinematicPromptEncoder:
+class RadianceCinematicPromptEncoder(io.ComfyNode):
     """
     v3.2 — Ultra-clean, simplified cinematic prompt builder with direct CLIP encoding.
     No canvas clutter: inputs reduced from 29 to 10, outputs from 7 to 3.
     Auto-detects model architecture and optimizes prompting internally.
     """
-
-    CATEGORY = "FXTD STUDIOS/Radiance/◎ Generate"
 
     # Reference shared datasets
     CAMERAS = CinematicDatasets.CAMERAS
@@ -1920,118 +1921,97 @@ class RadianceCinematicPromptEncoder:
     COLOR_GRADING = CinematicDatasets.COLOR_GRADING
     STYLE_PRESETS = CinematicDatasets.STYLE_PRESETS
 
+    # ALBABIT-FIX: V3 schema, for Autogrow inputs. Inputs keep the V1 names and
+    # order, so saved workflows load their widget values unchanged.
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "clip": ("CLIP", {"tooltip": "CLIP model for encoding."}),
-            },
-            "optional": {
+    def define_schema(cls):
+        return io.Schema(
+            node_id="RadianceCinematicPromptEncoder",
+            **schema_branding("RadianceCinematicPromptEncoder",
+                              NODE_DISPLAY_NAME_MAPPINGS["RadianceCinematicPromptEncoder"]),
+            description=(
+                "Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) "
+                "and writes the prompt in the form it reads best; skips the negative encode "
+                "on guidance-distilled models."
+            ),
+            inputs=[
+                io.Clip.Input("clip", tooltip="CLIP model for encoding."),
                 # 3.5.0: empty with a placeholder. The old default text was a
                 # real value, so an untouched node encoded "A cinematic scene...".
-                "base_prompt": (
-                    "STRING",
-                    {"multiline": True, "default": "",
-                     "placeholder": "Describe the subject and the scene",
-                     "tooltip": "Primary subject/scene description."},
+                io.String.Input(
+                    "base_prompt", multiline=True, default="", optional=True,
+                    placeholder="Describe the subject and the scene",
+                    tooltip="Primary subject/scene description.",
                 ),
                 # ALBABIT-FIX: default to "None (Custom)" so a freshly-added node starts
                 # blank rather than silently pre-loaded with "→ Classic Hollywood"'s
                 # look. The 7 style widget defaults below are set to "None" to match --
                 # js/radiance_prompt.js's resetToCustomDefaults() keeps them in sync
                 # whenever "None (Custom)" is (re)selected.
-                "style_preset": (
-                    cls.STYLE_PRESETS,
-                    {"default": "None (Custom)",
-                     "tooltip": "One-click style preset."},
+                io.Combo.Input("style_preset", options=cls.STYLE_PRESETS, default="None (Custom)",
+                               optional=True, tooltip="One-click style preset."),
+                io.Combo.Input("framing", options=cls.FRAMING, default="None",
+                               optional=True, tooltip="Shot framing type."),
+                io.Combo.Input("camera_type", options=cls.CAMERAS, default="None",
+                               optional=True, tooltip="Camera body."),
+                io.Combo.Input("lens_focal", options=cls.LENSES, default="None",
+                               optional=True, tooltip="Lens + focal length."),
+                io.Combo.Input("aperture_dof", options=cls.APERTURES, default="None",
+                               optional=True, tooltip="Depth of field."),
+                io.Combo.Input("lighting", options=cls.LIGHTING, default="None",
+                               optional=True, tooltip="Lighting style."),
+                io.Combo.Input("style_aesthetic", options=cls.STYLES, default="None",
+                               optional=True, tooltip="Visual aesthetic."),
+                io.Combo.Input("color_grading", options=cls.COLOR_GRADING, default="None",
+                               optional=True, tooltip="Color grading look."),
+                io.Combo.Input(
+                    "negative_strength", options=["Off", "Soft", "Standard", "Aggressive"],
+                    default="Standard", optional=True,
+                    tooltip="Auto-negative strength. 'Soft' is recommended for Flux.",
                 ),
-                "framing": (
-                    cls.FRAMING,
-                    {"default": "None", "tooltip": "Shot framing type."},
+                io.String.Input(
+                    "negative_prompt", multiline=True, default="", optional=True,
+                    tooltip="Custom negative prompt. Appended after auto-negatives.",
                 ),
-                "camera_type": (
-                    cls.CAMERAS,
-                    {"default": "None", "tooltip": "Camera body."},
+                io.Combo.Input(
+                    "negative_mode", options=["Auto", "Always encode", "Zero (skip encode)"],
+                    default="Auto", optional=True,
+                    tooltip="Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) "
+                            "with no custom negative, return a zeroed negative instead of "
+                            "encoding one: ComfyUI never reads the negative at CFG 1, so this "
+                            "saves a full text-encoder pass. Always encode: pick this if you "
+                            "run those models above CFG 1 with a negative. Zero: never encode "
+                            "the negative.",
                 ),
-                "lens_focal": (
-                    cls.LENSES,
-                    {"default": "None", "tooltip": "Lens + focal length."},
+                # ALBABIT-FIX: forceInput -- this is always a wired value from the
+                # Loader, never hand-typed; matches the other model_meta inputs
+                # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
+                io.String.Input(
+                    "model_meta", default="", force_input=True, optional=True,
+                    tooltip="Optional JSON metadata from Radiance Read Models. "
+                            "When connected, architecture detection uses this before "
+                            "tokenizer heuristics.",
                 ),
-                "aperture_dof": (
-                    cls.APERTURES,
-                    {"default": "None", "tooltip": "Depth of field."},
-                ),
-                "lighting": (
-                    cls.LIGHTING,
-                    {"default": "None", "tooltip": "Lighting style."},
-                ),
-                "style_aesthetic": (
-                    cls.STYLES,
-                    {"default": "None", "tooltip": "Visual aesthetic."},
-                ),
-                "color_grading": (
-                    cls.COLOR_GRADING,
-                    {"default": "None", "tooltip": "Color grading look."},
-                ),
-                "negative_strength": (
-                    ["Off", "Soft", "Standard", "Aggressive"],
-                    {"default": "Standard",
-                     "tooltip": "Auto-negative strength. 'Soft' is recommended for Flux."},
-                ),
-                "negative_prompt": (
-                    "STRING",
-                    {"multiline": True, "default": "",
-                     "tooltip": "Custom negative prompt. Appended after auto-negatives."},
-                ),
-                "negative_mode": (
-                    ["Auto", "Always encode", "Zero (skip encode)"],
-                    {"default": "Auto",
-                     "tooltip": "Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) "
-                                "with no custom negative, return a zeroed negative instead of "
-                                "encoding one: ComfyUI never reads the negative at CFG 1, so this "
-                                "saves a full text-encoder pass. Always encode: pick this if you "
-                                "run those models above CFG 1 with a negative. Zero: never encode "
-                                "the negative."},
-                ),
-                "model_meta": (
-                    "STRING",
-                    # ALBABIT-FIX: forceInput -- this is always a wired value from the
-                    # Loader, never hand-typed; matches the other model_meta inputs
-                    # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
-                    {"default": "", "forceInput": True,
-                     "tooltip": "Optional JSON metadata from Radiance Read Models. "
-                                "When connected, architecture detection uses this before "
-                                "tokenizer heuristics."},
-                ),
-            },
-        }
+            ],
+            outputs=[
+                io.Conditioning.Output(display_name="positive",
+                                       tooltip="Positive conditioning for the sampler."),
+                io.Conditioning.Output(display_name="negative",
+                                       tooltip="Negative conditioning for the sampler."),
+                io.String.Output(display_name="positive_text",
+                                 tooltip="Final positive prompt text that was encoded."),
+                io.String.Output(display_name="negative_text",
+                                 tooltip="Final negative prompt text that was encoded."),
+                io.String.Output(display_name="resolved_arch",
+                                 tooltip="Detected architecture used to choose prose vs CLIP-style prompting."),
+                io.Int.Output(display_name="token_count",
+                              tooltip="Tokenizer-derived positive prompt token count after safety handling."),
+            ],
+        )
 
-    RETURN_TYPES  = ("CONDITIONING", "CONDITIONING", "STRING", "STRING", "STRING", "INT")
-    RETURN_NAMES  = (
-        "positive",
-        "negative",
-        "positive_text",
-        "negative_text",
-        "resolved_arch",
-        "token_count",
-    )
-    OUTPUT_TOOLTIPS = (
-        "Positive conditioning for the sampler.",
-        "Negative conditioning for the sampler.",
-        "Final positive prompt text that was encoded.",
-        "Final negative prompt text that was encoded.",
-        "Detected architecture used to choose prose vs CLIP-style prompting.",
-        "Tokenizer-derived positive prompt token count after safety handling.",
-    )
-    FUNCTION = "encode_cinematic"
-    DESCRIPTION = (
-        "Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) "
-        "and writes the prompt in the form it reads best; skips the negative encode "
-        "on guidance-distilled models."
-    )
-
-    def encode_cinematic(
-        self,
+    @classmethod
+    def execute(
+        cls,
         clip,
         base_prompt="",
         style_preset="None (Custom)",
@@ -2162,5 +2142,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceCinematicPromptEncoder": "◎ Radiance Cinematic Encoder",
+    "RadianceCinematicPromptEncoder": "◎ Cinematic Prompt Encoder",
 }

@@ -21,7 +21,7 @@ LONG_SUBJECT = ("A weathered fisherman mends a torn red net on a wooden dock at 
 
 def _run(keys, **kw):
     clip = FakeClip(keys)
-    out = RadianceCinematicPromptEncoder().encode_cinematic(clip, **kw)
+    out = RadianceCinematicPromptEncoder().execute(clip, **kw)
     return clip, out
 
 
