@@ -38,6 +38,8 @@ def _expected_widgets(cls):
             opts = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
             if opts.get("forceInput"):
                 continue
+            if typ == "COMBO":   # a V3 node's combo carries its options here
+                typ = opts.get("options", [])
             # A combo's type is its option list (a stub object under the
             # test harness); every non-string type is a combo.
             if not isinstance(typ, str) or typ in WIDGET_TYPES:

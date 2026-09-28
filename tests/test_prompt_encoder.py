@@ -82,7 +82,7 @@ def test_encoder_returns_debug_outputs_and_uses_model_meta():
         model_meta=json.dumps({"arch": "pixart"}),
     )
 
-    positive, negative, positive_text, negative_text, resolved_arch, token_count = result["result"]
+    positive, negative, positive_text, negative_text, resolved_arch, token_count, latent = result["result"]
 
     assert positive == [["conditioning_1", {}]]
     assert negative == [["conditioning_2", {}]]
@@ -90,6 +90,7 @@ def test_encoder_returns_debug_outputs_and_uses_model_meta():
     assert isinstance(negative_text, str)
     assert resolved_arch == "pixart"
     assert token_count > 0
+    assert latent is None   # only reference images size a latent
 
 
 def test_loader_exposes_model_meta_output_contract():
