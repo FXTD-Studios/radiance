@@ -77,6 +77,17 @@ def test_prose_has_no_header_labels():
     assert "Aesthetic:" not in positive and "Cinematic technique" not in positive
 
 
+@pytest.mark.parametrize("arch", ["qwen_image", "ltxav", "sdxl"])
+def test_the_prompt_goes_out_as_typed(arch):
+    """A period changed an edit instruction's conditioning. It only ends the
+    subject's sentence when the builder adds one after it."""
+    subject = "Convert this image to pop art poster style"
+    assert _build(arch, subject=subject)[0] == subject
+    assert _build(arch, subject=subject + "!")[0] == subject + "!"
+    assert _build(arch, subject=subject, lighting=C.LIGHTING[1])[0].startswith(subject + ". ")
+    assert _build(arch, subject=subject + ".", lighting=C.LIGHTING[1])[0].startswith(subject + ". ")
+
+
 # ── 2. Negatives on real-CFG video models ──────────────────────────────────
 
 @pytest.mark.parametrize("arch", ["wan", "ltxv", "ltxav", "hunyuan_video"])

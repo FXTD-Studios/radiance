@@ -1374,6 +1374,14 @@ def _clean_for_prose(text: str) -> str:
     return re.sub(r' {2,}', ' ', text).strip()
 
 
+# ALBABIT-FIX: the prompt goes out as typed; it used to always get a period,
+# which changed the conditioning of an edit instruction. It takes one only to
+# end a sentence before the ones the builder adds after it.
+def _end_subject_sentence(parts):
+    if len(parts) > 1 and not parts[0].endswith((".", "!", "?")):
+        parts[0] += "."
+
+
 def _build_prose_prompt(
     base_prompt, framing, camera, lens, aperture, lighting,
     style, film_stock, shutter, color_grading, aspect_ratio,
@@ -1407,6 +1415,7 @@ def _build_prose_prompt(
         subject = _apply_subject_weight(subject, subject_weight)
 
     # [BUG-I1] Weight modes: technique_first, subject_first, balanced
+    bare_subject = False
     if weight_mode == "technique_first" and c(camera):
         parts.append(f"Photographed on {_label(camera)}, {subject}.")
     elif weight_mode == "subject_first":
@@ -1414,7 +1423,8 @@ def _build_prose_prompt(
     elif c(framing):
         parts.append(f"{_framing_opener(framing)} {_lower_article(subject)}.")
     else:
-        parts.append(f"{subject}.")
+        parts.append(subject)
+        bare_subject = True
 
     # 2. Art direction (right after subject — closest semantic anchor)
     if art_direction and art_direction.strip():
@@ -1479,6 +1489,8 @@ def _build_prose_prompt(
     if c(custom_details):
         parts.append(custom_details.strip())
 
+    if bare_subject:
+        _end_subject_sentence(parts)
     return " ".join(parts)
 
 
@@ -1681,6 +1693,7 @@ def build_cinematic_prompt_v3(
         # [BUG-I1] subject_first: lead with weighted subject, no camera prefix
         # 3.5.0: menu values through _label() -- no "(CU)" or "(Gritty)"
         # reaching CLIP, where brackets are a 1.1x weight.
+        bare_subject = False
         if prompt_weight_mode == "subject_first":
             parts.append(f"{weighted_base}.")
             if c(framing):
@@ -1694,7 +1707,8 @@ def build_cinematic_prompt_v3(
         elif c(framing):
             parts.append(f"{_framing_opener(framing)} {_lower_article(weighted_base)}.")
         else:
-            parts.append(f"{weighted_base}.")
+            parts.append(weighted_base)
+            bare_subject = True
 
         # [BUG-C3] FIX: Insert art_direction THEN lora_keywords at sequential
         # indices so art_direction stays closer to subject than lora_keywords.
@@ -1732,6 +1746,8 @@ def build_cinematic_prompt_v3(
         if c(aspect_ratio):   parts.append(f"{_label(aspect_ratio)} format.")
         if c(custom_details): parts.append(custom_details.strip())
 
+        if bare_subject:
+            _end_subject_sentence(parts)
         final_prompt = " ".join(p for p in parts if p).strip()
 
     # [BUG-I5] use_break is now always boolean from the caller
