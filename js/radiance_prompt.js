@@ -135,10 +135,9 @@ function _applyResolutionVisibility(node) {
     refreshNodeSize(node);
 }
 
-// ALBABIT-FIX: the reference images a model reads, where it has a limit
-// (Qwen-Image Edit's native encoder takes 3). The frontend's Autogrow adds a
-// slot only below comfyDynamic.autogrow max, so no image_4 appears; empty slots
-// past a lowered limit go, a connected one stays and the run reports it.
+// ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
+// slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
+// and a connected one stays for the run to report.
 const REFERENCE_LIMITS = { qwen_image: 3 };
 
 function _applyReferenceLimit(node) {
