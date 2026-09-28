@@ -61,6 +61,8 @@ const PRESET_SLOTS = {
     // ALBABIT-FIX: Qwen-Image 2.1 takes one Qwen3-VL-8B file.
     "Qwen-Image 2.1": ["llm_encoder"],
     "Qwen-Image 2.1 (Low VRAM)": ["llm_encoder"],
+    // ALBABIT-FIX: Qwen-Image Edit 2511 takes one Qwen2.5-VL-7B file.
+    "Qwen-Image Edit 2511": ["llm_encoder"],
     "SD 1.5": ["clip_l"],
     "SD3.5": ["clip_l", "clip_g", "t5xxl"],
     "SDXL": ["clip_l", "clip_g"],
@@ -445,6 +447,19 @@ const PRESET_CONFIGS = {
         },
         "extra_widgets": ["offload_mode"],
         "offload_mode": "cpu_offload",
+    },
+    // ALBABIT-FIX: the files of the official ComfyUI templates, the newest
+    // (int8_convrot) first, bf16 as fallback. qwen_image_vae is Qwen-Image's
+    // 16ch VAE, never Qwen-Image 2.1's.
+    "Qwen-Image Edit 2511": {
+        "unet_hints": [
+            "qwen_image_edit_2511_int8_convrot.safetensors", "qwen_image_edit_2511_fp8mixed.safetensors",
+            "qwen_image_edit_2511", "qwen-image-edit-2511",
+        ],
+        "vae_hints":     ["qwen_image_vae", "qwen-image-vae"],
+        "clip_hints":    {
+            "llm_encoder": ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "qwen_2.5_vl_7b"],
+        },
     },
     "SD 1.5": {
         "unet_hints":    ["v1-5", "v1_5", "sd15", "sd-1-5", "sd_1.5"],

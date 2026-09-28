@@ -65,6 +65,16 @@ class TestRefineDistillationFromMeta:
         result = refine_distillation_from_meta("sd3.5", "sd3.5_large_turbo.safetensors")
         assert result == {"cfg": 1.6, "steps": 4}
 
+    def test_qwen_image_edit_2511(self):
+        # The official templates' KSampler widgets read 40/3, but switches feed
+        # it 40 steps and cfg 4 when the Lightning LoRA is off.
+        for f in ("qwen_image_edit_2511_int8_convrot.safetensors", "Qwen-Image-Edit-2511-bf16.safetensors"):
+            assert refine_distillation_from_meta("qwen_image", f) == {"cfg": 4.0, "steps": 40}
+
+    def test_qwen_image_and_older_edits_not_affected(self):
+        for f in ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image_edit_2509_fp8_e4m3fn.safetensors"):
+            assert refine_distillation_from_meta("qwen_image", f) is None
+
     def test_sd35_medium_not_affected(self):
         # "turbo" substring absent -- SD3.5 Medium has no Turbo variant.
         assert refine_distillation_from_meta("sd3.5", "sd3.5_medium.safetensors") is None

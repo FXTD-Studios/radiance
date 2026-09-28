@@ -77,6 +77,17 @@ def test_prose_has_no_header_labels():
     assert "Aesthetic:" not in positive and "Cinematic technique" not in positive
 
 
+@pytest.mark.parametrize("arch", ["qwen_image", "ltxav", "sdxl"])
+def test_the_prompt_goes_out_as_typed(arch):
+    """A period changed an edit instruction's conditioning. It only ends the
+    subject's sentence when the builder adds one after it."""
+    subject = "Convert this image to pop art poster style"
+    assert _build(arch, subject=subject)[0] == subject
+    assert _build(arch, subject=subject + "!")[0] == subject + "!"
+    assert _build(arch, subject=subject, lighting=C.LIGHTING[1])[0].startswith(subject + ". ")
+    assert _build(arch, subject=subject + ".", lighting=C.LIGHTING[1])[0].startswith(subject + ". ")
+
+
 # ── 2. Negatives on real-CFG video models ──────────────────────────────────
 
 @pytest.mark.parametrize("arch", ["wan", "ltxv", "ltxav", "hunyuan_video"])
@@ -94,7 +105,7 @@ def test_distilled_models_are_still_soft(arch):
 
 @pytest.mark.real_torch
 def test_wan_negative_field_is_not_flagged_as_ignored():
-    out = RadianceCinematicPromptEncoder().encode_cinematic(FakeClip(("umt5xxl",)), base_prompt="a ship")
+    out = RadianceCinematicPromptEncoder().execute(FakeClip(("umt5xxl",)), base_prompt="a ship")
     assert out["ui"]["weak_neg_arch"] == [False]
 
 
@@ -116,7 +127,7 @@ def test_clip_models_still_avoid_text(arch):
 
 @pytest.mark.real_torch
 def test_preset_applies_in_an_api_workflow():
-    out = RadianceCinematicPromptEncoder().encode_cinematic(
+    out = RadianceCinematicPromptEncoder().execute(
         FakeClip(("g", "l")), base_prompt="a detective", style_preset="→ Film Noir")
     text = out["result"][2]
     assert "ARRI Alexa 35" in text and "film noir lighting" in text and "low-angle" in text
@@ -124,7 +135,7 @@ def test_preset_applies_in_an_api_workflow():
 
 @pytest.mark.real_torch
 def test_preset_keeps_widgets_the_user_set():
-    out = RadianceCinematicPromptEncoder().encode_cinematic(
+    out = RadianceCinematicPromptEncoder().execute(
         FakeClip(("g", "l")), base_prompt="a detective", style_preset="→ Film Noir",
         camera_type="RED Komodo")
     text = out["result"][2]
@@ -141,7 +152,7 @@ def test_base_prompt_default_is_empty_with_a_placeholder():
 
 def test_empty_prompt_is_refused_with_a_clear_message():
     with pytest.raises(ValueError, match="prompt is empty"):
-        RadianceCinematicPromptEncoder().encode_cinematic(FakeClip(("g", "l")))
+        RadianceCinematicPromptEncoder().execute(FakeClip(("g", "l")))
 
 
 # ── 7. Token count on LLM encoders ─────────────────────────────────────────
