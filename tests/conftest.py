@@ -717,11 +717,13 @@ def _make_comfy_stubs():
     cldm.control_types = control_types
     comfy.cldm = cldm
 
-    # comfy_extras.nodes_qwen: the Prompt hands reference images to its
-    # TextEncodeQwenImage21; a test that sends images patches the class in.
+    # comfy_extras: the Prompt hands reference images to native nodes; a test
+    # that sends images patches the classes it needs in.
     comfy_extras = types.ModuleType("comfy_extras")
-    nodes_qwen = types.ModuleType("comfy_extras.nodes_qwen")
-    comfy_extras.nodes_qwen = nodes_qwen
+    extras = {name: types.ModuleType(f"comfy_extras.{name}")
+              for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing")}
+    for name, module in extras.items():
+        setattr(comfy_extras, name, module)
 
     # folder_paths stub
     folder_paths = types.ModuleType("folder_paths")
@@ -748,7 +750,7 @@ def _make_comfy_stubs():
         "comfy.cldm": cldm,
         "comfy.cldm.control_types": control_types,
         "comfy_extras": comfy_extras,
-        "comfy_extras.nodes_qwen": nodes_qwen,
+        **{f"comfy_extras.{name}": module for name, module in extras.items()},
         "folder_paths": folder_paths,
     }
     for _mod in stubs.values():

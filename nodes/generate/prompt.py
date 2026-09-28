@@ -99,7 +99,7 @@ import torch
 from typing import Optional
 
 from comfy_api.latest import io
-from comfy_extras import nodes_qwen
+from comfy_extras import nodes_edit_model, nodes_flux, nodes_post_processing, nodes_qwen
 
 logger = logging.getLogger("radiance.prompt")
 
@@ -1898,6 +1898,30 @@ def _zero_conditioning(cond):
     return out
 
 
+# ALBABIT-FIX: the architectures whose reference images the Prompt passes on
+# (flux2 is Flux.2 Dev, flux2-klein the Klein models).
+_REFERENCE_ARCHS = ("qwen_image21", "flux2", "flux2-klein")
+
+
+# ALBABIT-FIX: Flux.2 reference images, wired as the official Dev and Klein edit
+# templates: each scaled to about 1 megapixel and VAE-encoded, the empty latent
+# sized on image_1.
+def _flux2_references(vae, references):
+    latents, empty = [], None
+    for name in sorted(references, key=lambda n: int(n.rsplit("_", 1)[-1])):
+        scaled = nodes_post_processing.ImageScaleToTotalPixels.execute(references[name], "lanczos", 1.0, 1).args[0]
+        latents.append(vae.encode(scaled[:, :, :, :3]))
+        if empty is None:
+            empty = nodes_flux.EmptyFlux2LatentImage.execute(width=scaled.shape[2], height=scaled.shape[1]).args[0]
+    return latents, empty
+
+
+def _with_reference_latents(cond, latents):
+    for latent in latents:
+        cond = nodes_edit_model.ReferenceLatent.execute(cond, {"samples": latent}).args[0]
+    return cond
+
+
 # Prompt length each family was trained on. Longer prompts still reach the
 # encoder whole (ComfyUI's T5/LLM tokenizers take any length and CLIP is
 # chunked by 77); past this the model starts to ignore the tail, so it is
@@ -1984,12 +2008,13 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                             "run those models above CFG 1 with a negative. Zero: never encode "
                             "the negative.",
                 ),
-                # ALBABIT-FIX: reference images for Qwen-Image 2.1 editing, encoded
-                # by the native TextEncodeQwenImage21. image_1 is the image to edit.
+                # ALBABIT-FIX: reference images for Qwen-Image 2.1 and Flux.2 editing,
+                # wired as the native nodes. image_1 is the image to edit.
                 io.Vae.Input(
                     "vae", optional=True,
                     tooltip="Encodes the reference images into the latents the model edits "
-                            "from. Without it they reach the model through the text encoder only.",
+                            "from. Flux.2 needs it; Qwen-Image 2.1 without it reads the "
+                            "images through the text encoder only.",
                 ),
                 # ALBABIT-FIX: forceInput -- this is always a wired value from the
                 # Loader, never hand-typed; matches the other model_meta inputs
@@ -2002,17 +2027,18 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 ),
                 io.Int.Input(
                     "resolution", default=1024, min=0, max=4096, step=32, optional=True,
-                    tooltip="Reference images are resized to about resolution x resolution "
-                            "pixels, at multiples of 32, keeping their aspect ratio. 0 keeps "
-                            "each at its own size, rounded to a multiple of 32.",
+                    tooltip="Qwen-Image 2.1: reference images are resized to about resolution "
+                            "x resolution pixels, at multiples of 32, keeping their aspect "
+                            "ratio. 0 keeps each at its own size, rounded to a multiple of 32. "
+                            "Flux.2 scales them to about 1 megapixel.",
                 ),
                 io.Autogrow.Input(
                     "images", optional=True,
                     template=io.Autogrow.TemplateNames(
                         io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
-                    tooltip="Reference images for Qwen-Image 2.1 editing. image_1 is the image "
-                            "to edit, the others are references. Cite them in the prompt as "
-                            "<image1>, <image2>...",
+                    tooltip="Reference images for Qwen-Image 2.1 and Flux.2 editing. image_1 "
+                            "is the image to edit, the others are references. With Qwen-Image "
+                            "2.1, cite them in the prompt as <image1>, <image2>...",
                 ),
             ],
             outputs=[
@@ -2067,14 +2093,17 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
 
-        # ALBABIT-FIX: only Qwen-Image 2.1 reads reference images here; any other
-        # encoder would drop them without a word.
+        # ALBABIT-FIX: only Qwen-Image 2.1 and Flux.2 read reference images here;
+        # any other encoder would drop them without a word.
         references = {name: image for name, image in (images or {}).items() if image is not None}
-        if references and resolved_arch != "qwen_image21":
+        if references and resolved_arch not in _REFERENCE_ARCHS:
             raise ValueError(
-                f"Prompt: reference images are read by Qwen-Image 2.1 only, and the text "
-                f"encoder resolves to '{resolved_arch}'. Connect model_meta from the Loader, "
-                f"or disconnect the images.")
+                f"Prompt: reference images are read by Qwen-Image 2.1 and Flux.2 only, and "
+                f"the text encoder resolves to '{resolved_arch}'. Connect model_meta from "
+                f"the Loader, or disconnect the images.")
+        if references and resolved_arch != "qwen_image21" and vae is None:
+            raise ValueError("Prompt: Flux.2 reads reference images as VAE latents. "
+                             "Connect the vae input.")
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2141,13 +2170,18 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
 
         # ALBABIT-FIX: with reference images the native TextEncodeQwenImage21 encodes
         # both prompts: it resizes the images, shows them to the vision tower,
-        # splices their VAE latents in and sizes the latent on image_1.
-        if references:
+        # splices their VAE latents in and sizes the latent on image_1. Flux.2
+        # encodes the text as usual and adds the references to both prompts.
+        flux2_refs = None
+        if references and resolved_arch == "qwen_image21":
             positive_cond, native_negative, latent = nodes_qwen.TextEncodeQwenImage21.execute(
                 clip=clip, prompt=final_prompt, negative_prompt=negative_prompt, vae=vae,
                 resolution=resolution, images=references).args
         else:
             positive_cond, latent = _encode_tokens(clip, pos_tokens), None
+            if references:
+                flux2_refs, latent = _flux2_references(vae, references)
+                positive_cond = _with_reference_latents(positive_cond, flux2_refs)
 
         user_negative = bool(negative_prompt_in and negative_prompt_in.strip())
         skip_negative = (
@@ -2156,13 +2190,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 and resolved_arch in _GUIDANCE_DISTILLED_ARCHS)
         )
         if skip_negative:
-            negative_cond = _zero_conditioning(positive_cond)
+            negative_cond = _zero_conditioning(positive_cond)   # keeps reference latents
             negative_prompt = ""        # nothing was encoded; say so
-        elif references:
+        elif references and resolved_arch == "qwen_image21":
             negative_cond = native_negative
         else:
             safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
             negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))
+            if flux2_refs:
+                negative_cond = _with_reference_latents(negative_cond, flux2_refs)
 
         # ALBABIT-FIX: weak_neg_arch only known post-execution (resolved_arch
         # depends on the real CLIP/model_meta), so js/radiance_prompt.js flags
