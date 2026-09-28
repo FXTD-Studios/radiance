@@ -2,6 +2,31 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- DCC Bridge: `queue` must be signed with the DCC token (the one the Nuke
+  listener uses), with a timestamp and a single-use nonce. Build requests with
+  `radiance.core.dcc_auth.sign_queue(prompt)`. Unsigned, stale, replayed or
+  tampered requests are refused, and a connection that opens with an HTTP
+  request line (a browser POST to the port) is closed before any line runs.
+- `.rad` v2 import inflates the graph with a size ceiling instead of without one.
+- Asset upload has a per-request size limit (`RADIANCE_MAX_ASSET_UPLOAD_MB`,
+  default 16384) and saves a same-named file as `name_1.ext` instead of
+  replacing the existing one.
+- Workflow version backups are matched by exact name: a workflow named `*`
+  no longer matches, or deletes, other workflows' backups.
+- The RHDR export's path-traversal guard runs; its import pointed at a module
+  that does not exist, so the unguarded fallback always ran.
+
+### Fixed
+
+- Tiled sampling cuts an image-sized inpainting mask on the latent grid, so
+  each tile inpaints its own area instead of a corner of the mask.
+- Publish fails first when the tag does not match pyproject's version (the
+  3.5.1 tag carried 3.5.0), and the tag reaches shell steps through env only.
+
 ## [3.5.2] - 2026-09-28
 
 3.5.1 did not reach the Comfy Registry: its tag pointed at a commit that

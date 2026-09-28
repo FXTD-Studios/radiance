@@ -97,7 +97,6 @@ import math
 import logging
 import struct
 import zlib
-import os
 import uuid
 from typing import Tuple, Dict, Any, Optional
 
@@ -2686,12 +2685,12 @@ class RadianceVAE4KDecode:
             unique_id = uuid.uuid4().hex[:12]
             filename = f"{prefix}_{unique_id}.rhdr"
 
-            # V-7 FIX: Use safe_join to prevent path traversal via malicious prefix
-            try:
-                from .path_utils import safe_join
-                filepath = safe_join(output_dir, filename)
-            except ImportError:
-                filepath = os.path.join(output_dir, filename)
+            # V-7 FIX: Use safe_join to prevent path traversal via malicious prefix.
+            # It was imported as `.path_utils` (hdr/path_utils.py, which does not
+            # exist), so the ImportError fallback to os.path.join always ran and
+            # the guard never did. A traversing prefix now raises ValueError.
+            from radiance.core.system.path_utils import safe_join
+            filepath = safe_join(output_dir, filename)
 
             # BUG-F FIX: Support fp32 for scenes with linear values > 65504.
             # Header precision flag: 0 = fp16 (legacy), 1 = fp32.

@@ -135,3 +135,108 @@ def test_remote_bridge_disabled_by_default(monkeypatch):
     assert dcc._remote_bridge_allowed() is False
     monkeypatch.setenv("RADIANCE_ALLOW_REMOTE_BRIDGE", "1")
     assert dcc._remote_bridge_allowed() is True
+
+
+# ── queue must be signed ────────────────────────────────────────────────────
+# queue submits a workflow, and write nodes take absolute paths. Unsigned, any
+# local process, a LAN peer with RADIANCE_ALLOW_REMOTE_BRIDGE, or a web page
+# POSTing to 127.0.0.1:1987 could run workflows and write files.
+
+TOKEN = "t" * 64
+PROMPT = {"3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "x"}}}
+
+
+@pytest.fixture
+def submitted(monkeypatch):
+    """Records what reaches ComfyUI's /prompt instead of sending it."""
+    import urllib.request
+    monkeypatch.setenv("RADIANCE_DCC_AUTH_TOKEN", TOKEN)
+    monkeypatch.setattr(dcc, "_SEEN_NONCES", {}, raising=False)
+    calls = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"prompt_id": "abc"}'
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(_json.loads(req.data))
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return calls
+
+
+def _send(*messages):
+    conn = _FakeConn([m if isinstance(m, str) else _json.dumps(m) for m in messages])
+    dcc._handle(conn, ("127.0.0.1", 9999))
+    return _responses(conn)
+
+
+def test_a_signed_queue_reaches_comfyui(submitted):
+    from radiance.core.dcc_auth import sign_queue
+    reply = _send(sign_queue(PROMPT, TOKEN))[0]
+    assert reply["ok"] is True
+    assert submitted == [{"prompt": PROMPT, "client_id": "radiance_dcc_bridge"}]
+
+
+def test_an_unsigned_queue_is_refused(submitted):
+    reply = _send({"cmd": "queue", "prompt": PROMPT})[0]
+    assert reply["ok"] is False and "unsigned" in reply["error"]
+    assert submitted == []
+
+
+def test_a_wrong_token_is_refused(submitted):
+    from radiance.core.dcc_auth import sign_queue
+    reply = _send(sign_queue(PROMPT, "wrong"))[0]
+    assert reply["ok"] is False and "signature" in reply["error"]
+    assert submitted == []
+
+
+def test_a_tampered_prompt_is_refused(submitted):
+    from radiance.core.dcc_auth import sign_queue
+    msg = sign_queue(PROMPT, TOKEN)
+    msg["prompt"] = {"3": {"class_type": "SaveImage", "inputs": {"filename_prefix": "/etc/x"}}}
+    assert _send(msg)[0]["ok"] is False
+    assert submitted == []
+
+
+def test_key_order_does_not_break_the_signature(submitted):
+    from radiance.core.dcc_auth import sign_queue
+    msg = sign_queue({"b": 1, "a": 2}, TOKEN)
+    line = _json.dumps({**msg, "prompt": {"a": 2, "b": 1}})
+    assert _send(line)[0]["ok"] is True
+
+
+def test_a_replayed_request_is_refused(submitted):
+    from radiance.core.dcc_auth import sign_queue
+    msg = sign_queue(PROMPT, TOKEN)
+    first, second = _send(msg, msg)
+    assert first["ok"] is True
+    assert second["ok"] is False and "replayed" in second["error"]
+    assert len(submitted) == 1
+
+
+def test_a_stale_request_is_refused(submitted):
+    from radiance.core.dcc_auth import queue_signature
+    ts, nonce = 1_000_000, "n" * 32
+    msg = {"cmd": "queue", "prompt": PROMPT, "ts": ts, "nonce": nonce,
+           "sig": queue_signature(TOKEN, ts, nonce, PROMPT)}
+    reply = _send(msg)[0]
+    assert reply["ok"] is False and "stale" in reply["error"]
+    assert submitted == []
+
+
+def test_an_http_request_is_dropped_before_its_body_runs(submitted):
+    """A browser's no-cors POST: request line, headers, then a JSON body."""
+    from radiance.core.dcc_auth import sign_queue
+    body = _json.dumps(sign_queue(PROMPT, TOKEN))
+    replies = _send("POST / HTTP/1.1", "Host: 127.0.0.1:1987",
+                    "Content-Type: text/plain", "", body)
+    assert replies == []
+    assert submitted == []

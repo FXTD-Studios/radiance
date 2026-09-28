@@ -48,6 +48,28 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # The registry publishes pyproject's version, not the tag. v3.5.1 was
+      # tagged on a commit that still said 3.5.0 and the registry refused it
+      # as an existing version, after the whole test gate had run. Fail first.
+      # The tag comes in through env, never interpolated into the script.
+      - name: Tag matches pyproject version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python - <<'PYEOF'
+          import os, re, sys, tomllib
+          tag = os.environ["TAG"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+(-rc\d+)?", tag):
+              sys.exit(f"Tag {tag!r} is not a release tag like v3.5.2 or v3.6.0-rc1.")
+          with open("pyproject.toml", "rb") as f:
+              version = tomllib.load(f)["project"]["version"]
+          want = tag[1:].replace("-rc", "rc")
+          if version.replace("-rc", "rc") != want:
+              sys.exit(f"Tag {tag} does not match pyproject version {version}. "
+                       f"Bump the version, or tag the commit that carries {tag[1:]}.")
+          print(f"Tag {tag} matches pyproject version {version}.")
+          PYEOF
+
       - name: Install test dependencies (real runtime deps)
         run: |
           sudo apt-get update
@@ -109,8 +131,9 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 

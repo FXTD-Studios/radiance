@@ -324,6 +324,19 @@ def _inspect_graph_content(graph_json: str) -> dict:
 #                         VERSION CONTROL BACKEND (v3.5)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _version_files(versions_dir: Path, stem: str, suffix: str) -> list:
+    """The .vN backups of one workflow, and only those.
+
+    The stem went into glob() unescaped, so a workflow named "*" matched every
+    backup in the folder (deleting it removed them all), and "shot.v*.rad"
+    also matched the backups of a workflow named "shot.vfx".
+    """
+    import glob as _glob
+    exact = re.compile(re.escape(stem) + r"\.v\d+" + re.escape(suffix))
+    return [p for p in versions_dir.glob(f"{_glob.escape(stem)}.v*{_glob.escape(suffix)}")
+            if exact.fullmatch(p.name)]
+
+
 def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist") -> None:
     """
     Rotate existing file into a .vN backup before overwrite.
@@ -352,7 +365,7 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
     # Sort by version NUMBER, not by name. Lexicographic order puts v10 before
     # v2, so once the counter passed ten the eviction below deleted a newer
     # backup and kept an older one.
-    existing = sorted(versions_dir.glob(f"{stem}.v*{suffix}"), key=_ver_of)
+    existing = sorted(_version_files(versions_dir, stem, suffix), key=_ver_of)
     max_ver = max((_ver_of(p) for p in existing), default=0)
     next_num = max_ver + 1
 
@@ -597,7 +610,14 @@ def _unpack_rad_v2(data: bytes) -> tuple[str, dict]:
     graph_start = meta_end
     # FIX 5: use graph_len from the header to slice exactly — previously
     # payload[graph_start:] was used which silently accepted any trailing bytes.
-    graph_data  = zlib.decompress(payload[graph_start:graph_start + graph_len])
+    # Bounded: zlib.decompress has no output limit, so a 50 MB upload with a
+    # recomputed (unkeyed) checksum could inflate to tens of GB and take the
+    # ComfyUI process down. Same ceiling as .rad v3's uncompressed payload.
+    inflater = zlib.decompressobj()
+    graph_data = inflater.decompress(payload[graph_start:graph_start + graph_len],
+                                     MAX_RAD_UNCOMPRESSED_BYTES)
+    if inflater.unconsumed_tail:
+        raise ValueError(f".rad v2: uncompressed graph exceeds {MAX_WORKFLOW_SIZE_MB}MB limit")
     return graph_data.decode("utf-8"), metadata
 
 
@@ -840,7 +860,7 @@ def _versions_for_project(project: dict) -> list[dict]:
 
         versions_dir = workflow["path"].parent / ".versions"
         if versions_dir.exists():
-            for backup in sorted(versions_dir.glob(f"{workflow['path'].stem}.v*.rad"), key=lambda p: p.stat().st_mtime, reverse=True)[:5]:
+            for backup in sorted(_version_files(versions_dir, workflow['path'].stem, ".rad"), key=lambda p: p.stat().st_mtime, reverse=True)[:5]:
                 meta_file = backup.with_suffix(backup.suffix + ".json")
                 backup_meta = {}
                 if meta_file.exists():
@@ -1394,7 +1414,7 @@ async def delete_workflow(request):
         # Also clean up all backups and sidecars in .versions
         versions_dir = filepath.parent / ".versions"
         if versions_dir.exists():
-            for backup in versions_dir.glob(f"{filepath.stem}.v*{filepath.suffix}"):
+            for backup in _version_files(versions_dir, filepath.stem, filepath.suffix):
                 backup.unlink(missing_ok=True)
                 backup.with_suffix(backup.suffix + ".json").unlink(missing_ok=True)
             
@@ -1448,7 +1468,7 @@ async def get_workflow_history(request):
 
         if versions_dir.exists():
             # Find all .vN.rad files
-            for v_file in versions_dir.glob(f"{filepath.stem}.v*.rad"):
+            for v_file in _version_files(versions_dir, filepath.stem, ".rad"):
                 meta_file = v_file.with_suffix(v_file.suffix + ".json")
                 v_info = {
                     "version_file": v_file.name,
@@ -1863,6 +1883,31 @@ async def asset_thumb(request):
     return web.json_response({"error": "not previewable"}, status=415)
 
 
+class _UploadTooLarge(Exception):
+    pass
+
+
+def _max_asset_upload_bytes() -> int:
+    try:
+        mb = int(os.environ.get("RADIANCE_MAX_ASSET_UPLOAD_MB", "16384"))
+    except ValueError:
+        mb = 16384
+    return max(1, mb) * 1024 * 1024
+
+
+def _open_new_asset(dest_dir: Path, name: str):
+    """Open a new file for `name` in dest_dir, never over an existing one:
+    a clash becomes "name_1.ext", "name_2.ext" and so on."""
+    stem, suffix = Path(name).stem, Path(name).suffix
+    for n in range(10000):
+        dest = dest_dir / (name if n == 0 else f"{stem}_{n}{suffix}")
+        try:
+            return dest, open(dest, "xb")
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"Too many assets named {name}")
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1873,19 +1918,37 @@ async def upload_asset(request):
         dest_dir.mkdir(parents=True, exist_ok=True)
         reader = await request.multipart()
         saved = []
+        # The body used to stream to disk with no ceiling (a full disk from
+        # one request), and a same-named file was silently replaced. Plates
+        # and clips can be large, so the cap is per request and adjustable.
+        limit = _max_asset_upload_bytes()
+        written = 0
         async for part in reader:
             if part.filename:
                 safe_name = os.path.basename(part.filename)
                 if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
                     continue
-                dest = dest_dir / safe_name
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = await part.read_chunk()
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-                saved.append(safe_name)
+                dest, fh = _open_new_asset(dest_dir, safe_name)
+                try:
+                    with fh:
+                        while True:
+                            chunk = await part.read_chunk()
+                            if not chunk:
+                                break
+                            written += len(chunk)
+                            if written > limit:
+                                raise _UploadTooLarge()
+                            fh.write(chunk)
+                except _UploadTooLarge:
+                    dest.unlink(missing_ok=True)
+                    return web.json_response(
+                        {"error": f"Upload exceeds {limit // (1024 * 1024)}MB. Set "
+                                  f"RADIANCE_MAX_ASSET_UPLOAD_MB to raise the limit.",
+                         "saved": saved}, status=413)
+                except BaseException:
+                    dest.unlink(missing_ok=True)
+                    raise
+                saved.append(dest.name)
         return web.json_response({"success": True, "saved": saved})
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")

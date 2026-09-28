@@ -332,6 +332,49 @@ class TestTileModeNoLongerDiscardsSettingsSilently:
         )
 
 
+class TestTiledInpaintMask:
+    """The mask arrives at image resolution; tiles are cut in latent units."""
+
+    @staticmethod
+    def _masks_per_tile(mask, latent_shape=(1, 4, 64, 64)):
+        seen = []
+
+        class _Recorder(SampleCustomRecorder):
+            def __call__(self, *args, noise_mask=None, **kwargs):
+                seen.append(noise_mask)
+                return super().__call__(*args, noise_mask=noise_mask, **kwargs)
+
+        with SamplerEnv(_Recorder()):
+            su.tile_sample(
+                model=FakeModelPatcher(), noise=torch.zeros(latent_shape),
+                latent_samples=torch.zeros(latent_shape), positive=[], negative=[],
+                sigmas=torch.linspace(1.0, 0.0, 3), sampler_obj=object(), seed=0,
+                tile_size=32, tile_overlap=0, noise_mask=mask,
+            )
+        return seen
+
+    def test_each_tile_gets_its_own_part_of_an_image_sized_mask(self):
+        mask = torch.zeros(1, 1, 512, 512)
+        mask[..., :256, :] = 1.0                      # top half of the picture
+        masks = self._masks_per_tile(mask)
+        assert len(masks) == 4
+        # Tiles in row order: two top tiles, two bottom tiles.
+        assert all(m.shape[-2:] == (32, 32) for m in masks)
+        assert [float(m.mean()) for m in masks] == [1.0, 1.0, 0.0, 0.0]
+
+    def test_a_latent_sized_mask_is_used_as_is(self):
+        mask = torch.zeros(1, 1, 64, 64)
+        mask[..., :, :32] = 1.0                       # left half
+        masks = self._masks_per_tile(mask)
+        assert [float(m.mean()) for m in masks] == [1.0, 0.0, 1.0, 0.0]
+
+    def test_a_single_frame_5d_latent_is_masked_by_tile_too(self):
+        mask = torch.zeros(1, 512, 512)
+        mask[:, 256:, :] = 1.0                        # bottom half, (B, H, W)
+        masks = self._masks_per_tile(mask, latent_shape=(1, 16, 1, 64, 64))
+        assert [float(m.mean()) for m in masks] == [0.0, 0.0, 1.0, 1.0]
+
+
 class TestFailedTileFailsTheRun:
     """A failed tile was replaced by the un-denoised input slice.
 
