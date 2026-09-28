@@ -2150,13 +2150,21 @@ def tile_sample(
 
     import comfy.sample as cs
 
-    if latent_samples.ndim != 4:
+    # A single-frame 5D latent (B, C, 1, H, W) is an image latent in the 5D
+    # format some image models sample in (Qwen-Image); tiles cut the last two
+    # axes and keep the frame axis whole.
+    single_frame_5d = latent_samples.ndim == 5 and latent_samples.shape[2] == 1
+    if latent_samples.ndim != 4 and not single_frame_5d:
         raise ValueError(
-            f"[Radiance] tile_sample requires 4D latent (B, C, H, W), "
-            f"got {latent_samples.ndim}D. Video tile sampling is not supported."
+            f"[Radiance] tile_sample requires a 4D latent (B, C, H, W) or a "
+            f"single-frame 5D latent (B, C, 1, H, W), got shape "
+            f"{tuple(latent_samples.shape)}. Video tile sampling is not supported."
         )
 
-    B, C, H, W = latent_samples.shape
+    B = latent_samples.shape[0]
+    H, W = latent_samples.shape[-2:]
+    # Broadcast shape for per-pixel weights: (B, 1, H, W) or (B, 1, 1, H, W).
+    _wdims = (1,) * (latent_samples.ndim - 3)
     # An overlap >= tile_size collapses the stride to 1 and turns this into
     # millions of tile inferences; only one of five tilers checked for it.
     tile_overlap = clamp_overlap(tile_size, tile_overlap)
@@ -2164,7 +2172,7 @@ def tile_sample(
     device = latent_samples.device
 
     output = torch.zeros_like(latent_samples)
-    weight = torch.zeros((B, 1, H, W), device=device, dtype=latent_samples.dtype)
+    weight = torch.zeros((B, *_wdims, H, W), device=device, dtype=latent_samples.dtype)
 
     tile_coords = []
     for y in range(0, H, step):
@@ -2178,8 +2186,8 @@ def tile_sample(
     tile_coords = list(dict.fromkeys(tile_coords))
 
     for idx, (y1, y2, x1, x2) in enumerate(tile_coords):
-        t_latent = latent_samples[:, :, y1:y2, x1:x2]
-        t_noise = noise[:, :, y1:y2, x1:x2]
+        t_latent = latent_samples[..., y1:y2, x1:x2]
+        t_noise = noise[..., y1:y2, x1:x2]
 
         try:
             t_out = cs.sample_custom(
@@ -2191,7 +2199,7 @@ def tile_sample(
                 positive=positive,
                 negative=negative,
                 latent_image=t_latent,
-                noise_mask=noise_mask[:, :, y1:y2, x1:x2] if noise_mask is not None else None,
+                noise_mask=noise_mask[..., y1:y2, x1:x2] if noise_mask is not None else None,
                 callback=None,
                 disable_pbar=True,
                 seed=seed + idx,
@@ -2245,8 +2253,9 @@ def tile_sample(
         else:                                                       
             w_tile = torch.ones((1, 1, th, tw), device=device, dtype=latent_samples.dtype)
 
-        output[:, :, y1:y2, x1:x2] += t_out * w_tile
-        weight[:, :, y1:y2, x1:x2] += w_tile
+        w_tile = w_tile.reshape((1,) * (latent_samples.ndim - 2) + (th, tw))
+        output[..., y1:y2, x1:x2] += t_out * w_tile
+        weight[..., y1:y2, x1:x2] += w_tile
 
     weight = weight.clamp(min=1e-6)
     output = output / weight
