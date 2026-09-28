@@ -21,7 +21,7 @@ LONG_SUBJECT = ("A weathered fisherman mends a torn red net on a wooden dock at 
 
 def _run(keys, **kw):
     clip = FakeClip(keys)
-    out = RadianceCinematicPromptEncoder().encode_cinematic(clip, **kw)
+    out = RadianceCinematicPromptEncoder().execute(clip, **kw)
     return clip, out
 
 
@@ -104,9 +104,9 @@ def test_zero_conditioning_matches_positive_shape():
     assert neg[0][1]["guidance"] == 3.5 and pos[0][1]["pooled_output"].sum() > 0
 
 
-def test_negative_mode_widget_is_last_widget():
+def test_widgets_keep_their_saved_order():
     # Appended after negative_prompt so saved workflows keep their widget order
-    # (model_meta is forceInput, never a widget).
+    # (vae and model_meta are sockets, never widgets).
     names = list(RadianceCinematicPromptEncoder.INPUT_TYPES()["optional"])
     assert names.index("negative_mode") == names.index("negative_prompt") + 1
-    assert names[-1] == "model_meta"
+    assert names[names.index("negative_mode") + 1:] == ["vae", "model_meta", "resolution", "images"]

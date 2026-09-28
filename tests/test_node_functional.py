@@ -29,6 +29,7 @@ import sys
 import types
 
 import pytest
+from comfy_api.latest import io
 
 torch = pytest.importorskip("torch")
 
@@ -553,6 +554,8 @@ def test_node_executes(key):
         )
         return
 
+    if isinstance(result, io.NodeOutput):   # a V3 node
+        result = result.args
     if isinstance(result, dict):
         assert "result" in result, (
             f"{key} returned a ui dict without a 'result' key, so nothing "

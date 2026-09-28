@@ -98,9 +98,13 @@ import weakref
 import torch
 from typing import Optional
 
+from comfy_api.latest import io
+from comfy_extras import nodes_edit_model, nodes_flux, nodes_post_processing, nodes_qwen, nodes_sd3
+
 logger = logging.getLogger("radiance.prompt")
 
 from radiance.config.constants import VERSION as __version__  # noqa: E402
+from radiance.nodes.branding import schema_branding  # noqa: E402
 
 
 class CinematicDatasets:
@@ -1370,6 +1374,14 @@ def _clean_for_prose(text: str) -> str:
     return re.sub(r' {2,}', ' ', text).strip()
 
 
+# ALBABIT-FIX: the prompt goes out as typed; it used to always get a period,
+# which changed the conditioning of an edit instruction. It takes one only to
+# end a sentence before the ones the builder adds after it.
+def _end_subject_sentence(parts):
+    if len(parts) > 1 and not parts[0].endswith((".", "!", "?")):
+        parts[0] += "."
+
+
 def _build_prose_prompt(
     base_prompt, framing, camera, lens, aperture, lighting,
     style, film_stock, shutter, color_grading, aspect_ratio,
@@ -1403,6 +1415,7 @@ def _build_prose_prompt(
         subject = _apply_subject_weight(subject, subject_weight)
 
     # [BUG-I1] Weight modes: technique_first, subject_first, balanced
+    bare_subject = False
     if weight_mode == "technique_first" and c(camera):
         parts.append(f"Photographed on {_label(camera)}, {subject}.")
     elif weight_mode == "subject_first":
@@ -1410,7 +1423,8 @@ def _build_prose_prompt(
     elif c(framing):
         parts.append(f"{_framing_opener(framing)} {_lower_article(subject)}.")
     else:
-        parts.append(f"{subject}.")
+        parts.append(subject)
+        bare_subject = True
 
     # 2. Art direction (right after subject — closest semantic anchor)
     if art_direction and art_direction.strip():
@@ -1475,6 +1489,8 @@ def _build_prose_prompt(
     if c(custom_details):
         parts.append(custom_details.strip())
 
+    if bare_subject:
+        _end_subject_sentence(parts)
     return " ".join(parts)
 
 
@@ -1624,7 +1640,7 @@ def build_cinematic_prompt_v3(
 
     ``target_arch`` MUST be a pre-resolved architecture string (e.g. "flux",
     "sdxl", "wan").  Passing "Auto" is a programming error — the caller
-    (``encode_cinematic``) is responsible for resolving arch via
+    (``RadianceCinematicPromptEncoder.execute``) is responsible for resolving arch via
     ``_detect_arch_from_clip()`` before calling this function.  Passing "Auto"
     here now raises ValueError so misuse is caught immediately rather than
     silently falling back to "sdxl" and producing wrong output.  [FIX-2]
@@ -1677,6 +1693,7 @@ def build_cinematic_prompt_v3(
         # [BUG-I1] subject_first: lead with weighted subject, no camera prefix
         # 3.5.0: menu values through _label() -- no "(CU)" or "(Gritty)"
         # reaching CLIP, where brackets are a 1.1x weight.
+        bare_subject = False
         if prompt_weight_mode == "subject_first":
             parts.append(f"{weighted_base}.")
             if c(framing):
@@ -1690,7 +1707,8 @@ def build_cinematic_prompt_v3(
         elif c(framing):
             parts.append(f"{_framing_opener(framing)} {_lower_article(weighted_base)}.")
         else:
-            parts.append(f"{weighted_base}.")
+            parts.append(weighted_base)
+            bare_subject = True
 
         # [BUG-C3] FIX: Insert art_direction THEN lora_keywords at sequential
         # indices so art_direction stays closer to subject than lora_keywords.
@@ -1728,6 +1746,8 @@ def build_cinematic_prompt_v3(
         if c(aspect_ratio):   parts.append(f"{_label(aspect_ratio)} format.")
         if c(custom_details): parts.append(custom_details.strip())
 
+        if bare_subject:
+            _end_subject_sentence(parts)
         final_prompt = " ".join(p for p in parts if p).strip()
 
     # [BUG-I5] use_break is now always boolean from the caller
@@ -1894,6 +1914,43 @@ def _zero_conditioning(cond):
     return out
 
 
+# ALBABIT-FIX: the architectures whose reference images the Prompt passes on
+# (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models).
+_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein")
+
+
+# ALBABIT-FIX: Qwen-Image Edit reference images, wired as the official 2511
+# templates: the first scaled to a Kontext resolution, which also sizes the
+# empty latent. The native encoder takes 3 images and scales them itself.
+def _qwen_edit_images(references):
+    ordered = list(references.values())
+    if len(ordered) > 3:
+        raise ValueError(f"Prompt: Qwen-Image Edit reads 3 reference images and {len(ordered)} "
+                         f"are connected. Disconnect image_4 and above.")
+    ordered[0] = nodes_flux.FluxKontextImageScale.execute(ordered[0]).args[0]
+    empty = nodes_sd3.EmptySD3LatentImage.execute(width=ordered[0].shape[2], height=ordered[0].shape[1]).args[0]
+    return dict(zip(("image1", "image2", "image3"), ordered)), empty
+
+
+# ALBABIT-FIX: Flux.2 reference images, wired as the official Dev and Klein edit
+# templates: each scaled to about 1 megapixel and VAE-encoded, the empty latent
+# sized on image_1.
+def _flux2_references(vae, references):
+    latents, empty = [], None
+    for image in references.values():
+        scaled = nodes_post_processing.ImageScaleToTotalPixels.execute(image, "lanczos", 1.0, 1).args[0]
+        latents.append(vae.encode(scaled[:, :, :, :3]))
+        if empty is None:
+            empty = nodes_flux.EmptyFlux2LatentImage.execute(width=scaled.shape[2], height=scaled.shape[1]).args[0]
+    return latents, empty
+
+
+def _with_reference_latents(cond, latents):
+    for latent in latents:
+        cond = nodes_edit_model.ReferenceLatent.execute(cond, {"samples": latent}).args[0]
+    return cond
+
+
 # Prompt length each family was trained on. Longer prompts still reach the
 # encoder whole (ComfyUI's T5/LLM tokenizers take any length and CLIP is
 # chunked by 77); past this the model starts to ignore the tail, so it is
@@ -1901,14 +1958,12 @@ def _zero_conditioning(cond):
 _TRAINED_TOKEN_WINDOW = {"flux": 512, "wan": 512, "sd3": 256, "sd3.5": 256}
 
 
-class RadianceCinematicPromptEncoder:
+class RadianceCinematicPromptEncoder(io.ComfyNode):
     """
     v3.2 — Ultra-clean, simplified cinematic prompt builder with direct CLIP encoding.
     No canvas clutter: inputs reduced from 29 to 10, outputs from 7 to 3.
     Auto-detects model architecture and optimizes prompting internally.
     """
-
-    CATEGORY = "FXTD STUDIOS/Radiance/◎ Generate"
 
     # Reference shared datasets
     CAMERAS = CinematicDatasets.CAMERAS
@@ -1920,118 +1975,125 @@ class RadianceCinematicPromptEncoder:
     COLOR_GRADING = CinematicDatasets.COLOR_GRADING
     STYLE_PRESETS = CinematicDatasets.STYLE_PRESETS
 
+    # ALBABIT-FIX: V3 schema, for Autogrow inputs. Inputs keep the V1 names and
+    # order, so saved workflows load their widget values unchanged.
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "clip": ("CLIP", {"tooltip": "CLIP model for encoding."}),
-            },
-            "optional": {
+    def define_schema(cls):
+        return io.Schema(
+            node_id="RadianceCinematicPromptEncoder",
+            **schema_branding("RadianceCinematicPromptEncoder",
+                              NODE_DISPLAY_NAME_MAPPINGS["RadianceCinematicPromptEncoder"]),
+            description=(
+                "Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) "
+                "and writes the prompt in the form it reads best; skips the negative encode "
+                "on guidance-distilled models."
+            ),
+            inputs=[
+                io.Clip.Input("clip", tooltip="CLIP model for encoding."),
                 # 3.5.0: empty with a placeholder. The old default text was a
                 # real value, so an untouched node encoded "A cinematic scene...".
-                "base_prompt": (
-                    "STRING",
-                    {"multiline": True, "default": "",
-                     "placeholder": "Describe the subject and the scene",
-                     "tooltip": "Primary subject/scene description."},
+                io.String.Input(
+                    "base_prompt", multiline=True, default="", optional=True,
+                    placeholder="Describe the subject and the scene",
+                    tooltip="Primary subject/scene description.",
                 ),
                 # ALBABIT-FIX: default to "None (Custom)" so a freshly-added node starts
                 # blank rather than silently pre-loaded with "→ Classic Hollywood"'s
                 # look. The 7 style widget defaults below are set to "None" to match --
                 # js/radiance_prompt.js's resetToCustomDefaults() keeps them in sync
                 # whenever "None (Custom)" is (re)selected.
-                "style_preset": (
-                    cls.STYLE_PRESETS,
-                    {"default": "None (Custom)",
-                     "tooltip": "One-click style preset."},
+                io.Combo.Input("style_preset", options=cls.STYLE_PRESETS, default="None (Custom)",
+                               optional=True, tooltip="One-click style preset."),
+                io.Combo.Input("framing", options=cls.FRAMING, default="None",
+                               optional=True, tooltip="Shot framing type."),
+                io.Combo.Input("camera_type", options=cls.CAMERAS, default="None",
+                               optional=True, tooltip="Camera body."),
+                io.Combo.Input("lens_focal", options=cls.LENSES, default="None",
+                               optional=True, tooltip="Lens + focal length."),
+                io.Combo.Input("aperture_dof", options=cls.APERTURES, default="None",
+                               optional=True, tooltip="Depth of field."),
+                io.Combo.Input("lighting", options=cls.LIGHTING, default="None",
+                               optional=True, tooltip="Lighting style."),
+                io.Combo.Input("style_aesthetic", options=cls.STYLES, default="None",
+                               optional=True, tooltip="Visual aesthetic."),
+                io.Combo.Input("color_grading", options=cls.COLOR_GRADING, default="None",
+                               optional=True, tooltip="Color grading look."),
+                io.Combo.Input(
+                    "negative_strength", options=["Off", "Soft", "Standard", "Aggressive"],
+                    default="Standard", optional=True,
+                    tooltip="Auto-negative strength. 'Soft' is recommended for Flux.",
                 ),
-                "framing": (
-                    cls.FRAMING,
-                    {"default": "None", "tooltip": "Shot framing type."},
+                io.String.Input(
+                    "negative_prompt", multiline=True, default="", optional=True,
+                    tooltip="Custom negative prompt. Appended after auto-negatives.",
                 ),
-                "camera_type": (
-                    cls.CAMERAS,
-                    {"default": "None", "tooltip": "Camera body."},
+                io.Combo.Input(
+                    "negative_mode", options=["Auto", "Always encode", "Zero (skip encode)"],
+                    default="Auto", optional=True,
+                    tooltip="Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) "
+                            "with no custom negative, return a zeroed negative instead of "
+                            "encoding one: ComfyUI never reads the negative at CFG 1, so this "
+                            "saves a full text-encoder pass. Always encode: pick this if you "
+                            "run those models above CFG 1 with a negative. Zero: never encode "
+                            "the negative.",
                 ),
-                "lens_focal": (
-                    cls.LENSES,
-                    {"default": "None", "tooltip": "Lens + focal length."},
+                # ALBABIT-FIX: reference images for Qwen-Image 2.1, Qwen-Image Edit and
+                # Flux.2 editing, wired as the native nodes. image_1 is the image to edit.
+                io.Vae.Input(
+                    "vae", optional=True,
+                    tooltip="Encodes the reference images into the latents the model edits "
+                            "from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without "
+                            "it read the images through the text encoder only.",
                 ),
-                "aperture_dof": (
-                    cls.APERTURES,
-                    {"default": "None", "tooltip": "Depth of field."},
+                # ALBABIT-FIX: forceInput -- this is always a wired value from the
+                # Loader, never hand-typed; matches the other model_meta inputs
+                # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
+                io.String.Input(
+                    "model_meta", default="", force_input=True, optional=True,
+                    tooltip="Optional JSON metadata from Radiance Read Models. "
+                            "When connected, architecture detection uses this before "
+                            "tokenizer heuristics.",
                 ),
-                "lighting": (
-                    cls.LIGHTING,
-                    {"default": "None", "tooltip": "Lighting style."},
+                io.Int.Input(
+                    "resolution", default=1024, min=0, max=4096, step=32, optional=True,
+                    tooltip="Qwen-Image 2.1: reference images are resized to about resolution "
+                            "x resolution pixels, at multiples of 32, keeping their aspect "
+                            "ratio. 0 keeps each at its own size, rounded to a multiple of 32. "
+                            "Flux.2 and Qwen-Image Edit size them on their own.",
                 ),
-                "style_aesthetic": (
-                    cls.STYLES,
-                    {"default": "None", "tooltip": "Visual aesthetic."},
+                io.Autogrow.Input(
+                    "images", optional=True,
+                    template=io.Autogrow.TemplateNames(
+                        io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
+                    tooltip="Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) "
+                            "and Flux.2 editing. image_1 is the image to edit, the others are "
+                            "references. With Qwen-Image 2.1, cite them in the prompt as "
+                            "<image1>, <image2>...",
                 ),
-                "color_grading": (
-                    cls.COLOR_GRADING,
-                    {"default": "None", "tooltip": "Color grading look."},
-                ),
-                "negative_strength": (
-                    ["Off", "Soft", "Standard", "Aggressive"],
-                    {"default": "Standard",
-                     "tooltip": "Auto-negative strength. 'Soft' is recommended for Flux."},
-                ),
-                "negative_prompt": (
-                    "STRING",
-                    {"multiline": True, "default": "",
-                     "tooltip": "Custom negative prompt. Appended after auto-negatives."},
-                ),
-                "negative_mode": (
-                    ["Auto", "Always encode", "Zero (skip encode)"],
-                    {"default": "Auto",
-                     "tooltip": "Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) "
-                                "with no custom negative, return a zeroed negative instead of "
-                                "encoding one: ComfyUI never reads the negative at CFG 1, so this "
-                                "saves a full text-encoder pass. Always encode: pick this if you "
-                                "run those models above CFG 1 with a negative. Zero: never encode "
-                                "the negative."},
-                ),
-                "model_meta": (
-                    "STRING",
-                    # ALBABIT-FIX: forceInput -- this is always a wired value from the
-                    # Loader, never hand-typed; matches the other model_meta inputs
-                    # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
-                    {"default": "", "forceInput": True,
-                     "tooltip": "Optional JSON metadata from Radiance Read Models. "
-                                "When connected, architecture detection uses this before "
-                                "tokenizer heuristics."},
-                ),
-            },
-        }
+            ],
+            outputs=[
+                io.Conditioning.Output(display_name="positive",
+                                       tooltip="Positive conditioning for the sampler."),
+                io.Conditioning.Output(display_name="negative",
+                                       tooltip="Negative conditioning for the sampler."),
+                io.String.Output(display_name="positive_text",
+                                 tooltip="Final positive prompt text that was encoded."),
+                io.String.Output(display_name="negative_text",
+                                 tooltip="Final negative prompt text that was encoded."),
+                io.String.Output(display_name="resolved_arch",
+                                 tooltip="Detected architecture used to choose prose vs CLIP-style prompting."),
+                io.Int.Output(display_name="token_count",
+                              tooltip="Tokenizer-derived positive prompt token count after safety handling."),
+                io.Latent.Output(display_name="latent",
+                                 tooltip="Empty latent at image_1's size after the resize. Sample on "
+                                         "it to edit: any other size shifts the edit. None without "
+                                         "reference images."),
+            ],
+        )
 
-    RETURN_TYPES  = ("CONDITIONING", "CONDITIONING", "STRING", "STRING", "STRING", "INT")
-    RETURN_NAMES  = (
-        "positive",
-        "negative",
-        "positive_text",
-        "negative_text",
-        "resolved_arch",
-        "token_count",
-    )
-    OUTPUT_TOOLTIPS = (
-        "Positive conditioning for the sampler.",
-        "Negative conditioning for the sampler.",
-        "Final positive prompt text that was encoded.",
-        "Final negative prompt text that was encoded.",
-        "Detected architecture used to choose prose vs CLIP-style prompting.",
-        "Tokenizer-derived positive prompt token count after safety handling.",
-    )
-    FUNCTION = "encode_cinematic"
-    DESCRIPTION = (
-        "Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) "
-        "and writes the prompt in the form it reads best; skips the negative encode "
-        "on guidance-distilled models."
-    )
-
-    def encode_cinematic(
-        self,
+    @classmethod
+    def execute(
+        cls,
         clip,
         base_prompt="",
         style_preset="None (Custom)",
@@ -2046,6 +2108,9 @@ class RadianceCinematicPromptEncoder:
         negative_prompt="",
         model_meta="",
         negative_mode="Auto",
+        vae=None,
+        resolution=1024,
+        images=None,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2057,6 +2122,19 @@ class RadianceCinematicPromptEncoder:
 
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
+
+        # ALBABIT-FIX: only Qwen-Image 2.1, Qwen-Image Edit and Flux.2 read reference
+        # images here; any other encoder would drop them without a word.
+        slots = sorted(images or {}, key=lambda n: int(n.rsplit("_", 1)[-1]))
+        references = {name: images[name] for name in slots if images[name] is not None}
+        if references and resolved_arch not in _REFERENCE_ARCHS:
+            raise ValueError(
+                f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit and "
+                f"Flux.2 only, and the text encoder resolves to '{resolved_arch}'. Connect "
+                f"model_meta from the Loader, or disconnect the images.")
+        if references and resolved_arch not in ("qwen_image21", "qwen_image") and vae is None:
+            raise ValueError("Prompt: Flux.2 reads reference images as VAE latents. "
+                             "Connect the vae input.")
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2121,7 +2199,23 @@ class RadianceCinematicPromptEncoder:
                 "[Encoder] %d-token prompt on %s, trained on %d: the tail may carry "
                 "little weight. Nothing was cut.", real_count, resolved_arch, window)
 
-        positive_cond = _encode_tokens(clip, pos_tokens)
+        # ALBABIT-FIX: reference images go through each family's native nodes:
+        # TextEncodeQwenImage21 encodes both prompts at once, TextEncodeQwenImageEditPlus
+        # one at a time, and Flux.2 adds ReferenceLatent to both.
+        flux2_refs = qwen_edit_images = None
+        if references and resolved_arch == "qwen_image21":
+            positive_cond, native_negative, latent = nodes_qwen.TextEncodeQwenImage21.execute(
+                clip=clip, prompt=final_prompt, negative_prompt=negative_prompt, vae=vae,
+                resolution=resolution, images=references).args
+        elif references and resolved_arch == "qwen_image":
+            qwen_edit_images, latent = _qwen_edit_images(references)
+            positive_cond = nodes_qwen.TextEncodeQwenImageEditPlus.execute(
+                clip=clip, prompt=final_prompt, vae=vae, **qwen_edit_images).args[0]
+        else:
+            positive_cond, latent = _encode_tokens(clip, pos_tokens), None
+            if references:
+                flux2_refs, latent = _flux2_references(vae, references)
+                positive_cond = _with_reference_latents(positive_cond, flux2_refs)
 
         user_negative = bool(negative_prompt_in and negative_prompt_in.strip())
         skip_negative = (
@@ -2130,11 +2224,18 @@ class RadianceCinematicPromptEncoder:
                 and resolved_arch in _GUIDANCE_DISTILLED_ARCHS)
         )
         if skip_negative:
-            negative_cond = _zero_conditioning(positive_cond)
+            negative_cond = _zero_conditioning(positive_cond)   # keeps reference latents
             negative_prompt = ""        # nothing was encoded; say so
+        elif references and resolved_arch == "qwen_image21":
+            negative_cond = native_negative
+        elif qwen_edit_images:
+            negative_cond = nodes_qwen.TextEncodeQwenImageEditPlus.execute(
+                clip=clip, prompt=negative_prompt, vae=vae, **qwen_edit_images).args[0]
         else:
             safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
             negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))
+            if flux2_refs:
+                negative_cond = _with_reference_latents(negative_cond, flux2_refs)
 
         # ALBABIT-FIX: weak_neg_arch only known post-execution (resolved_arch
         # depends on the real CLIP/model_meta), so js/radiance_prompt.js flags
@@ -2150,6 +2251,7 @@ class RadianceCinematicPromptEncoder:
                 negative_prompt,
                 resolved_arch,
                 int(real_count),
+                latent,
             ),
         }
 
@@ -2162,5 +2264,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceCinematicPromptEncoder": "◎ Radiance Cinematic Encoder",
+    "RadianceCinematicPromptEncoder": "◎ Cinematic Prompt Encoder",
 }
