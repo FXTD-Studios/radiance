@@ -99,6 +99,7 @@ import torch
 from typing import Optional
 
 from comfy_api.latest import io
+from comfy_extras import nodes_qwen
 
 logger = logging.getLogger("radiance.prompt")
 
@@ -1983,6 +1984,13 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                             "run those models above CFG 1 with a negative. Zero: never encode "
                             "the negative.",
                 ),
+                # ALBABIT-FIX: reference images for Qwen-Image 2.1 editing, encoded
+                # by the native TextEncodeQwenImage21. image_1 is the image to edit.
+                io.Vae.Input(
+                    "vae", optional=True,
+                    tooltip="Encodes the reference images into the latents the model edits "
+                            "from. Without it they reach the model through the text encoder only.",
+                ),
                 # ALBABIT-FIX: forceInput -- this is always a wired value from the
                 # Loader, never hand-typed; matches the other model_meta inputs
                 # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
@@ -1991,6 +1999,20 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                     tooltip="Optional JSON metadata from Radiance Read Models. "
                             "When connected, architecture detection uses this before "
                             "tokenizer heuristics.",
+                ),
+                io.Int.Input(
+                    "resolution", default=1024, min=0, max=4096, step=32, optional=True,
+                    tooltip="Reference images are resized to about resolution x resolution "
+                            "pixels, at multiples of 32, keeping their aspect ratio. 0 keeps "
+                            "each at its own size, rounded to a multiple of 32.",
+                ),
+                io.Autogrow.Input(
+                    "images", optional=True,
+                    template=io.Autogrow.TemplateNames(
+                        io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
+                    tooltip="Reference images for Qwen-Image 2.1 editing. image_1 is the image "
+                            "to edit, the others are references. Cite them in the prompt as "
+                            "<image1>, <image2>...",
                 ),
             ],
             outputs=[
@@ -2006,6 +2028,10 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                                  tooltip="Detected architecture used to choose prose vs CLIP-style prompting."),
                 io.Int.Output(display_name="token_count",
                               tooltip="Tokenizer-derived positive prompt token count after safety handling."),
+                io.Latent.Output(display_name="latent",
+                                 tooltip="Empty latent at image_1's size after the resize. Sample on "
+                                         "it to edit: any other size shifts the edit. None without "
+                                         "reference images."),
             ],
         )
 
@@ -2026,6 +2052,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         negative_prompt="",
         model_meta="",
         negative_mode="Auto",
+        vae=None,
+        resolution=1024,
+        images=None,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2037,6 +2066,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
 
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
+
+        # ALBABIT-FIX: only Qwen-Image 2.1 reads reference images here; any other
+        # encoder would drop them without a word.
+        references = {name: image for name, image in (images or {}).items() if image is not None}
+        if references and resolved_arch != "qwen_image21":
+            raise ValueError(
+                f"Prompt: reference images are read by Qwen-Image 2.1 only, and the text "
+                f"encoder resolves to '{resolved_arch}'. Connect model_meta from the Loader, "
+                f"or disconnect the images.")
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2101,7 +2139,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 "[Encoder] %d-token prompt on %s, trained on %d: the tail may carry "
                 "little weight. Nothing was cut.", real_count, resolved_arch, window)
 
-        positive_cond = _encode_tokens(clip, pos_tokens)
+        # ALBABIT-FIX: with reference images the native TextEncodeQwenImage21 encodes
+        # both prompts: it resizes the images, shows them to the vision tower,
+        # splices their VAE latents in and sizes the latent on image_1.
+        if references:
+            positive_cond, native_negative, latent = nodes_qwen.TextEncodeQwenImage21.execute(
+                clip=clip, prompt=final_prompt, negative_prompt=negative_prompt, vae=vae,
+                resolution=resolution, images=references).args
+        else:
+            positive_cond, latent = _encode_tokens(clip, pos_tokens), None
 
         user_negative = bool(negative_prompt_in and negative_prompt_in.strip())
         skip_negative = (
@@ -2112,6 +2158,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         if skip_negative:
             negative_cond = _zero_conditioning(positive_cond)
             negative_prompt = ""        # nothing was encoded; say so
+        elif references:
+            negative_cond = native_negative
         else:
             safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
             negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))
@@ -2130,6 +2178,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 negative_prompt,
                 resolved_arch,
                 int(real_count),
+                latent,
             ),
         }
 

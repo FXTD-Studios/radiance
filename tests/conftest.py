@@ -314,6 +314,29 @@ if "comfy_api" not in sys.modules:
     _io.Combo = _v3_type("Combo", "COMBO", _V3ComboInput)
     _io.Int = _v3_type("Int", "INT", _V3IntInput)
     _io.Conditioning = _v3_type("Conditioning", "CONDITIONING")
+    _io.Vae = _v3_type("Vae", "VAE")
+    _io.Image = _v3_type("Image", "IMAGE")
+    _io.Latent = _v3_type("Latent", "LATENT")
+
+    class _Autogrow:
+        io_type = "COMFY_AUTOGROW_V3"
+
+        class TemplateNames:
+            def __init__(self, input, names, min=1):
+                self.input, self.names, self.min = input, list(names), min
+
+            def as_dict(self):
+                section = "optional" if self.input.optional else "required"
+                return {"input": {section: {self.input.id: self.input.as_v1()}},
+                        "names": self.names, "min": self.min}
+
+        class Input(_V3Input):
+            io_type = "COMFY_AUTOGROW_V3"
+
+            def __init__(self, id, template, **kw):
+                super().__init__(id, template=template.as_dict(), **kw)
+
+    _io.Autogrow = _Autogrow
 
     class _NodeOutput:
         def __init__(self, *args, ui=None, expand=None, block_execution=None):
@@ -694,6 +717,12 @@ def _make_comfy_stubs():
     cldm.control_types = control_types
     comfy.cldm = cldm
 
+    # comfy_extras.nodes_qwen: the Prompt hands reference images to its
+    # TextEncodeQwenImage21; a test that sends images patches the class in.
+    comfy_extras = types.ModuleType("comfy_extras")
+    nodes_qwen = types.ModuleType("comfy_extras.nodes_qwen")
+    comfy_extras.nodes_qwen = nodes_qwen
+
     # folder_paths stub
     folder_paths = types.ModuleType("folder_paths")
     folder_paths.get_filename_list = MagicMock(return_value=[])
@@ -718,6 +747,8 @@ def _make_comfy_stubs():
         "comfy.nested_tensor": nested_tensor,
         "comfy.cldm": cldm,
         "comfy.cldm.control_types": control_types,
+        "comfy_extras": comfy_extras,
+        "comfy_extras.nodes_qwen": nodes_qwen,
         "folder_paths": folder_paths,
     }
     for _mod in stubs.values():

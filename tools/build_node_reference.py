@@ -81,6 +81,13 @@ def _describe_input(entry: Any, name: str = "") -> Tuple[str, str, str, str]:
     if kind == "COMBO" and isinstance(opts.get("options"), list):
         kind = opts["options"]
     tooltip = opts.get("tooltip", "")
+    # ALBABIT-FIX: a V3 Autogrow input adds its sockets as they are connected.
+    if kind == "COMFY_AUTOGROW_V3":
+        template = opts.get("template", {})
+        slot = next(iter(next(iter(template.get("input", {}).values()), {}).values()), ("",))
+        names = template.get("names") or []
+        rng = f"`{names[0]}` to `{names[-1]}`, added as they are connected" if names else ""
+        return str(slot[0]), "", rng, tooltip
     default = opts.get("default", "")
 
     comfy_list = _COMFY_LISTS.get(name)

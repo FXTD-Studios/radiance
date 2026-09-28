@@ -5,6 +5,7 @@ Qwen-Image 2.1 is not Qwen-Image with new weights: it has its own DiT keys,
 a 64-channel RGBA VAE (16x) and a Qwen3-VL-8B text encoder that comfy.sd
 routes to the right encoder only under CLIPType.QWEN_IMAGE.
 """
+import json
 import sys
 import types
 
@@ -236,6 +237,69 @@ class TestQwenImage21VaeEncodeHDR:
         vae.output_channels = 3
         RadianceHDRVAEEncode().encode(torch.rand(1, 32, 32, 4), vae, source_space="sRGB", hdr_mode="Clip (SDR)")
         assert vae.encoded.shape[-1] == 3
+
+
+class _FakeClip:
+    def tokenize(self, text, **kwargs):
+        return {"qwen3vl_8b": [[(1, 1.0)] * 5]}
+
+    def encode_from_tokens_scheduled(self, tokens):
+        return [["cond", {}]]
+
+
+class TestQwenImage21PromptReferences:
+
+    META = json.dumps({"arch": "qwen_image21"})
+
+    def test_the_inputs_mirror_the_native_node_after_the_old_ones(self):
+        """Old inputs keep their order, so saved workflows load their widget values."""
+        from radiance.nodes.generate.prompt import RadianceCinematicPromptEncoder as P
+        spec = P.INPUT_TYPES()
+        kind, opts = spec["optional"]["images"]
+        assert kind == "COMFY_AUTOGROW_V3"
+        assert opts["template"]["names"] == [f"image_{i}" for i in range(1, 17)]
+        assert opts["template"]["min"] == 0
+        assert list(spec["optional"])[-4:] == ["vae", "model_meta", "resolution", "images"]
+        assert spec["optional"]["vae"][0] == "VAE"
+        assert spec["optional"]["resolution"][1]["default"] == 1024
+        assert list(P.RETURN_TYPES)[-1] == "LATENT"
+
+    def test_reference_images_go_through_the_native_encoder(self, monkeypatch):
+        from comfy_api.latest import io
+        from radiance.nodes.generate import prompt
+        calls = []
+
+        class _Native:
+            @classmethod
+            def execute(cls, **kwargs):
+                calls.append(kwargs)
+                return io.NodeOutput("pos", "neg", {"samples": "latent"})
+
+        monkeypatch.setattr(prompt.nodes_qwen, "TextEncodeQwenImage21", _Native, raising=False)
+        images = {"image_1": torch.zeros(1, 64, 64, 3), "image_2": torch.ones(1, 32, 32, 3), "image_3": None}
+        out = prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="Remove the background", model_meta=self.META,
+            vae="vae", resolution=0, images=images)
+        pos, neg, text, _neg_text, arch, _count, latent = out["result"]
+        assert (pos, neg, latent, arch) == ("pos", "neg", {"samples": "latent"}, "qwen_image21")
+        (kwargs,) = calls
+        assert (kwargs["prompt"], kwargs["vae"], kwargs["resolution"]) == (text, "vae", 0)
+        assert list(kwargs["images"]) == ["image_1", "image_2"]
+
+    def test_reference_images_need_qwen_image21(self):
+        """Another encoder would drop the images without a word."""
+        from radiance.nodes.generate.prompt import RadianceCinematicPromptEncoder as P
+        with pytest.raises(ValueError, match="model_meta"):
+            P.execute(_FakeClip(), base_prompt="a cat", model_meta=json.dumps({"arch": "flux"}),
+                      images={"image_1": torch.zeros(1, 32, 32, 3)})
+
+    def test_without_images_nothing_changes(self, monkeypatch):
+        from radiance.nodes.generate import prompt
+        monkeypatch.setattr(prompt.nodes_qwen, "TextEncodeQwenImage21", None, raising=False)
+        out = prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="a red apple", model_meta=self.META)
+        assert out["result"][0] == [["cond", {}]]
+        assert out["result"][6] is None
 
 
 class TestSamplerSeedDefault:
