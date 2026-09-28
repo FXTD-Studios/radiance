@@ -259,7 +259,7 @@ class TestQwenImage21PromptReferences:
         assert kind == "COMFY_AUTOGROW_V3"
         assert opts["template"]["names"] == [f"image_{i}" for i in range(1, 17)]
         assert opts["template"]["min"] == 0
-        assert list(spec["optional"])[-4:] == ["vae", "model_meta", "resolution", "images"]
+        assert list(spec["optional"])[-4:] == ["model_meta", "vae", "resolution", "images"]
         assert spec["optional"]["vae"][0] == "VAE"
         assert spec["optional"]["resolution"][1]["default"] == 1024
         assert list(P.RETURN_TYPES)[-1] == "LATENT"
@@ -309,6 +309,15 @@ class TestSamplerSeedDefault:
         with the native nodes too."""
         from radiance.nodes.generate.sampler import RadianceSamplerPro
         assert RadianceSamplerPro.INPUT_TYPES()["required"]["seed"][1]["default"] == 1
+
+    @pytest.mark.parametrize("seed, warned", [(0, True), (1, False)])
+    def test_seed_zero_still_reachable_is_named(self, seed, warned, caplog):
+        """Decrement, randomize or a typed 0 still reach seed 0."""
+        from _sampler_harness import FakeModelPatcher, make_latent, run_sampler
+        with caplog.at_level("WARNING"):
+            run_sampler(latent=make_latent((1, 64, 8, 8)), model=FakeModelPatcher(),
+                        model_type="qwen_image21", seed=seed)
+        assert any("seed 0 on Qwen-Image 2.1" in r.getMessage() for r in caplog.records) is warned
 
     def test_the_seed_control_defaults_to_fixed(self):
         from radiance.nodes.generate.sampler import RadianceSamplerPro

@@ -106,7 +106,8 @@ def test_zero_conditioning_matches_positive_shape():
 
 def test_widgets_keep_their_saved_order():
     # Appended after negative_prompt so saved workflows keep their widget order
-    # (vae and model_meta are sockets, never widgets).
+    # (vae and model_meta are sockets, never widgets). vae follows model_meta,
+    # the last V1 input, so model_meta keeps its input slot index.
     names = list(RadianceCinematicPromptEncoder.INPUT_TYPES()["optional"])
     assert names.index("negative_mode") == names.index("negative_prompt") + 1
-    assert names[names.index("negative_mode") + 1:] == ["vae", "model_meta", "resolution", "images"]
+    assert names[names.index("negative_mode") + 1:] == ["model_meta", "vae", "resolution", "images"]

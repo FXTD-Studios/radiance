@@ -5,7 +5,7 @@
 
 **HDR, colour management, VFX tools, and image review inside ComfyUI.**
 
-[![Version](https://img.shields.io/badge/version-3.5.1-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.0)
+[![Version](https://img.shields.io/badge/version-3.5.2-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.2)
 [![Installations](https://img.shields.io/badge/installations-6.9K-blue?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
 [![Release](https://img.shields.io/badge/release-stable-brightgreen?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
 [![OS](https://img.shields.io/badge/OS-Windows%20%7C%20Mac%20%7C%20Linux-5C7CFA?style=for-the-badge)](https://github.com/fxtd-studios/radiance)

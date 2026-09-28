@@ -45,16 +45,43 @@ export function getWidget(node, name) {
     return node?.widgets?.find(w => w.name === name) ?? null;
 }
 
+// LiteGraph.isValidConnection without the LiteGraph global: equal types, a
+// wildcard, or a shared entry in comma-separated type lists.
+function typesMatch(a, b) {
+    if (a === b || a === "*" || b === "*" || !a || !b) return true;
+    const list = t => String(t).toLowerCase().split(",");
+    return list(a).some(t => list(b).includes(t));
+}
+
+// The input a bypassed node forwards to output 'slot', as ComfyUI's
+// ExecutableNodeDTO._getBypassSlotIndex picks it: the input at the same index
+// if its type fits, else the first exact type match, else the first that fits.
+function bypassInput(node, slot, type) {
+    const inputs = node.inputs ?? [];
+    const outputType = node.outputs?.[slot]?.type ?? type;
+    if (type === "*" || type === "") return inputs[slot] ?? inputs[0];
+    const same = inputs[slot];
+    if (same && typesMatch(same.type, outputType) && typesMatch(same.type, type)) return same;
+    return inputs.find(i => i.type === type)
+        ?? inputs.find(i => typesMatch(i.type, outputType) && typesMatch(i.type, type));
+}
+
 // ALBABIT-FIX: the node that actually feeds 'input', or null. A muted node
-// (mode 2) sends nothing; a bypassed one (mode 4) forwards its first input of
-// the same type, as ComfyUI does. node.graph, so it works inside subgraphs.
+// (mode 2) sends nothing; a bypassed one (mode 4) forwards one of its inputs,
+// chosen as ComfyUI does (bypassInput). node.graph, so it works inside subgraphs.
 export function liveSourceNode(node, input, depth = 0) {
     const graph = node?.graph;
     const link = input?.link != null ? graph?.links?.[input.link] : null;
     const origin = link && graph.getNodeById(link.origin_id);
     if (!origin || origin.mode === 2 || depth > 32) return null;
     if (origin.mode !== 4) return origin;
-    return liveSourceNode(origin, origin.inputs?.find(i => i.type === link.type), depth + 1);
+    return liveSourceNode(origin, bypassInput(origin, link.origin_slot, link.type), depth + 1);
+}
+
+// ALBABIT-FIX: the Loader (or other node) that feeds 'model_meta', or null.
+// Shared by radiance_prompt.js and radiance_sampler.js.
+export function modelMetaSourceNode(node) {
+    return liveSourceNode(node, node?.inputs?.find(i => i.name === "model_meta"));
 }
 
 /** True when 'input' is fed by a node that runs (see liveSourceNode). */

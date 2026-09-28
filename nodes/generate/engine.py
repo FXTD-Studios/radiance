@@ -395,7 +395,9 @@ class RadianceHDRVAEDecode:
 
         # Track whether alpha was provided (for metadata / downstream use)
         alpha_provided = alpha is not None
-        is_video = latent_tensor.ndim == 5
+        # A single-frame 5D latent is a batch of images (Qwen-Image samples in
+        # 5D), so only more than one latent frame makes the batch a clip.
+        is_video = latent_tensor.ndim == 5 and latent_tensor.shape[2] > 1
 
         # 3.5.0: samplers copy the latent dict and keep radiance_meta, so its
         # hdr_mode used to survive KSampler and send Auto down the log path on

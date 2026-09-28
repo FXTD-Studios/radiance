@@ -3,7 +3,7 @@ import { app } from "../../scripts/app.js";
 import {
     forceWidgetReinsert as _forceWidgetReinsert,
     isInputLive,
-    liveSourceNode,
+    modelMetaSourceNode as _findModelMetaSourceNode,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
 
@@ -752,10 +752,6 @@ function updatePresetDivergenceMarkers(node) {
 // With model_meta wired to a Radiance Loader, its unet_name is read live, and
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
-
-function _findModelMetaSourceNode(node) {
-    return liveSourceNode(node, node.inputs?.find(i => i.name === "model_meta"));
-}
 
 // ALBABIT-FIX: LTXVConcatAVLatent sits directly in front of latent_image on
 // BOTH pipeline stages, not just HighRes, so a one-hop check always found it
