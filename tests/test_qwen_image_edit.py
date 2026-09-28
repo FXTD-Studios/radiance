@@ -6,6 +6,9 @@ VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves it to qwen_image.
 """
 import json
 
+import pytest
+
+from _sampler_harness import FakeModelPatcher, make_latent, run_sampler
 from radiance.config.model_map import (
     CHECKPOINT_PRESETS, RADIANCE_MODEL_MAP, VIDEO_MODEL_TYPES, VIDEO_PRESET_NAMES,
 )
@@ -53,3 +56,14 @@ class TestQwenImageEditSampler:
         )
         assert detected == "qwen_image"
         assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (4.0, 40, "euler", "simple")
+
+    @pytest.mark.parametrize("shape", [(1, 16, 1, 8, 8), (1, 16, 8, 8)])
+    def test_the_latent_is_sampled_in_5d_like_the_native_ksampler(self, shape):
+        """Qwen-Image's latent format is Wan 2.1's (latent_dimensions 3). A VAE
+        Encode latent is (B, C, 1, H, W); an empty 4D one gains the frame axis,
+        as comfy.sample.fix_empty_latent_channels does. Squeezed to 4D, the
+        format's 5D mean broadcast it into 16 frames of noise."""
+        _, rec = run_sampler(latent=make_latent(shape), model=FakeModelPatcher(latent_dimensions=3),
+                             model_type="qwen_image")
+        call = rec.calls[0]
+        assert call["latent_image"].shape == call["noise"].shape == (1, 16, 1, 8, 8)

@@ -1665,6 +1665,12 @@ class RadianceSamplerPro:
                     "schedule. It does not make SamplerPro identical to the native "
                     "video sampler path."
                 )
+        # ALBABIT-FIX: Qwen-Image samples in Wan 2.1's 5D format (B, C, 1, H, W).
+        # Squeezed to 4D, its process_in broadcast the latent into 16 frames of
+        # noise. The latent format decides, as in comfy.sample.fix_empty_latent_channels.
+        elif model.get_model_object("latent_format").latent_dimensions == 3:
+            latent_samples = ensure_5d(latent_samples, "RadianceSamplerPro")
+            frames = None
         else:
             latent_samples = ensure_4d(latent_samples, "RadianceSamplerPro")
             frames = None
