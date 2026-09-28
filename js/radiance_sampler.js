@@ -849,6 +849,7 @@ const LOADER_PRESET_MODEL_TYPE = {
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
+    "Qwen-Image Edit 2511": "qwen_image",
 };
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
