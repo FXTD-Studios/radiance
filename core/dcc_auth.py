@@ -19,8 +19,12 @@ inside Nuke, where this package is not importable; keep the two identical.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 import secrets
+import time
 from pathlib import Path
 
 ENV = "RADIANCE_DCC_AUTH_TOKEN"
@@ -53,3 +57,41 @@ def load_or_create_token() -> str:
     except OSError:
         return ""
     return tok
+
+
+# ── Signed commands for the ComfyUI-side DCC Bridge (nodes/pipeline/dcc.py) ──
+#
+# The bridge's `queue` command submits a workflow to ComfyUI, and Radiance
+# write nodes take absolute output paths, so an unsigned `queue` let anything
+# that could reach the bridge port run workflows and write files. It is now
+# signed with the same token as the Nuke listener:
+#
+#   {"cmd": "queue", "prompt": {...}, "ts": <unix seconds>, "nonce": "<hex>",
+#    "sig": hmac_sha256(token, "queue\n<ts>\n<nonce>\n" + canonical(prompt))}
+#
+# canonical() is compact JSON with sorted keys, so client and server hash the
+# same bytes whatever key order the client's JSON library produced. A request
+# older than MAX_SKEW seconds, or a nonce seen before, is refused.
+
+MAX_SKEW = 300
+
+
+def canonical(prompt) -> str:
+    return json.dumps(prompt, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def queue_signature(token: str, ts, nonce: str, prompt) -> str:
+    data = f"queue\n{ts}\n{nonce}\n{canonical(prompt)}".encode("utf-8")
+    return hmac.new(token.encode("utf-8"), data, hashlib.sha256).hexdigest()
+
+
+def sign_queue(prompt, token: str | None = None) -> dict:
+    """A signed bridge `queue` request for `prompt`, ready to json.dumps."""
+    token = token if token is not None else load_or_create_token()
+    if not token:
+        raise RuntimeError("No DCC token: set RADIANCE_DCC_AUTH_TOKEN or make "
+                           "~/.radiance/dcc_token writable.")
+    ts = int(time.time())
+    nonce = secrets.token_hex(16)
+    return {"cmd": "queue", "prompt": prompt, "ts": ts, "nonce": nonce,
+            "sig": queue_signature(token, ts, nonce, prompt)}

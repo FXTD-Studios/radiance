@@ -2171,6 +2171,16 @@ def tile_sample(
     step = max(1, tile_size - tile_overlap)
     device = latent_samples.device
 
+    # An inpainting mask comes at image resolution (SetLatentNoiseMask), 8x
+    # the latent. Cut with latent tile coordinates it gave each tile a corner
+    # of the mask, so tiles inpainted the wrong area. Bring it to the latent
+    # grid first, as comfy.sampler_helpers.prepare_mask does for one pass.
+    if noise_mask is not None:
+        noise_mask = noise_mask.to(device=device, dtype=torch.float32)
+        noise_mask = noise_mask.reshape((-1, 1) + tuple(noise_mask.shape[-2:]))
+        if tuple(noise_mask.shape[-2:]) != (H, W):
+            noise_mask = torch.nn.functional.interpolate(noise_mask, size=(H, W), mode="bilinear")
+
     output = torch.zeros_like(latent_samples)
     weight = torch.zeros((B, *_wdims, H, W), device=device, dtype=latent_samples.dtype)
 

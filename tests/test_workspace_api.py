@@ -462,6 +462,27 @@ def test_unpack_v2_detects_payload_tampering():
         ws_mod._unpack_rad_v2(bytes(blob))
 
 
+def test_unpack_v2_refuses_a_decompression_bomb(monkeypatch):
+    """The checksum is unkeyed, so a crafted file passes it; the graph must
+    still not inflate past the size limit."""
+    monkeypatch.setattr(ws_mod, "MAX_RAD_UNCOMPRESSED_BYTES", 1024)
+    blob = ws_mod._pack_rad_v2('{"x": "' + "a" * 4096 + '"}', {})
+    with pytest.raises(ValueError, match="exceeds"):
+        ws_mod._unpack_rad_v2(blob)
+    small = ws_mod._pack_rad_v2('{"nodes": []}', {})
+    assert ws_mod._unpack_rad_v2(small)[0] == '{"nodes": []}'
+
+
+def test_version_files_are_this_workflows_only(tmp_path):
+    """A '*' name used to glob every backup; 'shot' also matched 'shot.vfx'."""
+    for name in ("shot.v1.rad", "shot.v2.rad", "shot.vfx.v1.rad", "other.v1.rad", "*.v1.rad"):
+        (tmp_path / name).write_text("x")
+    names = lambda stem: sorted(p.name for p in ws_mod._version_files(tmp_path, stem, ".rad"))
+    assert names("shot") == ["shot.v1.rad", "shot.v2.rad"]
+    assert names("*") == ["*.v1.rad"]
+    assert names("shot.vfx") == ["shot.vfx.v1.rad"]
+
+
 def test_unpack_v2_rejects_truncated_file():
     with pytest.raises(ValueError, match="too small"):
         ws_mod._unpack_rad_v2(b"RAD!" + b"\x00" * 10)
@@ -1722,6 +1743,35 @@ def test_upload_saves_allowed_files_and_skips_the_rest(ws):
     assert (dest / "escape.png").read_bytes() == b"ESCAPED"
     assert not (dest / "notes.txt").exists()
     assert not (ws.inp.parent.parent / "escape.png").exists()
+
+
+def test_upload_never_overwrites_an_existing_asset(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("hero.png", b"first")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("hero.png", b"second")])))
+    assert body(resp) == {"success": True, "saved": ["hero_1.png"]}
+    dest = ws.inp / "radiance_assets"
+    assert (dest / "hero.png").read_bytes() == b"first"
+    assert (dest / "hero_1.png").read_bytes() == b"second"
+
+
+def test_upload_over_the_limit_is_refused_and_removed(ws, monkeypatch):
+    monkeypatch.setattr(ws.m, "_max_asset_upload_bytes", lambda: 20)
+    resp = run(ws.m.upload_asset(Req(parts=[
+        _Part("small.png", b"0123456789"),
+        _Part("big.png", b"x" * 64),
+    ])))
+    assert resp.status == 413
+    assert body(resp)["saved"] == ["small.png"]
+    dest = ws.inp / "radiance_assets"
+    assert (dest / "small.png").exists()
+    assert not (dest / "big.png").exists()
+
+
+def test_upload_limit_reads_the_environment(ws, monkeypatch):
+    monkeypatch.setenv("RADIANCE_MAX_ASSET_UPLOAD_MB", "2")
+    assert ws.m._max_asset_upload_bytes() == 2 * 1024 * 1024
+    monkeypatch.setenv("RADIANCE_MAX_ASSET_UPLOAD_MB", "junk")
+    assert ws.m._max_asset_upload_bytes() == 16384 * 1024 * 1024
 
 
 def test_upload_500_without_an_input_directory(ws, monkeypatch):

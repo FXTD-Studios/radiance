@@ -36,10 +36,56 @@ def _remote_bridge_allowed() -> bool:
     return os.environ.get("RADIANCE_ALLOW_REMOTE_BRIDGE", "").strip().lower() in {"1", "true", "yes"}
 
 
+#: A browser can POST to a loopback port from any web page. The request line
+#: and headers used to fail as bad JSON and be skipped, and a JSON body line was
+#: then executed. The bridge speaks JSON lines only; an HTTP request ends it.
+_HTTP_METHODS = (b"GET ", b"POST ", b"PUT ", b"HEAD ", b"OPTIONS ", b"DELETE ", b"PATCH ",
+                 b"CONNECT ", b"TRACE ")
+
+#: Nonces of accepted `queue` requests, kept for the signature's time window.
+_SEEN_NONCES: dict = {}
+_NONCE_LOCK = threading.Lock()
+
+
+def _queue_auth_error(msg) -> Optional[str]:
+    """None when `msg` is a validly signed queue request, else why not.
+
+    `queue` submits a workflow, and write nodes take absolute paths, so an
+    unsigned one let anything that reached the port run workflows and write
+    files. It is signed with the Nuke listener's token (core/dcc_auth.py).
+    """
+    import hmac
+    from radiance.core.dcc_auth import MAX_SKEW, load_or_create_token, queue_signature
+
+    token = load_or_create_token()
+    if not token:
+        return ("no DCC token: set RADIANCE_DCC_AUTH_TOKEN or make "
+                "~/.radiance/dcc_token writable")
+    ts, nonce, sig = msg.get("ts"), msg.get("nonce"), msg.get("sig")
+    if not isinstance(ts, int) or not isinstance(nonce, str) or not isinstance(sig, str) \
+            or not 16 <= len(nonce) <= 128:
+        return ("unsigned request: queue needs ts, nonce and sig "
+                "(radiance.core.dcc_auth.sign_queue builds them)")
+    now = time.time()
+    if abs(now - ts) > MAX_SKEW:
+        return "stale request: ts is more than 5 minutes from this machine's clock"
+    if not hmac.compare_digest(sig, queue_signature(token, ts, nonce, msg.get("prompt", {}))):
+        return "bad signature"
+    with _NONCE_LOCK:
+        for old, seen in list(_SEEN_NONCES.items()):
+            if now - seen > 2 * MAX_SKEW:
+                del _SEEN_NONCES[old]
+        if nonce in _SEEN_NONCES:
+            return "replayed request: nonce already used"
+        _SEEN_NONCES[nonce] = now
+    return None
+
+
 def _handle(conn, addr=None):
     try:
         conn.settimeout(15.0)
         buf = b""
+        first_line = True
         while True:
             c = conn.recv(1)
             if not c:
@@ -57,6 +103,10 @@ def _handle(conn, addr=None):
                         break
                 return
             if c == b"\n":
+                if first_line and buf.lstrip().startswith(_HTTP_METHODS):
+                    logger.warning("[Radiance] DCC Bridge: HTTP request from %s refused.", addr)
+                    return
+                first_line = False
                 line = buf.decode("utf-8", errors="replace").strip()
                 buf = b""
                 if not line:
@@ -85,6 +135,11 @@ def _handle(conn, addr=None):
                                  "Use 'queue' to submit a workflow prompt instead.",
                     }) + "\n").encode())
                 elif cmd == "queue":
+                    auth_error = _queue_auth_error(msg)
+                    if auth_error:
+                        logger.warning("[Radiance] DCC Bridge: queue from %s refused: %s", addr, auth_error)
+                        conn.sendall((json.dumps({"ok": False, "error": auth_error}) + "\n").encode())
+                        continue
                     payload = msg.get("prompt", {})
                     try:
                         import urllib.request
