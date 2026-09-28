@@ -171,6 +171,7 @@ Read the full [known limitations](KNOWN_ISSUES.md).
 ## Documentation
 
 - [Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)
+- [Wiki: guides, tutorials, and troubleshooting](https://github.com/fxtd-studios/radiance/wiki)
 - [Node reference](docs/nodes/README.md)
 - [Release notes](https://github.com/fxtd-studios/radiance/releases)
 - [Changelog and migration notes](CHANGELOG.md)
