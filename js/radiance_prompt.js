@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { setWidgetVisible } from "./radiance_widget_utils.js";
+import { isInputLive, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -118,10 +118,21 @@ function _applyNegStrengthLock(node, hidden) {
     refreshNodeSize(node);
 }
 
+// ALBABIT-FIX: resolution only sizes the reference images, so it stays hidden
+// until one arrives from a node that runs.
+function _applyResolutionVisibility(node) {
+    const resW = node.widgets?.find(w => w.name === "resolution");
+    const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i));
+    if (!resW || !resW.hidden === show) return;
+    setWidgetVisible(resW, show, node, { fallbackType: "number" });
+    refreshNodeSize(node);
+}
+
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
 // Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
 function _refreshLiveState(node) {
     updatePresetDivergenceMarkers(node);
+    _applyResolutionVisibility(node);
     const liveState = _liveMiniMaxState(node);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;
