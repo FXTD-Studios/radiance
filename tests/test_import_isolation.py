@@ -51,7 +51,8 @@ for name in ["torch", "torch.nn", "torch.nn.functional",
              "comfy", "comfy.samplers", "comfy.sample", "comfy.model_management",
              "comfy.utils", "comfy.model_base", "comfy.sd", "comfy.latent_formats",
              "comfy.nested_tensor", "comfy.cldm", "comfy.cldm.control_types",
-             "folder_paths", "node_helpers"]:
+             "folder_paths", "node_helpers",
+             "comfy_api", "comfy_api.latest", "comfy_api.latest.io", "comfy_extras"]:
     mod = types.ModuleType(name)
     mod.__dict__.update({a: MagicMock() for a in dir(MagicMock())})
     mod.__getattr__ = lambda n: MagicMock()
@@ -95,6 +96,11 @@ sys.modules["node_helpers"].conditioning_set_values = lambda conditioning, value
 sys.modules["comfy.cldm.control_types"].UNION_CONTROLNET_TYPES = {}
 sys.modules["comfy"].cldm = sys.modules["comfy.cldm"]
 sys.modules["comfy.cldm"].control_types = sys.modules["comfy.cldm.control_types"]
+
+# ALBABIT-FIX: the Prompt is a V3 node (comfy_api, which itself imports server,
+# and comfy_extras' native nodes). Its base class must be a real class, as nn.Module.
+sys.modules["comfy_api.latest"].io = sys.modules["comfy_api.latest.io"]
+sys.modules["comfy_api.latest.io"].ComfyNode = type("ComfyNode", (), {})
 
 # Make aiohttp and server unimportable even if the dev machine has them, so
 # this test measures the same thing on a laptop as it does in CI.
