@@ -111,11 +111,21 @@ function _applyNegStrengthLock(node, hidden) {
     refreshNodeSize(node);
 }
 
-// ALBABIT-FIX: resolution only sizes the reference images, so it stays hidden
-// until one arrives from a node that runs.
+// ALBABIT-FIX: the Loader on model_meta says Flux.2, which scales its reference
+// images to about 1 megapixel. Auto-Detect or no Loader: unknown, false.
+function _loaderIsFlux2(node) {
+    const source = _findModelMetaSourceNode(node);
+    const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");
+    const preset = value("preset");
+    return preset === "Custom" ? value("model_type").startsWith("flux2") : preset.startsWith("Flux.2");
+}
+
+// ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
+// stays hidden until one arrives from a node that runs, and under Flux.2.
 function _applyResolutionVisibility(node) {
     const resW = node.widgets?.find(w => w.name === "resolution");
-    const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i));
+    const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
+        && !_loaderIsFlux2(node);
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
     refreshNodeSize(node);

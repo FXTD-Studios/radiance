@@ -19,7 +19,7 @@ vm.runInContext(strip('radiance_widget_utils.js') + strip('radiance_prompt.js')
 context.setWidgetVisible = (widget, visible) => { widget.hidden = !visible; };
 
 // A Prompt whose image_1 comes from `source`; `through` puts a node between them.
-function prompt(source, through) {
+function prompt(source, through, loader) {
     const nodes = {};
     const links = {};
     const add = (id, spec) => (nodes[id] = { id, mode: spec.mode ?? 0, inputs: spec.inputs ?? [] });
@@ -30,13 +30,19 @@ function prompt(source, through) {
         feed = add(3, { mode: through, inputs: [{ name: 'image', type: 'IMAGE', link: 5 }] });
     }
     links[7] = { origin_id: feed.id, target_id: 1, type: 'IMAGE' };
+    if (loader) {
+        nodes[4] = { id: 4, mode: 0, inputs: [],
+                     widgets: Object.entries(loader).map(([name, value]) => ({ name, value })) };
+        links[8] = { origin_id: 4, target_id: 1, type: 'STRING' };
+    }
     const graph = { links, getNodeById: id => nodes[id] };
     Object.values(nodes).forEach(n => { n.graph = graph; });   // as LiteGraph sets it
     return {
         graph,
         widgets: [{ name: 'resolution', value: 1024, hidden: true }],
         inputs: [{ name: 'clip', link: null }, { name: 'images.image_1', type: 'IMAGE', link: 7 },
-                 { name: 'images.image_2', type: 'IMAGE', link: null }],
+                 { name: 'images.image_2', type: 'IMAGE', link: null },
+                 { name: 'model_meta', type: 'STRING', link: loader ? 8 : null }],
     };
 }
 
@@ -61,4 +67,14 @@ test('no image connected hides it, a later disconnect hides it again', () => {
     assert.equal(shown(node), true);
     node.inputs[1].link = null;
     assert.equal(shown(node), false);
+});
+
+test('a Flux.2 Loader hides it: Flux.2 scales its references itself', () => {
+    assert.equal(shown(prompt(0, undefined, { preset: 'Flux.2' })), false);
+    assert.equal(shown(prompt(0, undefined, { preset: 'Custom', model_type: 'flux2-klein' })), false);
+});
+
+test('a Qwen-Image 2.1 Loader, or one still auto-detecting, keeps it', () => {
+    assert.equal(shown(prompt(0, undefined, { preset: 'Qwen-Image 2.1' })), true);
+    assert.equal(shown(prompt(0, undefined, { preset: 'Custom', model_type: 'Auto-Detect' })), true);
 });
