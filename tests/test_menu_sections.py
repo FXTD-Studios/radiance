@@ -101,6 +101,18 @@ class TestCategoriesActuallyApplied:
                 mismatched[key] = (declared, applied)
         assert not mismatched, f"declared vs applied disagree: {mismatched}"
 
+    def test_a_v3_node_declares_what_branding_applies(self):
+        """ComfyUI reads a V3 node's name, category and search aliases from its
+        schema and ignores what apply_radiance_branding rewrites."""
+        import radiance
+        from comfy_api.latest import io
+        v3 = {k: c for k, c in _live().items() if issubclass(c, io.ComfyNode)}
+        assert v3, "no V3 node registered"
+        for key, cls in v3.items():
+            schema = cls.define_schema()
+            assert (schema.display_name, schema.category, schema.search_aliases) == (
+                radiance.NODE_DISPLAY_NAME_MAPPINGS[key], cls.CATEGORY, cls.SEARCH_ALIASES), key
+
 
 class TestOverridesAreNotDeadWeight:
 

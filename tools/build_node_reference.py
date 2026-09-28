@@ -77,6 +77,9 @@ def _describe_input(entry: Any, name: str = "") -> Tuple[str, str, str, str]:
     """(type, default, range or choices, tooltip) for one INPUT_TYPES entry."""
     kind = entry[0] if isinstance(entry, (list, tuple)) and entry else entry
     opts = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 and isinstance(entry[1], dict) else {}
+    # ALBABIT-FIX: a V3 node lists its choices as ("COMBO", {"options": [...]}).
+    if kind == "COMBO" and isinstance(opts.get("options"), list):
+        kind = opts["options"]
     tooltip = opts.get("tooltip", "")
     default = opts.get("default", "")
 

@@ -75,7 +75,7 @@ def test_encoder_returns_debug_outputs_and_uses_model_meta():
     clip = FakeClip(("t5xxl",))
     encoder = RadianceCinematicPromptEncoder()
 
-    result = encoder.encode_cinematic(
+    result = encoder.execute(
         clip,
         base_prompt="a hero crossing a rainy street at night",
         style_preset="None (Custom)",
@@ -119,14 +119,14 @@ class TestMiniMaxArch:
     def test_minimax_ui_channel_flags_weak_neg_arch(self):
         clip = FakeClip(("qwen3vl_32b",))
         encoder = RadianceCinematicPromptEncoder()
-        result = encoder.encode_cinematic(clip, base_prompt="a rooftop chase at dusk")
+        result = encoder.execute(clip, base_prompt="a rooftop chase at dusk")
         assert result["ui"]["weak_neg_arch"] == [True]
 
     @pytest.mark.real_torch
     def test_non_minimax_ui_channel_does_not_flag_weak_neg_arch(self):
         clip = FakeClip(("t5xxl", "g", "l"))  # sd3, not in _WEAK_NEG_ARCHS
         encoder = RadianceCinematicPromptEncoder()
-        result = encoder.encode_cinematic(clip, base_prompt="a rooftop chase at dusk")
+        result = encoder.execute(clip, base_prompt="a rooftop chase at dusk")
         assert result["ui"]["weak_neg_arch"] == [False]
 
     @pytest.mark.real_torch
@@ -135,6 +135,6 @@ class TestMiniMaxArch:
         # T5 / LLM tokenizers take any length, so nothing is cut for any arch.
         long_prompt = "detail " * 500
         for keys in (("qwen3vl_32b",), ("t5xxl", "l")):
-            result = RadianceCinematicPromptEncoder().encode_cinematic(
+            result = RadianceCinematicPromptEncoder().execute(
                 FakeClip(keys), base_prompt=long_prompt)
             assert result["result"][5] > 400, keys
