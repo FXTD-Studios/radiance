@@ -1923,7 +1923,7 @@ _REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein")
 # templates: the first scaled to a Kontext resolution, which also sizes the
 # empty latent. The native encoder takes 3 images and scales them itself.
 def _qwen_edit_images(references):
-    ordered = [references[n] for n in sorted(references, key=lambda n: int(n.rsplit("_", 1)[-1]))]
+    ordered = list(references.values())
     if len(ordered) > 3:
         raise ValueError(f"Prompt: Qwen-Image Edit reads 3 reference images and {len(ordered)} "
                          f"are connected. Disconnect image_4 and above.")
@@ -1937,8 +1937,8 @@ def _qwen_edit_images(references):
 # sized on image_1.
 def _flux2_references(vae, references):
     latents, empty = [], None
-    for name in sorted(references, key=lambda n: int(n.rsplit("_", 1)[-1])):
-        scaled = nodes_post_processing.ImageScaleToTotalPixels.execute(references[name], "lanczos", 1.0, 1).args[0]
+    for image in references.values():
+        scaled = nodes_post_processing.ImageScaleToTotalPixels.execute(image, "lanczos", 1.0, 1).args[0]
         latents.append(vae.encode(scaled[:, :, :, :3]))
         if empty is None:
             empty = nodes_flux.EmptyFlux2LatentImage.execute(width=scaled.shape[2], height=scaled.shape[1]).args[0]
@@ -2125,7 +2125,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
 
         # ALBABIT-FIX: only Qwen-Image 2.1, Qwen-Image Edit and Flux.2 read reference
         # images here; any other encoder would drop them without a word.
-        references = {name: image for name, image in (images or {}).items() if image is not None}
+        slots = sorted(images or {}, key=lambda n: int(n.rsplit("_", 1)[-1]))
+        references = {name: images[name] for name in slots if images[name] is not None}
         if references and resolved_arch not in _REFERENCE_ARCHS:
             raise ValueError(
                 f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit and "
@@ -2198,11 +2199,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 "[Encoder] %d-token prompt on %s, trained on %d: the tail may carry "
                 "little weight. Nothing was cut.", real_count, resolved_arch, window)
 
-        # ALBABIT-FIX: with reference images the native TextEncodeQwenImage21 encodes
-        # both prompts: it resizes the images, shows them to the vision tower,
-        # splices their VAE latents in and sizes the latent on image_1. Qwen-Image
-        # Edit's native encoder does the same for one prompt at a time. Flux.2
-        # encodes the text as usual and adds the references to both prompts.
+        # ALBABIT-FIX: reference images go through each family's native nodes:
+        # TextEncodeQwenImage21 encodes both prompts at once, TextEncodeQwenImageEditPlus
+        # one at a time, and Flux.2 adds ReferenceLatent to both.
         flux2_refs = qwen_edit_images = None
         if references and resolved_arch == "qwen_image21":
             positive_cond, native_negative, latent = nodes_qwen.TextEncodeQwenImage21.execute(
