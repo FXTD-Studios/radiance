@@ -167,7 +167,7 @@ class RadianceEnergyMask:
         return {
             "required": {
                 "conditioning": ("CONDITIONING", {
-                    "tooltip": "Positive conditioning. Connect the output to RadianceSamplerPro's `positive`.",
+                    "tooltip": "Positive conditioning. Connect the output to the Sampler's `positive`.",
                 }),
                 "mask": ("MASK", {
                     "tooltip": (

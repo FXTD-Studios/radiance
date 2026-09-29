@@ -25,7 +25,7 @@ Radiance brings 147 visible nodes into your workflows for processing images and 
 
 | Your task | Radiance tools |
 |---|---|
-| Create and process HDR images | HDR VAE Encode and Decode, SDR → HDR tools, HDR diagnostics |
+| Create and process HDR images | VAE Encode and Decode (HDR), SDR → HDR tools, HDR diagnostics |
 | Manage colour | ACES, OpenColorIO, colour-space conversion, LUTs, and CDL |
 | Review images and video | Viewer with Simple and Advanced modes, scopes, comparison, and playback |
 | Prepare VFX shots | Masks, depth, optical effects, estimated passes, and relighting |

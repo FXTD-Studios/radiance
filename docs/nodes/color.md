@@ -36,7 +36,7 @@ Apply a saved grade_info JSON to any image.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Image to grade, processed in its own encoding (the grade is plain arithmetic, not colour-managed). Single-channel images are expanded to RGB. |
-| `grade_info` | string |  |  | grade_info JSON from Radiance Grade or Grade Match (lift, gamma, gain, offset lists plus contrast, pivot, saturation). Missing keys fall back to neutral; invalid JSON passes the image through unchanged. |
+| `grade_info` | string |  |  | grade_info JSON from Grade or Grade Match (lift, gamma, gain, offset lists plus contrast, pivot, saturation). Missing keys fall back to neutral; invalid JSON passes the image through unchanged. |
 | `strength` (optional) | float | 1 | 0 to 1, step 0.05 | Mix between the original image (0) and the fully graded result (1). |
 
 **Outputs**
@@ -119,7 +119,7 @@ Apply an ASC CDL (Slope/Offset/Power/Saturation) colour transform.
 | `power_g` | float | 1 | 0.01 to 4, step 0.01 | Green channel power (gamma). |
 | `power_b` | float | 1 | 0.01 to 4, step 0.01 | Blue channel power (gamma). |
 | `saturation` | float | 1 | 0 to 4, step 0.01 | Global saturation. 1.0 = unity. |
-| `cdl_data` (optional) | string |  |  | JSON CDL data from Radiance CDL Import. When connected, its slope, offset, power and saturation values replace the sliders above. |
+| `cdl_data` (optional) | string |  |  | JSON CDL data from CDL Import. When connected, its slope, offset, power and saturation values replace the sliders above. |
 
 **Outputs**
 
@@ -149,7 +149,7 @@ Export current CDL values to an ASC-compliant .cdl or .cc file.
 | `power_g` | float | 1 | 0.01 to 4, step 0.001 | Green power (exponent) written to the file. 1.0 = unity. |
 | `power_b` | float | 1 | 0.01 to 4, step 0.001 | Blue power (exponent) written to the file. 1.0 = unity. |
 | `saturation` | float | 1 | 0 to 4, step 0.001 | Saturation written to the file's SaturationNode. 1.0 = unity. |
-| `cdl_data` (optional) | string |  |  | JSON CDL data (from CDL Import or the cdl_info output of CDL Transform). When connected, its values replace the sliders above. |
+| `cdl_data` (optional) | string |  |  | JSON CDL data (from CDL Import or the cdl_info output of a CDL node). When connected, its values replace the sliders above. |
 
 **Outputs**
 

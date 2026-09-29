@@ -27,7 +27,7 @@ class RadianceVideoMaskPropagator:
         return {
             "required": {
                 "masks": ("MASK", {"tooltip": "Mask sequence, one per frame. Frames with any mask content are keyframes; empty frames are filled by propagation."}),
-                "flow_vectors": ("IMAGE", {"tooltip": "32-bit flow vectors from Radiance Optical Flow."}),
+                "flow_vectors": ("IMAGE", {"tooltip": "32-bit flow vectors from MotionVectors."}),
                 "propagation_mode": (["Forward", "Backward", "Bidirectional"], {"default": "Bidirectional", "tooltip": "Forward carries masks from earlier frames, Backward from later frames. Bidirectional runs both and keeps the union (maximum) on filled frames."}),
             }
         }

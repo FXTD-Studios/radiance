@@ -493,7 +493,7 @@ class RadianceHDRHighlightComposite:
                         "default": "sRGB",
                         "tooltip": (
                             "Transfer curve of original_image, used to linearise it so it matches "
-                            "hdr_image. Use the same setting as SDR to HDR Prepare."
+                            "hdr_image. Use the same setting as SDR → HDR Prepare."
                         ),
                     },
                 ),

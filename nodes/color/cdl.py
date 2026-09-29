@@ -33,7 +33,7 @@ class RadianceCDLTransform:
                 "saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.01, "tooltip": "Global saturation. 1.0 = unity."}),
             },
             "optional": {
-                "cdl_data": ("STRING", {"forceInput": True, "tooltip": "JSON CDL data from Radiance CDL Import. When connected, its slope, offset, power and saturation values replace the sliders above."}),
+                "cdl_data": ("STRING", {"forceInput": True, "tooltip": "JSON CDL data from CDL Import. When connected, its slope, offset, power and saturation values replace the sliders above."}),
             }
         }
 
@@ -152,7 +152,7 @@ class RadianceCDLExport:
                 "saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.001, "tooltip": "Saturation written to the file's SaturationNode. 1.0 = unity."}),
             },
             "optional": {
-                "cdl_data": ("STRING", {"forceInput": True, "tooltip": "JSON CDL data (from CDL Import or the cdl_info output of CDL Transform). When connected, its values replace the sliders above."}),
+                "cdl_data": ("STRING", {"forceInput": True, "tooltip": "JSON CDL data (from CDL Import or the cdl_info output of a CDL node). When connected, its values replace the sliders above."}),
             }
         }
 

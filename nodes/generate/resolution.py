@@ -1059,7 +1059,7 @@ class RadianceResolution:
         "Resolution info string.",
         "Playback frame rate. Always the widget value — never 0.0.",
         "Total video frames (or batch size for images).",
-        "Latent format string — wire to Sampler Pro latent_format input.",
+        "Latent format string, for reference.",
         "Duration in seconds (video_frames / frame_rate). 0.0 for images.",
         "Crop box {x, y, width, height} to remove model-alignment padding. Wire into RadianceHDRVAEDecode's crop_bbox input.",
     )
