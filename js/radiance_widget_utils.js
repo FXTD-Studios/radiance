@@ -89,6 +89,38 @@ export function isInputLive(node, input) {
     return liveSourceNode(node, input) !== null;
 }
 
+// ALBABIT-FIX: fit a node to its visible widgets plus the height the user
+// dragged in. Showing or hiding a widget used to snap it back to its minimum
+// height, on every reload too. The added height lives in node.properties, so
+// it is saved with the workflow.
+export function fitNodeSize(node) {
+    if (!node?.computeSize) return;
+    trackUserHeight(node);
+    const [minWidth, minHeight] = node.computeSize();
+    const width = Math.max(node.size[0], minWidth);
+    const height = minHeight + (node.properties?.radExtraHeight ?? 0);
+    if (node.size[0] === width && node.size[1] === height) return;
+    node._radFitting = true;
+    node.setSize([width, height]);
+    node._radFitting = false;
+    node.setDirtyCanvas?.(true, true);
+}
+
+// A resize by the user reaches onResize, on the canvas and in the Vue nodes
+// alike; the ones fitNodeSize and a graph load make are not the user's.
+function trackUserHeight(node) {
+    if (node._radTracksHeight) return;
+    node._radTracksHeight = true;
+    const onResize = node.onResize;
+    node.onResize = function (size) {
+        const result = onResize?.apply(this, arguments);
+        if (!this._radFitting && !globalThis.app?.configuringGraph) {
+            (this.properties ??= {}).radExtraHeight = Math.max(0, size[1] - this.computeSize()[1]);
+        }
+        return result;
+    };
+}
+
 /**
  * Show or hide a widget, collapsing its row when hidden.
  *
@@ -178,4 +210,4 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     return false;
 }
 
-export default { forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, setWidgetVisible };
+export default { fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, setWidgetVisible };

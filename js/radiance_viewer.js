@@ -4655,7 +4655,7 @@ class RadianceViewer {
                 // Split by period or newline to allow paragraph-style or list-style entries, filter out empties
                 const lines = code.split(/[\n\.]/).map(l => l.trim()).filter(l => l && l.length > 2);
 
-                // Find CLIPTextEncode or Radiance Prompt node
+                // Find CLIPTextEncode or Prompt node
                 const nodes = app.graph._nodes;
                 const clipNode = nodes.find(n =>
                     (n.type === 'CLIPTextEncode' && n.title !== 'Negative Prompt') ||
@@ -4664,7 +4664,7 @@ class RadianceViewer {
                 );
 
                 if (!clipNode) {
-                    this._termLog('error', '[Batch] Could not find a primary CLIPTextEncode or Radiance Prompt node in graph!');
+                    this._termLog('error', '[Batch] Could not find a primary CLIPTextEncode or Prompt node in graph!');
                     return;
                 }
                 const textWidget = clipNode.widgets.find(w => w.name === 'text' || w.name === 'base_prompt');
@@ -21265,7 +21265,7 @@ window.RadianceViewer = RadianceViewer;
 // ═══════════════════════════════════════════════════════════════════════════════
 // The Lite Viewer node was removed; the Viewer's Simple mode does its job. A
 // graph saved with one is rewritten before ComfyUI configures it, so it opens
-// as a Radiance Viewer in Simple mode instead of a missing node: same links,
+// as a Viewer in Simple mode instead of a missing node: same links,
 // same input_space and fps. Runs on the root graph and every subgraph.
 const VIEWER_SOCKETS = [
     ['image', 'IMAGE,VIDEO', null], ['compare_image', 'IMAGE,VIDEO', null], ['zdepth', 'IMAGE,VIDEO', null],
@@ -21545,7 +21545,7 @@ app.registerExtension({
         nodeType.prototype.onExecuted = function (message) {
             // v2.3: Error handling - show backend errors instead of silent failure
             if (message?.error?.length) {
-                const errMsg = "Radiance Viewer Error: " + message.error.join("; ");
+                const errMsg = "Viewer error: " + message.error.join("; ");
                 if (this.radianceViewer?._termLog) {
                     this.radianceViewer._termLog('error', errMsg);
                 } else {

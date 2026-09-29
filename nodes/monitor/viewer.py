@@ -361,7 +361,7 @@ class RadianceViewer:
     RETURN_NAMES = ("image",)
     FUNCTION = "view"
     OUTPUT_NODE = True
-    DESCRIPTION = """Radiance Viewer, VFX review for scene-linear and HDR images:
+    DESCRIPTION = """VFX review for scene-linear and HDR images:
 • Simple mode (picture, compare, playback) or Advanced (every panel), switched in its title bar
 • Compare against compare_image or a pinned frame: B, wipe, difference, blink
 • GPU Waveform / RGB Parade / Vectorscope / Histogram scopes
@@ -420,7 +420,7 @@ class RadianceViewer:
         extra_pnginfo: Optional[Any] = None,
         unique_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Process and display the image in the Radiance Viewer."""
+        """Process and display the image in the Viewer."""
 
         # ── Handle Custom VIDEO dicts / Extractor ──
         def _extract_tensor(x: Any) -> Any:
@@ -1310,7 +1310,7 @@ class RadianceViewer:
 class RadianceGradeApply:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """
-    Dedicated node to bake Radiance Viewer grading math into an image tensor.
+    Dedicated node to bake the Viewer's grading math into an image tensor.
     Useful for exporting or passing a graded image downstream in the pipeline.
     """
 

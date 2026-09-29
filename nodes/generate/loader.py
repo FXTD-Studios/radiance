@@ -2,7 +2,7 @@
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Radiance Read Models  —  nodes_loader.py
+#  Loader  —  nodes/generate/loader.py
 #  v3.1.1: Deduplicated — all shared utilities live in loader_utils.py (SSOT).
 #  This file contains only ComfyUI node class definitions and registration.
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -106,7 +106,7 @@ class RadianceLoraStack:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Generate"
     DESCRIPTION = (
         "Compose up to 5 LoRAs into an accumulating LORA_STACK. "
-        "Chain multiple stacks together. Feed into Radiance Read Models."
+        "Chain multiple stacks together. Feed into the Loader."
     )
 
     def build_stack(
@@ -279,7 +279,7 @@ class RadianceUnifiedLoader:
                 ),
                 # ── LoRA (external stack input) ──
                 "lora_stack":      ("LORA_STACK", {"default": None,
-                    "tooltip": "Accept a LORA_STACK from RadianceLoraStack node."}),
+                    "tooltip": "Accept a LORA_STACK from a LoRA Stack node."}),
                 # ── Options ──
                 "check_vram":  (["On", "Off"], {"default": "On",
                     "tooltip": "Estimate VRAM before load and warn if tight."}),
@@ -934,7 +934,7 @@ class RadianceControlNetApply:
 
         # 3. Advanced Application (Standard ComfyUI Logic with added safety)
         # ComfyUI's ControlNets take the hint channels-first, as its own
-        # ControlNet Apply passes it (IMAGE is B,H,W,C). The hint used to go in
+        # Apply ControlNet passes it (IMAGE is B,H,W,C). The hint used to go in
         # as B,H,W,C and a VAE was never passed, so ControlNets that encode the
         # hint with the VAE could not work.
         control_hint = image.movedim(-1, 1)

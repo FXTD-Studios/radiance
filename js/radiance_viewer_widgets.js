@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Radiance Viewer — UI Widget Module
+// Viewer — UI Widget Module
 // Prototype-extension for RadianceViewer
 // Uses deferred setup so the module loads regardless of
 // RadianceViewer's module evaluation order.

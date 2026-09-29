@@ -37,8 +37,8 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 - [Luminance Guidance](#luminance-guidance)
 - [OCIO List Colorspaces](#ocio-list-colorspaces)
 - [OCIO Transform](#ocio-transform)
-- [SDR to HDR Expand](#sdr-to-hdr-expand)
-- [SDR to HDR Prepare](#sdr-to-hdr-prepare)
+- [SDR → HDR Expand](#sdr--hdr-expand)
+- [SDR → HDR Prepare](#sdr--hdr-prepare)
 - [SDR → HDR Recover](#sdr--hdr-recover)
 - [SDR → HDR Universal](#sdr--hdr-universal)
 - [Tonemap](#tonemap)
@@ -435,16 +435,16 @@ Full colour pipeline: linearise → adapt → primaries → HDR compress. Output
 
 `RadianceHDRDiagnostics`
 
-Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stops, and live metric floats (peak_nit, ev_range, clipped_pct, is_hdr) — replaces the separate RadianceHDRAnalysis node.
+Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stops, and live metric floats (peak_nit, ev_range, clipped_pct, is_hdr) — replaces the separate HDR Analysis node.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | HDR image before compression, encoded as set by colorspace. Metrics treat linear 1.0 as 203 nits. |
-| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Must match the value used in RadianceHDRTurboEncoder. |
+| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Must match the value used in HDR Turbo Encoder. |
 | `model_preset_used` (optional) | string |  |  | Resolved model key from AutoLogSelect. |
-| `stats_json` (optional) | string |  |  | JSON from RadianceHDRPerChannelNorm (optional). |
+| `stats_json` (optional) | string |  |  | JSON from HDR Per-Channel Norm (optional). |
 | `coherence_map` (optional) | IMAGE |  |  | Optional coherence map (0 to 1). Only its mean is reported, as coherence_mean in the JSON. |
 | `colorspace` (optional) | choice | `Linear (sRGB)` | `Linear (sRGB)`, `ACEScg`, `sRGB`, `Rec.709` | Input colour space for nit/EV-range estimation. |
 
@@ -549,7 +549,7 @@ Composite AI-reconstructed HDR highlights back onto original linearised SDR. Non
 | `original_image` | IMAGE |  |  | Original display-encoded SDR image. Linearised with inverse_eotf and used outside the mask; its alpha is carried to the output. |
 | `hdr_image` | IMAGE |  |  | Scene-linear HDR reconstruction (e.g. from HDR Decoder). Used inside the mask; resized bilinearly if its size differs from original_image. |
 | `clip_mask` | MASK |  |  | Blend guide from Clip Detector: 1 takes hdr_image, 0 keeps the original. |
-| `inverse_eotf` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Linear (no-op)` | Transfer curve of original_image, used to linearise it so it matches hdr_image. Use the same setting as SDR to HDR Prepare. |
+| `inverse_eotf` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Linear (no-op)` | Transfer curve of original_image, used to linearise it so it matches hdr_image. Use the same setting as SDR → HDR Prepare. |
 | `blend_softness` (optional) | int | 24 | 0 to 128, step 1 | Feathering on composite edge in pixels. 0 = hard cut. |
 | `highlight_strength` (optional) | float | 1 | 0 to 1, step 0.05 | How much of the AI highlight reconstruction to use. 1.0 = full. |
 
@@ -570,7 +570,7 @@ Apply a Radiance HDR LoRA to a diffusion model. Outputs the patched MODEL and th
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `model` | MODEL |  |  | Diffusion model to patch. It is cloned and the LoRA deltas are added as ComfyUI patches, so the upstream model is left untouched. |
-| `lora_dict` | LORA_DICT |  |  | LoRA tensors and metadata from Radiance HDR LoRA Loader. If no tensor matches a model weight the node raises an error. |
+| `lora_dict` | LORA_DICT |  |  | LoRA tensors and metadata from HDR LoRA Loader. If no tensor matches a model weight the node raises an error. |
 | `strength` | float | 1 | 0 to 2, step 0.05 | LoRA strength multiplier. 1.0 = trained weight. 0 = no effect. |
 | `model_hint` (optional) | string |  |  | Cross-checks the LoRA's trained model against this hint and warns if mismatched. |
 
@@ -680,7 +680,7 @@ Synthesise HDR imagery from SDR input and optional guidance signals.
 | `energy_target` | float | 10 | 1 to 100, step 1 | Approximate brightness multiplier reached at SDR white (10.0 lifts 1.0 to about 9.6, roughly 3.3 stops). 1.0 = no lift. |
 | `recovery_iters` | int | 3 | 0 to 8, step 1 | Pyramid depth. The lift is applied to the 1/2^N low-pass, so detail finer than about 2^N px keeps its original contrast. 0 lifts the whole image. It does not reconstruct clipped detail. |
 | `chroma_preservation` | float | 0.8 | 0 to 1, step 0.05 | 0 adds neutral highlight energy, reducing saturation as brightness rises. 1 preserves the original low-pass RGB ratios. Both use the same lifted luminance. |
-| `guidance_mask` (optional) | MASK |  |  | Per-pixel guidance mask from Radiance Luminance Guidance. |
+| `guidance_mask` (optional) | MASK |  |  | Per-pixel guidance mask from Luminance Guidance. |
 | `guidance_nits` (optional) | float | 0 | 0 to 10000, step 50 | Target peak in nits inside guidance_mask, on the package's scale (203 nits = 1.0). 0 = ignore the mask and use energy_target everywhere. |
 
 **Outputs**
@@ -781,7 +781,7 @@ Apply an OCIO colorspace transform to an image. Supports any source/target pair 
 | `image` | IMAGE |
 | `metadata` | STRING |
 
-## SDR to HDR Expand
+## SDR → HDR Expand
 
 `RadianceSDRtoHDRExpand`
 
@@ -804,7 +804,7 @@ Expand an SDR image into HDR headroom via inverse OETF and mathematical highligh
 | :--- | :--- |
 | `image` | IMAGE |
 
-## SDR to HDR Prepare
+## SDR → HDR Prepare
 
 `RadianceSDRToHDRPrepare`
 

@@ -29,7 +29,7 @@ logger = logging.getLogger("radiance.nodes.generate")
 NODE_CLASS_MAPPINGS = {
     "RadianceSamplerPro": RadianceSamplerPro,
     "RadianceHDRVAEDecode": RadianceHDRVAEDecode,
-    # 3.5.0: the encoder HDR VAE Decode's Auto/Direct HDR log inversion was
+    # 3.5.0: the encoder VAE Decode (HDR)'s Auto/Direct HDR log inversion was
     # built for. Implemented and tested since v2 as RadianceVAE4KEncode, never
     # registered, so no latent on the menu could be decoded back to HDR.
     "RadianceHDRVAEEncode": RadianceHDRVAEEncode,

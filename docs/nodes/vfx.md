@@ -215,7 +215,7 @@ Apply cinematic depth of field blur with optional depth map input.
 
 `RadianceDepthMapGenerator`
 
-Depth Anything V2 monocular depth estimation. Video-safe — standardizes each frame with spatial-temporal alignment preventing flickering. Outputs 3-channel grayscale depth map. Connect to Depth of Field node for realistic defocus blur.
+Depth Anything V2 monocular depth estimation. Video-safe — standardizes each frame with spatial-temporal alignment preventing flickering. Outputs 3-channel grayscale depth map. Connect to Defocus for realistic defocus blur.
 
 **Inputs**
 
@@ -390,7 +390,7 @@ Apply physically-based motion blur using optical flow vectors.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Frames to blur, same size and batch as motion_vectors. Averaged as given, so scene-linear input gives physically correct highlight streaks. |
-| `motion_vectors` | IMAGE |  |  | 32-bit UV vectors from Radiance Optical Flow. |
+| `motion_vectors` | IMAGE |  |  | 32-bit UV vectors from MotionVectors. |
 | `shutter_angle` | float | 180 | 0 to 720, step 1 | Standard cinema is 180°. Higher = more blur. 360° = full frame motion blur. |
 | `samples` | int | 8 | 2 to 32, step 1 | Number of sub-frame integration samples. Higher = smoother streaks. |
 | `energy_conservation` | boolean | on |  | On: plain average, total light conserved. Off: legacy look, the whole frame is scaled so its brightest value matches the source peak (brightens everything, not only streaks). |
@@ -726,8 +726,8 @@ Split a video at detected scene cut points into discrete segments.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | The same frame batch that was analysed by RadianceSceneCutDetect. Returned whole if cut_data has no shots. |
-| `cut_data` | string |  |  | JSON from RadianceSceneCutDetect. |
+| `images` | IMAGE |  |  | The same frame batch that was analysed by Scene Cut Detect. Returned whole if cut_data has no shots. |
+| `cut_data` | string |  |  | JSON from Scene Cut Detect. |
 | `shot_index` | int | 0 | 0 to 9999 | Which shot to extract (0-based). Connect shot_count output to know the range. |
 
 **Outputs**
