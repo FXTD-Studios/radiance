@@ -31,7 +31,6 @@ except ImportError:  # pragma: no cover - exercised by the CI import smoke-test
     # real install; it keeps the module readable by tooling that has neither.
     web = None
     PromptServer = None
-import re
 
 # v3.1: Enable OpenEXR support in OpenCV
 # Essential for 32-bit float export
@@ -206,10 +205,6 @@ def _viewer_fingerprint(image: Any, other: Dict[str, Any]) -> str:
         parts.append((k, _fp_tensor(other[k])))
     return repr(parts)
 
-
-# BUG-FIX: compiled at module level — was previously compiled inside the
-# hot delivery handler on every request, wasting time on every call.
-_SAFE_FILENAME_RE = re.compile(r'[^\w\s◎_.() -]', re.UNICODE)
 
 # ── Viewer temp-file bookkeeping ───────────────────────────────────────────────
 # Every execution wrote a fresh uuid4-named set of .rhdr/.exr/.png/.rpick files
@@ -510,7 +505,7 @@ class RadianceViewer:
                         use_16bit=use_16bit,
                         use_32bit=use_32bit,
                         save_hdr_sidecar=save_hdr_sidecar,
-                        prefix="◎ Radiance_viewer",
+                        prefix="Radiance_viewer",
                         view_space=view_space,
                     )
                     if frame_result is not None:
@@ -538,7 +533,7 @@ class RadianceViewer:
                         low_res = self._process_frame(
                             image[frame_idx:frame_idx + 1] * 0.25, 0, output_dir,
                             use_16bit=use_16bit, use_32bit=use_32bit, save_hdr_sidecar=save_hdr_sidecar,
-                            prefix="◎ Radiance_bracket_low", preview_only=True, view_space=view_space
+                            prefix="Radiance_bracket_low", preview_only=True, view_space=view_space
                         )
                         if low_res:
                             # v4.5 FIX: type must be "temp" — ComfyUI /api/view only
@@ -557,7 +552,7 @@ class RadianceViewer:
                         high_res = self._process_frame(
                             image[frame_idx:frame_idx + 1] * 4.0, 0, output_dir,
                             use_16bit=use_16bit, use_32bit=use_32bit, save_hdr_sidecar=save_hdr_sidecar,
-                            prefix="◎ Radiance_bracket_high", preview_only=True, view_space=view_space
+                            prefix="Radiance_bracket_high", preview_only=True, view_space=view_space
                         )
                         if high_res:
                             high_res["type"] = "temp"
@@ -775,7 +770,7 @@ class RadianceViewer:
         use_16bit: bool = True,
         use_32bit: bool = False,
         save_hdr_sidecar: bool = False,
-        prefix: str = "◎ Radiance_viewer",
+        prefix: str = "Radiance_viewer",
         preview_only: bool = False,
         view_space: Tuple[str, str] = ("srgb", SRGB_COLORSPACE),
     ) -> Optional[Dict[str, Any]]:
@@ -1121,7 +1116,7 @@ class RadianceViewer:
                     use_16bit=use_16bit,
                     use_32bit=use_32bit,          # BUG-FIX (BUG-2)
                     save_hdr_sidecar=save_hdr_sidecar,
-                    prefix="◎ Radiance_compare",
+                    prefix="Radiance_compare",
                     view_space=view_space,
                 )
                 if frame_result is not None:
@@ -1194,7 +1189,9 @@ class RadianceViewer:
                     depth_normalized = np.zeros_like(depth_np)
 
                 unique_id = uuid.uuid4().hex[:12]
-                depth_filename = f"◎ Radiance_zdepth_{unique_id}_{depth_idx}.png"
+                # ALBABIT-FIX: ASCII names only. On Windows cv2.imwrite wrote "◎" as
+                # "â—Ž", so the Viewer never found its depth map ("No Depth Map").
+                depth_filename = f"Radiance_zdepth_{unique_id}_{depth_idx}.png"
 
                 try:
                     depth_filepath = safe_join(output_dir, depth_filename)
@@ -1235,7 +1232,7 @@ class RadianceViewer:
                 }
 
                 if save_hdr_sidecar:
-                    npy_filename = f"◎ Radiance_zdepth_{unique_id}_{depth_idx}_float.rhdr"
+                    npy_filename = f"Radiance_zdepth_{unique_id}_{depth_idx}_float.rhdr"
                     try:
                         npy_filepath = safe_join(output_dir, npy_filename)
                         dh, dw = depth_np.shape[:2]
