@@ -615,13 +615,9 @@ class RadianceWrite:
     FUNCTION     = "write"
     RETURN_TYPES = ()
     RETURN_NAMES = ()
-    # ALBABIT-FIX: without this, ComfyUI never schedules this node -- it has
-    # no outputs for anything else to depend on, and OUTPUT_NODE is the only
-    # other way the executor knows to run it. Lost when nodes_io.py was
-    # recovered from the working-tree truncation (RadianceDigitalCinemaWrite's
-    # docstring nearby references the same incident); the old Radiance
-    # registered "◎ Radiance Write" under that shim class instead, which does
-    # have this flag, masking the gap here.
+    # ALBABIT-FIX: with no outputs, only OUTPUT_NODE makes ComfyUI run this node.
+    # It was lost when nodes_io.py was recovered; the old shim class that carried
+    # the name had it, which hid the gap.
     OUTPUT_NODE = True
 
     @classmethod

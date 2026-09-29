@@ -944,11 +944,8 @@ def _detect_arch_from_clip(clip, target_arch: str,
             return arch
 
     # ── Priority 3: tokenizer key fingerprinting (cached per clip object) ────
-    # ALBABIT-FIX: was keyed on id(clip) in a plain dict, so a collected
-    # clip's entry stuck around and a later object reusing that freed
-    # address inherited its stale fingerprint (real, reproducible under
-    # pytest's object churn). WeakKeyDictionary keyed on the object itself
-    # evicts on real collection, so a reused address can't inherit it.
+    # ALBABIT-FIX: a WeakKeyDictionary on the clip itself, not a dict on
+    # id(clip): a later object reusing a freed address inherited the stale entry.
     try:
         keys = _detect_arch_from_clip._key_cache.get(clip)
     except TypeError:
@@ -2170,11 +2167,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             settings = apply_style_preset(style_preset, settings)
 
         # ── Build prompt ────────────────────────────────────────────────────
-        # ALBABIT-FIX: ltxav uses the same _build_prose_prompt path as Flux/WAN.
-        # Gemma3-12B's audio head learns near-zero influence from purely
-        # visual gear terms, no corruption. Note: quoted dialogue in
-        # base_prompt (e.g. 'says "Hello!"') WILL generate audible speech,
-        # intended LTX-AV behaviour, not a bug.
+        # ALBABIT-FIX: ltxav takes the same prose path as Flux/WAN; camera terms
+        # do not disturb its audio. Quoted dialogue ('says "Hello!"') is spoken.
         final_prompt, negative_prompt, _ = build_cinematic_prompt_v3(
             base_prompt=base_prompt,
             base_prompt_b="",

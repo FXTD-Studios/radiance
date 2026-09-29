@@ -4,7 +4,6 @@ import math
 import logging
 import uuid
 import hashlib
-import json
 from typing import Dict, Any, Tuple
 
 import folder_paths
@@ -20,6 +19,7 @@ except ImportError:
     _HAS_NESTED_TENSOR = False
 
 from radiance.model.detect import _BASE_VRAM, _BASE_CLIP_VRAM
+from radiance.sampler_utils import parse_model_meta
 
 logger = logging.getLogger("radiance.resolution")
 
@@ -1130,12 +1130,8 @@ class RadianceResolution:
         # ALBABIT-FIX: the front end already sets model_type from model_meta;
         # "Manual" still follows it here, for an auto-detecting Loader or an
         # API run. Any other value is the user's choice.
-        if model_type == "Manual" and model_meta:
-            try:
-                arch = json.loads(model_meta).get("arch", "")
-            except (ValueError, AttributeError):
-                arch = ""
-            model_type = MODEL_TYPE_BY_ARCH.get(arch, model_type)
+        if model_type == "Manual":
+            model_type = MODEL_TYPE_BY_ARCH.get(parse_model_meta(model_meta)[0], model_type)
 
         # ── Step 2 (computed early): Determine Alignment Rule (model_type-driven) ──
         # ALBABIT-FIX: alignment is derived solely from SPATIAL_SCALE for the
