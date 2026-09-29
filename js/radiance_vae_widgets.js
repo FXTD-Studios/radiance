@@ -49,13 +49,9 @@ function setWidgetVisible(widget, visible, node) {
     return _setWidgetVisible(widget, visible, node, { fallbackType: "number" });
 }
 
-// ALBABIT-FIX: v1.0 matched node.type against the display-name string
-// "◎ Radiance HDR VAE Decode" instead of the class key ("RadianceHDRVAEDecode")
-// -- confirmed via live browser console that node.type is always the class
-// key, so this never matched and the extension was dead code since v3.1.
-// Also replaced the canvas ctx.globalAlpha dimming + raw node.element DOM
-// badge (LiteGraph-only, inert on Vue) with the widget.label marker
-// convention already used on Sampler/Loader/Prompt/Tonemap/Resolution.
+// ALBABIT-FIX: node.type is the class key, never the display name v1.0
+// matched, so this extension was dead since v3.1. Markers use widget.label,
+// as on the other Radiance nodes; canvas dimming and a DOM badge were inert on Vue.
 const TARGET_NODE = "RadianceHDRVAEDecode";
 
 // Widget name constants

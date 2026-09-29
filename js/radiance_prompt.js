@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -98,24 +98,13 @@ function _applyNegStrengthLock(node, hidden) {
     fitNodeSize(node);
 }
 
-// ALBABIT-FIX: the model type the Loader on model_meta selects, from its preset
-// or its Custom model_type. Another preset or no Loader: "", unknown.
-const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image Edit", "qwen_image"]];
-
-function _loaderModelType(source) {
-    const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");
-    const preset = value("preset");
-    if (preset === "Custom") return value("model_type");
-    return PRESET_MODEL_TYPES.find(([prefix]) => preset.startsWith(prefix))?.[1] ?? "";
-}
-
 // ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
 // stays hidden until one arrives from a node that runs, and under the models
 // that size them on their own.
 function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
     const resW = node.widgets?.find(w => w.name === "resolution");
     const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
-        && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(source));
+        && !["flux2", "flux2-klein", "qwen_image"].includes(loaderModelType(source));
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
     fitNodeSize(node);
@@ -129,7 +118,7 @@ const REFERENCE_LIMITS = { qwen_image: 3 };
 function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;
     if (!grow) return;
-    const max = REFERENCE_LIMITS[_loaderModelType(source)] ?? grow.names.length;
+    const max = REFERENCE_LIMITS[loaderModelType(source)] ?? grow.names.length;
     if (grow.max === max) return;
     const raised = max > grow.max;
     grow.max = max;

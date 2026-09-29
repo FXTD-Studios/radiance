@@ -9,6 +9,7 @@ import math
 import logging
 import gc
 import json
+import re
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from radiance.core.tiling import blend_weight_2d, edge_overlaps_from_coords, clamp_overlap
@@ -330,11 +331,10 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     # Each entry is read off Comfy-Org's official workflow template for the
     # model (templates/<name>.json in Comfy-Org/workflow_templates) unless
     # stated otherwise.
-    # Qwen-Image: the current official template ships the 8-step Lightning
-    # LoRA (cfg 1, 8 steps); these are the base-model values from the same
-    # graph without the LoRA (ModelSamplingAuraFlow shift 3.1, cfg 2.5).
+    # ALBABIT-FIX: Qwen-Image: image_qwen_image.json with its Lightning LoRA
+    # off (KSampler 20 steps, cfg 4, ModelSamplingAuraFlow shift 3.1).
     "qwen_image": {
-        "cfg": 2.5,
+        "cfg": 4.0,
         "scheduler": "simple",
         "guidance": 0.0,
         "shift": 3.1,
@@ -665,28 +665,43 @@ def get_model_defaults(model_type: str) -> Dict[str, Any]:
     return MODEL_DEFAULTS.get(model_type, MODEL_DEFAULTS["sd1.5"])
 
 
-def parse_model_meta(model_meta: str) -> Tuple[str, str]:
-    """Parse the Loader's model_meta JSON, returning (arch, unet_file). Empty
-    strings on missing/malformed input -- callers should treat that as
-    "no extra info available", not an error."""
+def parse_model_meta(model_meta: str) -> Tuple[str, str, List[str]]:
+    """Parse the Loader's model_meta JSON, returning (arch, unet_file, the
+    LoRA files it applied). Empty on missing/malformed input; callers
+    should treat that as "no extra info available", not an error."""
     if not model_meta:
-        return "", ""
+        return "", "", []
     try:
         meta = json.loads(model_meta)
-        return meta.get("arch", "") or "", meta.get("unet_file", "") or ""
+        loras = [lora["name"] for lora in meta.get("loras") or []]
+        return meta.get("arch", "") or "", meta.get("unet_file", "") or "", loras
     except Exception:
-        return "", ""
+        return "", "", []
 
 
-def refine_distillation_from_meta(detected_type: str, unet_file: str) -> Optional[Dict[str, Any]]:
+# ALBABIT-FIX: Qwen-Image's step-distilled LoRAs: lightx2v's "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16",
+# Wuli's "Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16".
+LIGHTNING_LORA = re.compile(r"(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?")
+
+
+def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) -> Optional[Dict[str, Any]]:
     """
     Some checkpoints need settings that differ from their model_type's generic
-    default -- only unet_file's exact filename can tell them apart. Verified
+    default. Only unet_file's exact filename can tell them apart, or the
+    file name of a distillation LoRA applied to it (loras). Verified
     against official model cards. Not every override includes every key (e.g.
     Krea Dev is guidance-only, BFL gives no steps recommendation) -- callers
     must not assume "steps"/"cfg" are always present. Returns None when not
     applicable, leaving the generic MODEL_DEFAULTS fallback in place.
     """
+    # ALBABIT-FIX: a Lightning or Turbo LoRA is distilled to the step count in
+    # its file name; the official Qwen-Image templates run it at cfg 1,
+    # whatever the checkpoint (Edit 2511's 40 steps, cfg 4 included).
+    if detected_type == "qwen_image":
+        for lora in loras:
+            match = LIGHTNING_LORA.search(lora.lower())
+            if match:
+                return {"cfg": 1.0, "steps": int(match.group(1))}
     if not unet_file:
         return None
     name = unet_file.lower()
@@ -714,6 +729,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str) -> Optiona
     # feed the KSampler 40 steps, cfg 4 (Qwen's values) through their switches.
     if detected_type == "qwen_image" and "edit" in name and "2511" in name:
         return {"cfg": 4.0, "steps": 40}
+    # ALBABIT-FIX: Qwen-Image 2512's template runs 50 steps, at Qwen-Image's cfg 4.
+    if detected_type == "qwen_image" and "2512" in name:
+        return {"steps": 50}
     return None
 
 def gradual_sigma_blend(

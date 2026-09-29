@@ -16,6 +16,7 @@ import torch
 import folder_paths
 import comfy.utils
 import comfy.model_management
+from comfy_extras import nodes_model_advanced
 from comfy.cldm.control_types import UNION_CONTROLNET_TYPES
 
 # ── Single Source of Truth: all model-detection / latent / cache utilities ──
@@ -291,6 +292,11 @@ class RadianceUnifiedLoader:
                                " 'raise' stops execution."}),
                 "auto_download": ("BOOLEAN", {"default": True,
                     "tooltip": "If a selected model is missing and is one Radiance knows, download it on first run from its pinned Hugging Face source, checked against its SHA-256 before it is installed (large: 4 to 60 GB). Gated repositories (FLUX.2-dev, FLUX.2-klein 9B, LTX-2.5) need their licence accepted on Hugging Face and HF_TOKEN set. RADIANCE_ALLOW_DOWNLOADS=0 always stops downloads."}),
+                # ALBABIT-FIX: the shift ModelSamplingAuraFlow writes into a flow model,
+                # so the Qwen-Image templates need no extra node. Last, so saved
+                # workflows keep their widget positions.
+                "model_shift": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.01,
+                    "tooltip": "Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it."}),
             },
         }
 
@@ -328,6 +334,7 @@ class RadianceUnifiedLoader:
         use_cache="On",
         lora_on_error="raise",
         auto_download=True,
+        model_shift=0.0,
     ):
         def _none(val):
             return None if val in ("None", "", None) else val
@@ -411,6 +418,12 @@ class RadianceUnifiedLoader:
             model, clip, lora_stack, lora_on_error, divider, info_lines
         )
 
+        if model_shift > 0:
+            model = nodes_model_advanced.ModelSamplingAuraFlow().patch_aura(model, model_shift)[0]
+            msg = f"Model shift {model_shift:g} (as ModelSamplingAuraFlow)"
+            logger.info(msg)
+            info_lines.append(msg)
+
         # ════════════════════════════════════════════════════════════════
         # 8. BUILD OUTPUTS
         # ════════════════════════════════════════════════════════════════
@@ -460,6 +473,7 @@ class RadianceUnifiedLoader:
             "latent_format": latent_fmt,
             "vram_est_gb":   est,
             "loras":         applied_loras,
+            "model_shift":   model_shift,
             "load_ms":       total_ms,
             "cached_unet":   unet_cache_hit,
         }
@@ -553,6 +567,9 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
             ),
             **old_optional,
         }
+        # ALBABIT-FIX: model_shift is the image Loader's (Qwen-Image); this
+        # loader's load_radiance_stack does not take it.
+        types["optional"].pop("model_shift")
 
         return types
 

@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 'utf8')
-    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
+// The Sampler with the shared helpers it imports from radiance_widget_utils.js.
+const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '')
+    .replace(/^export default .*$/m, '')
+    .replace(/^export /gm, '');
+const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 function samplerContext(arch) {
     const context = vm.createContext({
@@ -12,7 +16,7 @@ function samplerContext(arch) {
     });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => ({ widgets: [] });
-        _resolveLoaderModelType = () => arch;
+        loaderModelType = () => arch;
         _isSdTurboActive = () => false;
         globalThis.updateDefaults = updateModelMetaDefaults;
         globalThis.presets = PRESET_CONFIGS;
