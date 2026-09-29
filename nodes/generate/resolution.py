@@ -93,7 +93,7 @@ LATENT_FORMAT_MAP = {
     # detection, and (confirmed against the real checkpoints) identical VAE
     # spatial/temporal compression too, so one entry serves both.
     "LTXV (128ch)": "ltxav",
-    # ALBABIT-FIX: Added model types matching the Radiance Video Loader / RUDRA decoder set
+    # ALBABIT-FIX: Added model types matching the Video Loader
     "WAN (16ch)": "wan",
     # ALBABIT-FIX: WAN 2.2 TI2V-5B -- distinct 48ch VAE (comfy.latent_formats.Wan22),
     # real bug fix (was silently defaulting to "WAN (16ch)"'s 16ch/8px, a
@@ -142,7 +142,7 @@ MODEL_TYPES = [
     # Covers both LTX 2.3 and 2.5 -- confirmed identical VAE compression, see
     # LATENT_FORMAT_MAP above.
     "LTXV (128ch)",
-    # ALBABIT-FIX: Added model types matching the Radiance Video Loader / RUDRA decoder set
+    # ALBABIT-FIX: Added model types matching the Video Loader
     "WAN (16ch)",
     # ALBABIT-FIX: WAN 2.2 TI2V-5B -- previously had no dedicated option here at
     # all, forcing users onto "WAN (16ch)" (wrong channel count/spatial scale).
@@ -178,7 +178,7 @@ LATENT_CHANNELS = {
     "Mochi (12ch)": 12,
     # ALBABIT-FIX: LTX-Video latent is 128 channels (2.3 and 2.5 alike)
     "LTXV (128ch)": 128,
-    # ALBABIT-FIX: Added model types matching the Radiance Video Loader / RUDRA decoder set
+    # ALBABIT-FIX: Added model types matching the Video Loader
     "WAN (16ch)": 16,
     # ALBABIT-FIX: WAN 2.2 TI2V-5B's VAE is comfy.latent_formats.Wan22 (48
     # latent channels) -- real bug fix, see the model_type list comment above.
@@ -1048,7 +1048,7 @@ class RadianceResolution:
 
     # ALBABIT-FIX: Restored from previous radiance version — multi-output (width,
     # height, channels, info, frame_rate, frame_count, latent_format, duration_sec)
-    # so this node can drive Sampler Pro / other downstream nodes directly.
+    # so this node can drive the Sampler / other downstream nodes directly.
     RETURN_TYPES = ("LATENT", "INT", "INT", "INT", "STRING", "FLOAT", "INT", "STRING", "FLOAT", "BOUNDING_BOX")
     RETURN_NAMES = ("latent", "width", "height", "channels", "info", "frame_rate", "frame_count", "latent_format", "duration_sec", "crop_bbox")
     OUTPUT_TOOLTIPS = (

@@ -12,7 +12,7 @@ function setWidgetVisible(widget, visible, node) {
 }
 
 /**
- * Radiance AI Upscale Widget Visibility (v1.0)
+ * AI Upscale Widget Visibility (v1.0)
  * Hides SUPIR-specific widgets when a non-SUPIR model is selected.
  *
  * SUPIR-only widgets: sdxl_model_name, supir_prompt, vae, clip

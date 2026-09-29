@@ -6,7 +6,7 @@ from radiance.core.tensor.chunking import FrameSink, chunks, compute_device, fra
 
 class RadianceSDRtoHDRExpand:
     """
-    ◎ Radiance SDR to HDR Expand
+    ◎ Radiance SDR → HDR Expand
 
     Expands dynamic range from SDR footage via an inverse OETF pass and a
     mathematical highlight expansion. Does not reconstruct clipped detail.
@@ -83,7 +83,7 @@ class RadianceHDRSynthesisEngine:
     pyramid; only the low-pass base is lifted (a luma-weighted power curve
     toward energy_target, gated to highlights), then the detail bands are
     added back unchanged. Clipped detail is not invented: a flat clipped
-    area stays flat, only brighter. For learned recovery use SDR to HDR
+    area stays flat, only brighter. For learned recovery use SDR → HDR
     Universal with Recover.
     """
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"

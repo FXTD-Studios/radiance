@@ -1,6 +1,6 @@
 /**
  * radiance_vae_widgets.js
- * v3.0 — Radiance HDR VAE Decode mode-aware widget sync
+ * v3.0 — VAE Decode (HDR) mode-aware widget sync
  *
  * WHAT THIS FIXES:
  *

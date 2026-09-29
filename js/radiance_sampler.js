@@ -749,7 +749,7 @@ function updatePresetDivergenceMarkers(node) {
 
 // ALBABIT-FIX: Flux.2 Klein Base (~50 steps, guidance 4.0) and distilled (4
 // steps, ~1.0) share one architecture; only the file name tells them apart.
-// With model_meta wired to a Radiance Loader, its unet_name is read live, and
+// With model_meta wired to a Loader, its unet_name is read live, and
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
 

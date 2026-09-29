@@ -284,7 +284,7 @@ class RadianceSDRToHDRPrepare:
        for the VAE (same formula as RadianceHDREncoder).
     4. Per-channel normalisation stats — computed and returned so
        RadianceHDRDecoder can invert the normalisation after generation.
-    5. Inpainting mask — the clip_mask (from RadianceClipDetector) is passed
+    5. Inpainting mask — the clip_mask (from Clip Detector) is passed
        through as the region where the model should generate new content.
 
     Outputs
@@ -458,9 +458,9 @@ class RadianceHDRHighlightComposite:
 
     Inputs
     ──────
-    original_image   — original SDR input (same as fed to RadianceClipDetector)
+    original_image   — original SDR input (same as fed to Clip Detector)
     hdr_image        — scene-linear HDR output from RadianceHDRDecoder
-    clip_mask        — from RadianceClipDetector (1=AI region, 0=keep original)
+    clip_mask        — from Clip Detector (1=AI region, 0=keep original)
     blend_softness   — Gaussian feathering on the composite edge (pixels)
     shadow_lift      — small lift applied to the original SDR in linear space
                        to prevent pure black from clipping in the blend

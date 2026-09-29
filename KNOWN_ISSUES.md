@@ -235,9 +235,6 @@ node downloads").
   tried once per ComfyUI session; restart to try again.
 
 
-- **Naming overlap:** `Grade` / `Grade Apply` / `Apply Grade Info` read similarly;
-  to be clarified during the Color cleanup.
-
 - **Scene-cut `edge` method is weak on soft and grainy footage.** It compares
   gradient magnitudes, so it cannot see a cut between two frames that both lack
   edges — a soft gradient cutting to a different soft gradient, or black

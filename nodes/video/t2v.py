@@ -865,10 +865,9 @@ class RadianceVideoSampler:
     Low-level video sampler — shared engine behind T2V and I2V pipelines.
 
     Accepts pre-built noise + conditioning and runs the ComfyUI sampling
-    loop via _comfy_sample(). An optional cfg_schedule_json (from
-    RadianceAudioCFGSchedule) overrides the static CFG value with the
-    first frame's schedule value. Tiling is automatically restored after
-    sampling.
+    loop via _comfy_sample(). An optional cfg_schedule_json (a JSON float
+    array) overrides the static CFG value with its first value. Tiling is
+    automatically restored after sampling.
     """
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Video"
     DESCRIPTION = "Run the diffusion sampler to generate video latents from pre-built noise and conditioning."
@@ -909,7 +908,7 @@ class RadianceVideoSampler:
                 }),
                 "cfg_schedule_json": ("STRING", {
                     "default": "",
-                    "tooltip": "JSON float array from RadianceAudioCFGSchedule — first value overrides CFG",
+                    "tooltip": "JSON float array, e.g. [4.0]. Its first value overrides CFG.",
                 }),
                 "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Fraction of the noise schedule to run (1.0 = full). The start latent is "
@@ -1062,7 +1061,7 @@ class RadianceT2VPipeline:
                     "tooltip": "Optional conditioning whose tokens are appended to the positive prompt "
                                "at weight 0.75. Skipped if its embedding width differs."}),
                 "cfg_schedule_json": ("STRING", {"default": "",
-                    "tooltip": "JSON float array from RadianceAudioCFGSchedule. Only the first value is "
+                    "tooltip": "JSON float array, e.g. [4.0]. Only the first value is "
                                "used, as a static CFG override; CFG does not vary per step."}),
                 "steps": ("INT", {"default": 0, "min": 0, "max": 200,
                     "tooltip": "Sampling steps. 0 uses the model default (the LTX-Video preset's 25 when "
