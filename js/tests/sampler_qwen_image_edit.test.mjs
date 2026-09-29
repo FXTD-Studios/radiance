@@ -3,22 +3,33 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
+import { liveSourceNode } from '../radiance_widget_utils.js';
+
 const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 'utf8')
     .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
 
-function sample(unetName) {
-    const loader = { widgets: [
-        { name: 'preset', value: 'Qwen-Image Edit 2511' },
-        { name: 'unet_name', value: unetName },
-    ] };
-    const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
+// Loader 1, fed by LoRA Stack 2, then an optional LoraLoaderModelOnly 3, then the Sampler.
+function sample(unetName, { stackLora = 'None', nativeLora = null } = {}) {
+    const nodes = {}, links = {};
+    const graph = { links, getNodeById: id => nodes[id] };
+    const add = (id, comfyClass, widgets, input, from) => {
+        nodes[id] = { id, comfyClass, mode: 0, graph, outputs: [{ type: '*' }],
+                      widgets: Object.entries(widgets).map(([name, value]) => ({ name, value })),
+                      inputs: [{ name: input, type: '*', link: from && id * 10 }] };
+        if (from) links[id * 10] = { origin_id: from, origin_slot: 0, target_id: id, type: '*' };
+        return nodes[id];
+    };
+    add(2, 'RadianceLoraStack', { lora_1: stackLora }, 'lora_stack');
+    const loader = add(1, 'RadianceUnifiedLoader', { preset: 'Qwen-Image Edit 2511', unet_name: unetName }, 'lora_stack', 2);
+    if (nativeLora) add(3, 'LoraLoaderModelOnly', { lora_name: nativeLora }, 'model', 1);
+    const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, liveSourceNode, loader });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => loader;
         _isSdTurboActive = () => false;
         globalThis.updateDefaults = updateModelMetaDefaults;
     `, context);
     const w = (name, value, extra = {}) => ({ name, value, ...extra });
-    const node = {
+    const node = Object.assign(add(9, 'RadianceSamplerPro', {}, 'model', nativeLora ? 3 : 1), {
         widgets: [
             w('preset', 'Auto'),
             w('model_type', 'auto', { options: { values: ['auto', 'flux', 'qwen_image'] } }),
@@ -26,7 +37,7 @@ function sample(unetName) {
             w('flux_guidance', 3.5), w('denoise', 1.0),
         ],
         setDirtyCanvas() {},
-    };
+    });
     context.updateDefaults(node);
     const value = name => node.widgets.find(x => x.name === name).value;
     return ['model_type', 'steps', 'cfg', 'sampler', 'scheduler'].map(value);
@@ -36,4 +47,18 @@ test('the "Qwen-Image Edit 2511" Loader preset drives the Sampler to the templat
     for (const unet of ['qwen_image_edit_2511_int8_convrot.safetensors', 'qwen_image_edit_2511_fp8mixed.safetensors']) {
         assert.deepEqual(sample(unet), ['qwen_image', 40, 4.0, 'euler', 'simple']);
     }
+});
+
+const LIGHTNING = 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors';
+
+test("a Lightning LoRA in the Loader's LoRA Stack sets its 4 steps at cfg 1", () => {
+    assert.deepEqual(sample('qwen_image_edit_2511_int8_convrot.safetensors', { stackLora: LIGHTNING }),
+                     ['qwen_image', 4, 1.0, 'euler', 'simple']);
+});
+
+test('so does a native LoraLoaderModelOnly between the Loader and the Sampler', () => {
+    assert.deepEqual(sample('qwen_image_edit_2511_int8_convrot.safetensors', { nativeLora: LIGHTNING }),
+                     ['qwen_image', 4, 1.0, 'euler', 'simple']);
+    assert.deepEqual(sample('qwen_image_edit_2511_int8_convrot.safetensors', { nativeLora: 'style.safetensors' }),
+                     ['qwen_image', 40, 4.0, 'euler', 'simple']);
 });

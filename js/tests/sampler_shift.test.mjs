@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
+import { liveSourceNode } from '../radiance_widget_utils.js';
+
 const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 'utf8')
     .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
 
 function samplerContext(arch) {
     const context = vm.createContext({
-        app: { registerExtension() {} }, console: { log() {} }, arch,
+        app: { registerExtension() {} }, console: { log() {} }, liveSourceNode, arch,
     });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => ({ widgets: [] });
