@@ -484,6 +484,20 @@ RADIANCE_MODEL_MAP: dict = {
         "size": 675509688,
         "type": "vae",
     },
+    # ALBABIT-FIX: Qwen-Image and Qwen-Image 2512, the files of their official
+    # ComfyUI Text to Image templates.
+    "qwen_image_fp8_e4m3fn.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/1f12b17be14c89b026c51a91d67c32f84bb047bc/split_files/diffusion_models/qwen_image_fp8_e4m3fn.safetensors",
+        "sha256": "98763a127701eb6fb59096f7742cb3aa7d64ed510b9f4e882d8351f8176e3ce3",
+        "size": 20430635136,
+        "type": "diffusion_models",
+    },
+    "qwen_image_2512_fp8_e4m3fn.safetensors": {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/1f12b17be14c89b026c51a91d67c32f84bb047bc/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
+        "sha256": "5dc80554d5d83390046a2f4a94ece06afb7700bf7b0aaf8bde9769793875876b",
+        "size": 20430679144,
+        "type": "diffusion_models",
+    },
     # ALBABIT-FIX: Qwen-Image Edit 2511, the files of the two official ComfyUI
     # templates (Image Edit: int8_convrot, Material Replacement: fp8mixed).
     "qwen_image_edit_2511_int8_convrot.safetensors": {
@@ -1142,6 +1156,13 @@ CHECKPOINT_PRESETS: dict = {
         "model_type": "pixart",
         "weight_dtype": "fp16",
         "clip_dtype": "fp16",
+    },
+    # ALBABIT-FIX: Qwen-Image and Qwen-Image 2512, whose fp8_e4m3fn files the
+    # native templates also load at default dtypes.
+    "Qwen-Image": {
+        "model_type": "qwen_image",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
     },
     # ALBABIT-FIX: default dtypes on both, like MiniMax H3: int8_convrot and
     # w4a8 are quantized files comfy.sd detects natively, not dtype casts.

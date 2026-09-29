@@ -331,11 +331,10 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     # Each entry is read off Comfy-Org's official workflow template for the
     # model (templates/<name>.json in Comfy-Org/workflow_templates) unless
     # stated otherwise.
-    # Qwen-Image: the current official template ships the 8-step Lightning
-    # LoRA (cfg 1, 8 steps); these are the base-model values from the same
-    # graph without the LoRA (ModelSamplingAuraFlow shift 3.1, cfg 2.5).
+    # ALBABIT-FIX: Qwen-Image: image_qwen_image.json with its Lightning LoRA
+    # off (KSampler 20 steps, cfg 4, ModelSamplingAuraFlow shift 3.1).
     "qwen_image": {
-        "cfg": 2.5,
+        "cfg": 4.0,
         "scheduler": "simple",
         "guidance": 0.0,
         "shift": 3.1,
@@ -680,8 +679,9 @@ def parse_model_meta(model_meta: str) -> Tuple[str, str, List[str]]:
         return "", "", []
 
 
-# ALBABIT-FIX: Qwen-Image's Lightning LoRAs (lightx2v): "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16".
-LIGHTNING_LORA = re.compile(r"lightning[-_]?(\d+)[-_]?steps?")
+# ALBABIT-FIX: Qwen-Image's step-distilled LoRAs: lightx2v's "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16",
+# Wuli's "Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16".
+LIGHTNING_LORA = re.compile(r"(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?")
 
 
 def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) -> Optional[Dict[str, Any]]:
@@ -694,9 +694,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     must not assume "steps"/"cfg" are always present. Returns None when not
     applicable, leaving the generic MODEL_DEFAULTS fallback in place.
     """
-    # ALBABIT-FIX: a Lightning LoRA is distilled to the step count in its file
-    # name; the official Qwen-Image templates run it at cfg 1, whatever the
-    # checkpoint (Edit 2511's 40 steps, cfg 4 included).
+    # ALBABIT-FIX: a Lightning or Turbo LoRA is distilled to the step count in
+    # its file name; the official Qwen-Image templates run it at cfg 1,
+    # whatever the checkpoint (Edit 2511's 40 steps, cfg 4 included).
     if detected_type == "qwen_image":
         for lora in loras:
             match = LIGHTNING_LORA.search(lora.lower())
@@ -729,6 +729,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     # feed the KSampler 40 steps, cfg 4 (Qwen's values) through their switches.
     if detected_type == "qwen_image" and "edit" in name and "2511" in name:
         return {"cfg": 4.0, "steps": 40}
+    # ALBABIT-FIX: Qwen-Image 2512's template runs 50 steps, at Qwen-Image's cfg 4.
+    if detected_type == "qwen_image" and "2512" in name:
+        return {"steps": 50}
     return None
 
 def gradual_sigma_blend(

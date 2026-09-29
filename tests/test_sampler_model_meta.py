@@ -81,6 +81,9 @@ class TestRefineDistillationFromMeta:
                                                  loras) == {"cfg": 1.0, "steps": steps}
             assert refine_distillation_from_meta("qwen_image", "", loras) == {"cfg": 1.0, "steps": steps}
 
+    def test_qwen_image_2512_runs_50_steps(self):
+        assert refine_distillation_from_meta("qwen_image", "qwen_image_2512_fp8_e4m3fn.safetensors") == {"steps": 50}
+
     def test_lightning_lora_only_for_qwen_image(self):
         assert refine_distillation_from_meta("sdxl", "sd_xl_base_1.0.safetensors",
                                              ["sdxl_lightning_4step_lora.safetensors"]) is None

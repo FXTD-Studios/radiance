@@ -99,8 +99,9 @@ function _applyNegStrengthLock(node, hidden) {
 }
 
 // ALBABIT-FIX: the model type the Loader on model_meta selects, from its preset
-// or its Custom model_type. Another preset or no Loader: "", unknown.
-const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image Edit", "qwen_image"]];
+// or its Custom model_type. Another preset or no Loader: "", unknown. The
+// first prefix that matches wins, so Qwen-Image 2.1 comes before Qwen-Image.
+const PRESET_MODEL_TYPES = [["Flux.2", "flux2"], ["Qwen-Image 2.1", "qwen_image21"], ["Qwen-Image", "qwen_image"]];
 
 function _loaderModelType(source) {
     const value = name => String(source?.widgets?.find(w => w.name === name)?.value ?? "");

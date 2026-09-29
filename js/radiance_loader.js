@@ -59,7 +59,8 @@ const PRESET_SLOTS = {
     "MiniMax H3 (Low VRAM)": ["llm_encoder"],
     "Mochi": ["t5xxl"],
     "PixArt Sigma": ["t5xxl"],
-    // ALBABIT-FIX: Qwen-Image 2.1 takes one Qwen3-VL-8B file.
+    // ALBABIT-FIX: Qwen-Image takes one Qwen2.5-VL-7B file, 2.1 one Qwen3-VL-8B.
+    "Qwen-Image": ["llm_encoder"],
     "Qwen-Image 2.1": ["llm_encoder"],
     "Qwen-Image 2.1 (Low VRAM)": ["llm_encoder"],
     // ALBABIT-FIX: Qwen-Image Edit 2511 takes one Qwen2.5-VL-7B file.
@@ -420,6 +421,21 @@ const PRESET_CONFIGS = {
         "clip_hints":    {
             "t5xxl": ["t5xxl_fp16", "t5xxl_fp8_e4m3fn", "t5xxl"],
         },
+    },
+    // ALBABIT-FIX: Qwen-Image and Qwen-Image 2512 share Edit 2511's VAE, text
+    // encoder and shift. The templates' fp8 files first, 2512 ahead; no hint
+    // matches an Edit or 2.1 file.
+    "Qwen-Image": {
+        "unet_hints": [
+            "qwen_image_2512_fp8_e4m3fn.safetensors", "qwen_image_fp8_e4m3fn.safetensors",
+            "qwen_image_2512", "qwen-image-2512", "qwen_image_fp8", "qwen_image_bf16",
+        ],
+        "vae_hints":     ["qwen_image_vae", "qwen-image-vae"],
+        "clip_hints":    {
+            "llm_encoder": ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "qwen_2.5_vl_7b"],
+        },
+        "extra_widgets": ["model_shift"],
+        "model_shift": 3.1,
     },
     // ALBABIT-FIX: quality-first like MiniMax H3; the Low VRAM preset never lists
     // bf16. Hints stay specific: the prompt-enhancer files also contain
