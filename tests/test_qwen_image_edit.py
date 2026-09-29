@@ -229,7 +229,8 @@ class _FakeClip:
 class TestQwenImagePromptText:
 
     def test_an_empty_negative_is_encoded_as_the_native_empty_string(self):
-        """CLIPTextEncode encodes "": " " adds a space token for Qwen2.5-VL."""
+        """By default nothing is added to it, and CLIPTextEncode encodes "":
+        " " adds a space token for Qwen2.5-VL."""
         texts = []
 
         class _Clip(_FakeClip):
@@ -238,8 +239,7 @@ class TestQwenImagePromptText:
                 return super().tokenize(text)
 
         prompt.RadianceCinematicPromptEncoder.execute(
-            _Clip(), base_prompt="A fisherman on a pier", model_meta=json.dumps({"arch": "qwen_image"}),
-            negative_strength="Off")
+            _Clip(), base_prompt="A fisherman on a pier", model_meta=json.dumps({"arch": "qwen_image"}))
         assert texts[-1] == ""
 
 

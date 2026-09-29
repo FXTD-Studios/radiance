@@ -2027,10 +2027,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                                optional=True, tooltip="Visual aesthetic."),
                 io.Combo.Input("color_grading", options=cls.COLOR_GRADING, default="None",
                                optional=True, tooltip="Color grading look."),
+                # ALBABIT-FIX: Off by default, so the negative is what was typed,
+                # as in ComfyUI's templates. Saved workflows keep their value.
                 io.Combo.Input(
                     "negative_strength", options=["Off", "Soft", "Standard", "Aggressive"],
-                    default="Standard", optional=True,
-                    tooltip="Auto-negative strength. 'Soft' is recommended for Flux.",
+                    default="Off", optional=True,
+                    tooltip="Generic negative terms added before negative_prompt. Off encodes negative_prompt alone, as ComfyUI's templates do.",
                 ),
                 io.String.Input(
                     "negative_prompt", multiline=True, default="", optional=True,
@@ -2114,7 +2116,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         lighting="None",
         style_aesthetic="None",
         color_grading="None",
-        negative_strength="Standard",
+        negative_strength="Off",
         negative_prompt="",
         model_meta="",
         negative_mode="Auto",
