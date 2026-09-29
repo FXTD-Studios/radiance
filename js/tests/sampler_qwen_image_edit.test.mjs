@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-import { liveSourceNode } from '../radiance_widget_utils.js';
-
-const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 'utf8')
-    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
+// The Sampler with the shared helpers it imports from radiance_widget_utils.js.
+const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '')
+    .replace(/^export default .*$/m, '')
+    .replace(/^export /gm, '');
+const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 // Loader 1, fed by LoRA Stack 2, then an optional LoraLoaderModelOnly 3, then the Sampler.
 function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None', nativeLora = null } = {}) {
@@ -22,7 +24,7 @@ function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None',
     add(2, 'RadianceLoraStack', { lora_1: stackLora }, 'lora_stack');
     const loader = add(1, 'RadianceUnifiedLoader', { preset, unet_name: unetName }, 'lora_stack', 2);
     if (nativeLora) add(3, 'LoraLoaderModelOnly', { lora_name: nativeLora }, 'model', 1);
-    const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, liveSourceNode, loader });
+    const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => loader;
         _isSdTurboActive = () => false;

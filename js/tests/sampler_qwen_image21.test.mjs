@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-import { liveSourceNode } from '../radiance_widget_utils.js';
-
-const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 'utf8')
-    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
+// The Sampler with the shared helpers it imports from radiance_widget_utils.js.
+const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+    .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '')
+    .replace(/^export default .*$/m, '')
+    .replace(/^export /gm, '');
+const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 for (const preset of ['Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
     test(`the "${preset}" Loader preset drives the Sampler to the template defaults`, () => {
@@ -14,7 +16,7 @@ for (const preset of ['Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
             { name: 'preset', value: preset },
             { name: 'unet_name', value: 'qwen_image_2.1_int8_convrot.safetensors' },
         ] };
-        const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, liveSourceNode, loader });
+        const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
         vm.runInContext(source + `
             _findModelMetaSourceNode = () => loader;
             _isSdTurboActive = () => false;

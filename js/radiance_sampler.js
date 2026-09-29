@@ -5,8 +5,10 @@ import {
     forceWidgetReinsert as _forceWidgetReinsert,
     isInputLive,
     liveSourceNode,
+    loaderModelType,
     modelMetaSourceNode as _findModelMetaSourceNode,
     setWidgetVisible as _setWidgetVisible,
+    syncAutoValue,
 } from "./radiance_widget_utils.js";
 
 // Widget helpers now live in radiance_widget_utils.js; this module's only
@@ -844,29 +846,6 @@ function _resolveLtxAvStageDefaults(unetName, isHighRes) {
     return PRESET_CONFIGS[key] ?? null;
 }
 
-// ALBABIT-FIX: mirrors config/model_map.py's CHECKPOINT_PRESETS[...]["model_type"]
-// -- lets the Sampler resolve the Loader's architecture from its preset name
-// alone, no execution needed. Must be kept in sync by hand (same pattern
-// already used for GUIDANCE_EMBED_MODELS/CFG_GUIDED_MODELS above).
-const LOADER_PRESET_MODEL_TYPE = {
-    "Flux.1": "flux", "Flux.1 (Low VRAM)": "flux",
-    "Chroma": "chroma",
-    "SD3.5": "sd3.5",
-    "SDXL": "sdxl", "SD 1.5": "sd1.5",
-    "HunyuanVideo": "hunyuan_video",
-    "Wan 2.1": "wan", "Wan 2.1 (Low VRAM)": "wan",
-    "Wan 2.2": "wan", "Wan 2.2 (Low VRAM)": "wan", "Wan 2.2 TI2V": "wan_ti2v",
-    "LTX Video": "ltxv", "LTX Video (Low VRAM)": "ltxv",
-    "LTX Video 2.3": "ltxav", "LTX Video 2.3 (Low VRAM)": "ltxav",
-    "LTX Video 2.5": "ltxav", "LTX Video 2.5 (Low VRAM)": "ltxav",
-    "Cosmos World": "cosmos", "CogVideoX": "cogvideox", "Mochi": "mochi",
-    "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
-    "Lumina2": "lumina2", "Z-Image": "z_image",
-    "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
-    "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
-    "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
-};
-
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
 // "guidance" is the architecture fallback; a _deriveDistillationOverride() file
 // name match (Klein, Schnell) takes priority, as on the Python side.
@@ -962,24 +941,6 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     kandinsky5_image:   { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
 };
 
-function _resolveLoaderModelType(loaderNode) {
-    if (!loaderNode) return null;
-    const presetVal = loaderNode.widgets?.find(w => w.name === "preset")?.value;
-    // ALBABIT-FIX: "Flux.2"/"Flux.2 (Low VRAM)" cover Dev and Klein in one
-    // preset (Auto-Detect tells them apart at execution time) -- resolve
-    // here the same way, from the Loader's own unet_name, since the preset
-    // name alone can't.
-    if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
-        const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
-        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
-    }
-    if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
-        return LOADER_PRESET_MODEL_TYPE[presetVal];
-    }
-    const modelType = loaderNode.widgets?.find(w => w.name === "model_type")?.value;
-    return (modelType && modelType !== "Auto-Detect") ? modelType : null;
-}
-
 // ALBABIT-FIX: shared by updateModelMetaDefaults() (value sync) and
 // applyFolding() (Auto visibility) -- mirrors nodes_sampler.py's
 // use_sd_turbo_schedule. Re-resolves the Loader link/unet_name itself
@@ -988,7 +949,7 @@ function _resolveLoaderModelType(loaderNode) {
 function _isSdTurboActive(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
-    const detectedType = _resolveLoaderModelType(sourceNode);
+    const detectedType = loaderModelType(sourceNode);
     return detectedType === "sdxl" && unetName.toLowerCase().includes("turbo");
 }
 
@@ -1000,23 +961,6 @@ function _isAutoDetectedLtx25(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
     return unetName.toLowerCase().includes("2.5");
-}
-
-// ALBABIT-FIX: can't just check "is the widget still at its generic default"
-// -- after the first auto-write the value IS the derived one, so a later
-// Loader change would never re-apply. _radAutoValue tracks what WE last
-// wrote instead; no prior tracking (fresh, or right after a named preset)
-// is never "user touched", so it applies unconditionally.
-function _syncAutoValue(widget, newValue) {
-    if (!widget || newValue === undefined) {
-        if (widget) widget._radAutoValue = undefined;
-        return false;
-    }
-    const userTouched = widget._radAutoValue !== undefined && widget.value !== widget._radAutoValue;
-    widget._radAutoValue = newValue;
-    if (userTouched || widget.value === newValue) return false;
-    widget.value = newValue;
-    return true;
 }
 
 // ALBABIT-FIX: _radMetaLinked marks this widget as owned by the model_meta
@@ -1039,7 +983,7 @@ function _markLinkedWidget(widget, linked, inSync) {
 // ALBABIT-FIX: extends the guidance/steps sync (above) to model_type/cfg/
 // sampler/scheduler/denoise (plus, for LTX-AV, which Sampler
 // stage this node is -- see _isLtxAvHighResStage). Gated on preset
-// (Auto/Custom) only -- the per-field checks in _syncAutoValue() already
+// (Auto/Custom) only -- the per-field checks in syncAutoValue() already
 // protect any field the user deliberately set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
@@ -1049,7 +993,7 @@ function updateModelMetaDefaults(node) {
 
     const sourceNode = eligible ? _findModelMetaSourceNode(node) : null;
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? null;
-    const detectedType = _resolveLoaderModelType(sourceNode);
+    const detectedType = loaderModelType(sourceNode);
     const override = _deriveDistillationOverride(unetName, detectedType, _modelLoraNames(node, sourceNode));
     const modelDefaults = MODEL_TYPE_SAMPLING_DEFAULTS[detectedType] ?? null;
     // ALBABIT-FIX: stage-aware LTX-AV defaults (see _isLtxAvHighResStage /
@@ -1086,7 +1030,7 @@ function updateModelMetaDefaults(node) {
 
     let changed = false;
     for (const [widget, derivedVal] of pairs) {
-        if (_syncAutoValue(widget, derivedVal)) changed = true;
+        if (syncAutoValue(widget, derivedVal)) changed = true;
         const linked = derivedVal !== undefined;
         const inSync = linked && widget && widget.value === derivedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
@@ -1094,11 +1038,11 @@ function updateModelMetaDefaults(node) {
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
     if (sdTurboActive) {
-        _syncAutoValue(schedulerW, undefined); // no value to track/force -- link only
+        syncAutoValue(schedulerW, undefined); // no value to track/force -- link only
         if (_markLinkedWidget(schedulerW, true, true)) changed = true;
     } else {
         const schedulerDefault = ltxavStage?.scheduler ?? modelDefaults?.scheduler;
-        if (_syncAutoValue(schedulerW, schedulerDefault)) changed = true;
+        if (syncAutoValue(schedulerW, schedulerDefault)) changed = true;
         const linked = schedulerDefault !== undefined;
         const inSync = linked && schedulerW && schedulerW.value === schedulerDefault;
         if (_markLinkedWidget(schedulerW, linked, inSync)) changed = true;

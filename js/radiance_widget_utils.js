@@ -84,6 +84,62 @@ export function modelMetaSourceNode(node) {
     return liveSourceNode(node, node?.inputs?.find(i => i.name === "model_meta"));
 }
 
+// ALBABIT-FIX: mirrors config/model_map.py's CHECKPOINT_PRESETS[...]["model_type"]
+// (test_sampler_js_mirror.py), so the Loader's architecture is known from its
+// preset name alone, before any run.
+const LOADER_PRESET_MODEL_TYPE = {
+    "Flux.1": "flux", "Flux.1 (Low VRAM)": "flux",
+    "Chroma": "chroma",
+    "SD3.5": "sd3.5",
+    "SDXL": "sdxl", "SD 1.5": "sd1.5",
+    "HunyuanVideo": "hunyuan_video",
+    "Wan 2.1": "wan", "Wan 2.1 (Low VRAM)": "wan",
+    "Wan 2.2": "wan", "Wan 2.2 (Low VRAM)": "wan", "Wan 2.2 TI2V": "wan_ti2v",
+    "LTX Video": "ltxv", "LTX Video (Low VRAM)": "ltxv",
+    "LTX Video 2.3": "ltxav", "LTX Video 2.3 (Low VRAM)": "ltxav",
+    "LTX Video 2.5": "ltxav", "LTX Video 2.5 (Low VRAM)": "ltxav",
+    "Cosmos World": "cosmos", "CogVideoX": "cogvideox", "Mochi": "mochi",
+    "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
+    "Lumina2": "lumina2", "Z-Image": "z_image",
+    "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
+    "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
+    "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
+};
+
+// ALBABIT-FIX: the architecture the Loader 'loaderNode' loads, as its
+// model_meta "arch" will read, or null while it auto-detects. Shared by the
+// Sampler, the Prompt and Resolution.
+export function loaderModelType(loaderNode) {
+    if (!loaderNode) return null;
+    const presetVal = loaderNode.widgets?.find(w => w.name === "preset")?.value;
+    // ALBABIT-FIX: "Flux.2" and "Flux.2 (Low VRAM)" cover Dev and Klein; the
+    // unet_name tells them apart, as Auto-Detect does at execution.
+    if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
+        const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
+        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
+    }
+    if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
+        return LOADER_PRESET_MODEL_TYPE[presetVal];
+    }
+    const modelType = loaderNode.widgets?.find(w => w.name === "model_type")?.value;
+    return (modelType && modelType !== "Auto-Detect") ? modelType : null;
+}
+
+// ALBABIT-FIX: writes newValue unless the user changed the widget since the
+// last write (_radAutoValue), so a later Loader change still applies. Before
+// any write (fresh node, or right after a named preset) it always writes.
+export function syncAutoValue(widget, newValue) {
+    if (!widget || newValue === undefined) {
+        if (widget) widget._radAutoValue = undefined;
+        return false;
+    }
+    const userTouched = widget._radAutoValue !== undefined && widget.value !== widget._radAutoValue;
+    widget._radAutoValue = newValue;
+    if (userTouched || widget.value === newValue) return false;
+    widget.value = newValue;
+    return true;
+}
+
 /** True when 'input' is fed by a node that runs (see liveSourceNode). */
 export function isInputLive(node, input) {
     return liveSourceNode(node, input) !== null;
@@ -210,4 +266,4 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     return false;
 }
 
-export default { fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, setWidgetVisible };
+export default { fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, loaderModelType, setWidgetVisible, syncAutoValue };
