@@ -2256,8 +2256,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             negative_cond = _with_reference_latents(
                 negative_cond, positive_cond[0][1].get("reference_latents") or [])
         else:
-            safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
-            negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))
+            # ALBABIT-FIX: an empty negative is encoded as "", as CLIPTextEncode
+            # does. " " added a space token for the LLM encoders (Qwen-Image...).
+            negative_cond = _encode_tokens(clip, clip.tokenize(negative_prompt))
             if flux2_refs:
                 negative_cond = _with_reference_latents(negative_cond, flux2_refs)
 
