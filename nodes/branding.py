@@ -3,12 +3,10 @@
 ComfyUI keeps node type keys as workflow compatibility identifiers. This module
 centralizes the user-facing brand and category names without renaming those keys.
 
-Naming scheme (Option C — compositor-friendly hybrid):
-  * Compositor-native nodes (Color, HDR finishing, VFX, Load & Save, Review,
-    Upscale, Pipeline) use bare, industry-standard names — the menu tab carries
-    the brand, exactly like Nuke shows ``Grade`` under Color.
-  * Generation nodes (Core dashboards, Generate, Video, Developer) keep a plain
-    ``Radiance`` prefix so the diffusion layer stays clearly badged.
+Naming scheme: every node uses a bare, industry-standard name (``Grade``,
+``Sampler``, ``Loader``); the menu tab carries the brand, exactly like Nuke
+shows ``Grade`` under Color. A section listed in GENERATION_SECTIONS would add
+a ``Radiance`` prefix to its nodes; the set is empty.
 The ``◎`` glyph and marketing words (Pro/Smart/Ultra/Cinematic) are dropped.
 Search aliases keep every node discoverable by typing "radiance".
 """
@@ -295,7 +293,7 @@ SECTION_OVERRIDES = {
 }
 
 # Exact label overrides keyed by node class id. The value is the BASE label
-# (the section rule then adds the "Radiance" prefix for generation sections).
+# (a GENERATION_SECTIONS section would add the "Radiance" prefix).
 # Comp nodes are mapped to the vocabulary a Nuke/Flame compositor expects.
 TERM_OVERRIDES = {
     # ── Generate ──────────────────────────────────────────────────────────
@@ -344,7 +342,7 @@ TERM_OVERRIDES = {
     # ── Pipeline / DCC ────────────────────────────────────────────────────
     "RadianceNukeSend": "Export to Nuke",
     "RadianceDaVinciSend": "Export to Resolve",
-    # ── Generation (prefix added by the section rule) ─────────────────────
+    # ── Generation ────────────────────────────────────────────────────────
     "RadianceSamplerPro": "Sampler",
     "RadianceUnifiedLoader": "Loader",
     "RadianceCinematicPromptEncoder": "Prompt",
@@ -402,7 +400,7 @@ def schema_branding(node_key: str, raw_name: str) -> dict:
 
 
 def compose_display_name(node_key: str, display_name: Any, section: str) -> str:
-    """Build the Option C display name: bare for comp sections, prefixed for gen."""
+    """Build the display name: bare, prefixed only for a GENERATION_SECTIONS section."""
 
     if node_key in TERM_OVERRIDES:
         label = TERM_OVERRIDES[node_key]

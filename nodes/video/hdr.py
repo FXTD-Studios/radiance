@@ -206,13 +206,13 @@ class RadianceVideoHDRConditioner:
                                "onto each entry (needs clip)."}),
                 "peak_nits": ([str(n) for n in PEAK_NITS], {"default": "1000",
                     "tooltip": "Mastering peak in nits: adds a luminance descriptor to the tokens and is "
-                               "stored as peak_nits in hdr_metadata_json for RadianceVideoHDRDecode."}),
+                               "stored as peak_nits in hdr_metadata_json for Video HDR Decode."}),
                 "target_gamut": (GAMUT_OPTIONS, {"default": "BT.2020",
                     "tooltip": "Adds a gamut descriptor to the tokens and is stored as gamut in "
-                               "hdr_metadata_json (RadianceVideoHDRDecode converts to it)."}),
+                               "hdr_metadata_json (Video HDR Decode converts to it)."}),
                 "eotf": (EOTF_OPTIONS, {"default": "PQ (ST.2084)",
                     "tooltip": "Adds a transfer-function descriptor to the tokens and is stored in "
-                               "hdr_metadata_json. RadianceVideoHDRDecode uses its own output_eotf."}),
+                               "hdr_metadata_json. Video HDR Decode uses its own output_eotf."}),
             },
             "optional": {
                 "clip": ("CLIP", {"tooltip": "Text encoder used for positive. Required for the "
@@ -355,7 +355,7 @@ class RadianceVideoHDRDecode:
                 "hdr_metadata_json": ("STRING", {
                     "multiline": False,
                     "default": '{"peak_nits":1000,"gamut":"BT.2020","eotf":"PQ (ST.2084)"}',
-                    "tooltip": "JSON from RadianceVideoHDRConditioner or manually entered",
+                    "tooltip": "JSON from Video HDR Conditioner or manually entered",
                 }),
                 "tonemap": (cls.TONEMAP_MODES, {"default": "Reinhard",
                     "tooltip": "Reinhard: extended Reinhard whose white point is the brightest input "

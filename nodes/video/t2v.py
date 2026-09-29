@@ -632,7 +632,7 @@ class RadianceVideoLatentNoise:
             "required": {
                 "dit_config": ("STRING", {
                     "default": "{}",
-                    "tooltip": "JSON from RadianceVideoModelInfo",
+                    "tooltip": "JSON from Video Model Info",
                 }),
                 "width":  ("INT", {"default": 512,  "min": 64, "max": 4096, "step": 8,
                     "tooltip": "Target frame width in pixels. Divided (rounded down) by the spec's "
@@ -738,7 +738,7 @@ class RadianceVideoCondMerge:
                     "tooltip": "Optional conditioning (e.g. a character or identity embedding) merged "
                                "per merge_mode."}),
                 "hdr_conditioning": ("CONDITIONING", {
-                    "tooltip": "Optional conditioning (e.g. from RadianceVideoHDRConditioner) merged "
+                    "tooltip": "Optional conditioning (e.g. from Video HDR Conditioner) merged "
                                "per merge_mode."}),
                 "text_weight":      ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
                     "tooltip": "Weight of text_conditioning in weighted mode. concat and priority keep "
@@ -882,7 +882,7 @@ class RadianceVideoSampler:
                 "negative": ("CONDITIONING", {"tooltip": "Negative conditioning, used by classifier-free "
                                                          "guidance."}),
                 "latent_noise": ("LATENT", {
-                    "tooltip": "Noise latent, e.g. from RadianceVideoLatentNoise. It is used as both the "
+                    "tooltip": "Noise latent, e.g. from Video Latent Noise. It is used as both the "
                                "noise and the start latent, so its shape must match the model."}),
                 "steps": ("INT", {"default": 25, "min": 1, "max": 200,
                     "tooltip": "Sampling steps. Ignored when dit_config carries a model_name."}),
@@ -905,7 +905,7 @@ class RadianceVideoSampler:
                 # When absent, widget values are used as-is.
                 "dit_config": ("STRING", {
                     "default": "{}",
-                    "tooltip": "JSON from RadianceVideoModelInfo — when connected, overrides steps/cfg/sampler/scheduler with model-specific defaults.",
+                    "tooltip": "JSON from Video Model Info — when connected, overrides steps/cfg/sampler/scheduler with model-specific defaults.",
                 }),
                 "cfg_schedule_json": ("STRING", {
                     "default": "",
@@ -1056,7 +1056,7 @@ class RadianceT2VPipeline:
             },
             "optional": {
                 "dit_config": ("STRING", {"default": "{}",
-                    "tooltip": "JSON from RadianceVideoModelInfo. When it carries a model_name, that "
+                    "tooltip": "JSON from Video Model Info. When it carries a model_name, that "
                                "model's defaults replace steps, cfg, sampler_name and scheduler."}),
                 "character_conditioning": ("CONDITIONING", {
                     "tooltip": "Optional conditioning whose tokens are appended to the positive prompt "
@@ -1348,7 +1348,7 @@ class RadianceI2VPipeline:
             },
             "optional": {
                 "dit_config": ("STRING", {"default": "{}",
-                    "tooltip": "JSON from RadianceVideoModelInfo. When it carries a model_name, that "
+                    "tooltip": "JSON from Video Model Info. When it carries a model_name, that "
                                "model's defaults replace steps, cfg, sampler_name and scheduler."}),
                 "character_conditioning": ("CONDITIONING", {
                     "tooltip": "Optional conditioning whose tokens are appended to the positive prompt "
@@ -1728,7 +1728,7 @@ class RadianceVideoBatchDecode:
             },
             "optional": {
                 "dit_config": ("STRING", {"default": "{}",
-                    "tooltip": "JSON from RadianceVideoModelInfo. Its compression values are used only "
+                    "tooltip": "JSON from Video Model Info. Its compression values are used only "
                                "if the VAE does not report its own. Its latent_scale is not applied: a "
                                "ComfyUI sampler already returns the latent in VAE space."}),
                 "tile_decode": ("BOOLEAN", {
@@ -1912,7 +1912,7 @@ class RadianceVideoExport:
                     "tooltip": "Decoded frames. EXR writes the values unchanged as 32-bit float; the GIF "
                                "clamps to [0, 1] display-referred."}),
                 "mode": (cls.MODES, {"default": "passthrough",
-                    "tooltip": "passthrough: return frames. hdr_decode: run RadianceVideoHDRDecode "
+                    "tooltip": "passthrough: return frames. hdr_decode: run Video HDR Decode "
                                "(Reinhard, PQ out) and return the HDR signal. exr_sequence / preview_gif: "
                                "also write files. Only the last two write to disk."}),
             },

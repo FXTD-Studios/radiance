@@ -439,11 +439,11 @@ class RadianceSceneCutSplit:
         return {
             "required": {
                 "images":    ("IMAGE", {
-                    "tooltip": "The same frame batch that was analysed by RadianceSceneCutDetect. "
+                    "tooltip": "The same frame batch that was analysed by Scene Cut Detect. "
                                "Returned whole if cut_data has no shots.",
                 }),
                 "cut_data":  ("STRING", {
-                    "tooltip": "JSON from RadianceSceneCutDetect.",
+                    "tooltip": "JSON from Scene Cut Detect.",
                 }),
                 "shot_index": ("INT", {
                     "default": 0, "min": 0, "max": 9999,
@@ -467,15 +467,15 @@ class RadianceSceneCutSplit:
             data = json.loads(cut_data) if cut_data and cut_data.strip() else {}
         except json.JSONDecodeError as exc:
             raise ValueError(
-                "RadianceSceneCutSplit: `cut_data` is not valid JSON "
+                "Scene Cut Split: `cut_data` is not valid JSON "
                 f"({exc.msg} at position {exc.pos}). Connect the `cut_data` "
-                "output of RadianceSceneCutDetect to this input."
+                "output of Scene Cut Detect to this input."
             ) from exc
 
         if not isinstance(data, dict):
             raise ValueError(
-                "RadianceSceneCutSplit: `cut_data` must be a JSON object from "
-                f"RadianceSceneCutDetect, got {type(data).__name__}."
+                "Scene Cut Split: `cut_data` must be a JSON object from "
+                f"Scene Cut Detect, got {type(data).__name__}."
             )
 
         shots = data.get("shots") or []

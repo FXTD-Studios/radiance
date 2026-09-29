@@ -47,7 +47,7 @@ function install(RV) {
         infoIcon.style.cssText = 'color: #00a8ff; font-size: 14px; font-weight: bold;';
         
         const text = document.createElement('span');
-        text.textContent = 'Use the Radiance Write nodes in your workflow for video and sequence export. Save PNG exports the current Viewer frame. Viewer adjustments are preview-only unless applied in the workflow.';
+        text.textContent = 'Use the Write node in your workflow for video and sequence export. Save PNG exports the current Viewer frame. Viewer adjustments are preview-only unless applied in the workflow.';
         
         const close = document.createElement('span');
         close.textContent = '✕';

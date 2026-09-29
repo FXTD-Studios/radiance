@@ -1200,10 +1200,10 @@ class RadianceVAE4KEncode:
     RETURN_TYPES = ("LATENT", "IMAGE", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("samples", "alpha", "metadata", "latent_format", "quality_report")
     OUTPUT_TOOLTIPS = (
-        "Encoded latent — wire to Radiance Sampler or save node.",
-        "Alpha channel tensor — wire to Radiance VAE 4K Decode alpha input.",
-        "Encode metadata JSON — wire to Decode crop_padding for auto-crop.",
-        "Latent format string (e.g. 'flux_16ch') — wire to Radiance Sampler latent_format input.",
+        "Encoded latent — wire to the Sampler or a save node.",
+        "Alpha channel tensor — wire to the alpha input of VAE Decode (HDR).",
+        "Encode metadata JSON, for reference: VAE Decode (HDR) reads the padding from the latent.",
+        "Latent format string (e.g. 'flux_16ch'), for reference.",
         "Quality metrics JSON: clipping %, NaN count, latent range, tile info.",
     )
     FUNCTION = "encode"
@@ -1984,7 +1984,7 @@ class RadianceVAE4KDecode:
                     "BOOLEAN",
                     {
                         "default": False,
-                        "tooltip": "Export .rhdr sidecar for Radiance Viewer.",
+                        "tooltip": "Export an .rhdr sidecar for the Viewer.",
                     },
                 ),
                 # BUG-G FIX: Precision was previously invisible to the operator
@@ -3451,7 +3451,7 @@ class RadianceVAE4KRoundtrip:
                 ),
                 "export_rhdr": (
                     "BOOLEAN",
-                    {"default": True, "tooltip": "Export .rhdr for Radiance Viewer."},
+                    {"default": True, "tooltip": "Export .rhdr for the Viewer."},
                 ),
                 "rhdr_precision": (
                     ["f16", "f32"],

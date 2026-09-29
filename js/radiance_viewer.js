@@ -4664,7 +4664,7 @@ class RadianceViewer {
                 );
 
                 if (!clipNode) {
-                    this._termLog('error', '[Batch] Could not find a primary CLIPTextEncode or Radiance Prompt node in graph!');
+                    this._termLog('error', '[Batch] Could not find a primary CLIPTextEncode or Prompt node in graph!');
                     return;
                 }
                 const textWidget = clipNode.widgets.find(w => w.name === 'text' || w.name === 'base_prompt');
@@ -21545,7 +21545,7 @@ app.registerExtension({
         nodeType.prototype.onExecuted = function (message) {
             // v2.3: Error handling - show backend errors instead of silent failure
             if (message?.error?.length) {
-                const errMsg = "Radiance Viewer Error: " + message.error.join("; ");
+                const errMsg = "Viewer error: " + message.error.join("; ");
                 if (this.radianceViewer?._termLog) {
                     this.radianceViewer._termLog('error', errMsg);
                 } else {
