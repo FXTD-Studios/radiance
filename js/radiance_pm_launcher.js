@@ -1,6 +1,6 @@
 // radiance_pm_launcher.js
 // ─────────────────────────────────────────────────────────────────────────────
-// Optional grouped launcher for the Radiance Project Manager node.
+// Optional grouped launcher for the Project Manager node.
 // Renders a compact tile layout (Open row + gold Save + footer links) as a DOM
 // widget. SELF-CONTAINED and SAFE: it lives in its own file, so the core
 // radiance_workspace.js is never modified. If the DOM widget renders, it removes

@@ -1,6 +1,6 @@
 /**
  * radiance_loader.js
- * v3.3 — Streamlined Radiance Loader Widget sync, dynamic visibility & smart auto-fill
+ * v3.3 — Streamlined Loader widget sync, dynamic visibility & smart auto-fill
  */
 
 import { app } from "../../scripts/app.js";
@@ -720,7 +720,7 @@ function autoFillPresetFiles(node, cleanPreset) {
         }
     }
 
-    // 4. Match Audio VAE (LTX 2.3, Radiance Video Loader only)
+    // 4. Match Audio VAE (LTX 2.3, Video Loader only)
     const audioVaeW = getWidget(node, "audio_vae_name");
     if (audioVaeW && audioVaeW.options?.values) {
         if (config.audio_vae_hints) {
@@ -731,7 +731,7 @@ function autoFillPresetFiles(node, cleanPreset) {
         }
     }
 
-    // 5. Match Latent Upscale Model (Radiance Video Loader only)
+    // 5. Match Latent Upscale Model (Video Loader only)
     const upscaleW = getWidget(node, "upscale_model_name");
     if (upscaleW && upscaleW.options?.values) {
         const upscaleHints = _resolveUpscaleHints(node, config);

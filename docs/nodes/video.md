@@ -84,7 +84,7 @@ End-to-end text-to-video generation pipeline with HDR support.
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the initial noise and the sampler. |
 | `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info. When it carries a model_name, that model's defaults replace steps, cfg, sampler_name and scheduler. |
 | `character_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning whose tokens are appended to the positive prompt at weight 0.75. Skipped if its embedding width differs. |
-| `cfg_schedule_json` (optional) | string |  |  | JSON float array from RadianceAudioCFGSchedule. Only the first value is used, as a static CFG override; CFG does not vary per step. |
+| `cfg_schedule_json` (optional) | string |  |  | JSON float array, e.g. [4.0]. Only the first value is used, as a static CFG override; CFG does not vary per step. |
 | `steps` (optional) | int | 0 | 0 to 200 | Sampling steps. 0 uses the model default (the LTX-Video preset's 25 when no dit_config is connected). Ignored when dit_config carries a model_name. |
 | `cfg` (optional) | float | 0 | 0 to 30, step 0.1 | Guidance scale. 0 uses the model default (the LTX-Video preset's 3.5 when no dit_config is connected). cfg_schedule_json overrides it. |
 | `sampler_name` (optional) | choice | `euler` | ComfyUI's samplers | ComfyUI sampler. Ignored when dit_config carries a model_name. |
@@ -439,7 +439,7 @@ Run the diffusion sampler to generate video latents from pre-built noise and con
 | `scheduler` | choice | `normal` | ComfyUI's schedulers | ComfyUI sigma scheduler. Ignored when dit_config carries a model_name. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the sampler's own noise (ancestral and SDE samplers). The initial noise comes from latent_noise. |
 | `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info — when connected, overrides steps/cfg/sampler/scheduler with model-specific defaults. |
-| `cfg_schedule_json` (optional) | string |  |  | JSON float array from RadianceAudioCFGSchedule — first value overrides CFG |
+| `cfg_schedule_json` (optional) | string |  |  | JSON float array, e.g. [4.0]. Its first value overrides CFG. |
 | `denoise` (optional) | float | 1 | 0 to 1, step 0.01 | Fraction of the noise schedule to run (1.0 = full). The start latent is latent_noise itself, so below 1.0 this is not a video-to-video strength. |
 
 **Outputs**

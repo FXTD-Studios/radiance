@@ -14,7 +14,7 @@ function setWidgetVisible(widget, visible, node) {
 
 /**
  * Radiance Universal I/O Widget Management (v2.3)
- * Handles dynamic visibility for Digital Cinema Read and Write nodes.
+ * Handles dynamic visibility for the DPX Read and DPX Write nodes.
  *
  * Fixes applied:
  *  FIX 1: Node names updated to match nodes_io.py after ◎ was removed from
@@ -434,7 +434,7 @@ app.registerExtension({
 			};
 		}
 
-		// 1. Digital Cinema Read — label intelligence
+		// 1. DPX Read — label intelligence
 		// FIX 1: was "◎ RadianceDigitalCinemaRead" — ◎ removed from Python mapping key.
 		if (nodeData.name === "RadianceDigitalCinemaRead") {
 			const onNodeCreated = nodeType.prototype.onNodeCreated;

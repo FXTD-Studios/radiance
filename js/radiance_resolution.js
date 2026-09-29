@@ -14,7 +14,7 @@ function setWidgetVisible(widget, visible, node) {
 // need three ../ to reach ComfyUI's scripts/ directory.
 
 /**
- * Radiance Resolution — Widget Management (v2.4)
+ * Resolution — Widget Management (v2.4)
  *
  * FIX 5: Import path corrected (see above).
  * FIX 6: Switched from nodeCreated hook + nested setTimeout to beforeRegisterNodeDef

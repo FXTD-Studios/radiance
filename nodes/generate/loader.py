@@ -2,7 +2,7 @@
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Radiance Read Models  —  nodes_loader.py
+#  Loader  —  nodes/generate/loader.py
 #  v3.1.1: Deduplicated — all shared utilities live in loader_utils.py (SSOT).
 #  This file contains only ComfyUI node class definitions and registration.
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -934,7 +934,7 @@ class RadianceControlNetApply:
 
         # 3. Advanced Application (Standard ComfyUI Logic with added safety)
         # ComfyUI's ControlNets take the hint channels-first, as its own
-        # ControlNet Apply passes it (IMAGE is B,H,W,C). The hint used to go in
+        # Apply ControlNet passes it (IMAGE is B,H,W,C). The hint used to go in
         # as B,H,W,C and a VAE was never passed, so ControlNets that encode the
         # hint with the VAE could not work.
         control_hint = image.movedim(-1, 1)

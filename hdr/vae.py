@@ -633,7 +633,6 @@ def detect_vae_factor(vae: Any) -> int:
 def detect_latent_format(vae: Any) -> str:
     """
     v2.0: Return a format string e.g. 'flux_16ch' based on VAE latent channels.
-    Compatible with the Radiance Sampler latent_format input socket.
     """
     # ALBABIT-FIX: comfy.sd.VAE states latent_channels for every VAE it loads.
     # The probes below miss the Wan-type VAEs (Wan, Qwen-Image, Qwen-Image 2.1),
@@ -1821,7 +1820,7 @@ class RadianceVAE4KDecode:
     Features:
     - VRAM-aware auto tile sizing
     - Cosine blend weights (invisible seams)
-    - Direct .rhdr export for Radiance Viewer
+    - Direct .rhdr export for the Viewer
     - Color space output (Linear, sRGB, ACEScg, Log formats)
     - Alpha channel restoration
     - Inverse tonemap for HDR recovery
@@ -3309,7 +3308,7 @@ class RadianceVAE4KDecode:
         img = _restore_alpha_channel(img, alpha)
 
         # Export .rhdr — one sidecar per frame for video, single file for stills
-        # BUG 1 FIX: RHDR must be scene-linear float data (Radiance Viewer uses it
+        # BUG 1 FIX: RHDR must be scene-linear float data (the Viewer uses it
         # for proper HDR display via WebGL shaders). Previously saved from the
         # post-processed img (after tonemap + target_space), which gave wrong data
         # when display_tonemap=Reinhard: the viewer would load tonemapped sRGB and

@@ -55,7 +55,7 @@ class RadianceVideoMaskPropagator:
             indexing="ij"
         )
         
-        # Radiance Optical Flow convention (measured on a moving plate):
+        # MotionVectors convention (measured on a moving plate):
         # flow_vectors[i] lives on frame i and points to where each pixel was
         # in frame i-1, i.e. frame_i(p) ~ frame_{i-1}(p + flow_i(p));
         # flow_vectors[0] is zero. The old code read flow_vectors[i-1] with
