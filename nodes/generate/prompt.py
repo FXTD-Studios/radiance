@@ -944,11 +944,8 @@ def _detect_arch_from_clip(clip, target_arch: str,
             return arch
 
     # ── Priority 3: tokenizer key fingerprinting (cached per clip object) ────
-    # ALBABIT-FIX: was keyed on id(clip) in a plain dict, so a collected
-    # clip's entry stuck around and a later object reusing that freed
-    # address inherited its stale fingerprint (real, reproducible under
-    # pytest's object churn). WeakKeyDictionary keyed on the object itself
-    # evicts on real collection, so a reused address can't inherit it.
+    # ALBABIT-FIX: a WeakKeyDictionary on the clip itself, not a dict on
+    # id(clip): a later object reusing a freed address inherited the stale entry.
     try:
         keys = _detect_arch_from_clip._key_cache.get(clip)
     except TypeError:
@@ -2027,10 +2024,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                                optional=True, tooltip="Visual aesthetic."),
                 io.Combo.Input("color_grading", options=cls.COLOR_GRADING, default="None",
                                optional=True, tooltip="Color grading look."),
+                # ALBABIT-FIX: Off by default, so the negative is what was typed,
+                # as in ComfyUI's templates. Saved workflows keep their value.
                 io.Combo.Input(
                     "negative_strength", options=["Off", "Soft", "Standard", "Aggressive"],
-                    default="Standard", optional=True,
-                    tooltip="Auto-negative strength. 'Soft' is recommended for Flux.",
+                    default="Off", optional=True,
+                    tooltip="Generic negative terms added before negative_prompt. Off encodes negative_prompt alone, as ComfyUI's templates do.",
                 ),
                 io.String.Input(
                     "negative_prompt", multiline=True, default="", optional=True,
@@ -2114,7 +2113,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         lighting="None",
         style_aesthetic="None",
         color_grading="None",
-        negative_strength="Standard",
+        negative_strength="Off",
         negative_prompt="",
         model_meta="",
         negative_mode="Auto",
@@ -2168,11 +2167,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             settings = apply_style_preset(style_preset, settings)
 
         # ── Build prompt ────────────────────────────────────────────────────
-        # ALBABIT-FIX: ltxav uses the same _build_prose_prompt path as Flux/WAN.
-        # Gemma3-12B's audio head learns near-zero influence from purely
-        # visual gear terms, no corruption. Note: quoted dialogue in
-        # base_prompt (e.g. 'says "Hello!"') WILL generate audible speech,
-        # intended LTX-AV behaviour, not a bug.
+        # ALBABIT-FIX: ltxav takes the same prose path as Flux/WAN; camera terms
+        # do not disturb its audio. Quoted dialogue ('says "Hello!"') is spoken.
         final_prompt, negative_prompt, _ = build_cinematic_prompt_v3(
             base_prompt=base_prompt,
             base_prompt_b="",
@@ -2256,8 +2252,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             negative_cond = _with_reference_latents(
                 negative_cond, positive_cond[0][1].get("reference_latents") or [])
         else:
-            safe_negative = negative_prompt if negative_prompt and negative_prompt.strip() else " "
-            negative_cond = _encode_tokens(clip, clip.tokenize(safe_negative))
+            # ALBABIT-FIX: an empty negative is encoded as "", as CLIPTextEncode
+            # does. " " added a space token for the LLM encoders (Qwen-Image...).
+            negative_cond = _encode_tokens(clip, clip.tokenize(negative_prompt))
             if flux2_refs:
                 negative_cond = _with_reference_latents(negative_cond, flux2_refs)
 

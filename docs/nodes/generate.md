@@ -144,7 +144,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image 2.1`, and 6 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image`, and 7 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
 | `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
 | `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 11 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
@@ -161,6 +161,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
 | `auto_download` (optional) | boolean | on |  | If a selected model is missing and is one Radiance knows, download it on first run from its pinned Hugging Face source, checked against its SHA-256 before it is installed (large: 4 to 60 GB). Gated repositories (FLUX.2-dev, FLUX.2-klein 9B, LTX-2.5) need their licence accepted on Hugging Face and HF_TOKEN set. RADIANCE_ALLOW_DOWNLOADS=0 always stops downloads. |
+| `model_shift` (optional) | float | 0 | 0 to 100, step 0.01 | Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it. |
 
 **Outputs**
 
@@ -225,7 +226,7 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `lighting` (optional) | choice | `None` | `None`, `Rembrandt Lighting`, `Chiaroscuro (High Contrast)`, `Film Noir Lighting`, `Split Lighting`, `Butterfly Lighting`, `Paramount Lighting`, `Soft Window Light`, `Golden Hour (Magic Hour)`, `Blue Hour`, and 16 more | Lighting style. |
 | `style_aesthetic` (optional) | choice | `None` | `None`, `Photorealistic (Raw)`, `Cinematic Movie Still`, `Hyper-Realism`, `Editorial Photography`, `National Geographic Style`, `Documentary Texture`, `Vintage 1990s VHS`, `Analog Film (Kodak Portra 400)`, `Fujifilm Velvia 50`, and 21 more | Visual aesthetic. |
 | `color_grading` (optional) | choice | `None` | `None`, `Teal and Orange (Blockbuster)`, `Bleach Bypass (Gritty)`, `Technicolor (Vintage)`, `Cross Processed`, `Desaturated (Muted)`, `Vibrant High Contrast`, `Sepia Tone`, `Monochrome High Key`, `Cyberpunk Neon Grading`, and 5 more | Color grading look. |
-| `negative_strength` (optional) | choice | `Standard` | `Off`, `Soft`, `Standard`, `Aggressive` | Auto-negative strength. 'Soft' is recommended for Flux. |
+| `negative_strength` (optional) | choice | `Off` | `Off`, `Soft`, `Standard`, `Aggressive` | Generic negative terms added before negative_prompt. Off encodes negative_prompt alone, as ComfyUI's templates do. |
 | `negative_prompt` (optional) | string |  | multi-line text | Custom negative prompt. Appended after auto-negatives. |
 | `negative_mode` (optional) | choice | `Auto` | `Auto`, `Always encode`, `Zero (skip encode)` | Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) with no custom negative, return a zeroed negative instead of encoding one: ComfyUI never reads the negative at CFG 1, so this saves a full text-encoder pass. Always encode: pick this if you run those models above CFG 1 with a negative. Zero: never encode the negative. |
 | `model_meta` (optional) | string |  |  | Optional JSON metadata from the Loader's model_meta output. When connected, architecture detection uses this before tokenizer heuristics. |
@@ -315,18 +316,19 @@ Professional resolution selector with internal preview card. Outputs empty LATEN
 | `width` | int | 1024 | 64 to 16384, step 8 | Custom width (only used when preset is 'Custom'). Auto-aligned to 8px (32px for LTX Video). |
 | `height` | int | 1024 | 64 to 16384, step 8 | Custom height (only used when preset is 'Custom'). Auto-aligned to 8px (32px for LTX Video). |
 | `orientation` | choice | `As Preset` | `As Preset`, `Landscape`, `Portrait`, `Square` | Override orientation. 'As Preset' uses the preset's native orientation. |
-| `model_type` | choice | `Manual` | `Manual`, `Flux / SD3 / Lumina2 / Z-Image (16ch)`, `SDXL / SD 1.5 / PixArt / Aura Flow (4ch)`, `Chroma (16ch)`, `Cosmos World (16ch)`, `CogVideoX (16ch)`, `Mochi (12ch)`, `LTXV (128ch)`, `WAN (16ch)`, `WAN TI2V (48ch)`, and 9 more | Drives pixel alignment, video-latent shape, frame-count rules, latent_format, and the Est. VRAM readout. Flux/SD3/Cosmos = 16ch. SDXL/SD 1.5 = 4ch. Mochi = 12ch. MiniMax H3 = 24ch video-only (fixed 24fps, 17k+5 frame grid); pair with an audio latent + 'Concat AV Latent' for the full AV pipeline. 'Manual': no alignment/frame-count constraints; use 'latent_channels' for experimental/unlisted models. Est. VRAM assumes a full load; actual usage may be lower with DynamicVRAM/CPU offload active. |
+| `model_type` | choice | `Manual` | `Manual`, `Flux / SD3 / Lumina2 / Z-Image (16ch)`, `SDXL / SD 1.5 / PixArt / Aura Flow (4ch)`, `Chroma (16ch)`, `Cosmos World (16ch)`, `CogVideoX (16ch)`, `Mochi (12ch)`, `LTXV (128ch)`, `WAN (16ch)`, `WAN TI2V (48ch)`, and 9 more | Drives pixel alignment, video-latent shape, frame-count rules, latent_format, and the Est. VRAM readout. Flux/SD3/Cosmos = 16ch. SDXL/SD 1.5 = 4ch. Mochi = 12ch. MiniMax H3 = 24ch video-only (fixed 24fps, 17k+5 frame grid); pair with an audio latent + 'Concat AV Latent' for the full AV pipeline. 'Manual': no alignment/frame-count constraints; use 'latent_channels' for experimental/unlisted models. With model_meta connected it follows the Loader (🧲); a manual choice shows ✎. Est. VRAM assumes a full load; actual usage may be lower with DynamicVRAM/CPU offload active. |
 | `batch_size` | int | 1 | 1 to 64, step 1 | Number of latent frames in batch. |
 | `scale_factor` (optional) | float | 1 | 0.1 to 4, step 0.1 | Scale the resolution by this factor after preset/custom. 0.5 = half res, 2.0 = double res. Applied before alignment. |
 | `latent_channels` (optional) | int | 0 | 0 to 256, step 1 | Override latent channel count. 0 = use model_type default. Common: 4 (SD/SDXL), 12 (Mochi), 16 (Flux/SD3/Cosmos). Set manually for custom architectures. |
 | `mp_target` (optional) | float | 0 | 0 to 64, step 0.1 | MEGAPIXEL TARGET: When > 0, auto-calculates W×H from this MP target and mp_aspect_ratio. Overrides preset and custom W/H. 0 = disabled. |
 | `mp_aspect_ratio` (optional) | choice | `16:9` | `1:1`, `4:3`, `3:2`, `16:9`, `21:9`, `2.39:1`, `1.85:1`, `9:16`, `2:3`, `3:4` | Aspect ratio for megapixel target mode (only used when mp_target > 0). |
 | `enable_video` (optional) | boolean | off |  | Enable video sequence mode (replaces batch parameter). |
-| `crop_to_broadcast_resolution` (optional) | boolean | on |  | Compute crop_bbox to remove model-alignment padding (e.g. 1920x1088 -> 1920x1080 for LTX's 32px grid). Wire crop_bbox into RadianceHDRVAEDecode's crop_bbox input to actually apply the crop after decode. |
+| `crop_to_res` (optional) | boolean | off |  | Make crop_bbox the requested size inside the model-aligned one (e.g. 1920x1080 in LTX's 1920x1088, its 32px grid), so VAE Decode (HDR)'s crop_bbox input crops the alignment padding off. Off: crop_bbox is the full frame. |
 | `frame_computation` (optional) | choice | `Manual (Frames)` | `Manual (Frames)`, `Auto (Seconds)` | How the video frame count is set (video only). Manual uses video_frames as typed; Auto (Seconds) uses duration_seconds x frame_rate snapped to the model's stride*k+1 grid. |
 | `duration_seconds` (optional) | float | 5 | 0.1 to 100000, step 0.1 | Target video duration in seconds (used when frame_computation = 'Auto (Seconds)'). Combined with frame_rate this must stay within video_frames' 100000 ceiling; a longer request is clamped with a warning. |
 | `video_frames` (optional) | int | 81 | 1 to 100000, step 1 | Total number of video frames. 5D-latent models require (stride*k+1) — e.g. 4k+1 for WAN/HunyuanVideo (1, 5, 9, 13...), 8k+1 for LTXV (1, 9, 17...), 6k+1 for Mochi (1, 7, 13...). MiniMax H3 uses its own 17k+5 grid instead (5, 22, 39, 56...). A warning is logged if this constraint is violated. Ignored when frame_computation = 'Auto (Seconds)'. |
 | `frame_rate` (optional) | float | 24 | 1 to 120, step 1 | Playback frame rate. |
+| `model_meta` (optional) | string |  |  | Optional: connect the Loader's model_meta output, and model_type follows the loaded model. |
 
 **Outputs**
 

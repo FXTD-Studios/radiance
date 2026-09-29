@@ -1,8 +1,8 @@
 """
-Tests for Qwen-Image Edit 2511 support.
+Tests for Qwen-Image, Qwen-Image 2512 and Qwen-Image Edit 2511 support.
 
-Qwen-Image Edit 2511 is a Qwen-Image checkpoint: same DiT keys, same 16ch
-VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves it to qwen_image.
+Qwen-Image Edit 2511 and 2512 are Qwen-Image checkpoints: same DiT keys, same
+16ch VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves them to qwen_image.
 """
 import json
 
@@ -17,6 +17,22 @@ from radiance.config.model_map import (
 from radiance.nodes.generate import prompt
 
 PRESET = "Qwen-Image Edit 2511"
+EDIT_UNET = "qwen_image_edit_2511_int8_convrot.safetensors"
+LIGHTNING = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+
+
+def _auto(unet, meta_loras=(), prompt=None, cfg=1.0, steps=20):
+    """cfg and steps the Sampler runs in Auto, from the Loader's model_meta."""
+    from radiance.nodes.generate.sampler import RadianceSamplerPro
+    meta = json.dumps({"arch": "qwen_image", "unet_file": unet,
+                       "loras": [{"name": n, "model_str": 1.0, "clip_str": 1.0} for n in meta_loras]})
+    sampler = RadianceSamplerPro()
+    _, kwargs, _ = sampler._configure_model_and_defaults(
+        None, "auto", "Auto", model_meta=meta, chain_loras=sampler._model_chain_loras(prompt, "9"),
+        cfg=cfg, flux_guidance=3.5, steps=steps, sampler="euler", scheduler="normal",
+        scheduler_mode="Auto (Match Steps)",
+    )
+    return kwargs["cfg"], kwargs["steps"]
 
 
 class TestQwenImageEditLoader:
@@ -45,11 +61,63 @@ class TestQwenImageEditLoader:
             assert entry["url"].startswith(f"https://huggingface.co/Comfy-Org/{repo}/resolve/")
             assert entry["url"].endswith(f"split_files/{kind}/{fname}")
 
+    def test_model_shift_is_the_image_loaders_last_input(self):
+        from radiance.nodes.generate.loader import RadianceUnifiedLoader, RadianceVideoLoader
+        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-1] == "model_shift"
+        assert "model_shift" not in RadianceVideoLoader.INPUT_TYPES()["optional"]
+
+    @pytest.fixture
+    def load(self, monkeypatch):
+        """Runs the image Loader with every file load stubbed out; returns the
+        shifts ModelSamplingAuraFlow received and the outputs."""
+        from radiance.nodes.generate import loader
+        shifts = []
+
+        class _AuraFlow:
+            def patch_aura(self, model, shift):
+                shifts.append(shift)
+                return ("shifted " + model,)
+
+        stubs = {
+            "_ensure_model_exists": lambda *a: "unet.safetensors",
+            "resolve_architecture": lambda *a: ("qwen_image", "qwen_image", "Wan21"),
+            "setup_offload_mode": lambda *a: None,
+            "estimate_vram_for_load": lambda *a: (0.0, 0.0, 0.0),
+            "load_unet_and_baked_vae": lambda *a: ("model", None, None, 0.0, False, 0.0, False),
+            "load_clip_stack": lambda *a: ("clip", [], 0.0, False),
+            "load_standalone_vae": lambda *a: ("vae", 0.0, False),
+            "apply_lora_stack": lambda model, clip, *a: (model, clip, [], None),
+            "print_premium_loader_hud": lambda **k: None,
+        }
+        for name, stub in stubs.items():
+            monkeypatch.setattr(loader, name, stub)
+        monkeypatch.setattr(loader.nodes_model_advanced, "ModelSamplingAuraFlow", _AuraFlow, raising=False)
+
+        def run(**kwargs):
+            out = loader.RadianceUnifiedLoader().load_radiance_stack(
+                PRESET, "unet.safetensors", "default", "auto", "qwen_image_vae.safetensors",
+                check_vram="Off", use_cache="Off", **kwargs,
+            )
+            return shifts, out[0], json.loads(out[4])
+        return run
+
+    def test_model_shift_patches_the_model_as_modelsamplingauraflow(self, load):
+        shifts, model, meta = load(model_shift=3.1)
+        assert shifts == [3.1]
+        assert model == "shifted model"
+        assert meta["model_shift"] == 3.1
+
+    def test_model_shift_zero_keeps_the_models_own(self, load):
+        shifts, model, meta = load()
+        assert shifts == []
+        assert model == "model"
+        assert meta["model_shift"] == 0.0
+
 
 class TestQwenImageEditSampler:
 
     def test_auto_preset_applies_the_template_values_from_model_meta(self):
-        """Qwen-Image's own defaults are 20 steps, cfg 2.5; only the file name
+        """Qwen-Image's own defaults are 20 steps, cfg 4; only the file name
         tells the Edit checkpoint apart."""
         from radiance.nodes.generate.sampler import RadianceSamplerPro
         meta = json.dumps({"arch": "qwen_image", "unet_file": "qwen_image_edit_2511_int8_convrot.safetensors"})
@@ -59,6 +127,23 @@ class TestQwenImageEditSampler:
         )
         assert detected == "qwen_image"
         assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (4.0, 40, "euler", "simple")
+
+    def test_a_lightning_lora_from_the_loaders_stack_runs_4_steps_at_cfg_1(self):
+        assert _auto(EDIT_UNET, meta_loras=[LIGHTNING]) == (1.0, 4)
+
+    def test_a_native_lightning_lora_before_the_sampler_runs_4_steps_at_cfg_1(self):
+        """API prompt: Loader 1 -> ModelSamplingAuraFlow 2 -> LoraLoaderModelOnly 3
+        -> Sampler 9. The front end already wrote cfg 1, the widget's default,
+        which model_meta alone would turn into Edit 2511's cfg 4."""
+        prompt = {
+            "1": {"class_type": "RadianceUnifiedLoader", "inputs": {}},
+            "2": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["1", 0], "shift": 3.1}},
+            "3": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["2", 0], "lora_name": LIGHTNING}},
+            "9": {"class_type": "RadianceSamplerPro", "inputs": {"model": ["3", 0]}},
+        }
+        assert _auto(EDIT_UNET, prompt=prompt, steps=4) == (1.0, 4)
+        prompt["3"]["inputs"]["lora_name"] = ["5", 0]
+        assert _auto(EDIT_UNET, prompt=prompt, steps=4) == (4.0, 4)
 
     @pytest.mark.parametrize("shape", [(1, 16, 1, 8, 8), (1, 16, 8, 8)])
     def test_the_latent_is_sampled_in_5d_like_the_native_ksampler(self, shape):
@@ -102,12 +187,60 @@ class TestQwenImageEditSampler:
         assert "IMAGE" not in str(exc.value)
 
 
+class TestQwenImage:
+    """Qwen-Image and Qwen-Image 2512 text to image, as their official templates."""
+
+    def test_one_preset_selects_qwen_image_with_default_dtypes(self):
+        assert CHECKPOINT_PRESETS["Qwen-Image"] == {
+            "model_type": "qwen_image", "weight_dtype": "default", "clip_dtype": "default",
+        }
+        assert "Qwen-Image" not in VIDEO_PRESET_NAMES
+
+    def test_catalogue_pins_the_templates_transformers(self):
+        for fname in ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image_2512_fp8_e4m3fn.safetensors"):
+            entry = RADIANCE_MODEL_MAP[fname]
+            assert entry["type"] == "diffusion_models"
+            assert entry["url"].startswith("https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/")
+            assert entry["url"].endswith(f"split_files/diffusion_models/{fname}")
+
+    @pytest.mark.parametrize("unet, steps", [
+        ("qwen_image_fp8_e4m3fn.safetensors", 20), ("qwen_image_2512_fp8_e4m3fn.safetensors", 50),
+    ])
+    def test_auto_runs_the_templates_steps_at_cfg_4(self, unet, steps):
+        assert _auto(unet) == (4.0, steps)
+
+    @pytest.mark.parametrize("unet, lora, steps", [
+        ("qwen_image_fp8_e4m3fn.safetensors", "Qwen-Image-Lightning-8steps-V1.0.safetensors", 8),
+        ("qwen_image_2512_fp8_e4m3fn.safetensors", "Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors", 4),
+        ("qwen_image_2512_fp8_e4m3fn.safetensors", "Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16.safetensors", 2),
+    ])
+    def test_the_templates_step_distilled_loras_run_at_cfg_1(self, unet, lora, steps):
+        assert _auto(unet, meta_loras=[lora]) == (1.0, steps)
+
+
 class _FakeClip:
     def tokenize(self, text, **kwargs):
         return {"qwen25_7b": [[(1, 1.0)] * 5]}
 
     def encode_from_tokens_scheduled(self, tokens):
         return [["cond", {}]]
+
+
+class TestQwenImagePromptText:
+
+    def test_an_empty_negative_is_encoded_as_the_native_empty_string(self):
+        """By default nothing is added to it, and CLIPTextEncode encodes "":
+        " " adds a space token for Qwen2.5-VL."""
+        texts = []
+
+        class _Clip(_FakeClip):
+            def tokenize(self, text, **kwargs):
+                texts.append(text)
+                return super().tokenize(text)
+
+        prompt.RadianceCinematicPromptEncoder.execute(
+            _Clip(), base_prompt="A fisherman on a pier", model_meta=json.dumps({"arch": "qwen_image"}))
+        assert texts[-1] == ""
 
 
 class TestQwenImageEditPromptReferences:

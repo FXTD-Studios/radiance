@@ -1092,6 +1092,7 @@ class RadianceSamplerPro:
                 ),
 
             },
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("LATENT", "SIGMAS", "SIGMAS", "IMAGE")
@@ -1122,38 +1123,46 @@ class RadianceSamplerPro:
             logger.warning(f"[Radiance] Preset '{preset}' not found.")
             return kwargs
 
-        # ALBABIT-FIX: presets no longer overwrite UI widget values (parity
-        # with old Radiance "relying strictly on UI parameters"). The JS
-        # applyPreset fills the widgets when a preset is selected and flags
-        # any user-edited widget with a divergence marker. Forcing preset
-        # values here silently overrode user edits (e.g. cfg 1.0 -> 3.0 on
-        # the LTX HighRes pass: negative prompt evaluated -> 2 forward
-        # passes per step instead of 1 -> x2.5 slower + different render).
+        # ALBABIT-FIX: presets fill the widgets in the front end, which marks later
+        # edits ✎. Forcing their values here overrode those edits (cfg 1 -> 3 on
+        # LTX HighRes: a second forward pass per step, 2.5x slower).
         logger.info(f"[Radiance] Preset '{preset}' active — relying strictly on UI parameters.")
         return kwargs
 
     @staticmethod
     def _resolved_values_ui(cfg, flux_guidance, flux_shift, sampler, steps):
-        # ALBABIT-FIX: cfg/flux_guidance/flux_shift/sampler/steps can be
-        # silently adjusted by _configure_model_and_defaults() (MODEL_DEFAULTS
-        # auto-adapt, or model_meta-driven Flux.2 Klein refinement) without the
-        # widget on screen changing -- mirrors RadianceResolution's
-        # computed_width/height "ui" write-back so onExecuted (radiance_sampler.js)
-        # can sync the widgets to what was actually used, post-run.
+        # ALBABIT-FIX: _configure_model_and_defaults() may change these without the
+        # widgets showing it; onExecuted (radiance_sampler.js) syncs them to what
+        # the run used, as Resolution does with its computed size.
         return {
             "resolved_cfg": [cfg], "resolved_flux_guidance": [flux_guidance],
             "resolved_flux_shift": [flux_shift], "resolved_sampler": [sampler],
             "resolved_steps": [steps],
         }
 
-    def _configure_model_and_defaults(self, model, model_type, preset, model_meta="", **kwargs):
+    @staticmethod
+    def _model_chain_loras(prompt, unique_id):
+        # ALBABIT-FIX: model_meta lists the Loader's own LoRAs; these are the
+        # ones native loaders apply between the Loader and this node.
+        loras = []
+        node = prompt.get(str(unique_id)) if prompt else None
+        while node:
+            link = node["inputs"].get("model")
+            node = prompt.get(str(link[0])) if isinstance(link, list) else None
+            if node and node["class_type"] in ("LoraLoaderModelOnly", "LoraLoader"):
+                name = node["inputs"].get("lora_name")
+                if isinstance(name, str):
+                    loras.append(name)
+        return loras
+
+    def _configure_model_and_defaults(self, model, model_type, preset, model_meta="", chain_loras=(), **kwargs):
         detected_type = detect_model_type(model) if model_type == "auto" else model_type
 
         # model_meta's arch is the Loader's own (already-correct) resolution --
         # prefer it over re-detecting from the loaded MODEL object, which can't
         # distinguish Flux.2 Dev from Flux.2 Klein either. Only applies in auto
         # mode, never overriding an explicit manual model_type.
-        meta_arch, meta_unet_file = parse_model_meta(model_meta)
+        meta_arch, meta_unet_file, meta_loras = parse_model_meta(model_meta)
         if model_type == "auto" and meta_arch:
             detected_type = meta_arch
 
@@ -1163,7 +1172,7 @@ class RadianceSamplerPro:
         # regardless of how model_type itself was determined.
         if preset in ("Auto", "Custom"):
             defaults = get_model_defaults(detected_type)
-            distilled = refine_distillation_from_meta(detected_type, meta_unet_file)
+            distilled = refine_distillation_from_meta(detected_type, meta_unet_file, [*meta_loras, *chain_loras])
 
             # Apply defaults if user has them at "default" values -- distilled
             # (e.g. SDXL/SD3.5 Turbo) takes priority over the generic default.
@@ -1188,12 +1197,8 @@ class RadianceSamplerPro:
                         f"model's usual cfg is {suggested} (2 forward passes per step); "
                         f"connect the Loader's model_meta to apply it automatically.")
 
-            # ALBABIT-FIX: "detected_type != flux" used to gate this whole block
-            # off for Flux.1 -- harmless when guidance always matched (3.5 ==
-            # the widget's own generic default), but it silently blocked the
-            # Schnell override (0.0) once distillation_refined started covering
-            # Flux.1 too. Removed -- a plain "flux" with no override still
-            # resolves guidance=3.5, an unchanged no-op.
+            # ALBABIT-FIX: no longer skipped for Flux.1, which blocked Schnell's
+            # guidance 0; a plain "flux" still resolves to 3.5.
             if kwargs.get('flux_guidance') == 3.5:
                 model_default_guidance = (distilled or {}).get(
                     "guidance", defaults.get("guidance", kwargs['flux_guidance']))
@@ -1587,6 +1592,8 @@ class RadianceSamplerPro:
         sdr_inject_steps: int = 6,
         sdr_decay: float = 0.65,
         model_meta: str = "",
+        prompt=None,
+        unique_id=None,
     ) -> Tuple:
 
         t_start = time.time()
@@ -1625,7 +1632,8 @@ class RadianceSamplerPro:
 
         # 2. Model Detection & Default Calibration
         detected_type, params, meta_unet_file = self._configure_model_and_defaults(model, model_type, preset,
-            model_meta=model_meta, cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
+            model_meta=model_meta, chain_loras=self._model_chain_loras(prompt, unique_id),
+            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
             sampler=sampler, scheduler=scheduler, scheduler_mode=scheduler_mode, steps=steps)
 
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
@@ -2045,11 +2053,8 @@ class RadianceSamplerPro:
         active_layers = [(m, p) for m, p in energy_layers if p != 0.0]
 
         if active_layers:
-            # ALBABIT-FIX: same wrong-API bug as the two patches above --
-            # was registered via set_model_sampler_cfg_function (noise-space
-            # single slot) despite computing a denoised-space result. Moved to
-            # set_model_sampler_post_cfg_function, which also removes the need
-            # for _make_energy_cfg_patch's own existing_cfg_fn chaining.
+            # ALBABIT-FIX: a post-CFG function, like the two patches above: its result
+            # is denoised-space, which the cfg function slot does not take.
             #
             # ALBABIT-FIX: same video/audio split source as the LTX-AV dual-CFG
             # patch below (work_latent.unbind()), so EPS can mask the video
@@ -2430,13 +2435,9 @@ class RadianceSamplerPro:
                     f"Tile sampling done in {timings['tile_sampling']:.2f}s"
                 )
 
-            # ALBABIT-FIX: LTX-AV NestedTensor is packed to (B, 1, flat_N) by
-            # KSampler.sample() before reaching _calc_cond_batch. The memory_required
-            # formula computes area = B * flat_N (~16M) instead of B * true_spatial
-            # (~63K), inflating the estimate 128× and causing the memory check to
-            # exceed free VRAM → sequential conditioning evaluation (2 forward passes
-            # per step) instead of one batched pass → ×2.5 slowdown at HighRes.
-            # Patch the BaseModel instance to correct the area estimate.
+            # ALBABIT-FIX: KSampler packs the LTX-AV NestedTensor to (B, 1, flat_N), so
+            # memory_required counted 128x the real area and split the conditioning into
+            # 2 forward passes per step (2.5x slower at HighRes). Correct it on the model.
             if is_ltx_av and hasattr(model, "model"):
                 _ltxav_mr_base = model.model
                 _ltxav_mr_orig = _ltxav_mr_base.memory_required

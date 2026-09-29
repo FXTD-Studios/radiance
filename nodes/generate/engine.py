@@ -350,8 +350,8 @@ class RadianceHDRVAEDecode:
         decode_noise_scale: float = 0.0,
         decode_mode: str = "Auto (Recommended)",
         hdr_scale_factor: float = 1.0,
-        crop_bbox: dict = None,
-        hdr_peak_nits: float = 1000.0,             # ALBABIT-FIX: broadcast-resolution crop from RadianceResolution
+        crop_bbox: dict = None,                    # ALBABIT-FIX: Radiance Resolution's crop_bbox (crop_to_res)
+        hdr_peak_nits: float = 1000.0,
         **kwargs,                           # BUG 8 FIX: forward remaining params
     ):
         # Lazily instantiate once; RadianceVAE4KDecode is stateless so one

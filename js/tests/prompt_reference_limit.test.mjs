@@ -43,11 +43,13 @@ function prompt(loader, connected, max = 16) {
 
 const slots = node => node.inputs.filter(i => i.name.startsWith('images.')).map(i => i.name.slice(7));
 
-test('a Qwen-Image Edit Loader stops the slots at image_3', () => {
-    const node = prompt({ preset: 'Qwen-Image Edit 2511' }, 3);
-    context.applyLimit(node);
-    assert.equal(node.comfyDynamic.autogrow.images.max, 3);
-    assert.deepEqual(slots(node), ['image_1', 'image_2', 'image_3']);
+test('a Qwen-Image or Qwen-Image Edit Loader stops the slots at image_3', () => {
+    for (const preset of ['Qwen-Image Edit 2511', 'Qwen-Image']) {
+        const node = prompt({ preset }, 3);
+        context.applyLimit(node);
+        assert.equal(node.comfyDynamic.autogrow.images.max, 3);
+        assert.deepEqual(slots(node), ['image_1', 'image_2', 'image_3']);
+    }
 });
 
 test('a connected slot past the limit stays, for the run to report it', () => {

@@ -19,6 +19,7 @@ except ImportError:
     _HAS_NESTED_TENSOR = False
 
 from radiance.model.detect import _BASE_VRAM, _BASE_CLIP_VRAM
+from radiance.sampler_utils import parse_model_meta
 
 logger = logging.getLogger("radiance.resolution")
 
@@ -164,6 +165,30 @@ MODEL_TYPES = [
     "HunyuanVideo 1.5 (32ch)",
     "Kandinsky 5 Video (16ch)",
 ]
+
+# ALBABIT-FIX: the architectures the Loader can load (its model_meta "arch")
+# behind each model_type; mirrored in js/radiance_resolution.js.
+ARCHS_BY_MODEL_TYPE = {
+    "Flux / SD3 / Lumina2 / Z-Image (16ch)": ["flux", "sd3", "sd3.5", "lumina2", "z_image"],
+    "SDXL / SD 1.5 / PixArt / Aura Flow (4ch)": ["sdxl", "sd1.5", "pixart", "aura_flow"],
+    "Chroma (16ch)": ["chroma"],
+    "Cosmos World (16ch)": ["cosmos"],
+    "CogVideoX (16ch)": ["cogvideox"],
+    "Mochi (12ch)": ["mochi"],
+    "LTXV (128ch)": ["ltxv", "ltxav"],
+    "WAN (16ch)": ["wan"],
+    "WAN TI2V (48ch)": ["wan_ti2v"],
+    "HunyuanVideo (16ch)": ["hunyuan_video"],
+    "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "MiniMax H3 (24ch)": ["minimax"],
+    "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
+    "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
+    "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)": ["hidream", "omnigen2", "longcat_image", "kandinsky5_image"],
+    "HunyuanImage 2.1 (64ch)": ["hunyuan_image"],
+    "HunyuanVideo 1.5 (32ch)": ["hunyuan_video_15"],
+    "Kandinsky 5 Video (16ch)": ["kandinsky5"],
+}
+MODEL_TYPE_BY_ARCH = {arch: model_type for model_type, archs in ARCHS_BY_MODEL_TYPE.items() for arch in archs}
 
 ORIENTATIONS = ["As Preset", "Landscape", "Portrait", "Square"]
 
@@ -830,7 +855,7 @@ class RadianceResolution:
         cls,
         preset, width, height, orientation, model_type, batch_size,
         scale_factor=1.0, latent_channels=0, enable_video=False,
-        crop_to_broadcast_resolution=True,
+        crop_to_res=False,
         frame_computation="Manual (Frames)", duration_seconds=5.0,
         video_frames=81, frame_rate=24.0, mp_target=0.0,
         mp_aspect_ratio="16:9", unique_id="",
@@ -839,7 +864,7 @@ class RadianceResolution:
         state = (
             f"{preset}|{width}|{height}|{orientation}|{model_type}|{batch_size}|"
             f"{scale_factor}|{latent_channels}|{enable_video}|"
-            f"{crop_to_broadcast_resolution}|"
+            f"{crop_to_res}|"
             f"{frame_computation}|{duration_seconds}|{video_frames}|"
             f"{frame_rate}|{mp_target}|{mp_aspect_ratio}"
         )
@@ -900,6 +925,8 @@ class RadianceResolution:
                             "for the full AV pipeline.\n"
                             "'Manual': no alignment/frame-count constraints; use "
                             "'latent_channels' for experimental/unlisted models.\n"
+                            "With model_meta connected it follows the Loader (🧲); "
+                            "a manual choice shows ✎.\n"
                             "Est. VRAM assumes a full load; actual usage may be lower "
                             "with DynamicVRAM/CPU offload active."
                         ),
@@ -976,19 +1003,18 @@ class RadianceResolution:
                     {"default": False, "tooltip": "Enable video sequence mode (replaces batch parameter)."},
                 ),
                 # ALBABIT-FIX: Restored from previous radiance version, generalized to
-                # images too (old fork was video-only). crop_bbox below always reports
-                # the diff between the requested size and align_val's padding, for any
-                # preset/model_type/custom size, not just a fixed table of broadcast
-                # standards like the old fork's 1088->1080 lookup.
-                "crop_to_broadcast_resolution": (
+                # images too and to any size, not only broadcast ones (old fork:
+                # video only, a fixed 1088->1080 table). Off by default, and named
+                # for what it does now; saved workflows keep their value.
+                "crop_to_res": (
                     "BOOLEAN",
                     {
-                        "default": True,
+                        "default": False,
                         "tooltip": (
-                            "Compute crop_bbox to remove model-alignment padding "
-                            "(e.g. 1920x1088 -> 1920x1080 for LTX's 32px grid). "
-                            "Wire crop_bbox into RadianceHDRVAEDecode's crop_bbox "
-                            "input to actually apply the crop after decode."
+                            "Make crop_bbox the requested size inside the model-aligned one "
+                            "(e.g. 1920x1080 in LTX's 1920x1088, its 32px grid), so VAE Decode "
+                            "(HDR)'s crop_bbox input crops the alignment padding off. Off: "
+                            "crop_bbox is the full frame."
                         ),
                     },
                 ),
@@ -1040,6 +1066,12 @@ class RadianceResolution:
                     "FLOAT",
                     {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0, "tooltip": "Playback frame rate."},
                 ),
+                "model_meta": (
+                    "STRING",
+                    {"default": "", "forceInput": True,
+                     "tooltip": "Optional: connect the Loader's model_meta output, and model_type "
+                                "follows the loaded model."},
+                ),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -1084,15 +1116,22 @@ class RadianceResolution:
         scale_factor: float = 1.0,
         latent_channels: int = 0,
         enable_video: bool = False,
-        crop_to_broadcast_resolution: bool = True,
+        crop_to_res: bool = False,
         frame_computation: str = "Manual (Frames)",
         duration_seconds: float = 5.0,
         video_frames: int = 81,
         frame_rate: float = 24.0,
         mp_target: float = 0.0,
         mp_aspect_ratio: str = "16:9",
+        model_meta: str = "",
         unique_id: str = "",
     ) -> Dict[str, Any]:
+
+        # ALBABIT-FIX: the front end already sets model_type from model_meta;
+        # "Manual" still follows it here, for an auto-detecting Loader or an
+        # API run. Any other value is the user's choice.
+        if model_type == "Manual":
+            model_type = MODEL_TYPE_BY_ARCH.get(parse_model_meta(model_meta)[0], model_type)
 
         # ── Step 2 (computed early): Determine Alignment Rule (model_type-driven) ──
         # ALBABIT-FIX: alignment is derived solely from SPATIAL_SCALE for the
@@ -1425,7 +1464,7 @@ class RadianceResolution:
         # disabled, crop_bbox is still a well-formed full-frame box, so wiring
         # it downstream is always harmless regardless of the toggle state.
         full_w, full_h = _align_up(req_w, align_val), _align_up(req_h, align_val)
-        if crop_to_broadcast_resolution:
+        if crop_to_res:
             crop_x, crop_y = (full_w - req_w) // 2, (full_h - req_h) // 2
         else:
             crop_x, crop_y, req_w, req_h = 0, 0, full_w, full_h
