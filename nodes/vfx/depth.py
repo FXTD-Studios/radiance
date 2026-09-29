@@ -239,7 +239,7 @@ class RadianceDepthMapGenerator:
         "Depth Anything V2 monocular depth estimation. "
         "Video-safe — standardizes each frame with spatial-temporal alignment "
         "preventing flickering. Outputs 3-channel grayscale depth map. "
-        "Connect to Depth of Field node for realistic defocus blur."
+        "Connect to Defocus for realistic defocus blur."
     )
 
     @torch.no_grad()

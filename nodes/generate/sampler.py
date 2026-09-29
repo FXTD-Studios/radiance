@@ -1035,7 +1035,7 @@ class RadianceSamplerPro:
                     "STRING",
                     {
                         "default": "", "forceInput": True,
-                        "tooltip": "Optional: connect RadianceUnifiedLoader's model_meta output. "
+                        "tooltip": "Optional: connect the Loader's model_meta output. "
                                    "Only used when preset='Auto'/'Custom' and model_type='auto'. "
                                    "Refines cfg/guidance/steps beyond what the loaded model's "
                                    "architecture alone can tell -- e.g. distinguishing Flux.2 Klein "
@@ -1823,7 +1823,7 @@ class RadianceSamplerPro:
 
         if effective_start >= effective_end:
             raise RuntimeError(
-                f"[RadianceSamplerPro] Empty step range: start_step={start_step}, "
+                f"Sampler: Empty step range: start_step={start_step}, "
                 f"end_step={end_step} resolve to steps {effective_start}-{effective_end} "
                 f"of {target_total_steps}, so there is nothing to sample.\n\n"
                 f"end_step=0 means 'run to the end'. Set start_step below end_step "

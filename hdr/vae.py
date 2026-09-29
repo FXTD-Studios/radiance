@@ -633,7 +633,6 @@ def detect_vae_factor(vae: Any) -> int:
 def detect_latent_format(vae: Any) -> str:
     """
     v2.0: Return a format string e.g. 'flux_16ch' based on VAE latent channels.
-    Compatible with the Radiance Sampler latent_format input socket.
     """
     # ALBABIT-FIX: comfy.sd.VAE states latent_channels for every VAE it loads.
     # The probes below miss the Wan-type VAEs (Wan, Qwen-Image, Qwen-Image 2.1),
@@ -1200,10 +1199,10 @@ class RadianceVAE4KEncode:
     RETURN_TYPES = ("LATENT", "IMAGE", "STRING", "STRING", "STRING")
     RETURN_NAMES = ("samples", "alpha", "metadata", "latent_format", "quality_report")
     OUTPUT_TOOLTIPS = (
-        "Encoded latent — wire to Radiance Sampler or save node.",
-        "Alpha channel tensor — wire to Radiance VAE 4K Decode alpha input.",
-        "Encode metadata JSON — wire to Decode crop_padding for auto-crop.",
-        "Latent format string (e.g. 'flux_16ch') — wire to Radiance Sampler latent_format input.",
+        "Encoded latent — wire to the Sampler or a save node.",
+        "Alpha channel tensor — wire to the alpha input of VAE Decode (HDR).",
+        "Encode metadata JSON, for reference: VAE Decode (HDR) reads the padding from the latent.",
+        "Latent format string (e.g. 'flux_16ch'), for reference.",
         "Quality metrics JSON: clipping %, NaN count, latent range, tile info.",
     )
     FUNCTION = "encode"
@@ -1821,7 +1820,7 @@ class RadianceVAE4KDecode:
     Features:
     - VRAM-aware auto tile sizing
     - Cosine blend weights (invisible seams)
-    - Direct .rhdr export for Radiance Viewer
+    - Direct .rhdr export for the Viewer
     - Color space output (Linear, sRGB, ACEScg, Log formats)
     - Alpha channel restoration
     - Inverse tonemap for HDR recovery
@@ -1984,7 +1983,7 @@ class RadianceVAE4KDecode:
                     "BOOLEAN",
                     {
                         "default": False,
-                        "tooltip": "Export .rhdr sidecar for Radiance Viewer.",
+                        "tooltip": "Export an .rhdr sidecar for the Viewer.",
                     },
                 ),
                 # BUG-G FIX: Precision was previously invisible to the operator
@@ -3309,7 +3308,7 @@ class RadianceVAE4KDecode:
         img = _restore_alpha_channel(img, alpha)
 
         # Export .rhdr — one sidecar per frame for video, single file for stills
-        # BUG 1 FIX: RHDR must be scene-linear float data (Radiance Viewer uses it
+        # BUG 1 FIX: RHDR must be scene-linear float data (the Viewer uses it
         # for proper HDR display via WebGL shaders). Previously saved from the
         # post-processed img (after tonemap + target_space), which gave wrong data
         # when display_tonemap=Reinhard: the viewer would load tonemapped sRGB and
@@ -3451,7 +3450,7 @@ class RadianceVAE4KRoundtrip:
                 ),
                 "export_rhdr": (
                     "BOOLEAN",
-                    {"default": True, "tooltip": "Export .rhdr for Radiance Viewer."},
+                    {"default": True, "tooltip": "Export .rhdr for the Viewer."},
                 ),
                 "rhdr_precision": (
                     ["f16", "f32"],

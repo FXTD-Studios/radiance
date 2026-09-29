@@ -19,9 +19,9 @@ from a pinned source and checked against its SHA-256 before it is installed
                                  message naming the file, size and folder
     HF_HUB_OFFLINE=1 or TRANSFORMERS_OFFLINE=1   the machine is offline
     RADIANCE_UPSCALE_OFFLINE=1   legacy opt-out, still honoured for upscale
-    RADIANCE_LOADER_OFFLINE=1    legacy opt-out, still honoured for Read Models
+    RADIANCE_LOADER_OFFLINE=1    legacy opt-out, still honoured for the Loader
 
-Nodes with their own switch (Read Models `auto_download`, AI Upscale
+Nodes with their own switch (Loader `auto_download`, AI Upscale
 `auto_download`, Multipass Estimate `download_missing_models`) also say no
 when it is off.
 """

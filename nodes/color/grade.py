@@ -336,7 +336,7 @@ class RadianceApplyGradeInfo:
         return {
             "required": {
                 "image": ("IMAGE", {"tooltip": "Image to grade, processed in its own encoding (the grade is plain arithmetic, not colour-managed). Single-channel images are expanded to RGB."}),
-                "grade_info": ("STRING", {"forceInput": True, "tooltip": "grade_info JSON from Radiance Grade or Grade Match (lift, gamma, gain, offset lists plus contrast, pivot, saturation). Missing keys fall back to neutral; invalid JSON passes the image through unchanged."}),
+                "grade_info": ("STRING", {"forceInput": True, "tooltip": "grade_info JSON from Grade or Grade Match (lift, gamma, gain, offset lists plus contrast, pivot, saturation). Missing keys fall back to neutral; invalid JSON passes the image through unchanged."}),
             },
             "optional": {
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "tooltip": "Mix between the original image (0) and the fully graded result (1)."}),

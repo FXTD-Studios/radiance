@@ -120,7 +120,7 @@ Attach an energy mask to conditioning for Energy-Prioritized Sampling.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `conditioning` | CONDITIONING |  |  | Positive conditioning. Connect the output to RadianceSamplerPro's `positive`. |
+| `conditioning` | CONDITIONING |  |  | Positive conditioning. Connect the output to the Sampler's `positive`. |
 | `mask` | MASK |  |  | High-energy region. White = boosted guidance, black = untouched. Resized to the latent grid at sampling time, so any resolution works. |
 | `priority` | float | 0.5 | -1 to 4, step 0.05 | Local guidance bonus inside the mask. Effective CFG there is cfg × (1 + priority). 0 disables EPS; negative softens the region. Chained Energy Mask nodes stack, so priorities add where masks overlap. |
 | `invert` | boolean | off |  | Swap masked and unmasked regions before applying priority. |
@@ -156,7 +156,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `text_projection` (optional) | choice | `None` | `None`, `Baked (from UNET)` | Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). 'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader. |
 | `clip_dtype` (optional) | choice | `default` | `default`, `fp16`, `bf16`, `fp8_e4m3fn`, `fp32` | CLIP weight precision. Independent from UNET. For Flux T5XXL: fp8 saves ~4.7 GB vs fp16. |
 | `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). |
-| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from RadianceLoraStack node. |
+| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. |
 | `check_vram` (optional) | choice | `On` | `On`, `Off` | Estimate VRAM before load and warn if tight. |
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
@@ -176,7 +176,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 `RadianceLoraStack`
 
-Compose up to 5 LoRAs into an accumulating LORA_STACK. Chain multiple stacks together. Feed into Radiance Read Models.
+Compose up to 5 LoRAs into an accumulating LORA_STACK. Chain multiple stacks together. Feed into the Loader.
 
 **Inputs**
 
@@ -228,7 +228,7 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `negative_strength` (optional) | choice | `Standard` | `Off`, `Soft`, `Standard`, `Aggressive` | Auto-negative strength. 'Soft' is recommended for Flux. |
 | `negative_prompt` (optional) | string |  | multi-line text | Custom negative prompt. Appended after auto-negatives. |
 | `negative_mode` (optional) | choice | `Auto` | `Auto`, `Always encode`, `Zero (skip encode)` | Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) with no custom negative, return a zeroed negative instead of encoding one: ComfyUI never reads the negative at CFG 1, so this saves a full text-encoder pass. Always encode: pick this if you run those models above CFG 1 with a negative. Zero: never encode the negative. |
-| `model_meta` (optional) | string |  |  | Optional JSON metadata from Radiance Read Models. When connected, architecture detection uses this before tokenizer heuristics. |
+| `model_meta` (optional) | string |  |  | Optional JSON metadata from the Loader's model_meta output. When connected, architecture detection uses this before tokenizer heuristics. |
 | `vae` (optional) | VAE |  |  | Encodes the reference images into the latents the model edits from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without it read the images through the text encoder only. |
 | `resolution` (optional) | int | 1024 | 0 to 4096, step 32 | Qwen-Image 2.1: reference images are resized to about resolution x resolution pixels, at multiples of 32, keeping their aspect ratio. 0 keeps each at its own size, rounded to a multiple of 32. Flux.2 and Qwen-Image Edit size them on their own. |
 | `images` (optional) | IMAGE |  | `image_1` to `image_16`, added as they are connected | Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) and Flux.2 editing. image_1 is the image to edit, the others are references. With Qwen-Image 2.1, cite them in the prompt as <image1>, <image2>... |
@@ -339,7 +339,7 @@ Professional resolution selector with internal preview card. Outputs empty LATEN
 | `info` | STRING | Resolution info string. |
 | `frame_rate` | FLOAT | Playback frame rate. Always the widget value — never 0.0. |
 | `frame_count` | INT | Total video frames (or batch size for images). |
-| `latent_format` | STRING | Latent format string — wire to Sampler Pro latent_format input. |
+| `latent_format` | STRING | Latent format string, for reference. |
 | `duration_sec` | FLOAT | Duration in seconds (video_frames / frame_rate). 0.0 for images. |
 | `crop_bbox` | BOUNDING_BOX | Crop box {x, y, width, height} to remove model-alignment padding. Wire into RadianceHDRVAEDecode's crop_bbox input. |
 
@@ -406,7 +406,7 @@ Universal diffusion sampler. Auto-detects model type (Flux, SD3, SDXL, WAN, LTX,
 | `sdr_blend` (optional) | float | 0.35 | 0 to 1, step 0.05 | Weight of the encoded reference: it is mixed into the starting latent at this weight, and is the starting weight of the per-step anchor. 0 disables SDR conditioning. |
 | `sdr_inject_steps` (optional) | int | 6 | 0 to 100, step 1 | Number of model evaluations after CFG in which the denoised result is pulled toward the reference (0 = only the starting-latent mix). Multi-evaluation samplers use these up faster than one per step. |
 | `sdr_decay` (optional) | float | 0.65 | 0 to 1, step 0.05 | Per-evaluation falloff of the anchor: weight = sdr_blend x sdr_decay^n. Lower fades faster; 1.0 holds it constant. |
-| `model_meta` (optional) | string |  |  | Optional: connect RadianceUnifiedLoader's model_meta output. Only used when preset='Auto'/'Custom' and model_type='auto'. Refines cfg/guidance/steps beyond what the loaded model's architecture alone can tell -- e.g. distinguishing Flux.2 Klein Base from Klein distilled, which are architecturally identical. |
+| `model_meta` (optional) | string |  |  | Optional: connect the Loader's model_meta output. Only used when preset='Auto'/'Custom' and model_type='auto'. Refines cfg/guidance/steps beyond what the loaded model's architecture alone can tell -- e.g. distinguishing Flux.2 Klein Base from Klein distilled, which are architecturally identical. |
 | `temporal_window` (optional) | int | 0 | 0 to 512, step 1 | Experimental long-video windowing; may produce ghosting or scene changes at joins. Use 0 for production work. ControlNet requires 0 or a window covering the whole clip. 0 = off (whole clip denoised at once, the previous behaviour). Above 0, this many LATENT frames are denoised per window, with the windows blended at every step, so peak VRAM follows the window size instead of the clip length. Only applies to 5D video latents longer than the window. 16-32 is a usual range; smaller windows save more memory and give the model less temporal context. |
 | `temporal_overlap` (optional) | int | 4 | 0 to 256, step 1 | Latent frames shared between neighbouring windows, used to cross-fade them at every denoising step. Clamped to half of temporal_window. More overlap increases compute but does not guarantee coherent joins; 0 means hard cuts between windows. Ignored when temporal_window is 0. |
 
@@ -442,7 +442,7 @@ Decode a latent with an ordinary VAE into the chosen output space. Auto inverts 
 | `display_tonemap` (optional) | choice | `None` | `Reinhard`, `ACES Filmic`, `None` | v2.3.8: display_tonemap is NOW THE SOLE TONEMAP CONTROL — independent of hdr_output. 'Reinhard' or 'ACES Filmic': tonemap ALWAYS fires for Compress(Log), even when hdr_output=True. Reinhard → smooth rolloff [0,∞)→[0,1), hue-preserving. ACES Filmic → filmic contrast, clips cleanly above ~10 lin. 'None': NO tonemap regardless of hdr_output. Scene-linear values far above 1.0 pass through — GUARANTEED OVEREXPOSURE in ComfyUI preview. Use only with an OCIO-aware downstream viewer. Ignored for all non-Compress(Log) hdr_modes. |
 | `inverse_tonemap` (optional) | boolean | off |  | Expand SDR to HDR (recover highlights). |
 | `target_stops` (optional) | float | 12 | 8 to 16, step 0.5 | Target dynamic range for inverse tonemap. |
-| `export_rhdr` (optional) | boolean | off |  | Export .rhdr sidecar for Radiance Viewer. |
+| `export_rhdr` (optional) | boolean | off |  | Export an .rhdr sidecar for the Viewer. |
 | `rhdr_precision` (optional) | choice | `f32` | `f16`, `f32` | RHDR export precision. 'f16' (fp16, default): smaller files, values capped at 65504 — adequate for most VFX material. 'f32' (fp32): full 32-bit range, ~2× file size — use for shots with extreme linear values (direct sun, fire VDBs). |
 | `source_space` (optional) | choice | `sRGB` | `Linear`, `ACEScg`, `ACES 2065-1`, `Rec.2020 Linear`, `sRGB`, `Raw`, `ARRI LogC3`, `ARRI LogC4`, `Sony S-Log3`, `Panasonic V-Log`, and 2 more | Kept for saved workflows. The log curve and camera gamut are read from the latent's HDR Encode metadata; this widget is not used. |
 | `hdr_output` (optional) | boolean | off |  | 32-BIT HDR OUTPUT — when True, skips the final [0,1] clamp so the output IMAGE tensor carries full 32-bit scene-linear values (>1.0 for bright highlights, <0.0 for below-black). Required for Linear/ACEScg/Log target spaces in HDR VFX pipelines. Disable when feeding SDR nodes (preview, PNG export, etc.). |
@@ -484,8 +484,8 @@ HDR-aware VAE encode, the partner of VAE Decode (HDR). Compress (Log) (default) 
 
 | Output | Type | What it is |
 | :--- | :--- | :--- |
-| `samples` | LATENT | Encoded latent — wire to Radiance Sampler or save node. |
-| `alpha` | IMAGE | Alpha channel tensor — wire to Radiance VAE 4K Decode alpha input. |
-| `metadata` | STRING | Encode metadata JSON — wire to Decode crop_padding for auto-crop. |
-| `latent_format` | STRING | Latent format string (e.g. 'flux_16ch') — wire to Radiance Sampler latent_format input. |
+| `samples` | LATENT | Encoded latent — wire to the Sampler or a save node. |
+| `alpha` | IMAGE | Alpha channel tensor — wire to the alpha input of VAE Decode (HDR). |
+| `metadata` | STRING | Encode metadata JSON, for reference: VAE Decode (HDR) reads the padding from the latent. |
+| `latent_format` | STRING | Latent format string (e.g. 'flux_16ch'), for reference. |
 | `quality_report` | STRING | Quality metrics JSON: clipping %, NaN count, latent range, tile info. |

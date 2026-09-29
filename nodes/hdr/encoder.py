@@ -376,8 +376,8 @@ class RadianceHDRPerChannelDenorm:
 # CONSOLIDATED: RadianceHDRTurboDecoder removed (Consolidate 1 — 2026-04-26)
 #
 # The simple vae.decode() + soft-knee-decompress path is superseded by
-# ◎ Radiance HDR VAE Decode in Direct HDR mode; learned SDR→HDR recovery
-# lives in ◎ Radiance SDR → HDR Universal / Recover (RUDRA pixel model).
+# VAE Decode (HDR) in Direct HDR mode; learned SDR→HDR recovery
+# lives in SDR → HDR Universal / Recover (RUDRA pixel model).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
