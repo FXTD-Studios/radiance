@@ -983,7 +983,7 @@ function _markLinkedWidget(widget, linked, inSync) {
 // ALBABIT-FIX: extends the guidance/steps sync (above) to model_type/cfg/
 // sampler/scheduler/denoise (plus, for LTX-AV, which Sampler
 // stage this node is -- see _isLtxAvHighResStage). Gated on preset
-// (Auto/Custom) only -- the per-field checks in syncAutoValue() already
+// (Auto/Custom) only; the per-field checks in syncAutoValue() already
 // protect any field the user deliberately set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
@@ -1038,7 +1038,7 @@ function updateModelMetaDefaults(node) {
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
     if (sdTurboActive) {
-        syncAutoValue(schedulerW, undefined); // no value to track/force -- link only
+        syncAutoValue(schedulerW, undefined); // no value to track or force, a link only
         if (_markLinkedWidget(schedulerW, true, true)) changed = true;
     } else {
         const schedulerDefault = ltxavStage?.scheduler ?? modelDefaults?.scheduler;
