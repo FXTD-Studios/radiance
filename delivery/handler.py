@@ -30,7 +30,7 @@ from radiance.color.grading import apply_grading
 
 logger = logging.getLogger("radiance.delivery.handler")
 
-_SAFE_FILENAME_RE = re.compile(r'[^\w\s◎_.() -]', re.UNICODE)
+_SAFE_FILENAME_RE = re.compile(r'[^\w\s_.() -]', re.UNICODE)
 
 # ── UI → write-engine vocabulary ────────────────────────────────────────────
 # The delivery panel (js/radiance_viewer.js) and the write engine
@@ -331,7 +331,7 @@ async def radiance_deliver_endpoint(request):
         images = images[start_idx:end_idx]
         
         # ─── Process Options ──────────────────────────────────────────
-        filename_prefix = settings.get('filename', '◎ Radiance_Deliver')
+        filename_prefix = settings.get('filename', 'Radiance_Deliver')
         output_format = settings.get('format', 'Video — MP4 (H.264)')
         fps = float(settings.get('fps', 24.0))
         quality = int(settings.get('quality', 18))

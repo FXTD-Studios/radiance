@@ -198,8 +198,11 @@ def test_zdepth_sidecar_is_purged_on_the_next_execution(temp_out):
     depth = torch.rand(3, 16, 24, 1)
 
     node.view(image, zdepth=depth, unique_id="n7")
-    first = {f for f in _listdir(temp_out) if f.startswith("◎ Radiance_zdepth")}
+    first = {f for f in _listdir(temp_out) if f.startswith("Radiance_zdepth")}
     assert any(f.endswith(".rhdr") for f in first), "no zdepth sidecar was written"
+    # cv2.imwrite mangles non-ASCII names on Windows, and the Viewer then
+    # cannot find the file it reported.
+    assert all(f.isascii() for f in _listdir(temp_out))
 
     node.view(image, zdepth=depth, unique_id="n7")
     survivors = first & set(_listdir(temp_out))
