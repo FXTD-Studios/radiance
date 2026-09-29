@@ -4,6 +4,7 @@ import math
 import logging
 import uuid
 import hashlib
+import json
 from typing import Dict, Any, Tuple
 
 import folder_paths
@@ -164,6 +165,30 @@ MODEL_TYPES = [
     "HunyuanVideo 1.5 (32ch)",
     "Kandinsky 5 Video (16ch)",
 ]
+
+# ALBABIT-FIX: the architectures the Loader can load (its model_meta "arch")
+# behind each model_type; mirrored in js/radiance_resolution.js.
+ARCHS_BY_MODEL_TYPE = {
+    "Flux / SD3 / Lumina2 / Z-Image (16ch)": ["flux", "sd3", "sd3.5", "lumina2", "z_image"],
+    "SDXL / SD 1.5 / PixArt / Aura Flow (4ch)": ["sdxl", "sd1.5", "pixart", "aura_flow"],
+    "Chroma (16ch)": ["chroma"],
+    "Cosmos World (16ch)": ["cosmos"],
+    "CogVideoX (16ch)": ["cogvideox"],
+    "Mochi (12ch)": ["mochi"],
+    "LTXV (128ch)": ["ltxv", "ltxav"],
+    "WAN (16ch)": ["wan"],
+    "WAN TI2V (48ch)": ["wan_ti2v"],
+    "HunyuanVideo (16ch)": ["hunyuan_video"],
+    "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "MiniMax H3 (24ch)": ["minimax"],
+    "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
+    "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
+    "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)": ["hidream", "omnigen2", "longcat_image", "kandinsky5_image"],
+    "HunyuanImage 2.1 (64ch)": ["hunyuan_image"],
+    "HunyuanVideo 1.5 (32ch)": ["hunyuan_video_15"],
+    "Kandinsky 5 Video (16ch)": ["kandinsky5"],
+}
+MODEL_TYPE_BY_ARCH = {arch: model_type for model_type, archs in ARCHS_BY_MODEL_TYPE.items() for arch in archs}
 
 ORIENTATIONS = ["As Preset", "Landscape", "Portrait", "Square"]
 
@@ -900,6 +925,8 @@ class RadianceResolution:
                             "for the full AV pipeline.\n"
                             "'Manual': no alignment/frame-count constraints; use "
                             "'latent_channels' for experimental/unlisted models.\n"
+                            "With model_meta connected it follows the Loader (🧲); "
+                            "a manual choice shows ✎.\n"
                             "Est. VRAM assumes a full load; actual usage may be lower "
                             "with DynamicVRAM/CPU offload active."
                         ),
@@ -1040,6 +1067,12 @@ class RadianceResolution:
                     "FLOAT",
                     {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0, "tooltip": "Playback frame rate."},
                 ),
+                "model_meta": (
+                    "STRING",
+                    {"default": "", "forceInput": True,
+                     "tooltip": "Optional: connect the Loader's model_meta output, and model_type "
+                                "follows the loaded model."},
+                ),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -1091,8 +1124,19 @@ class RadianceResolution:
         frame_rate: float = 24.0,
         mp_target: float = 0.0,
         mp_aspect_ratio: str = "16:9",
+        model_meta: str = "",
         unique_id: str = "",
     ) -> Dict[str, Any]:
+
+        # ALBABIT-FIX: the front end already sets model_type from model_meta;
+        # "Manual" still follows it here, for an auto-detecting Loader or an
+        # API run. Any other value is the user's choice.
+        if model_type == "Manual" and model_meta:
+            try:
+                arch = json.loads(model_meta).get("arch", "")
+            except (ValueError, AttributeError):
+                arch = ""
+            model_type = MODEL_TYPE_BY_ARCH.get(arch, model_type)
 
         # ── Step 2 (computed early): Determine Alignment Rule (model_type-driven) ──
         # ALBABIT-FIX: alignment is derived solely from SPATIAL_SCALE for the
