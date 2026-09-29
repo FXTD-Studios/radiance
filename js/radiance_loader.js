@@ -6,6 +6,7 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
     getWidget,
@@ -895,23 +896,6 @@ function updatePresetDivergenceMarkers(node) {
  * switching back to "Custom"). Removing and re-inserting the widget at the
  * same index forces Vue to destroy and remount its component.
  */
-/**
- * Collapsible widget visibility helper
- */
-/**
- * Recalculate node dimensions and refresh the canvas layout cleanly
- */
-function refreshNodeSize(node) {
-    if (!node.computeSize) return;
-
-    const sz = node.computeSize();
-    // ALBABIT-FIX: directly mutating node.size[i] updates LiteGraph but Vue's
-    // node component never observes it, keeping the old height forever.
-    // node.setSize(...) is the API Vue's resize handling actually reacts to.
-    node.setSize([Math.max(node.size[0], sz[0]), sz[1]]);
-    app.graph.setDirtyCanvas(true, true);
-}
-
 function updateLoaderUI(node, forceAutoFill = false) {
     if (!node.widgets) return;
 
@@ -929,7 +913,7 @@ function updateLoaderUI(node, forceAutoFill = false) {
         node.widgets.forEach(w => {
             setWidgetVisible(w, true, node);
         });
-        refreshNodeSize(node);
+        fitNodeSize(node);
         updatePresetDivergenceMarkers(node);
         return;
     }
@@ -963,7 +947,7 @@ function updateLoaderUI(node, forceAutoFill = false) {
         }
     });
 
-    refreshNodeSize(node);
+    fitNodeSize(node);
     updatePresetDivergenceMarkers(node);
 }
 

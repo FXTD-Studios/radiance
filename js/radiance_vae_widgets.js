@@ -37,6 +37,7 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
     getWidget,
@@ -104,16 +105,6 @@ function _setLabelMarker(widget, marker) {
 }
 
 
-function refreshNodeSize(node) {
-    if (!node.computeSize) return;
-    const sz = node.computeSize();
-    const newWidth = Math.max(node.size[0], sz[0]);
-    const newHeight = sz[1];
-    if (node.size[0] === newWidth && node.size[1] === newHeight) return;
-    node.setSize([newWidth, newHeight]);
-    node.setDirtyCanvas(true, true);
-}
-
 /**
  * Sync all dependent widget states based on current hdr_output + hdr_mode.
  */
@@ -177,7 +168,7 @@ function syncWidgets(node) {
     // so no widget value statically guarantees chunking is off. Always show.
     if (setWidgetVisible(temporalOverlapW, true, node)) changed = true;
 
-    if (changed) refreshNodeSize(node);
+    if (changed) fitNodeSize(node);
 }
 
 app.registerExtension({
