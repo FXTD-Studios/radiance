@@ -855,7 +855,7 @@ class RadianceResolution:
         cls,
         preset, width, height, orientation, model_type, batch_size,
         scale_factor=1.0, latent_channels=0, enable_video=False,
-        crop_to_broadcast_resolution=True,
+        crop_to_res=False,
         frame_computation="Manual (Frames)", duration_seconds=5.0,
         video_frames=81, frame_rate=24.0, mp_target=0.0,
         mp_aspect_ratio="16:9", unique_id="",
@@ -864,7 +864,7 @@ class RadianceResolution:
         state = (
             f"{preset}|{width}|{height}|{orientation}|{model_type}|{batch_size}|"
             f"{scale_factor}|{latent_channels}|{enable_video}|"
-            f"{crop_to_broadcast_resolution}|"
+            f"{crop_to_res}|"
             f"{frame_computation}|{duration_seconds}|{video_frames}|"
             f"{frame_rate}|{mp_target}|{mp_aspect_ratio}"
         )
@@ -1003,19 +1003,18 @@ class RadianceResolution:
                     {"default": False, "tooltip": "Enable video sequence mode (replaces batch parameter)."},
                 ),
                 # ALBABIT-FIX: Restored from previous radiance version, generalized to
-                # images too (old fork was video-only). crop_bbox below always reports
-                # the diff between the requested size and align_val's padding, for any
-                # preset/model_type/custom size, not just a fixed table of broadcast
-                # standards like the old fork's 1088->1080 lookup.
-                "crop_to_broadcast_resolution": (
+                # images too and to any size, not only broadcast ones (old fork:
+                # video only, a fixed 1088->1080 table). Off by default, and named
+                # for what it does now; saved workflows keep their value.
+                "crop_to_res": (
                     "BOOLEAN",
                     {
-                        "default": True,
+                        "default": False,
                         "tooltip": (
-                            "Compute crop_bbox to remove model-alignment padding "
-                            "(e.g. 1920x1088 -> 1920x1080 for LTX's 32px grid). "
-                            "Wire crop_bbox into RadianceHDRVAEDecode's crop_bbox "
-                            "input to actually apply the crop after decode."
+                            "Make crop_bbox the requested size inside the model-aligned one "
+                            "(e.g. 1920x1080 in LTX's 1920x1088, its 32px grid), so VAE Decode "
+                            "(HDR)'s crop_bbox input crops the alignment padding off. Off: "
+                            "crop_bbox is the full frame."
                         ),
                     },
                 ),
@@ -1117,7 +1116,7 @@ class RadianceResolution:
         scale_factor: float = 1.0,
         latent_channels: int = 0,
         enable_video: bool = False,
-        crop_to_broadcast_resolution: bool = True,
+        crop_to_res: bool = False,
         frame_computation: str = "Manual (Frames)",
         duration_seconds: float = 5.0,
         video_frames: int = 81,
@@ -1469,7 +1468,7 @@ class RadianceResolution:
         # disabled, crop_bbox is still a well-formed full-frame box, so wiring
         # it downstream is always harmless regardless of the toggle state.
         full_w, full_h = _align_up(req_w, align_val), _align_up(req_h, align_val)
-        if crop_to_broadcast_resolution:
+        if crop_to_res:
             crop_x, crop_y = (full_w - req_w) // 2, (full_h - req_h) // 2
         else:
             crop_x, crop_y, req_w, req_h = 0, 0, full_w, full_h
