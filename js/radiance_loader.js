@@ -451,7 +451,8 @@ const PRESET_CONFIGS = {
     },
     // ALBABIT-FIX: the files of the official ComfyUI templates, the newest
     // (int8_convrot) first, bf16 as fallback. qwen_image_vae is Qwen-Image's
-    // 16ch VAE, never Qwen-Image 2.1's.
+    // 16ch VAE, never Qwen-Image 2.1's. model_shift is their
+    // ModelSamplingAuraFlow's.
     "Qwen-Image Edit 2511": {
         "unet_hints": [
             "qwen_image_edit_2511_int8_convrot.safetensors", "qwen_image_edit_2511_fp8mixed.safetensors",
@@ -461,6 +462,8 @@ const PRESET_CONFIGS = {
         "clip_hints":    {
             "llm_encoder": ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "qwen_2.5_vl_7b"],
         },
+        "extra_widgets": ["model_shift"],
+        "model_shift": 3.1,
     },
     "SD 1.5": {
         "unet_hints":    ["v1-5", "v1_5", "sd15", "sd-1-5", "sd_1.5"],
@@ -749,6 +752,13 @@ function autoFillPresetFiles(node, cleanPreset) {
     const offloadW = getWidget(node, "offload_mode");
     if (offloadW) {
         offloadW.value = config.offload_mode || "none";
+    }
+
+    // ALBABIT-FIX: 7. model_shift, same convention: 0 (the model's own)
+    // unless the preset gives one.
+    const shiftW = getWidget(node, "model_shift");
+    if (shiftW) {
+        shiftW.value = config.model_shift ?? 0;
     }
 }
 

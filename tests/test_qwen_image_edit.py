@@ -45,6 +45,58 @@ class TestQwenImageEditLoader:
             assert entry["url"].startswith(f"https://huggingface.co/Comfy-Org/{repo}/resolve/")
             assert entry["url"].endswith(f"split_files/{kind}/{fname}")
 
+    def test_model_shift_is_the_image_loaders_last_input(self):
+        from radiance.nodes.generate.loader import RadianceUnifiedLoader, RadianceVideoLoader
+        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-1] == "model_shift"
+        assert "model_shift" not in RadianceVideoLoader.INPUT_TYPES()["optional"]
+
+    @pytest.fixture
+    def load(self, monkeypatch):
+        """Runs the image Loader with every file load stubbed out; returns the
+        shifts ModelSamplingAuraFlow received and the outputs."""
+        from radiance.nodes.generate import loader
+        shifts = []
+
+        class _AuraFlow:
+            def patch_aura(self, model, shift):
+                shifts.append(shift)
+                return ("shifted " + model,)
+
+        stubs = {
+            "_ensure_model_exists": lambda *a: "unet.safetensors",
+            "resolve_architecture": lambda *a: ("qwen_image", "qwen_image", "Wan21"),
+            "setup_offload_mode": lambda *a: None,
+            "estimate_vram_for_load": lambda *a: (0.0, 0.0, 0.0),
+            "load_unet_and_baked_vae": lambda *a: ("model", None, None, 0.0, False, 0.0, False),
+            "load_clip_stack": lambda *a: ("clip", [], 0.0, False),
+            "load_standalone_vae": lambda *a: ("vae", 0.0, False),
+            "apply_lora_stack": lambda model, clip, *a: (model, clip, [], None),
+            "print_premium_loader_hud": lambda **k: None,
+        }
+        for name, stub in stubs.items():
+            monkeypatch.setattr(loader, name, stub)
+        monkeypatch.setattr(loader.nodes_model_advanced, "ModelSamplingAuraFlow", _AuraFlow, raising=False)
+
+        def run(**kwargs):
+            out = loader.RadianceUnifiedLoader().load_radiance_stack(
+                PRESET, "unet.safetensors", "default", "auto", "qwen_image_vae.safetensors",
+                check_vram="Off", use_cache="Off", **kwargs,
+            )
+            return shifts, out[0], json.loads(out[4])
+        return run
+
+    def test_model_shift_patches_the_model_as_modelsamplingauraflow(self, load):
+        shifts, model, meta = load(model_shift=3.1)
+        assert shifts == [3.1]
+        assert model == "shifted model"
+        assert meta["model_shift"] == 3.1
+
+    def test_model_shift_zero_keeps_the_models_own(self, load):
+        shifts, model, meta = load()
+        assert shifts == []
+        assert model == "model"
+        assert meta["model_shift"] == 0.0
+
 
 class TestQwenImageEditSampler:
 
