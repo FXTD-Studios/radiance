@@ -9,7 +9,7 @@ const source = readFileSync(new URL('../radiance_sampler.js', import.meta.url), 
     .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];\s*/g, '');
 
 // Loader 1, fed by LoRA Stack 2, then an optional LoraLoaderModelOnly 3, then the Sampler.
-function sample(unetName, { stackLora = 'None', nativeLora = null } = {}) {
+function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None', nativeLora = null } = {}) {
     const nodes = {}, links = {};
     const graph = { links, getNodeById: id => nodes[id] };
     const add = (id, comfyClass, widgets, input, from) => {
@@ -20,7 +20,7 @@ function sample(unetName, { stackLora = 'None', nativeLora = null } = {}) {
         return nodes[id];
     };
     add(2, 'RadianceLoraStack', { lora_1: stackLora }, 'lora_stack');
-    const loader = add(1, 'RadianceUnifiedLoader', { preset: 'Qwen-Image Edit 2511', unet_name: unetName }, 'lora_stack', 2);
+    const loader = add(1, 'RadianceUnifiedLoader', { preset, unet_name: unetName }, 'lora_stack', 2);
     if (nativeLora) add(3, 'LoraLoaderModelOnly', { lora_name: nativeLora }, 'model', 1);
     const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, liveSourceNode, loader });
     vm.runInContext(source + `
@@ -61,4 +61,19 @@ test('so does a native LoraLoaderModelOnly between the Loader and the Sampler', 
                      ['qwen_image', 4, 1.0, 'euler', 'simple']);
     assert.deepEqual(sample('qwen_image_edit_2511_int8_convrot.safetensors', { nativeLora: 'style.safetensors' }),
                      ['qwen_image', 40, 4.0, 'euler', 'simple']);
+});
+
+test('the "Qwen-Image" preset runs the Text to Image templates\' steps at cfg 4', () => {
+    assert.deepEqual(sample('qwen_image_fp8_e4m3fn.safetensors', { preset: 'Qwen-Image' }),
+                     ['qwen_image', 20, 4.0, 'euler', 'simple']);
+    assert.deepEqual(sample('qwen_image_2512_fp8_e4m3fn.safetensors', { preset: 'Qwen-Image' }),
+                     ['qwen_image', 50, 4.0, 'euler', 'simple']);
+});
+
+test("Qwen-Image 2512's Lightning and Turbo LoRAs run their steps at cfg 1", () => {
+    for (const [lora, steps] of [['Qwen-Image-2512-Lightning-4steps-V1.0-fp32.safetensors', 4],
+                                 ['Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16.safetensors', 2]]) {
+        assert.deepEqual(sample('qwen_image_2512_fp8_e4m3fn.safetensors', { preset: 'Qwen-Image', stackLora: lora }),
+                         ['qwen_image', steps, 1.0, 'euler', 'simple']);
+    }
 });

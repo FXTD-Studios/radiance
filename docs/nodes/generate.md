@@ -144,7 +144,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image 2.1`, and 6 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Lumina2`, `PixArt Sigma`, `Qwen-Image`, and 7 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
 | `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
 | `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 11 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
@@ -161,7 +161,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
 | `auto_download` (optional) | boolean | on |  | If a selected model is missing and is one Radiance knows, download it on first run from its pinned Hugging Face source, checked against its SHA-256 before it is installed (large: 4 to 60 GB). Gated repositories (FLUX.2-dev, FLUX.2-klein 9B, LTX-2.5) need their licence accepted on Hugging Face and HF_TOKEN set. RADIANCE_ALLOW_DOWNLOADS=0 always stops downloads. |
-| `model_shift` (optional) | float | 0 | 0 to 100, step 0.01 | Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image Edit 2511 preset sets its templates' 3.1. The Sampler's flux_shift applies on top of it. |
+| `model_shift` (optional) | float | 0 | 0 to 100, step 0.01 | Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it. |
 
 **Outputs**
 

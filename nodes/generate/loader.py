@@ -296,7 +296,7 @@ class RadianceUnifiedLoader:
                 # so the Qwen-Image templates need no extra node. Last, so saved
                 # workflows keep their widget positions.
                 "model_shift": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.01,
-                    "tooltip": "Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image Edit 2511 preset sets its templates' 3.1. The Sampler's flux_shift applies on top of it."}),
+                    "tooltip": "Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it."}),
             },
         }
 

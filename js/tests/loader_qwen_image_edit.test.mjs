@@ -57,3 +57,18 @@ test("the preset shows model_shift at the templates' 3.1; another preset resets 
     context.autoFill(node, 'Flux.1');
     assert.equal(node.widgets[0].value, 0);
 });
+
+test('the "Qwen-Image" preset picks the Text to Image templates\' fp8 files, 2512 first', () => {
+    const config = context.presets['Qwen-Image'];
+    const base = 'qwen_image_fp8_e4m3fn.safetensors';
+    const q2512 = 'qwen_image_2512_fp8_e4m3fn.safetensors';
+    const others = ['qwen_image_edit_2511_int8_convrot.safetensors', 'qwen_image_2.1_bf16.safetensors'];
+    assert.equal(context.find(config.unet_hints, [...others, base, q2512]), q2512);
+    assert.equal(context.find(config.unet_hints, [...others, base]), base);
+    assert.equal(context.find(config.unet_hints, [...others, 'qwen_image_bf16.safetensors']), 'qwen_image_bf16.safetensors');
+    assert.equal(context.find(config.unet_hints, others), null);
+    assert.deepEqual(config.vae_hints, context.presets[PRESET].vae_hints);
+    assert.deepEqual(config.clip_hints, context.presets[PRESET].clip_hints);
+    assert.deepEqual([...context.slots['Qwen-Image']], ['llm_encoder']);
+    assert.equal(config.model_shift, 3.1);
+});

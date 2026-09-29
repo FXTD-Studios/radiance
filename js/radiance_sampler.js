@@ -769,7 +769,7 @@ function _isLtxAvHighResStage(node) {
 }
 
 // ALBABIT-FIX: mirrors sampler_utils.py's LIGHTNING_LORA (test_sampler_js_mirror.py).
-const LIGHTNING_LORA = /lightning[-_]?(\d+)[-_]?steps?/;
+const LIGHTNING_LORA = /(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
 
 // ALBABIT-FIX: the LoRA files this Sampler's model carries: the LoRA Stacks
 // feeding the Loader (model_meta's "loras") and the native loaders between
@@ -797,7 +797,7 @@ function _modelLoraNames(node, loaderNode) {
 // is left to the LTX 2.3 LowRes/HighRes presets: community values disagree.
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
-    // Lightning LoRA: the step count in its file name, at cfg 1.
+    // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
     if (detectedType === "qwen_image") {
         for (const name of loraNames) {
             const match = name.toLowerCase().match(LIGHTNING_LORA);
@@ -824,8 +824,9 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // "res_multistep", inherited unchanged from MODEL_TYPE_SAMPLING_DEFAULTS
     // .z_image above, same for both Base and Turbo).
     if (detectedType === "z_image" && f.includes("turbo")) return { cfg: 1.0, steps: 8 };
-    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511.
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511 and 2512.
     if (detectedType === "qwen_image" && f.includes("edit") && f.includes("2511")) return { cfg: 4.0, steps: 40 };
+    if (detectedType === "qwen_image" && f.includes("2512")) return { steps: 50 };
     return null;
 }
 
@@ -863,7 +864,7 @@ const LOADER_PRESET_MODEL_TYPE = {
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
-    "Qwen-Image Edit 2511": "qwen_image",
+    "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
 };
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
@@ -950,7 +951,7 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS["qwen_image21"].
     qwen_image21:  { cfg: 1.0,  sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 25 },
     // ALBABIT-FIX: the 3.5 families, same values as sampler_utils.py's MODEL_DEFAULTS.
-    qwen_image:         { cfg: 2.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
+    qwen_image:         { cfg: 4.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
     krea2:              { cfg: 1.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 8 },
     hunyuan_image:      { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
     hunyuan_video_15:   { cfg: 6.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
