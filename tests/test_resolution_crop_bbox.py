@@ -21,7 +21,7 @@ from nodes.generate.resolution import RadianceResolution
 def _generate(node, **overrides):
     params = dict(
         preset="Custom", width=1920, height=1080, orientation="As Preset",
-        model_type="LTXV (128ch)", batch_size=1,
+        model_type="LTXV (128ch)", batch_size=1, crop_to_res=True,
         unique_id="crop-bbox-test",
     )
     params.update(overrides)
@@ -46,9 +46,16 @@ class TestCropBboxPadding:
     def test_toggle_off_always_reports_the_full_padded_frame(self):
         node = RadianceResolution()
         _latent, w, h, *_rest, crop_bbox = _generate(
-            node, crop_to_broadcast_resolution=False,
+            node, crop_to_res=False,
         )
         assert (w, h) == (1920, 1088)
+        assert crop_bbox == {"x": 0, "y": 0, "width": 1920, "height": 1088}
+
+    def test_off_by_default(self):
+        _latent, w, h, *_rest, crop_bbox = RadianceResolution().generate(
+            preset="Custom", width=1920, height=1080, orientation="As Preset",
+            model_type="LTXV (128ch)", batch_size=1, unique_id="crop-bbox-test",
+        )["result"]
         assert crop_bbox == {"x": 0, "y": 0, "width": 1920, "height": 1088}
 
     def test_default_8px_alignment_still_works_for_a_non_video_model(self):

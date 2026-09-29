@@ -4,8 +4,11 @@ import {
     fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     isInputLive,
+    liveSourceNode,
+    loaderModelType,
     modelMetaSourceNode as _findModelMetaSourceNode,
     setWidgetVisible as _setWidgetVisible,
+    syncAutoValue,
 } from "./radiance_widget_utils.js";
 
 // Widget helpers now live in radiance_widget_utils.js; this module's only
@@ -767,11 +770,42 @@ function _isLtxAvHighResStage(node) {
     return false;
 }
 
+// ALBABIT-FIX: mirrors sampler_utils.py's LIGHTNING_LORA (test_sampler_js_mirror.py).
+const LIGHTNING_LORA = /(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
+
+// ALBABIT-FIX: the LoRA files this Sampler's model carries: the LoRA Stacks
+// feeding the Loader (model_meta's "loras") and the native loaders between
+// the Loader and this node (_model_chain_loras in sampler.py).
+function _modelLoraNames(node, loaderNode) {
+    const names = [];
+    const input = (n, name) => n?.inputs?.find(i => i.name === name);
+    const value = (n, name) => n.widgets?.find(w => w.name === name)?.value;
+    let stack = liveSourceNode(loaderNode, input(loaderNode, "lora_stack"));
+    for (let depth = 0; stack && depth < 32; depth++) {
+        for (let i = 1; i <= 5; i++) names.push(value(stack, `lora_${i}`));
+        stack = liveSourceNode(stack, input(stack, "lora_stack"));
+    }
+    let up = liveSourceNode(node, input(node, "model"));
+    for (let depth = 0; up && depth < 32; depth++) {
+        if (up.comfyClass === "LoraLoaderModelOnly" || up.comfyClass === "LoraLoader") names.push(value(up, "lora_name"));
+        up = liveSourceNode(up, input(up, "model"));
+    }
+    return names.filter(name => typeof name === "string" && name !== "None");
+}
+
 // ALBABIT-FIX: some checkpoints need settings their model_type's default lacks;
 // only the file name tells them apart (checked against the model cards). "turbo"
 // also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 Dev/Distilled
 // is left to the LTX 2.3 LowRes/HighRes presets: community values disagree.
-function _deriveDistillationOverride(filename, detectedType) {
+function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
+    // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
+    if (detectedType === "qwen_image") {
+        for (const name of loraNames) {
+            const match = name.toLowerCase().match(LIGHTNING_LORA);
+            if (match) return { cfg: 1.0, steps: Number(match[1]) };
+        }
+    }
     if (!filename) return null;
     const f = filename.toLowerCase();
     if (f.includes("klein")) {
@@ -792,8 +826,9 @@ function _deriveDistillationOverride(filename, detectedType) {
     // "res_multistep", inherited unchanged from MODEL_TYPE_SAMPLING_DEFAULTS
     // .z_image above, same for both Base and Turbo).
     if (detectedType === "z_image" && f.includes("turbo")) return { cfg: 1.0, steps: 8 };
-    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511.
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511 and 2512.
     if (detectedType === "qwen_image" && f.includes("edit") && f.includes("2511")) return { cfg: 4.0, steps: 40 };
+    if (detectedType === "qwen_image" && f.includes("2512")) return { steps: 50 };
     return null;
 }
 
@@ -810,29 +845,6 @@ function _resolveLtxAvStageDefaults(unetName, isHighRes) {
         : `▶ LTX ${version} LowRes (20 steps)`;
     return PRESET_CONFIGS[key] ?? null;
 }
-
-// ALBABIT-FIX: mirrors config/model_map.py's CHECKPOINT_PRESETS[...]["model_type"]
-// -- lets the Sampler resolve the Loader's architecture from its preset name
-// alone, no execution needed. Must be kept in sync by hand (same pattern
-// already used for GUIDANCE_EMBED_MODELS/CFG_GUIDED_MODELS above).
-const LOADER_PRESET_MODEL_TYPE = {
-    "Flux.1": "flux", "Flux.1 (Low VRAM)": "flux",
-    "Chroma": "chroma",
-    "SD3.5": "sd3.5",
-    "SDXL": "sdxl", "SD 1.5": "sd1.5",
-    "HunyuanVideo": "hunyuan_video",
-    "Wan 2.1": "wan", "Wan 2.1 (Low VRAM)": "wan",
-    "Wan 2.2": "wan", "Wan 2.2 (Low VRAM)": "wan", "Wan 2.2 TI2V": "wan_ti2v",
-    "LTX Video": "ltxv", "LTX Video (Low VRAM)": "ltxv",
-    "LTX Video 2.3": "ltxav", "LTX Video 2.3 (Low VRAM)": "ltxav",
-    "LTX Video 2.5": "ltxav", "LTX Video 2.5 (Low VRAM)": "ltxav",
-    "Cosmos World": "cosmos", "CogVideoX": "cogvideox", "Mochi": "mochi",
-    "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
-    "Lumina2": "lumina2", "Z-Image": "z_image",
-    "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
-    "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
-    "Qwen-Image Edit 2511": "qwen_image",
-};
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
 // "guidance" is the architecture fallback; a _deriveDistillationOverride() file
@@ -918,7 +930,7 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS["qwen_image21"].
     qwen_image21:  { cfg: 1.0,  sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 25 },
     // ALBABIT-FIX: the 3.5 families, same values as sampler_utils.py's MODEL_DEFAULTS.
-    qwen_image:         { cfg: 2.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
+    qwen_image:         { cfg: 4.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
     krea2:              { cfg: 1.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 8 },
     hunyuan_image:      { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
     hunyuan_video_15:   { cfg: 6.0, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 20 },
@@ -929,24 +941,6 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     kandinsky5_image:   { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
 };
 
-function _resolveLoaderModelType(loaderNode) {
-    if (!loaderNode) return null;
-    const presetVal = loaderNode.widgets?.find(w => w.name === "preset")?.value;
-    // ALBABIT-FIX: "Flux.2"/"Flux.2 (Low VRAM)" cover Dev and Klein in one
-    // preset (Auto-Detect tells them apart at execution time) -- resolve
-    // here the same way, from the Loader's own unet_name, since the preset
-    // name alone can't.
-    if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
-        const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
-        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
-    }
-    if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
-        return LOADER_PRESET_MODEL_TYPE[presetVal];
-    }
-    const modelType = loaderNode.widgets?.find(w => w.name === "model_type")?.value;
-    return (modelType && modelType !== "Auto-Detect") ? modelType : null;
-}
-
 // ALBABIT-FIX: shared by updateModelMetaDefaults() (value sync) and
 // applyFolding() (Auto visibility) -- mirrors nodes_sampler.py's
 // use_sd_turbo_schedule. Re-resolves the Loader link/unet_name itself
@@ -955,7 +949,7 @@ function _resolveLoaderModelType(loaderNode) {
 function _isSdTurboActive(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
-    const detectedType = _resolveLoaderModelType(sourceNode);
+    const detectedType = loaderModelType(sourceNode);
     return detectedType === "sdxl" && unetName.toLowerCase().includes("turbo");
 }
 
@@ -967,23 +961,6 @@ function _isAutoDetectedLtx25(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
     return unetName.toLowerCase().includes("2.5");
-}
-
-// ALBABIT-FIX: can't just check "is the widget still at its generic default"
-// -- after the first auto-write the value IS the derived one, so a later
-// Loader change would never re-apply. _radAutoValue tracks what WE last
-// wrote instead; no prior tracking (fresh, or right after a named preset)
-// is never "user touched", so it applies unconditionally.
-function _syncAutoValue(widget, newValue) {
-    if (!widget || newValue === undefined) {
-        if (widget) widget._radAutoValue = undefined;
-        return false;
-    }
-    const userTouched = widget._radAutoValue !== undefined && widget.value !== widget._radAutoValue;
-    widget._radAutoValue = newValue;
-    if (userTouched || widget.value === newValue) return false;
-    widget.value = newValue;
-    return true;
 }
 
 // ALBABIT-FIX: _radMetaLinked marks this widget as owned by the model_meta
@@ -1006,7 +983,7 @@ function _markLinkedWidget(widget, linked, inSync) {
 // ALBABIT-FIX: extends the guidance/steps sync (above) to model_type/cfg/
 // sampler/scheduler/denoise (plus, for LTX-AV, which Sampler
 // stage this node is -- see _isLtxAvHighResStage). Gated on preset
-// (Auto/Custom) only -- the per-field checks in _syncAutoValue() already
+// (Auto/Custom) only; the per-field checks in syncAutoValue() already
 // protect any field the user deliberately set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
@@ -1016,8 +993,8 @@ function updateModelMetaDefaults(node) {
 
     const sourceNode = eligible ? _findModelMetaSourceNode(node) : null;
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? null;
-    const detectedType = _resolveLoaderModelType(sourceNode);
-    const override = _deriveDistillationOverride(unetName, detectedType);
+    const detectedType = loaderModelType(sourceNode);
+    const override = _deriveDistillationOverride(unetName, detectedType, _modelLoraNames(node, sourceNode));
     const modelDefaults = MODEL_TYPE_SAMPLING_DEFAULTS[detectedType] ?? null;
     // ALBABIT-FIX: stage-aware LTX-AV defaults (see _isLtxAvHighResStage /
     // _resolveLtxAvStageDefaults above) take priority over the generic
@@ -1053,7 +1030,7 @@ function updateModelMetaDefaults(node) {
 
     let changed = false;
     for (const [widget, derivedVal] of pairs) {
-        if (_syncAutoValue(widget, derivedVal)) changed = true;
+        if (syncAutoValue(widget, derivedVal)) changed = true;
         const linked = derivedVal !== undefined;
         const inSync = linked && widget && widget.value === derivedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
@@ -1061,11 +1038,11 @@ function updateModelMetaDefaults(node) {
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
     if (sdTurboActive) {
-        _syncAutoValue(schedulerW, undefined); // no value to track/force -- link only
+        syncAutoValue(schedulerW, undefined); // no value to track or force, a link only
         if (_markLinkedWidget(schedulerW, true, true)) changed = true;
     } else {
         const schedulerDefault = ltxavStage?.scheduler ?? modelDefaults?.scheduler;
-        if (_syncAutoValue(schedulerW, schedulerDefault)) changed = true;
+        if (syncAutoValue(schedulerW, schedulerDefault)) changed = true;
         const linked = schedulerDefault !== undefined;
         const inSync = linked && schedulerW && schedulerW.value === schedulerDefault;
         if (_markLinkedWidget(schedulerW, linked, inSync)) changed = true;

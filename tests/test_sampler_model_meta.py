@@ -6,17 +6,18 @@ from radiance.sampler_utils import parse_model_meta, refine_distillation_from_me
 
 class TestParseModelMeta:
     def test_empty_string(self):
-        assert parse_model_meta("") == ("", "")
+        assert parse_model_meta("") == ("", "", [])
 
     def test_malformed_json(self):
-        assert parse_model_meta("{not json") == ("", "")
+        assert parse_model_meta("{not json") == ("", "", [])
 
     def test_valid_json(self):
-        meta = json.dumps({"arch": "flux2-klein", "unet_file": "flux-2-klein-9b.safetensors"})
-        assert parse_model_meta(meta) == ("flux2-klein", "flux-2-klein-9b.safetensors")
+        meta = json.dumps({"arch": "flux2-klein", "unet_file": "flux-2-klein-9b.safetensors",
+                           "loras": [{"name": "style.safetensors", "model_str": 1.0, "clip_str": 1.0}]})
+        assert parse_model_meta(meta) == ("flux2-klein", "flux-2-klein-9b.safetensors", ["style.safetensors"])
 
     def test_missing_fields(self):
-        assert parse_model_meta(json.dumps({"arch": "flux2"})) == ("flux2", "")
+        assert parse_model_meta(json.dumps({"arch": "flux2"})) == ("flux2", "", [])
 
 
 class TestRefineDistillationFromMeta:
@@ -70,6 +71,22 @@ class TestRefineDistillationFromMeta:
         # it 40 steps and cfg 4 when the Lightning LoRA is off.
         for f in ("qwen_image_edit_2511_int8_convrot.safetensors", "Qwen-Image-Edit-2511-bf16.safetensors"):
             assert refine_distillation_from_meta("qwen_image", f) == {"cfg": 4.0, "steps": 40}
+
+    def test_qwen_image_lightning_lora_sets_its_steps_at_cfg_1(self):
+        # The official templates' LoRAs, over Edit 2511's own 40 steps, cfg 4.
+        for lora, steps in (("Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", 4),
+                            ("qwen/Qwen-Image-Lightning-8steps-V1.0.safetensors", 8)):
+            loras = ["style.safetensors", lora]
+            assert refine_distillation_from_meta("qwen_image", "qwen_image_edit_2511_int8_convrot.safetensors",
+                                                 loras) == {"cfg": 1.0, "steps": steps}
+            assert refine_distillation_from_meta("qwen_image", "", loras) == {"cfg": 1.0, "steps": steps}
+
+    def test_qwen_image_2512_runs_50_steps(self):
+        assert refine_distillation_from_meta("qwen_image", "qwen_image_2512_fp8_e4m3fn.safetensors") == {"steps": 50}
+
+    def test_lightning_lora_only_for_qwen_image(self):
+        assert refine_distillation_from_meta("sdxl", "sd_xl_base_1.0.safetensors",
+                                             ["sdxl_lightning_4step_lora.safetensors"]) is None
 
     def test_qwen_image_and_older_edits_not_affected(self):
         for f in ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image_edit_2509_fp8_e4m3fn.safetensors"):
