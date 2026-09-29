@@ -299,7 +299,8 @@ class TestGenerateMiniMaxH3Latent:
     def test_720p_gets_an_even_latent_so_keyframes_can_patchify(self):
         # 720 // 16 = 45 rows is odd and crashes patchify_video on keyframe latents.
         node = RadianceResolution()
-        latent, w, h, c, info, fr, frames, fmt, dur, crop_bbox = self._generate(node, width=1280, height=720)
+        latent, w, h, c, info, fr, frames, fmt, dur, crop_bbox = self._generate(node, width=1280, height=720,
+                                                                              crop_to_res=True)
         assert (w, h) == (1280, 736)
         assert latent["samples"].shape[-2] % 2 == 0
         assert crop_bbox == {"x": 0, "y": 8, "width": 1280, "height": 720}

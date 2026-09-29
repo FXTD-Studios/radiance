@@ -2,7 +2,10 @@ import { app } from "../../../scripts/app.js";
 import {
     fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
+    loaderModelType,
+    modelMetaSourceNode,
     setWidgetVisible as _setWidgetVisible,
+    syncAutoValue,
 } from "./radiance_widget_utils.js";
 
 // Widget helpers now live in radiance_widget_utils.js; this module's only
@@ -44,6 +47,31 @@ function setWidgetVisible(widget, visible, node) {
 // 5D video latents and switch on "enable_video" (test_resolution_js_mirror.py).
 const VIDEO_MODEL_TYPES_JS = new Set(["WAN (16ch)", "WAN TI2V (48ch)", "LTXV (128ch)", "HunyuanVideo (16ch)", "Mochi (12ch)", "Cosmos World (16ch)", "CogVideoX (16ch)", "MiniMax H3 (24ch)",
                                       "HunyuanVideo 1.5 (32ch)", "Kandinsky 5 Video (16ch)"]);
+
+// ALBABIT-FIX: mirrors resolution.py's ARCHS_BY_MODEL_TYPE (test_resolution_js_mirror.py):
+// the Loader's architectures behind each model_type.
+const ARCHS_BY_MODEL_TYPE_JS = {
+    "Flux / SD3 / Lumina2 / Z-Image (16ch)": ["flux", "sd3", "sd3.5", "lumina2", "z_image"],
+    "SDXL / SD 1.5 / PixArt / Aura Flow (4ch)": ["sdxl", "sd1.5", "pixart", "aura_flow"],
+    "Chroma (16ch)": ["chroma"],
+    "Cosmos World (16ch)": ["cosmos"],
+    "CogVideoX (16ch)": ["cogvideox"],
+    "Mochi (12ch)": ["mochi"],
+    "LTXV (128ch)": ["ltxv", "ltxav"],
+    "WAN (16ch)": ["wan"],
+    "WAN TI2V (48ch)": ["wan_ti2v"],
+    "HunyuanVideo (16ch)": ["hunyuan_video"],
+    "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "MiniMax H3 (24ch)": ["minimax"],
+    "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
+    "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
+    "HiDream / OmniGen2 / LongCat / Kandinsky 5 Image (16ch)": ["hidream", "omnigen2", "longcat_image", "kandinsky5_image"],
+    "HunyuanImage 2.1 (64ch)": ["hunyuan_image"],
+    "HunyuanVideo 1.5 (32ch)": ["hunyuan_video_15"],
+    "Kandinsky 5 Video (16ch)": ["kandinsky5"],
+};
+const MODEL_TYPE_BY_ARCH_JS = Object.fromEntries(
+    Object.entries(ARCHS_BY_MODEL_TYPE_JS).flatMap(([modelType, archs]) => archs.map(arch => [arch, modelType])));
 
 // ALBABIT-FIX follow-up: mirrors SPATIAL_SCALE/_align_up in resolution.py —
 // recompute width/height instantly when model_type changes, instead of waiting
@@ -207,7 +235,7 @@ function _syncDurationSecondsStep(modelTypeW, durSecW, frameRateW) {
 
 // ALBABIT-FIX: "📐" = scale_factor/mp_target/width/height, either modifier
 // active (both apply regardless of preset). "✎" = orientation/latent_channels
-// off their neutral default.
+// off their neutral default, or model_type chosen away from the Loader's (🧲).
 function _setLabelMarker(widget, marked, marker) {
     if (!widget) return false;
     if (widget._radOrigLabel === undefined && !marked) return false;
@@ -216,6 +244,20 @@ function _setLabelMarker(widget, marked, marker) {
     if (widget.label === wanted) return false;
     widget.label = wanted;
     return true;
+}
+
+// ALBABIT-FIX: model_type follows the Loader on model_meta (🧲) until the user
+// picks another one (✎), as the Sampler's widgets do. Its callback realigns
+// the size and frames as a manual change would.
+function syncModelTypeFromLoader(node) {
+    const modelTypeW = node.widgets?.find(w => w.name === "model_type");
+    const linked = MODEL_TYPE_BY_ARCH_JS[loaderModelType(modelMetaSourceNode(node))];
+    // ALBABIT-FIX: "Manual" follows the Loader, as at execution: never a choice to keep.
+    if (modelTypeW?.value === "Manual") modelTypeW._radAutoValue = undefined;
+    const synced = syncAutoValue(modelTypeW, linked);
+    if (synced) modelTypeW.callback?.call(modelTypeW, modelTypeW.value);
+    const marker = linked === undefined ? "" : modelTypeW?.value === linked ? " 🧲" : " ✎";
+    return _setLabelMarker(modelTypeW, !!marker, marker) || synced;
 }
 
 function updateResolutionMarkers(node) {
@@ -236,7 +278,7 @@ function updateResolutionMarkers(node) {
     // ALBABIT-FIX: only redraw when a label actually changed, this runs
     // every 250ms via the polling loop. Unconditional setDirtyCanvas here
     // was the same anti-pattern fixed in the Sampler's updateSigmaLocks().
-    let changed = false;
+    let changed = syncModelTypeFromLoader(node);
     if (_setLabelMarker(scaleFactorW, scaleActive, " 📐")) changed = true;
     if (_setLabelMarker(mpTargetW, mpActive, " 📐")) changed = true;
     if (_setLabelMarker(widthW, scaleActive || mpActive, " 📐")) changed = true;

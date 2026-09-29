@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = (ROOT / "js" / "radiance_sampler.js").read_text(encoding="utf-8")
+WIDGET_UTILS_JS = (ROOT / "js" / "radiance_widget_utils.js").read_text(encoding="utf-8")
 
 
 def _py_literal(rel_path, name):
@@ -31,8 +32,8 @@ def _js_set(name):
     return set(re.findall(r'"([^"]+)"', body))
 
 
-def _js_object(name):
-    return re.search(r"const %s = \{(.*?)\n\};" % name, JS, re.S).group(1)
+def _js_object(name, js=JS):
+    return re.search(r"const %s = \{(.*?)\n\};" % name, js, re.S).group(1)
 
 
 def test_model_sets_match_sampler_utils():
@@ -53,8 +54,14 @@ def test_live_defaults_match_model_defaults():
 
 
 def test_loader_preset_model_types_match_checkpoint_presets():
-    js = dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', _js_object("LOADER_PRESET_MODEL_TYPE")))
+    js = dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', _js_object("LOADER_PRESET_MODEL_TYPE", WIDGET_UTILS_JS)))
     for preset, config in _py_literal("config/model_map.py", "CHECKPOINT_PRESETS").items():
         model_type = config.get("model_type")
         if model_type and model_type != "Auto-Detect":
             assert js.get(preset) == model_type, preset
+
+
+def test_lightning_lora_pattern_matches_sampler_utils():
+    py = re.search(r'LIGHTNING_LORA = re.compile\(r"(.*?)"\)', (ROOT / "sampler_utils.py").read_text(encoding="utf-8"))
+    js = re.search(r"const LIGHTNING_LORA = /(.*?)/;", JS)
+    assert js.group(1) == py.group(1)
