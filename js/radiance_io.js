@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
@@ -8,7 +9,7 @@ import {
 // Widget helpers now live in radiance_widget_utils.js; this module's only
 // local difference was the "number" fallback type, which is passed through.
 function setWidgetVisible(widget, visible, node) {
-    // Forward the changed-boolean — callers gate refreshNodeSize on it.
+    // Forward the changed-boolean — callers gate fitNodeSize on it.
     return _setWidgetVisible(widget, visible, node, { fallbackType: "number" });
 }
 
@@ -201,16 +202,6 @@ try {
 } catch (e) {
 	console.warn("[Radiance.IO] Failed to patch Element.prototype.setAttribute", e);
 }
-function refreshNodeSize(node) {
-	if (!node.computeSize) return;
-	const sz = node.computeSize();
-	const newWidth = Math.max(node.size[0], sz[0]);
-	const newHeight = sz[1];
-	if (node.size[0] === newWidth && node.size[1] === newHeight) return;
-	node.setSize([newWidth, newHeight]);
-	node.setDirtyCanvas(true, true);
-}
-
 app.registerExtension({
 	name: "Radiance.IO",
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
@@ -322,7 +313,7 @@ app.registerExtension({
 							videoEl.load?.();
 							posterEl.removeAttribute("src");
 							previewBox.style.display = "none";
-							refreshNodeSize(node);
+							fitNodeSize(node);
 						}
 						return;
 					}
@@ -332,7 +323,7 @@ app.registerExtension({
 					videoEl.style.display = "block";
 					previewBox.style.display = "block";
 					videoEl.src = `/radiance/media/preview?path=${encodeURIComponent(p)}`;
-					refreshNodeSize(node);
+					fitNodeSize(node);
 				};
 
 				const applyVisibility = () => {
@@ -558,7 +549,7 @@ app.registerExtension({
 					if (setWidgetVisible(audioSourceWidget,   isVid, node)) changed = true;
 					if (setWidgetVisible(broadcastWidget,     !isFloatFmt, node)) changed = true;
 
-					if (changed) refreshNodeSize(node);
+					if (changed) fitNodeSize(node);
 
 					// updateWidgets is also polled every 250 ms; only re-ask
 					// the server when an ingredient of the path changed.
