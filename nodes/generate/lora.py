@@ -516,7 +516,7 @@ class RadianceHDRLoRAApply:
                     "tooltip": "Diffusion model to patch. It is cloned and the LoRA deltas are added as ComfyUI patches, so the upstream model is left untouched.",
                 }),
                 "lora_dict": ("LORA_DICT", {
-                    "tooltip": "LoRA tensors and metadata from Radiance HDR LoRA Loader. If no tensor matches a model weight the node raises an error.",
+                    "tooltip": "LoRA tensors and metadata from HDR LoRA Loader. If no tensor matches a model weight the node raises an error.",
                 }),
                 "strength": ("FLOAT", {
                     "default": 1.0,

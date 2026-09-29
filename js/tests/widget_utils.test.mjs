@@ -17,6 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert,
     getWidget,
     setWidgetVisible,
@@ -187,4 +188,65 @@ test("a custom draw is stashed and restored", () => {
 
 test("a null widget is refused rather than throwing", () => {
     assert.equal(setWidgetVisible(null, true, makeNode()), false);
+});
+
+// ── fitNodeSize ─────────────────────────────────────────────────────────────
+
+// A node whose minimum height follows its visible rows, with LiteGraph's
+// setSize, which calls onResize.
+function sizedNode(width, height, rows) {
+    return {
+        rows, size: [width, height], properties: {},
+        computeSize() { return [200, 30 + this.rows * 24]; },
+        setSize(size) { this.size = size; this.onResize?.(this.size); },
+        setDirtyCanvas() {},
+    };
+}
+
+test("fitNodeSize fits a new node to its visible widgets", () => {
+    const node = sizedNode(300, 102, 3);   // created at its minimum
+    node.rows = 2;                          // a widget hidden
+    fitNodeSize(node);
+    assert.deepEqual(node.size, [300, 78]);
+});
+
+test("the height the user drags in is kept when widgets show or hide", () => {
+    const node = sizedNode(300, 102, 3);
+    fitNodeSize(node);
+    node.setSize([300, 162]);               // the user drags 60 px lower
+    node.rows = 2;
+    fitNodeSize(node);
+    assert.deepEqual(node.size, [300, 138]);
+    assert.equal(node.properties.radExtraHeight, 60);
+});
+
+test("the added height comes back from the saved properties after a reload", () => {
+    const node = sizedNode(300, 138, 2);
+    node.properties.radExtraHeight = 60;
+    node.rows = 3;
+    fitNodeSize(node);
+    assert.deepEqual(node.size, [300, 162]);
+});
+
+test("a graph load or fitNodeSize itself is not the user's resize", () => {
+    let own = 0;
+    const node = sizedNode(300, 102, 3);
+    node.onResize = () => { own += 1; };
+    fitNodeSize(node);
+    globalThis.app = { configuringGraph: true };
+    node.setSize([300, 500]);
+    delete globalThis.app;
+    node.rows = 2;
+    fitNodeSize(node);
+    assert.equal(node.properties.radExtraHeight, undefined);
+    assert.equal(own, 2, "the node's own onResize still runs");
+});
+
+test("fitNodeSize never narrows a node", () => {
+    const wide = sizedNode(400, 102, 3);
+    fitNodeSize(wide);
+    assert.equal(wide.size[0], 400);
+    const narrow = sizedNode(150, 102, 3);
+    fitNodeSize(narrow);
+    assert.equal(narrow.size[0], 200);
 });

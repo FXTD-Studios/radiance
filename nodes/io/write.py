@@ -716,7 +716,7 @@ class RadianceWrite:
                 "tooltip": "Downscale output by this factor for proxy preview (0 = full resolution).",
             }),
             "audio": ("AUDIO", {
-                "tooltip": "Audio tensor from RadianceVideoLoader (muxed into video output).",
+                "tooltip": "Audio tensor from Video Loader (muxed into video output).",
             }),
             "mask": ("MASK", {
                 "tooltip": (
@@ -1095,7 +1095,7 @@ class RadianceDigitalCinemaRead:
     RETURN_NAMES = ("image", "mask", "shot_metadata")
     FUNCTION = "read"
     CATEGORY = "FXTD Studios/Radiance/IO"
-    DESCRIPTION = ("Read a video, image or frame sequence through Radiance Read, decoded to scene-linear, "
+    DESCRIPTION = ("Read a video, image or frame sequence through the Read node, decoded to scene-linear, "
                    "and output shot metadata (source info, colorspace, fps) for downstream pipeline nodes.")
 
     def read(self, source_path, read_mode, start_frame, frame_limit, input_colorspace, fps_override=0.0):
@@ -1199,14 +1199,14 @@ class RadianceDigitalCinemaWrite:
         return {
             "required": {
                 "images": ("IMAGE", {
-                    "tooltip": "Frames to write, passed to Radiance Write with its defaults (color_space Linear (pass-through), so values are written unchanged)."}),
+                    "tooltip": "Frames to write, passed to the Write node with its defaults (color_space Linear (pass-through), so values are written unchanged)."}),
                 # Same default as RadianceWrite, which this node delegates to.
                 # It used to default to "", so dropping the node and queueing
                 # crashed inside pathlib instead of writing anything.
                 "output_path": ("STRING", {
                     "default": str(Path.home() / "radiance_output"),
                     "placeholder": "/output/render  or  Z:/renders/shot",
-                    "tooltip": ("Output path, as in Radiance Write. With filename empty it is the full stem "
+                    "tooltip": ("Output path, as in the Write node. With filename empty it is the full stem "
                                 "(single images and video get the extension appended; sequences use it as a folder)."),
                 }),
             },
@@ -1224,7 +1224,7 @@ class RadianceDigitalCinemaWrite:
     OUTPUT_NODE = True
     CATEGORY = "FXTD STUDIOS/Radiance/Pipeline"
     DESCRIPTION = ("Simplified writer kept for older pipelines: passes images, output_path, format and filename "
-                   "to Radiance Write with every other setting at its default, and returns a status string.")
+                   "to the Write node with every other setting at its default, and returns a status string.")
 
     def write(self, images, output_path, format="IMG │ EXR (16-bit half)", filename=""):
         writer = RadianceWrite()

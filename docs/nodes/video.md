@@ -40,7 +40,7 @@ End-to-end image-to-video generation pipeline with motion control.
 | `negative_prompt` | string | `watermark, blurry, flickering, sdr` | multi-line text | What to steer away from, encoded with the same text encoder. |
 | `frames` | int | 25 | 1 to 512 | Requested frames. The latent holds ceil(frames / temporal compression) frames; use a multiple of the compression plus 1 (e.g. 25, 49, 81) to get exactly this count back. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the initial noise and the sampler. |
-| `dit_config` (optional) | string | `{}` |  | JSON from RadianceVideoModelInfo. When it carries a model_name, that model's defaults replace steps, cfg, sampler_name and scheduler. |
+| `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info. When it carries a model_name, that model's defaults replace steps, cfg, sampler_name and scheduler. |
 | `character_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning whose tokens are appended to the positive prompt at weight 0.75. Skipped if its embedding width differs. |
 | `cfg_schedule_json` (optional) | string |  |  | JSON float array. Only the first value is used, as a static CFG override; CFG does not vary per step. |
 | `i2v_strategy` (optional) | choice | `auto` | `auto`, `first_frame_lock`, `concat_channels`, `clip_vision_inject`, `prepend_latent` | auto: concat_channels when the model has an image-concat input (Wan 2.1 I2V, Wan 2.2 I2V 14B), else first_frame_lock. clip_vision_inject needs clip_vision_output connected. |
@@ -82,9 +82,9 @@ End-to-end text-to-video generation pipeline with HDR support.
 | `height` | int | 512 | 64 to 4096, step 8 | Output height in pixels, rounded down to a multiple of the VAE's spatial compression. |
 | `frames` | int | 25 | 1 to 512 | Requested frames. The latent holds ceil(frames / temporal compression) frames; use a multiple of the compression plus 1 (e.g. 25, 49, 81) to get exactly this count back. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the initial noise and the sampler. |
-| `dit_config` (optional) | string | `{}` |  | JSON from RadianceVideoModelInfo. When it carries a model_name, that model's defaults replace steps, cfg, sampler_name and scheduler. |
+| `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info. When it carries a model_name, that model's defaults replace steps, cfg, sampler_name and scheduler. |
 | `character_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning whose tokens are appended to the positive prompt at weight 0.75. Skipped if its embedding width differs. |
-| `cfg_schedule_json` (optional) | string |  |  | JSON float array from RadianceAudioCFGSchedule. Only the first value is used, as a static CFG override; CFG does not vary per step. |
+| `cfg_schedule_json` (optional) | string |  |  | JSON float array, e.g. [4.0]. Only the first value is used, as a static CFG override; CFG does not vary per step. |
 | `steps` (optional) | int | 0 | 0 to 200 | Sampling steps. 0 uses the model default (the LTX-Video preset's 25 when no dit_config is connected). Ignored when dit_config carries a model_name. |
 | `cfg` (optional) | float | 0 | 0 to 30, step 0.1 | Guidance scale. 0 uses the model default (the LTX-Video preset's 3.5 when no dit_config is connected). cfg_schedule_json overrides it. |
 | `sampler_name` (optional) | choice | `euler` | ComfyUI's samplers | ComfyUI sampler. Ignored when dit_config carries a model_name. |
@@ -139,7 +139,7 @@ Batch-decode video latents to pixel frames with memory management.
 | :--- | :--- | :--- | :--- | :--- |
 | `vae` | VAE |  |  | VAE matching the model that produced the latent. |
 | `latent` | LATENT |  |  | Video latent from a sampler or pipeline. A 5-D latent is decoded through the VAE's temporal path. |
-| `dit_config` (optional) | string | `{}` |  | JSON from RadianceVideoModelInfo. Its compression values are used only if the VAE does not report its own. Its latent_scale is not applied: a ComfyUI sampler already returns the latent in VAE space. |
+| `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info. Its compression values are used only if the VAE does not report its own. Its latent_scale is not applied: a ComfyUI sampler already returns the latent in VAE space. |
 | `tile_decode` (optional) | boolean | off |  | Route the decode through the VAE's own tiled entry point (comfy.sd.VAE.decode_tiled) to cut peak VRAM on large videos. Leave off: an untiled decode already falls back to tiling by itself when it runs out of memory. |
 | `tile_overlap` (optional) | int | 64 | 0 to 256 | Pixel overlap between spatial tiles (higher = smoother seams). Only read when tile_decode is on. |
 | `output_linear` (optional) | boolean | off |  | Convert the VAE's display-referred sRGB frames to scene-linear (inverse sRGB transfer). Off: sRGB clamped to [0, 1], as VAE Decode. |
@@ -165,7 +165,7 @@ Merge multiple video conditioning signals into a unified tensor.
 | `text_conditioning` | CONDITIONING |  |  | Base conditioning, usually the encoded prompt. The output keeps its entries; the other inputs are merged into them. |
 | `merge_mode` | choice | `concat` | `concat`, `weighted`, `priority` | concat: append the other inputs' tokens (times their weights) after the text tokens. weighted: weighted average of the token tensors. priority: keep the text tokens, only copy missing dict keys from the others. |
 | `character_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning (e.g. a character or identity embedding) merged per merge_mode. |
-| `hdr_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning (e.g. from RadianceVideoHDRConditioner) merged per merge_mode. |
+| `hdr_conditioning` (optional) | CONDITIONING |  |  | Optional conditioning (e.g. from Video HDR Conditioner) merged per merge_mode. |
 | `text_weight` (optional) | float | 1 | 0 to 2, step 0.05 | Weight of text_conditioning in weighted mode. concat and priority keep the text tokens unscaled. |
 | `character_weight` (optional) | float | 0.75 | 0 to 2, step 0.05 | Multiplier on the character tokens in concat and weighted modes. Ignored in priority mode. |
 | `hdr_weight` (optional) | float | 0.5 | 0 to 2, step 0.05 | Multiplier on the HDR tokens in concat and weighted modes. Ignored in priority mode. |
@@ -188,7 +188,7 @@ Pass decoded video frames through, HDR-encode them, or write them as a 32-bit fl
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `frames` | IMAGE |  |  | Decoded frames. EXR writes the values unchanged as 32-bit float; the GIF clamps to [0, 1] display-referred. |
-| `mode` | choice | `passthrough` | `passthrough`, `hdr_decode`, `exr_sequence`, `preview_gif` | passthrough: return frames. hdr_decode: run RadianceVideoHDRDecode (Reinhard, PQ out) and return the HDR signal. exr_sequence / preview_gif: also write files. Only the last two write to disk. |
+| `mode` | choice | `passthrough` | `passthrough`, `hdr_decode`, `exr_sequence`, `preview_gif` | passthrough: return frames. hdr_decode: run Video HDR Decode (Reinhard, PQ out) and return the HDR signal. exr_sequence / preview_gif: also write files. Only the last two write to disk. |
 | `hdr_metadata_json` (optional) | string | `{"peak_nits":1000,"eotf":"PQ (ST.2084)"}` |  | hdr_decode only. Its peak_nits and gamut (BT.2020 if absent) are used; the eotf key is ignored, output is always PQ. |
 | `output_folder` (optional) | string |  |  | Empty: ComfyUI's output folder. |
 | `filename_prefix` (optional) | string | `radiance_video` |  | File name start: <prefix>_<6-digit frame>.exr, or <prefix>_preview.gif (overwritten on each run). |
@@ -237,9 +237,9 @@ Condition a video model on HDR metadata for luminance-aware sampling.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `positive` | CONDITIONING |  |  | Encoded positive prompt. The HDR descriptor embeddings are concatenated onto each entry (needs clip). |
-| `peak_nits` | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Mastering peak in nits: adds a luminance descriptor to the tokens and is stored as peak_nits in hdr_metadata_json for RadianceVideoHDRDecode. |
-| `target_gamut` | choice | `BT.2020` | `BT.2020`, `P3-D65`, `P3-DCI`, `BT.709`, `ACEScg`, `ACES2065-1` | Adds a gamut descriptor to the tokens and is stored as gamut in hdr_metadata_json (RadianceVideoHDRDecode converts to it). |
-| `eotf` | choice | `PQ (ST.2084)` | `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear`, `sRGB / BT.1886` | Adds a transfer-function descriptor to the tokens and is stored in hdr_metadata_json. RadianceVideoHDRDecode uses its own output_eotf. |
+| `peak_nits` | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Mastering peak in nits: adds a luminance descriptor to the tokens and is stored as peak_nits in hdr_metadata_json for Video HDR Decode. |
+| `target_gamut` | choice | `BT.2020` | `BT.2020`, `P3-D65`, `P3-DCI`, `BT.709`, `ACEScg`, `ACES2065-1` | Adds a gamut descriptor to the tokens and is stored as gamut in hdr_metadata_json (Video HDR Decode converts to it). |
+| `eotf` | choice | `PQ (ST.2084)` | `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear`, `sRGB / BT.1886` | Adds a transfer-function descriptor to the tokens and is stored in hdr_metadata_json. Video HDR Decode uses its own output_eotf. |
 | `clip` (optional) | CLIP |  |  | Text encoder used for positive. Required for the descriptors to reach the model. |
 | `camera_move` (optional) | choice | `None` | `Handheld documentary`, `Locked off cinematic`, `Slow push-in`, `Drone aerial`, `Tracking shot`, `Static time-lapse`, `None` | Adds camera-movement words to the descriptor tokens. None adds nothing. |
 | `mood` (optional) | choice | `None` | `Golden hour`, `Blue hour / dusk`, `Night`, `Overcast flat`, `High contrast`, `Neon / cyberpunk`, `Natural daylight`, `None` | Adds lighting-mood words to the descriptor tokens. None adds nothing. |
@@ -265,7 +265,7 @@ Encode decoded sRGB video frames (IMAGE, not latents) to an HDR signal at the me
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Decoded video frames, display-referred sRGB Rec.709 in [0, 1]. Linearised with a pure 2.2 gamma; 1.0 is mapped to peak_nits. |
-| `hdr_metadata_json` | string | `{"peak_nits":1000,"gamut":"BT.2020","eotf":"PQ (ST.2084)"}` |  | JSON from RadianceVideoHDRConditioner or manually entered |
+| `hdr_metadata_json` | string | `{"peak_nits":1000,"gamut":"BT.2020","eotf":"PQ (ST.2084)"}` |  | JSON from Video HDR Conditioner or manually entered |
 | `tonemap` | choice | `Reinhard` | `Reinhard`, `Linear clip`, `Pass-through` | Reinhard: extended Reinhard whose white point is the brightest input (1.0 lifted by a positive exposure_compensation_ev), so that value lands exactly on peak_nits and the highlights above it roll off; at 0 EV or less there is nothing to compress. Linear clip: clamp at 10,000 nits. Pass-through: no curve (clamped at 10,000 nits by the encode). |
 | `exposure_compensation_ev` (optional) | float | 0 | -6 to 6, step 0.1 | EV adjustment before tone-mapping |
 | `output_eotf` (optional) | choice | `PQ (ST.2084)` | `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear`, `sRGB / BT.1886` | Encoding of hdr_image. PQ: ST 2084 code values (1.0 = 10,000 nits). HLG: BT.2100 OETF. Linear: clamped linear light normalised to 10,000 nits. sRGB / BT.1886: the sRGB curve on light relative to peak_nits (1.0 = peak), an SDR signal. |
@@ -290,7 +290,7 @@ Correctly shaped, seeded i.i.d. Gaussian latent noise for a video model (indepen
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `dit_config` | string | `{}` |  | JSON from RadianceVideoModelInfo |
+| `dit_config` | string | `{}` |  | JSON from Video Model Info |
 | `width` | int | 512 | 64 to 4096, step 8 | Target frame width in pixels. Divided (rounded down) by the spec's spatial compression to size the latent. |
 | `height` | int | 512 | 64 to 4096, step 8 | Target frame height in pixels. Divided (rounded down) by the spec's spatial compression to size the latent. |
 | `frames` | int | 25 | 1 to 512 | Target pixel frames. The latent gets ceil(frames / temporal compression) frames; use a multiple of the compression plus 1 (e.g. 25, 49) to decode back to exactly this count. |
@@ -329,7 +329,7 @@ Video loader v3.3 — for LTX 2.3, Wan, HunyuanVideo, etc. Supports Baked/standa
 | `text_projection` (optional) | choice | `None` | `None`, `Baked (from UNET)` | Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). 'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader. |
 | `clip_dtype` (optional) | choice | `default` | `default`, `fp16`, `bf16`, `fp8_e4m3fn`, `fp32` | CLIP weight precision. Independent from UNET. For Flux T5XXL: fp8 saves ~4.7 GB vs fp16. |
 | `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). |
-| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from RadianceLoraStack node. |
+| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. |
 | `check_vram` (optional) | choice | `On` | `On`, `Off` | Estimate VRAM before load and warn if tight. |
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
@@ -359,7 +359,7 @@ Fill empty frames of a mask sequence by warping neighbouring keyframe masks alon
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `masks` | MASK |  |  | Mask sequence, one per frame. Frames with any mask content are keyframes; empty frames are filled by propagation. |
-| `flow_vectors` | IMAGE |  |  | 32-bit flow vectors from Radiance Optical Flow. |
+| `flow_vectors` | IMAGE |  |  | 32-bit flow vectors from MotionVectors. |
 | `propagation_mode` | choice | `Bidirectional` | `Forward`, `Backward`, `Bidirectional` | Forward carries masks from earlier frames, Backward from later frames. Bidirectional runs both and keeps the union (maximum) on filled frames. |
 
 **Outputs**
@@ -432,14 +432,14 @@ Run the diffusion sampler to generate video latents from pre-built noise and con
 | `model` | MODEL |  |  | Video diffusion model to sample with. |
 | `positive` | CONDITIONING |  |  | Positive (prompt) conditioning. |
 | `negative` | CONDITIONING |  |  | Negative conditioning, used by classifier-free guidance. |
-| `latent_noise` | LATENT |  |  | Noise latent, e.g. from RadianceVideoLatentNoise. It is used as both the noise and the start latent, so its shape must match the model. |
+| `latent_noise` | LATENT |  |  | Noise latent, e.g. from Video Latent Noise. It is used as both the noise and the start latent, so its shape must match the model. |
 | `steps` | int | 25 | 1 to 200 | Sampling steps. Ignored when dit_config carries a model_name. |
 | `cfg` | float | 7 | 0 to 30, step 0.1 | Classifier-free guidance scale. Replaced by the model default when dit_config carries a model_name, then by the first value of cfg_schedule_json. |
 | `sampler_name` | choice | `euler` | ComfyUI's samplers | ComfyUI sampler. Ignored when dit_config carries a model_name. |
 | `scheduler` | choice | `normal` | ComfyUI's schedulers | ComfyUI sigma scheduler. Ignored when dit_config carries a model_name. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the sampler's own noise (ancestral and SDE samplers). The initial noise comes from latent_noise. |
-| `dit_config` (optional) | string | `{}` |  | JSON from RadianceVideoModelInfo — when connected, overrides steps/cfg/sampler/scheduler with model-specific defaults. |
-| `cfg_schedule_json` (optional) | string |  |  | JSON float array from RadianceAudioCFGSchedule — first value overrides CFG |
+| `dit_config` (optional) | string | `{}` |  | JSON from Video Model Info — when connected, overrides steps/cfg/sampler/scheduler with model-specific defaults. |
+| `cfg_schedule_json` (optional) | string |  |  | JSON float array, e.g. [4.0]. Its first value overrides CFG. |
 | `denoise` (optional) | float | 1 | 0 to 1, step 0.01 | Fraction of the noise schedule to run (1.0 = full). The start latent is latent_noise itself, so below 1.0 this is not a video-to-video strength. |
 
 **Outputs**

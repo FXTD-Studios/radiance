@@ -2051,7 +2051,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
                 io.String.Input(
                     "model_meta", default="", force_input=True, optional=True,
-                    tooltip="Optional JSON metadata from Radiance Read Models. "
+                    tooltip="Optional JSON metadata from the Loader's model_meta output. "
                             "When connected, architecture detection uses this before "
                             "tokenizer heuristics.",
                 ),
@@ -2126,7 +2126,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         if clip is None:
             raise RuntimeError("CLIP input is None. Connect a valid CLIP model.")
         if not base_prompt or not base_prompt.strip():
-            raise ValueError("Cinematic Encoder: the prompt is empty. Describe the "
+            raise ValueError("Prompt: the prompt is empty. Describe the "
                              "subject and the scene in base_prompt.")
         negative_prompt_in = negative_prompt
 

@@ -16,7 +16,7 @@ Readers, writers, EXR, image, video, and file exchange.
 
 `RadianceDigitalCinemaRead`
 
-Read a video, image or frame sequence through Radiance Read, decoded to scene-linear, and output shot metadata (source info, colorspace, fps) for downstream pipeline nodes.
+Read a video, image or frame sequence through the Read node, decoded to scene-linear, and output shot metadata (source info, colorspace, fps) for downstream pipeline nodes.
 
 **Inputs**
 
@@ -41,14 +41,14 @@ Read a video, image or frame sequence through Radiance Read, decoded to scene-li
 
 `RadianceDigitalCinemaWrite`
 
-Simplified writer kept for older pipelines: passes images, output_path, format and filename to Radiance Write with every other setting at its default, and returns a status string.
+Simplified writer kept for older pipelines: passes images, output_path, format and filename to the Write node with every other setting at its default, and returns a status string.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to write, passed to Radiance Write with its defaults (color_space Linear (pass-through), so values are written unchanged). |
-| `output_path` | string | `~/radiance_output` |  | Output path, as in Radiance Write. With filename empty it is the full stem (single images and video get the extension appended; sequences use it as a folder). |
+| `images` | IMAGE |  |  | Frames to write, passed to the Write node with its defaults (color_space Linear (pass-through), so values are written unchanged). |
+| `output_path` | string | `~/radiance_output` |  | Output path, as in the Write node. With filename empty it is the full stem (single images and video get the extension appended; sequences use it as a folder). |
 | `format` (optional) | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. IMG writes only the first frame of a batch; SEQ and VID write every frame. |
 | `filename` (optional) | string |  |  | Optional stem. When set, output_path is treated as a folder and the file is named <filename>_v0001. |
 
@@ -121,7 +121,7 @@ Write images or EXR sequences to disk with configurable format options.
 | `broadcast_safe` (optional) | boolean | off |  | 8/16-bit stills: clamp to legal range (16–235). Video is always encoded legal-range by the RGB→YUV step; float formats are never clamped. |
 | `overwrite` (optional) | boolean | off |  | Overwrite existing files. When disabled (default), a unique suffix is appended instead of destroying the existing file. |
 | `proxy_scale` (optional) | float | 0 | 0 to 1, step 0.05 | Downscale output by this factor for proxy preview (0 = full resolution). |
-| `audio` (optional) | AUDIO |  |  | Audio tensor from RadianceVideoLoader (muxed into video output). |
+| `audio` (optional) | AUDIO |  |  | Audio tensor from Video Loader (muxed into video output). |
 | `mask` (optional) | MASK |  |  | Optional alpha/matte, written as the alpha channel of EXR, PNG, TIFF, DPX, WEBP and ProRes 4444. Ignored by JPEG, HDR, H.264, H.265, ProRes 422 and DNxHR, which have no alpha. |
 | `working_space` (optional) | choice | `Linear Rec.709 (sRGB)` | `Linear Rec.709 (sRGB)`, `ACEScg`, `Linear Rec.2020`, `Linear P3-D65`, `ACES2065-1` | Scene-linear space the incoming IMAGE is in. color_space is encoded from here, primaries AND transfer. Match the Read node's working_space. |
 | `ocio_colorspace` (optional) | string |  |  | Any colorspace name or alias from the OCIO config. When set it overrides color_space and OpenColorIO encodes the working space into it. Empty = use color_space. |
