@@ -58,3 +58,9 @@ def test_loader_preset_model_types_match_checkpoint_presets():
         model_type = config.get("model_type")
         if model_type and model_type != "Auto-Detect":
             assert js.get(preset) == model_type, preset
+
+
+def test_lightning_lora_pattern_matches_sampler_utils():
+    py = re.search(r'LIGHTNING_LORA = re.compile\(r"(.*?)"\)', (ROOT / "sampler_utils.py").read_text(encoding="utf-8"))
+    js = re.search(r"const LIGHTNING_LORA = /(.*?)/;", JS)
+    assert js.group(1) == py.group(1)

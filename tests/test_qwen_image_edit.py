@@ -112,6 +112,37 @@ class TestQwenImageEditSampler:
         assert detected == "qwen_image"
         assert (kwargs["cfg"], kwargs["steps"], kwargs["sampler"], kwargs["scheduler"]) == (4.0, 40, "euler", "simple")
 
+    LIGHTNING = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+
+    def _auto(self, meta_loras=(), prompt=None, cfg=1.0, steps=20):
+        from radiance.nodes.generate.sampler import RadianceSamplerPro
+        meta = json.dumps({"arch": "qwen_image", "unet_file": "qwen_image_edit_2511_int8_convrot.safetensors",
+                           "loras": [{"name": n, "model_str": 1.0, "clip_str": 1.0} for n in meta_loras]})
+        sampler = RadianceSamplerPro()
+        _, kwargs, _ = sampler._configure_model_and_defaults(
+            None, "auto", "Auto", model_meta=meta, chain_loras=sampler._model_chain_loras(prompt, "9"),
+            cfg=cfg, flux_guidance=3.5, steps=steps, sampler="euler", scheduler="normal",
+            scheduler_mode="Auto (Match Steps)",
+        )
+        return kwargs["cfg"], kwargs["steps"]
+
+    def test_a_lightning_lora_from_the_loaders_stack_runs_4_steps_at_cfg_1(self):
+        assert self._auto(meta_loras=[self.LIGHTNING]) == (1.0, 4)
+
+    def test_a_native_lightning_lora_before_the_sampler_runs_4_steps_at_cfg_1(self):
+        """API prompt: Loader 1 -> ModelSamplingAuraFlow 2 -> LoraLoaderModelOnly 3
+        -> Sampler 9. The front end already wrote cfg 1, the widget's default,
+        which model_meta alone would turn into Edit 2511's cfg 4."""
+        prompt = {
+            "1": {"class_type": "RadianceUnifiedLoader", "inputs": {}},
+            "2": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["1", 0], "shift": 3.1}},
+            "3": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["2", 0], "lora_name": self.LIGHTNING}},
+            "9": {"class_type": "RadianceSamplerPro", "inputs": {"model": ["3", 0]}},
+        }
+        assert self._auto(prompt=prompt, steps=4) == (1.0, 4)
+        prompt["3"]["inputs"]["lora_name"] = ["5", 0]
+        assert self._auto(prompt=prompt, steps=4) == (4.0, 4)
+
     @pytest.mark.parametrize("shape", [(1, 16, 1, 8, 8), (1, 16, 8, 8)])
     def test_the_latent_is_sampled_in_5d_like_the_native_ksampler(self, shape):
         """Qwen-Image's latent format is Wan 2.1's (latent_dimensions 3). A VAE
