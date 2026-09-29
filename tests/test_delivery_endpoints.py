@@ -481,11 +481,12 @@ def test_an_over_long_name_is_truncated_to_200_characters(h):
     assert name.count("N") == 200, f"{name.count('N')} N's survived"
 
 
-def test_the_marker_glyph_the_ui_prefixes_survives_sanitisation(h):
-    """'◎ Radiance_Deliver' is the panel default; the regex whitelists ◎."""
+def test_symbols_are_dropped_from_the_file_name(h):
+    """cv2.imwrite mangles non-ASCII symbols in paths on Windows."""
     h.put(flat(0.5))
     body = h.body(h.run({"filename": "◎ Shot_010"}))
-    assert "◎" in _delivered_dir_name(h, body)
+    assert "◎" not in _delivered_dir_name(h, body)
+    assert "Shot_010" in _delivered_dir_name(h, body)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
