@@ -71,7 +71,7 @@ def collect():
     """(label, url, sha256, size) for every single-file pin, and (label, repo, revision) for repo pins."""
     files, repos = [], []
     for name, e in _literal(ROOT / "config" / "model_map.py", "RADIANCE_MODEL_MAP").items():
-        files.append((f"Read Models: {name}", e["url"], e.get("sha256"), e.get("size")))
+        files.append((f"Loader: {name}", e["url"], e.get("sha256"), e.get("size")))
     for key, e in _registry_updates(ROOT / "nodes" / "upscale" / "upscale.py").items():
         if e.get("url"):
             files.append((f"Upscale: {key}", e["url"], e.get("sha256"), e.get("size")))

@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     isInputLive,
     modelMetaSourceNode as _findModelMetaSourceNode,
@@ -319,23 +320,6 @@ const SIGMA_OVERRIDE_WIDGETS = [
 ];
 
 
-// ── 2. Resize and redraw helper ──
-function refreshNodeSize(node) {
-    if (!node.computeSize) return;
-
-    const sz = node.computeSize();
-    const newWidth = Math.max(node.size[0], sz[0]);
-    const newHeight = sz[1];
-    // ALBABIT-FIX: skip if unchanged -- applyFolding() calls this on every
-    // poll tick now, and reassigning size even when identical was another
-    // contributor to the typing-interruption bug (see applyFolding).
-    if (node.size[0] === newWidth && node.size[1] === newHeight) return;
-    // ALBABIT-FIX: node.setSize(...) is the API Vue's resize handling actually
-    // observes; raw node.size[i] mutation has zero visual effect.
-    node.setSize([newWidth, newHeight]);
-    app.graph.setDirtyCanvas(true, true);
-}
-
 // ── 3. Dynamic folding logic ──
 // Self-heal + diagnostic. A widget marked visible (widget.hidden === false) but
 // still typed "hidden" means a restore was missed by the frontend — force it back
@@ -351,7 +335,7 @@ function auditSamplerWidgets(node) {
             const w = node.widgets.find(x => x.name === name);
             setWidgetVisible(w, true, node);
         });
-        refreshNodeSize(node);
+        fitNodeSize(node);
         console.warn("[Radiance Sampler] self-healed stranded widgets:", stuck.join(", "));
     }
     if (window.__RADIANCE_SAMPLER_DEBUG) {
@@ -440,7 +424,7 @@ function applyFolding(node) {
         }
         // ALBABIT-FIX: only resize on an actual visibility transition --
         // resizing every poll tick disrupted in-progress typing.
-        if (visChanged) refreshNodeSize(node);
+        if (visChanged) fitNodeSize(node);
         return;
     }
 
@@ -599,7 +583,7 @@ function applyFolding(node) {
     updateSigmaLocks(node);
     // ALBABIT-FIX: only resize on an actual visibility transition -- resizing
     // every poll tick disrupted in-progress typing.
-    if (visChanged) refreshNodeSize(node);
+    if (visChanged) fitNodeSize(node);
 }
 
 function updateUILocks(node, presetName) {
@@ -749,7 +733,7 @@ function updatePresetDivergenceMarkers(node) {
 
 // ALBABIT-FIX: Flux.2 Klein Base (~50 steps, guidance 4.0) and distilled (4
 // steps, ~1.0) share one architecture; only the file name tells them apart.
-// With model_meta wired to a Radiance Loader, its unet_name is read live, and
+// With model_meta wired to a Loader, its unet_name is read live, and
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
 

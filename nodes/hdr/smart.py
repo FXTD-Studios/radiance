@@ -358,7 +358,7 @@ def _estimate_psnr_linear(image: torch.Tensor, compression_ratio: float) -> floa
 
 class RadianceHDRDiagnostics:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
-    DESCRIPTION = "Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stops, and live metric floats (peak_nit, ev_range, clipped_pct, is_hdr) — replaces the separate RadianceHDRAnalysis node."
+    DESCRIPTION = "Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stops, and live metric floats (peak_nit, ev_range, clipped_pct, is_hdr) — replaces the separate HDR Analysis node."
     """
     ◎ Radiance HDR Diagnostics Panel
 
@@ -399,7 +399,7 @@ class RadianceHDRDiagnostics:
             "optional": {
                 "compression_ratio": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Must match the value used in RadianceHDRTurboEncoder.",
+                    "tooltip": "Must match the value used in HDR Turbo Encoder.",
                 }),
                 "model_preset_used": ("STRING", {
                     "default": "",
@@ -409,7 +409,7 @@ class RadianceHDRDiagnostics:
                 "stats_json": ("STRING", {
                     "default": "",
                     "forceInput": True,
-                    "tooltip": "JSON from RadianceHDRPerChannelNorm (optional).",
+                    "tooltip": "JSON from HDR Per-Channel Norm (optional).",
                 }),
                 "coherence_map": ("IMAGE", {"tooltip": "Optional coherence map (0 to 1). Only its mean is reported, as coherence_mean in the JSON."}),
                 "colorspace": (

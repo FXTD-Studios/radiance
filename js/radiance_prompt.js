@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { isInputLive, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -88,13 +88,6 @@ function _applyNegPromptLock(node, locked) {
     node.setDirtyCanvas(true, true);
 }
 
-function refreshNodeSize(node) {
-    if (!node.computeSize) return;
-    const sz = node.computeSize();
-    node.setSize([Math.max(node.size[0], sz[0]), sz[1]]);
-    app.graph.setDirtyCanvas(true, true);
-}
-
 // ALBABIT-FIX: negative_strength (a combo, no reliable disabled/inputEl
 // path the way a text widget has) hides entirely instead, same mechanism
 // as every preset-driven widget in radiance_loader.js/radiance_resolution.js.
@@ -102,7 +95,7 @@ function _applyNegStrengthLock(node, hidden) {
     const strengthW = node.widgets?.find(w => w.name === "negative_strength");
     if (!strengthW || strengthW.hidden === hidden) return;
     setWidgetVisible(strengthW, !hidden, node, { fallbackType: "combo" });
-    refreshNodeSize(node);
+    fitNodeSize(node);
 }
 
 // ALBABIT-FIX: the model type the Loader on model_meta selects, from its preset
@@ -125,7 +118,7 @@ function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
         && !["flux2", "flux2-klein", "qwen_image"].includes(_loaderModelType(source));
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
-    refreshNodeSize(node);
+    fitNodeSize(node);
 }
 
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
@@ -151,7 +144,7 @@ function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
             if (slot.link == null) node.removeInput(node.inputs.indexOf(slot));
         }
     }
-    refreshNodeSize(node);
+    fitNodeSize(node);
 }
 
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A

@@ -6,7 +6,7 @@ from radiance.core.tensor.chunking import FrameSink, chunks, compute_device, fra
 
 class RadianceSDRtoHDRExpand:
     """
-    ◎ Radiance SDR to HDR Expand
+    ◎ Radiance SDR → HDR Expand
 
     Expands dynamic range from SDR footage via an inverse OETF pass and a
     mathematical highlight expansion. Does not reconstruct clipped detail.
@@ -83,7 +83,7 @@ class RadianceHDRSynthesisEngine:
     pyramid; only the low-pass base is lifted (a luma-weighted power curve
     toward energy_target, gated to highlights), then the detail bands are
     added back unchanged. Clipped detail is not invented: a flat clipped
-    area stays flat, only brighter. For learned recovery use SDR to HDR
+    area stays flat, only brighter. For learned recovery use SDR → HDR
     Universal with Recover.
     """
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
@@ -107,7 +107,7 @@ class RadianceHDRSynthesisEngine:
                     "tooltip": "0 adds neutral highlight energy, reducing saturation as brightness rises. 1 preserves the original low-pass RGB ratios. Both use the same lifted luminance."}),
             },
             "optional": {
-                "guidance_mask":  ("MASK",  {"tooltip": "Per-pixel guidance mask from Radiance Luminance Guidance."}),
+                "guidance_mask":  ("MASK",  {"tooltip": "Per-pixel guidance mask from Luminance Guidance."}),
                 "guidance_nits":  ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10000.0, "step": 50.0,
                     "tooltip": "Target peak in nits inside guidance_mask, on the package's scale (203 nits = 1.0). 0 = ignore the mask and use energy_target everywhere."}),
             }
@@ -315,7 +315,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceSDRtoHDRExpand": "◎ Radiance SDR to HDR Expand",
+    "RadianceSDRtoHDRExpand": "◎ Radiance SDR → HDR Expand",
     "RadianceHDRSynthesisEngine": "◎ Radiance HDR Synthesis Engine",
     "RadianceRelightEngine": "◎ Radiance Relight Engine",
 }

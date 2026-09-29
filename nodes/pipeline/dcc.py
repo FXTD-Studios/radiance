@@ -249,11 +249,11 @@ def _push_to_nuke(
 
 def _push_to_resolve(written: list, filename_prefix: str) -> str:
     """Report the Resolve handoff for exported frames. This node only writes
-    the folder; Send to DaVinci Resolve can also import into the Media Pool
+    the folder; Export to Resolve can also import into the Media Pool
     through Resolve's scripting API."""
     if not written:
         return "no frames"
-    return ("folder ready to import in Resolve (Send to DaVinci Resolve can import it into "
+    return ("folder ready to import in Resolve (Export to Resolve can import it into "
             "the Media Pool directly)")
 
 

@@ -1,6 +1,7 @@
 import { app } from "../../../scripts/app.js";
 
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
@@ -12,7 +13,7 @@ function setWidgetVisible(widget, visible, node) {
 }
 
 /**
- * Radiance AI Upscale Widget Visibility (v1.0)
+ * AI Upscale Widget Visibility (v1.0)
  * Hides SUPIR-specific widgets when a non-SUPIR model is selected.
  *
  * SUPIR-only widgets: sdxl_model_name, supir_prompt, vae, clip
@@ -28,16 +29,6 @@ function setWidgetVisible(widget, visible, node) {
 
 // ALBABIT-FIX: SUPIR model name identifiers — must match _SUPIR_MODELS in upscale.py.
 const SUPIR_MODEL_NAMES = ["SUPIR-v0F_fp16", "SUPIR-v0Q_fp16"];
-
-function refreshNodeSize(node) {
-	if (!node.computeSize) return;
-
-	const sz = node.computeSize();
-	// ALBABIT-FIX: node.setSize(...) is the API Vue's resize handling actually
-	// observes; raw node.size[i] mutation has zero visual effect.
-	node.setSize([Math.max(node.size[0], sz[0]), sz[1]]);
-	app.graph.setDirtyCanvas(true, true);
-}
 
 app.registerExtension({
 	name: "Radiance.AIUpscale",
@@ -65,7 +56,7 @@ app.registerExtension({
 				setWidgetVisible(vaeWidget,         isSupir, node);
 				setWidgetVisible(clipWidget,        isSupir, node);
 
-				refreshNodeSize(node);
+				fitNodeSize(node);
 			};
 
 			if (modelWidget) {

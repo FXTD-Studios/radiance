@@ -1,5 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import {
+    fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
@@ -14,7 +15,7 @@ function setWidgetVisible(widget, visible, node) {
 // need three ../ to reach ComfyUI's scripts/ directory.
 
 /**
- * Radiance Resolution — Widget Management (v2.4)
+ * Resolution — Widget Management (v2.4)
  *
  * FIX 5: Import path corrected (see above).
  * FIX 6: Switched from nodeCreated hook + nested setTimeout to beforeRegisterNodeDef
@@ -29,7 +30,7 @@ function setWidgetVisible(widget, visible, node) {
  *      _forceWidgetReinsert — a splice(0,0) no-op alone stops working once a
  *      widget's Vue component has been (re)mounted.
  *   2. computedHeight = 4 (not -4) for hidden widgets — Vue maps this to 0px CSS height.
- *   3. refreshNodeSize uses node.setSize(...) — this is the API Vue's resize
+ *   3. fitNodeSize uses node.setSize(...) — this is the API Vue's resize
  *      handling actually observes; raw node.size[i] mutation has zero visual effect.
  *   4. Initial toggleFields deferred 100ms — Vue must complete its first layout pass
  *      BEFORE any widget is hidden, otherwise widget.computedHeight is undefined and
@@ -204,16 +205,6 @@ function _syncDurationSecondsStep(modelTypeW, durSecW, frameRateW) {
     durSecW.options.round = stepSeconds;
 }
 
-function refreshNodeSize(node) {
-    if (!node.computeSize) return;
-
-    const sz = node.computeSize();
-    // ALBABIT-FIX: node.setSize(...) is the API Vue's resize handling actually
-    // observes; raw node.size[i] mutation has zero visual effect.
-    node.setSize([Math.max(node.size[0], sz[0]), sz[1]]);
-    app.graph.setDirtyCanvas(true, true);
-}
-
 // ALBABIT-FIX: "📐" = scale_factor/mp_target/width/height, either modifier
 // active (both apply regardless of preset). "✎" = orientation/latent_channels
 // off their neutral default.
@@ -331,7 +322,7 @@ app.registerExtension({
                     setWidgetVisible(mpAspectW, mpActive, this);
                 }
 
-                refreshNodeSize(this);
+                fitNodeSize(this);
             };
 
             // ALBABIT-FIX follow-up: auto-toggle enable_video when model_type
@@ -618,7 +609,7 @@ app.registerExtension({
                 setWidgetVisible(frameRateW,   isVideo && !isMiniMaxModel, self);
                 setWidgetVisible(batchSizeW,   !isVideo, self);
                 setWidgetVisible(mpAspectW,    mpActive, self);
-                refreshNodeSize(self);
+                fitNodeSize(self);
             };
             requestAnimationFrame(reapply);
             setTimeout(reapply, 250);

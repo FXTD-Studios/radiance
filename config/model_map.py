@@ -6,7 +6,7 @@ so loader_utils and other modules never hardcode URLs or heuristics.
 from __future__ import annotations
 
 # 3.5.0: every entry is pinned. "url" names a repository commit, not "main", and
-# "sha256" / "size" are that file's LFS digest and length, so Read Models
+# "sha256" / "size" are that file's LFS digest and length, so the Loader
 # downloads exactly this file and installs it only if the digest matches
 # (radiance.core.model_fetch). "gated": True marks a repository whose licence
 # must be accepted on Hugging Face first; the download then uses HF_TOKEN or

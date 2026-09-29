@@ -132,16 +132,16 @@ def _linear709_to_target(image: torch.Tensor, target: str) -> torch.Tensor:
 
 class RadianceHDRVAEEncode(RadianceVAE4KEncode):
     """
-    ◎ Radiance HDR VAE Encode -- the partner of HDR VAE Decode.
+    ◎ Radiance HDR VAE Encode -- the partner of VAE Decode (HDR).
 
     Encodes a scene-linear (or log, or display) image into a VAE latent and
     stamps the latent with what it did: the HDR coding, the source space and
-    a fingerprint of the latent itself. HDR VAE Decode in Auto reads that and
+    a fingerprint of the latent itself. VAE Decode (HDR) in Auto reads that and
     inverts the coding exactly, so values above 1.0 survive the VAE; once a
     sampler has touched the latent the fingerprint no longer matches and
     Decode treats it as an ordinary diffusion latent.
 
-    This was the only encoder whose latent HDR VAE Decode could invert, and
+    This was the only encoder whose latent VAE Decode (HDR) could invert, and
     it was never registered: the two HDR latent encoders on the menu (HDR
     Latent Encoder, HDR Turbo Encoder) fed decoders retired in 3.5.0, so
     their latents came back clipped. Measured through the SD VAE on an HDR
@@ -642,7 +642,7 @@ class RadianceHDRAnalysis:
     ◎ Radiance HDR Analysis
 
     Analyses a scene-linear IMAGE tensor and outputs HDR metrics used by the
-    Radiance Viewer exposure strip — now available as ComfyUI node outputs for
+    Viewer exposure strip — now available as ComfyUI node outputs for
     conditional workflow logic.
 
     Output values:
@@ -790,7 +790,7 @@ class RadianceNDISender:
 
     3.5.0: the legacy latent "turbo" decode path was retired with the rest of
     the latent RUDRA decoders. The node streams the IMAGE it is given; decode
-    upstream with HDR VAE Decode (Direct HDR) or SDR → HDR Universal.
+    upstream with VAE Decode (HDR) in Direct HDR mode or SDR → HDR Universal.
 
     Note: NDIlib must be installed separately.
       pip install ndi-python
