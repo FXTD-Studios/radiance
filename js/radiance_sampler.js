@@ -4,6 +4,7 @@ import {
     fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
     isInputLive,
+    liveSourceNode,
     modelMetaSourceNode as _findModelMetaSourceNode,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
@@ -767,11 +768,42 @@ function _isLtxAvHighResStage(node) {
     return false;
 }
 
+// ALBABIT-FIX: mirrors sampler_utils.py's LIGHTNING_LORA (test_sampler_js_mirror.py).
+const LIGHTNING_LORA = /lightning[-_]?(\d+)[-_]?steps?/;
+
+// ALBABIT-FIX: the LoRA files this Sampler's model carries: the LoRA Stacks
+// feeding the Loader (model_meta's "loras") and the native loaders between
+// the Loader and this node (_model_chain_loras in sampler.py).
+function _modelLoraNames(node, loaderNode) {
+    const names = [];
+    const input = (n, name) => n?.inputs?.find(i => i.name === name);
+    const value = (n, name) => n.widgets?.find(w => w.name === name)?.value;
+    let stack = liveSourceNode(loaderNode, input(loaderNode, "lora_stack"));
+    for (let depth = 0; stack && depth < 32; depth++) {
+        for (let i = 1; i <= 5; i++) names.push(value(stack, `lora_${i}`));
+        stack = liveSourceNode(stack, input(stack, "lora_stack"));
+    }
+    let up = liveSourceNode(node, input(node, "model"));
+    for (let depth = 0; up && depth < 32; depth++) {
+        if (up.comfyClass === "LoraLoaderModelOnly" || up.comfyClass === "LoraLoader") names.push(value(up, "lora_name"));
+        up = liveSourceNode(up, input(up, "model"));
+    }
+    return names.filter(name => typeof name === "string" && name !== "None");
+}
+
 // ALBABIT-FIX: some checkpoints need settings their model_type's default lacks;
 // only the file name tells them apart (checked against the model cards). "turbo"
 // also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 Dev/Distilled
 // is left to the LTX 2.3 LowRes/HighRes presets: community values disagree.
-function _deriveDistillationOverride(filename, detectedType) {
+function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
+    // Lightning LoRA: the step count in its file name, at cfg 1.
+    if (detectedType === "qwen_image") {
+        for (const name of loraNames) {
+            const match = name.toLowerCase().match(LIGHTNING_LORA);
+            if (match) return { cfg: 1.0, steps: Number(match[1]) };
+        }
+    }
     if (!filename) return null;
     const f = filename.toLowerCase();
     if (f.includes("klein")) {
@@ -1017,7 +1049,7 @@ function updateModelMetaDefaults(node) {
     const sourceNode = eligible ? _findModelMetaSourceNode(node) : null;
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? null;
     const detectedType = _resolveLoaderModelType(sourceNode);
-    const override = _deriveDistillationOverride(unetName, detectedType);
+    const override = _deriveDistillationOverride(unetName, detectedType, _modelLoraNames(node, sourceNode));
     const modelDefaults = MODEL_TYPE_SAMPLING_DEFAULTS[detectedType] ?? null;
     // ALBABIT-FIX: stage-aware LTX-AV defaults (see _isLtxAvHighResStage /
     // _resolveLtxAvStageDefaults above) take priority over the generic

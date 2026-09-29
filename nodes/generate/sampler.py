@@ -1092,6 +1092,7 @@ class RadianceSamplerPro:
                 ),
 
             },
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("LATENT", "SIGMAS", "SIGMAS", "IMAGE")
@@ -1146,14 +1147,29 @@ class RadianceSamplerPro:
             "resolved_steps": [steps],
         }
 
-    def _configure_model_and_defaults(self, model, model_type, preset, model_meta="", **kwargs):
+    @staticmethod
+    def _model_chain_loras(prompt, unique_id):
+        # ALBABIT-FIX: model_meta lists the Loader's own LoRAs; these are the
+        # ones native loaders apply between the Loader and this node.
+        loras = []
+        node = prompt.get(str(unique_id)) if prompt else None
+        while node:
+            link = node["inputs"].get("model")
+            node = prompt.get(str(link[0])) if isinstance(link, list) else None
+            if node and node["class_type"] in ("LoraLoaderModelOnly", "LoraLoader"):
+                name = node["inputs"].get("lora_name")
+                if isinstance(name, str):
+                    loras.append(name)
+        return loras
+
+    def _configure_model_and_defaults(self, model, model_type, preset, model_meta="", chain_loras=(), **kwargs):
         detected_type = detect_model_type(model) if model_type == "auto" else model_type
 
         # model_meta's arch is the Loader's own (already-correct) resolution --
         # prefer it over re-detecting from the loaded MODEL object, which can't
         # distinguish Flux.2 Dev from Flux.2 Klein either. Only applies in auto
         # mode, never overriding an explicit manual model_type.
-        meta_arch, meta_unet_file = parse_model_meta(model_meta)
+        meta_arch, meta_unet_file, meta_loras = parse_model_meta(model_meta)
         if model_type == "auto" and meta_arch:
             detected_type = meta_arch
 
@@ -1163,7 +1179,7 @@ class RadianceSamplerPro:
         # regardless of how model_type itself was determined.
         if preset in ("Auto", "Custom"):
             defaults = get_model_defaults(detected_type)
-            distilled = refine_distillation_from_meta(detected_type, meta_unet_file)
+            distilled = refine_distillation_from_meta(detected_type, meta_unet_file, [*meta_loras, *chain_loras])
 
             # Apply defaults if user has them at "default" values -- distilled
             # (e.g. SDXL/SD3.5 Turbo) takes priority over the generic default.
@@ -1587,6 +1603,8 @@ class RadianceSamplerPro:
         sdr_inject_steps: int = 6,
         sdr_decay: float = 0.65,
         model_meta: str = "",
+        prompt=None,
+        unique_id=None,
     ) -> Tuple:
 
         t_start = time.time()
@@ -1625,7 +1643,8 @@ class RadianceSamplerPro:
 
         # 2. Model Detection & Default Calibration
         detected_type, params, meta_unet_file = self._configure_model_and_defaults(model, model_type, preset,
-            model_meta=model_meta, cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
+            model_meta=model_meta, chain_loras=self._model_chain_loras(prompt, unique_id),
+            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
             sampler=sampler, scheduler=scheduler, scheduler_mode=scheduler_mode, steps=steps)
 
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
