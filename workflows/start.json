@@ -1848,12 +1848,12 @@
           "link": null
         },
         {
-          "localized_name": "crop_to_broadcast_resolution",
-          "name": "crop_to_broadcast_resolution",
+          "localized_name": "crop_to_res",
+          "name": "crop_to_res",
           "shape": 7,
           "type": "BOOLEAN",
           "widget": {
-            "name": "crop_to_broadcast_resolution"
+            "name": "crop_to_res"
           },
           "link": null
         },

@@ -32,7 +32,7 @@ BASE = dict(
     height=512,
     orientation="Landscape",
     batch_size=1,
-    crop_to_broadcast_resolution=False,
+    crop_to_res=False,
 )
 
 
