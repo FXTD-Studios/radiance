@@ -964,6 +964,16 @@ class TestNodeInputSpec(unittest.TestCase):
                         f"{ctx}: INPUT_TYPES() dict must contain at least one of "
                         f"{valid_keys}, got {set(spec.keys())}")
 
+        # ALBABIT-FIX: ComfyUI calls IS_CHANGED with the inputs by name. One it
+        # does not take fails the call, and the node and all it feeds re-run.
+        is_changed = getattr(cls, "IS_CHANGED", None)
+        if is_changed is not None:
+            params = inspect.signature(is_changed).parameters
+            if not any(p.kind is p.VAR_KEYWORD for p in params.values()):
+                names = [n for section in valid_keys for n in spec.get(section, {})]
+                self.assertEqual([n for n in names if n not in params], [],
+                                 f"{ctx}: inputs IS_CHANGED does not take")
+
 
 class TestNodeInstantiation(unittest.TestCase):
     """

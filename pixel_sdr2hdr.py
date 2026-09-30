@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+from tqdm import tqdm
 
+import comfy.model_management
+import comfy.utils
 from radiance.model.cache import GPUModelCache
 import torch.nn as nn
 import torch.nn.functional as F
@@ -859,14 +862,18 @@ _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA = 900
 _WHOLE_FRAME_MAX_PIXELS_CPU = 2_600_000
 
 
+def whole_frame_memory(height: int, width: int) -> float:
+    """Free VRAM a frame needs to run whole rather than in tiles."""
+    return int(height) * int(width) * _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA / 0.8
+
+
 def _whole_frame_fits(frame: torch.Tensor) -> bool:
     pixels = int(frame.shape[-2]) * int(frame.shape[-1])
     if frame.is_cuda:
-        try:
-            free, _ = torch.cuda.mem_get_info(frame.device)
-        except Exception:  # noqa: BLE001 - no query, be conservative
-            return False
-        return pixels * _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA < 0.8 * free
+        # ALBABIT-FIX: ComfyUI's free memory counts torch's cache. The driver's
+        # did not, so every frame of a clip after the first ran in tiles.
+        free = comfy.model_management.get_free_memory(frame.device)
+        return whole_frame_memory(frame.shape[-2], frame.shape[-1]) < free
     return pixels <= _WHOLE_FRAME_MAX_PIXELS_CPU
 
 
@@ -926,7 +933,7 @@ def _predict_frame(model: SDR2HDRNet, frame: torch.Tensor, tile_size: int,
 def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
                           tile_size: int = 512, tile_overlap: int = 64,
                           recovery_mode: str = "highlights",
-                          strength: float = 1.0) -> torch.Tensor:
+                          strength: float = 1.0, progress=None) -> torch.Tensor:
     """Run the installed image model on an IMAGE batch.
 
     The returned BHWC tensor follows the model contract: scene-linear RGB,
@@ -938,7 +945,11 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     """
     if sdr_bhwc.ndim != 4 or sdr_bhwc.shape[-1] < 3:
         raise ValueError(f"Expected IMAGE [B,H,W,C], got {tuple(sdr_bhwc.shape)}")
-    model = load_pixel_sdr2hdr_weights(checkpoint_path, sdr_bhwc.device)
+    # ALBABIT-FIX: ComfyUI's device, not the input's. Decoded images sit in CPU
+    # memory, so RUDRA ran on the CPU: 1.5 s instead of 0.1 s per still, over
+    # 30 min on a few seconds of video. Frames go over one at a time.
+    device = comfy.model_management.get_torch_device()
+    model = load_pixel_sdr2hdr_weights(checkpoint_path, device)
     if model is None:
         raise RuntimeError(
             "no direct-pixel checkpoint; set pixel_checkpoint, or install "
@@ -952,11 +963,16 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     batch, height, width = sdr_bhwc.shape[0], sdr_bhwc.shape[1], sdr_bhwc.shape[2]
     out = torch.empty((batch, height, width, 3),
                       dtype=torch.float32, device=sdr_bhwc.device)
-    for index in range(batch):
-        frame = (sdr_bhwc[index:index + 1, ..., :3]
+    # ALBABIT-FIX: a caller that runs more steps passes its own node progress
+    # bar, and shows its own console bar.
+    frames = tqdm(range(batch), desc="RUDRA", unit="frame", disable=progress is not None)
+    progress = progress or comfy.utils.ProgressBar(batch)
+    for index in frames:
+        frame = (sdr_bhwc[index:index + 1, ..., :3].to(device)
                  .float().clamp(0.0, 1.0).permute(0, 3, 1, 2))
         prediction = _predict_frame(model, frame, int(tile_size), int(tile_overlap),
                                     recovery_mode, float(strength))
         out[index] = prediction[0].permute(1, 2, 0).to(out.device)
         del frame, prediction
+        progress.update(1)
     return out

@@ -679,6 +679,8 @@ def _make_comfy_stubs():
     mm.unload_all_models = MagicMock()
     mm.get_free_memory = MagicMock(return_value=8 * 1024**3)
     mm.get_total_memory = MagicMock(return_value=16 * 1024**3)
+    mm.is_oom = lambda e: "out of memory" in str(e).lower()
+    mm.free_memory = MagicMock()
     comfy.model_management = mm
 
     # comfy.utils
