@@ -154,7 +154,9 @@ class TestTheAIUpscaleDownloaderIsGated:
         monkeypatch.setitem(sys.modules, "folder_paths", fp)
         monkeypatch.setitem(sys.modules, "comfy.utils", cu)
         comfy = sys.modules.get("comfy") or types.ModuleType("comfy")
-        comfy.utils = cu
+        # Restored after the test: a plain assignment left the shared comfy
+        # stub with an empty utils module for every test that followed.
+        monkeypatch.setattr(comfy, "utils", cu, raising=False)
         monkeypatch.setitem(sys.modules, "comfy", comfy)
         node = ai.RadianceAIUpscale()
         calls = []
