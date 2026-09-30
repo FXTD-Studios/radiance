@@ -13,6 +13,38 @@ function setWidgetVisible(widget, visible, node) {
     return _setWidgetVisible(widget, visible, node, { fallbackType: "number" });
 }
 
+// ALBABIT-FIX: which "Write" widgets the current choices use, so none shows
+// where io/writer.py ignores it. v maps widget names to values.
+function writeWidgetVisibility(v) {
+    const fmt = String(v.format || "");
+    const isVid = fmt.startsWith("VID");
+    const isSeq = fmt.startsWith("SEQ");
+    const isExr = fmt.includes("EXR");
+    // Legal range is an 8-bit concept: float formats are never clamped, and
+    // video is always encoded legal range by its RGB -> YUV step.
+    const isFloatFmt = isExr || fmt.includes("HDR") || fmt.includes("32-bit float") || fmt.includes("DPX");
+    // CRF drives H.264/H.265 only (ProRes and DNxHR ignore it); JPEG and
+    // WEBP take quality too.
+    const usesQuality = (isVid && fmt.includes("MP4"))
+        || (fmt.startsWith("IMG") && (fmt.includes("JPEG") || fmt.includes("WEBP")));
+    // ocio_colorspace replaces color_space, and only PQ / HLG read the
+    // reference white.
+    const ocio = String(v.ocio_colorspace || "").trim() !== "";
+    const cs = String(v.color_space || "");
+    return {
+        fps: isVid,
+        quality: usesQuality,
+        exr_compression: isExr,
+        start_frame: isSeq,
+        frame_padding: isSeq,
+        audio_source: isVid,
+        broadcast_safe: !isFloatFmt && !isVid,
+        color_space: !ocio,
+        ocio_config: ocio,
+        hdr_reference_nits: !ocio && (cs.startsWith("PQ") || cs.startsWith("HLG")),
+    };
+}
+
 /**
  * Radiance Universal I/O Widget Management (v2.3)
  * Handles dynamic visibility for the DPX Read and DPX Write nodes.
@@ -463,14 +495,12 @@ app.registerExtension({
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
 				const node = this;
 
-				const formatWidget       = node.widgets.find(w => w.name === "format");
-				const fpsWidget          = node.widgets.find(w => w.name === "fps");
-				const qualityWidget      = node.widgets.find(w => w.name === "quality");
-				const exrCompWidget      = node.widgets.find(w => w.name === "exr_compression");
-				const startFrameWidget   = node.widgets.find(w => w.name === "start_frame");
-				const framePaddingWidget = node.widgets.find(w => w.name === "frame_padding");
-				const audioSourceWidget  = node.widgets.find(w => w.name === "audio_source");
-				const broadcastWidget    = node.widgets.find(w => w.name === "broadcast_safe");
+				// Captured once: a hidden widget can leave node.widgets.
+				const writeWidgets       = Object.fromEntries(node.widgets.map(w => [w.name, w]));
+				const formatWidget       = writeWidgets.format;
+				const qualityWidget      = writeWidgets.quality;
+				const startFrameWidget   = writeWidgets.start_frame;
+				const framePaddingWidget = writeWidgets.frame_padding;
 				const versionWidget      = node.widgets.find(w => w.name === "version");
 				const outputPathWidget   = node.widgets.find(w => w.name === "output_path");
 				const filenameWidget     = node.widgets.find(w => w.name === "filename");
@@ -510,38 +540,21 @@ app.registerExtension({
 
 				const updateWidgets = () => {
 					const fmt = formatWidget ? formatWidget.value : "";
-					const isImg = fmt.startsWith("IMG");
-					const isSeq = fmt.startsWith("SEQ");
-					const isVid = fmt.startsWith("VID");
-					const isExr = fmt.includes("EXR");
-					// Legal-range clamping is an 8-bit/video concept; the Python
-					// side ignores broadcast_safe for float formats (EXR, HDR,
-					// 32-bit float TIFF, DPX), so do not show it for them.
-					const isFloatFmt = isExr || fmt.includes("HDR") ||
-						fmt.includes("32-bit float") || fmt.includes("DPX");
-					// quality only actually does something for video CRF and
-					// JPEG/WEBP images (nodes_io.py::_save_pil_image) -- every
-					// other image/sequence format ignores it entirely.
-					const isJpgWebp = isImg && (fmt.includes("JPEG") || fmt.includes("WEBP"));
 
 					if (qualityWidget) {
-						qualityWidget.label = isVid ? "quality (CRF)"
-							: isJpgWebp ? "quality (JPEG/WEBP)"
-							: "quality";
+						qualityWidget.label = fmt.startsWith("VID") ? "quality (CRF)" : "quality (JPEG/WEBP)";
 					}
 					if (versionWidget) {
 						const v = Math.max(0, versionWidget.value | 0);
 						versionWidget.label = `version  (v${String(v).padStart(4, "0")})`;
 					}
 
+					const values = Object.fromEntries(
+						Object.entries(writeWidgets).map(([name, w]) => [name, w.value]));
 					let changed = false;
-					if (setWidgetVisible(fpsWidget,          isVid, node)) changed = true;
-					if (setWidgetVisible(qualityWidget,       isVid || isJpgWebp, node)) changed = true;
-					if (setWidgetVisible(exrCompWidget,       isExr, node)) changed = true;
-					if (setWidgetVisible(startFrameWidget,    isSeq, node)) changed = true;
-					if (setWidgetVisible(framePaddingWidget,  isSeq, node)) changed = true;
-					if (setWidgetVisible(audioSourceWidget,   isVid, node)) changed = true;
-					if (setWidgetVisible(broadcastWidget,     !isFloatFmt, node)) changed = true;
+					for (const [name, visible] of Object.entries(writeWidgetVisibility(values))) {
+						if (setWidgetVisible(writeWidgets[name], visible, node)) changed = true;
+					}
 
 					if (changed) fitNodeSize(node);
 
