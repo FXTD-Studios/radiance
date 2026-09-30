@@ -42,6 +42,7 @@ from typing import List, Optional
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from radiance.color.ops import (
     M_REC709_TO_ACES2065_1,
@@ -50,6 +51,7 @@ from radiance.color.ops import (
     linear_to_hlg_bt2100,
     linear_to_pq_bt2408,
 )
+from radiance.temporal_rudra import resolve_temporal_checkpoint
 
 logger = logging.getLogger("radiance.nodes.hdr.uplift_universal")
 
@@ -824,7 +826,12 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             is_clip = img.shape[0] > 1 and batch_mode == "Video Frames"
 
             # A trained temporal model is the preferred video backend.
-            if is_clip and backend in {"Auto", "Temporal"}:
+            # ALBABIT-FIX: Auto tries it only when one is installed, as its
+            # tooltip says. None is published: a clip now logs an info line
+            # instead of a warning.
+            wants_temporal = backend == "Temporal" or (
+                backend == "Auto" and resolve_temporal_checkpoint(temporal_checkpoint) is not None)
+            if is_clip and wants_temporal:
                 try:
                     hdr, h_conf, s_conf = self._temporal_reconstruct(
                         lin, expanded_hdr,
@@ -838,6 +845,8 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Temporal RUDRA unavailable (%s).", exc)
                     attempts.append(f"temporal RUDRA unavailable ({exc})")
+            elif is_clip and backend == "Auto":
+                logger.info("No temporal RUDRA model installed: frames are recovered one by one.")
             elif backend == "Temporal":
                 attempts.append(
                     "temporal backend needs batch_mode 'Video Frames' and at least five frames"
@@ -900,7 +909,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             settled = np.stack([
                 hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
                 * grain_mask[i][..., None]
-                for i in range(hdr_np.shape[0])
+                for i in tqdm(range(hdr_np.shape[0]), desc="Highlight grain", unit="frame")
             ], axis=0)
             hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
                 device=hdr.device, dtype=hdr.dtype

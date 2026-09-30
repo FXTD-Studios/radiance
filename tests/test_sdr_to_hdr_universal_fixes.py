@@ -248,3 +248,58 @@ def test_alpha_survives_every_output_encoding(node):
         out, _, _, _, _, _ = node.convert(image=rgba, **dict(BASE_KW, output_encoding=enc))
         assert out.shape[-1] == 4, enc
         assert float(out[0, 0, 0, 3]) == pytest.approx(0.25), enc
+
+
+# ── RUDRA runs on ComfyUI's device ───────────────────────────────────────────
+#
+# Decoded images sit in CPU memory, and the model used to be loaded on the
+# input's device, so RUDRA ran on the CPU: 1.5 s instead of 0.1 s per 1080p
+# still, over 30 min on a few seconds of video.
+
+def test_pixel_model_runs_on_comfys_device_and_reports_progress(monkeypatch):
+    seen, steps = {}, []
+
+    def fake_load(path, device):
+        seen["model"] = str(device)
+        return object()
+
+    def fake_frame(model, frame, *a):
+        return frame
+
+    class FakeProgress:
+        def __init__(self, total):
+            steps.append(("total", total))
+
+        def update(self, n):
+            steps.append(("update", n))
+
+    monkeypatch.setattr(px.comfy.model_management, "get_torch_device", lambda: torch.device("cpu", 0))
+    monkeypatch.setattr(px.comfy.utils, "ProgressBar", FakeProgress)
+    monkeypatch.setattr(px, "load_pixel_sdr2hdr_weights", fake_load)
+    monkeypatch.setattr(px, "_predict_frame", fake_frame)
+
+    out = px.predict_pixel_sdr2hdr(torch.rand(3, 8, 8, 3))
+    assert seen == {"model": "cpu:0"}
+    assert out.device.type == "cpu" and out.shape == (3, 8, 8, 3)
+    assert steps == [("total", 3), ("update", 1), ("update", 1), ("update", 1)]
+
+
+@pytest.mark.parametrize("installed", [False, True])
+def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypatch, fake_rudra, installed):
+    """No temporal model is published; Auto used to try one on every clip and
+    log "Temporal RUDRA unavailable" each time."""
+    fake_rudra()
+    tried = []
+
+    def fake_temporal(*a, **k):
+        tried.append(True)
+        raise RuntimeError("stub")
+
+    monkeypatch.setattr(mod, "resolve_temporal_checkpoint",
+                        lambda p="": pathlib.Path("/tmp/t.pt") if installed else None)
+    monkeypatch.setattr(mod.RadianceSDRToHDRUniversal, "_temporal_reconstruct", staticmethod(fake_temporal))
+
+    img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(5, 8, 8, 3).contiguous()
+    node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
+                 rudra_blend=1.0, **BASE_KW)
+    assert tried == ([True] if installed else [])

@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+from tqdm import tqdm
 
+import comfy.model_management
+import comfy.utils
 from radiance.model.cache import GPUModelCache
 import torch.nn as nn
 import torch.nn.functional as F
@@ -938,7 +941,11 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     """
     if sdr_bhwc.ndim != 4 or sdr_bhwc.shape[-1] < 3:
         raise ValueError(f"Expected IMAGE [B,H,W,C], got {tuple(sdr_bhwc.shape)}")
-    model = load_pixel_sdr2hdr_weights(checkpoint_path, sdr_bhwc.device)
+    # ALBABIT-FIX: ComfyUI's device, not the input's. Decoded images sit in CPU
+    # memory, so RUDRA ran on the CPU: 1.5 s instead of 0.1 s per still, over
+    # 30 min on a few seconds of video. Frames go over one at a time.
+    device = comfy.model_management.get_torch_device()
+    model = load_pixel_sdr2hdr_weights(checkpoint_path, device)
     if model is None:
         raise RuntimeError(
             "no direct-pixel checkpoint; set pixel_checkpoint, or install "
@@ -952,11 +959,13 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     batch, height, width = sdr_bhwc.shape[0], sdr_bhwc.shape[1], sdr_bhwc.shape[2]
     out = torch.empty((batch, height, width, 3),
                       dtype=torch.float32, device=sdr_bhwc.device)
-    for index in range(batch):
-        frame = (sdr_bhwc[index:index + 1, ..., :3]
+    progress = comfy.utils.ProgressBar(batch)
+    for index in tqdm(range(batch), desc="RUDRA", unit="frame"):
+        frame = (sdr_bhwc[index:index + 1, ..., :3].to(device)
                  .float().clamp(0.0, 1.0).permute(0, 3, 1, 2))
         prediction = _predict_frame(model, frame, int(tile_size), int(tile_overlap),
                                     recovery_mode, float(strength))
         out[index] = prediction[0].permute(1, 2, 0).to(out.device)
         del frame, prediction
+        progress.update(1)
     return out
