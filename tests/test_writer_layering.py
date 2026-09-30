@@ -159,14 +159,15 @@ def _params(tree, qualname):
 def test_the_node_signature_still_matches_the_engine():
     # The node's parameter list is the widget contract: saved workflows are
     # matched against it by name and order, so it must not drift. The engine
-    # is allowed the one extra parameter the node supplies for it.
+    # is allowed the extra parameters the node supplies for it: its media
+    # reader and its progress bars.
     node = _params(_tree("nodes/io/write.py"), "RadianceWrite.write")
     engine = _params(_tree("io/writer.py"), "write_frames")
     assert engine[:len(node)] == node, (
         "the node and the engine disagree about the write signature:\n"
         f"  node   {node}\n  engine {engine}"
     )
-    assert engine[len(node):] == ["read_media"], (
+    assert engine[len(node):] == ["read_media", "on_frame"], (
         f"unexpected extra engine parameters: {engine[len(node):]}"
     )
 
