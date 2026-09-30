@@ -691,7 +691,10 @@ class RadianceWrite:
                 "tooltip": ("File encoding: transfer AND primaries, from working_space. "
                             "Linear (pass-through) writes the working values unchanged. "
                             "EXR and DPX record it in their headers (chromaticities, "
-                            "oiio:ColorSpace); video gets primaries/transfer/matrix tags."),
+                            "oiio:ColorSpace); video gets primaries/transfer/matrix tags. "
+                            "For a video of scene-linear HDR (e.g. from SDR -> HDR Universal) "
+                            "pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light "
+                            "in a video plays back too dark."),
             }),
             "fps": ("FLOAT", {
                 "default": 0.0, "min": 0.0, "max": 240.0, "step": 0.001,

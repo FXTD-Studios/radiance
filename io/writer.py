@@ -242,6 +242,12 @@ def _ffmpeg_bin() -> str:
     return require_ffmpeg()
 
 
+def _ffmpeg_for(encoder: str) -> str:
+    """ffmpeg path that carries `encoder`, PATH first then the bundle."""
+    from ..core.ffmpeg import ffmpeg_with_encoder
+    return ffmpeg_with_encoder(encoder)
+
+
 def _ffprobe_bin() -> str:
     """ffprobe path. imageio-ffmpeg does not ship ffprobe, so this can be
     absent even when ffmpeg is present; callers fall back to defaults."""
@@ -905,7 +911,7 @@ def _save_video_ffmpeg(
         # `-n` rather than `-y` when the operator asked not to overwrite.
         # `out_path` is already collision-free by then, so this is a second
         # lock on the door rather than the lock.
-        _ffmpeg_bin(), "-v", "error", "-y" if overwrite else "-n",
+        _ffmpeg_for(codec), "-v", "error", "-y" if overwrite else "-n",
         "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{w}x{h}", "-pix_fmt", src_pix_fmt,
         "-r", str(fps),
@@ -1255,6 +1261,15 @@ def write_frames(
     colour = OutputColour(color_space, working_space, ocio_colorspace, ocio_config,
                           hdr_reference_nits)
     frames, detected_fps = coerce_to_frames(image, read_media=read_media)   # (N, H, W, C)
+    # ALBABIT-FIX: scene-linear HDR (values above 1.0) written unchanged into a
+    # video plays back too dark: players read it as display code values.
+    if format in _FMT_VIDEO and colour.is_linear and len(frames) and float(frames[0].max()) > 1.0:
+        log.warning(
+            "RadianceWrite: the image is scene-linear HDR (values above 1.0) and color_space "
+            "%r writes it into the %s video unchanged, so it plays back too dark. For an HDR "
+            "video set color_space to 'PQ (HDR10 / ST.2084)' or 'HLG (Hybrid Log-Gamma)'; "
+            "for SDR, 'Rec.709 (BT.1886)' or 'sRGB' (values above 1.0 clip). Keep "
+            "'Linear (pass-through)' for EXR.", color_space, _fmt_stem(format))
     # ALBABIT-FIX: fps==24.0 used to mean "auto-detect", indistinguishable
     # from a user explicitly choosing 24 -- an explicit 24 on a 23.976
     # source was silently overridden. 0.0 is now the unambiguous "auto"
