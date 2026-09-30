@@ -3,7 +3,6 @@ import os
 import math
 import logging
 import uuid
-import hashlib
 from typing import Dict, Any, Tuple
 
 import folder_paths
@@ -849,26 +848,6 @@ class RadianceResolution:
     # Per-node preview file tracking — keyed by unique_id.
     # Overwritten on each run so temp files don't accumulate.
     _preview_paths: Dict[str, str] = {}
-
-    @classmethod
-    def IS_CHANGED(
-        cls,
-        preset, width, height, orientation, model_type, batch_size,
-        scale_factor=1.0, latent_channels=0, enable_video=False,
-        crop_to_res=False,
-        frame_computation="Manual (Frames)", duration_seconds=5.0,
-        video_frames=81, frame_rate=24.0, mp_target=0.0,
-        mp_aspect_ratio="16:9", unique_id="",
-    ):
-        """Re-execute only when inputs actually change — avoids redundant renders."""
-        state = (
-            f"{preset}|{width}|{height}|{orientation}|{model_type}|{batch_size}|"
-            f"{scale_factor}|{latent_channels}|{enable_video}|"
-            f"{crop_to_res}|"
-            f"{frame_computation}|{duration_seconds}|{video_frames}|"
-            f"{frame_rate}|{mp_target}|{mp_aspect_ratio}"
-        )
-        return hashlib.md5(state.encode()).hexdigest()
 
     @classmethod
     def INPUT_TYPES(cls) -> Dict[str, Any]:
