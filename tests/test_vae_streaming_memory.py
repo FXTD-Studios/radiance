@@ -255,6 +255,38 @@ def _encode_overhead(num_frames, pix_hw=128):
 
 # ── The measurements ─────────────────────────────────────────────────────────
 
+def test_decode_colour_transform_in_chunks_matches_one_pass(monkeypatch):
+    """ComfyUI hands the decoded clip back in RAM; the colour transform now
+    runs in chunks written back into it. The chunk size must not change it."""
+    mod = _vae_mod()
+
+    class _GradientVAE(_FrameVAE):
+        def decode(self, latent):
+            b, _c, h, w = latent.shape
+            n = b * h * self.factor * w * self.factor * 3
+            return torch.linspace(-0.1, 1.3, n).reshape(b, h * self.factor, w * self.factor, 3)
+
+    chunks = []
+    transform = mod.RadianceVAE4KDecode._vae_output_to_target
+
+    def spy(self, img, *args, **kwargs):
+        chunks.append(int(img.shape[0]))
+        return transform(self, img, *args, **kwargs)
+
+    monkeypatch.setattr(mod.RadianceVAE4KDecode, "_vae_output_to_target", spy)
+    latent = torch.zeros(6, _FrameVAE.latent_channels, 8, 8)
+    frame_bytes = 12 * 4 * 64 * 64 * 3
+    outs = []
+    for free in (1 << 40, 2 * frame_bytes):          # one pass, then a frame per chunk
+        monkeypatch.setattr(mod.comfy.model_management, "get_free_memory",
+                            lambda d, f=free: f, raising=False)
+        outs.append(mod.RadianceVAE4KDecode().decode(
+            {"samples": latent}, _GradientVAE(), target_space="sRGB")[0])
+    assert chunks == [6, 1, 1, 1, 1, 1, 1]
+    torch.testing.assert_close(outs[0], outs[1])
+    assert float(outs[0].min()) == 0.0 and float(outs[0].max()) == pytest.approx(1.0)
+
+
 def test_video_decode_working_memory_is_flat_in_frame_count():
     """Peak above the returned IMAGE batch must not grow with clip length.
 

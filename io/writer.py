@@ -72,6 +72,8 @@ import os
 import subprocess
 import tempfile
 import threading
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -225,6 +227,9 @@ _EXR_COMPRESSION_ATTRS = {
     "DWAA":         "DWAA_COMPRESSION",
     "DWAB":         "DWAB_COMPRESSION",
 }
+
+#: Sequence frames written at once (see dispatch_write).
+_SEQ_WRITERS = min(8, os.cpu_count() or 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -931,6 +936,16 @@ def _save_video_ffmpeg(
         # below is where that gets reported -- swallowing the write error here
         # is what lets the real message through instead of "Broken pipe".
         pass
+    except BaseException:
+        # ALBABIT-FIX: stopped mid-clip (cancelled from ComfyUI, or a frame
+        # failed): the truncated file is removed, as after a timeout.
+        proc.kill()
+        proc.wait()
+        try:
+            Path(out_path).unlink(missing_ok=True)
+        except OSError:  # pragma: no cover
+            pass
+        raise
     finally:
         try:
             proc.stdin.close()
@@ -1232,6 +1247,7 @@ def write_frames(
     ocio_config:    str   = "",
     hdr_reference_nits: float = 203.0,
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
+    on_frame:       Optional[Callable[[int, int], None]] = None,
 ):
     output_path = strip_path_quotes(output_path)
     # Built before any frame is touched, so a bad colour setting fails before
@@ -1314,6 +1330,7 @@ def write_frames(
             effective_audio_source, overwrite,
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
+            on_frame=on_frame,
         )
         log.info("RadianceWrite: saved %d frame(s) → %s  [%s]", count, saved, colour.how or colour.label)
         # Return the saved path so programmatic callers (delivery/handler.py)
@@ -1383,6 +1400,7 @@ def dispatch_write(
     encode_timeout: Optional[float] = None,
     colour:         Optional["OutputColour"] = None,
     has_alpha:      bool = False,
+    on_frame:       Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
 
@@ -1393,6 +1411,9 @@ def dispatch_write(
     Pass `frame_count` when the length is known and `frames` cannot report it;
     it is only used to size the sequence-collision check and the returned
     count, never to allocate.
+
+    `on_frame(written, frame_count)` follows sequence and video writes, for
+    the caller's progress bars.
     """
     n = frame_count
     if n is None:
@@ -1443,6 +1464,8 @@ def dispatch_write(
 
         def _count(i: int) -> None:
             encoded[0] = i
+            if on_frame is not None:
+                on_frame(i, n)
 
         out = _save_video_ffmpeg(
             frames,
@@ -1494,14 +1517,7 @@ def dispatch_write(
                                   start_frame, n if n is not None else 1,
                                   overwrite)
 
-        # One frame at a time: transform, write, release. `frames` is a
-        # generator in the normal path, so the frame that has just been written
-        # is the only one alive, and the sequence length is bounded by the disk
-        # rather than by RAM. The old loop also collected every written path
-        # into `saved_paths`, which was never read.
-        written = 0
-        for i, fr in enumerate(frames):
-            path = out_dir / f"{seq_stem}_{(pad_fmt % (start_frame + i))}{ext}"
+        def save(fr: np.ndarray, path: Path) -> None:
             if is_exr:
                 _save_exr(fr, path, half=half_exr, metadata=seq_meta,
                           compression=exr_compression)
@@ -1511,8 +1527,32 @@ def dispatch_write(
                 _save_hdr(fr, path)
             else:
                 _save_pil_image(fr, path, stem, quality, metadata=seq_png_meta)
+
+        # `frames` is a generator in the normal path and at most `_SEQ_WRITERS`
+        # frames are in flight, so the sequence length is bounded by the disk
+        # rather than by RAM.
+        # ALBABIT-FIX: several frames are written at once. Compression is most
+        # of a frame's cost and runs without the GIL, but frame by frame it used
+        # one core: 58 s for 241 1080p frames in 32-bit float EXR.
+        written = 0
+
+        def finish(job) -> None:
+            nonlocal written
+            job.result()
             written += 1
-            del fr
+            if on_frame is not None:
+                on_frame(written, n)
+
+        with ThreadPoolExecutor(max_workers=_SEQ_WRITERS) as pool:
+            in_flight: deque = deque()
+            for i, fr in enumerate(frames):
+                path = out_dir / f"{seq_stem}_{(pad_fmt % (start_frame + i))}{ext}"
+                in_flight.append(pool.submit(save, fr, path))
+                del fr
+                if len(in_flight) >= _SEQ_WRITERS:
+                    finish(in_flight.popleft())
+            for job in in_flight:
+                finish(job)
 
         return str(out_dir), written
 

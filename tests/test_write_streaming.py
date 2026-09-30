@@ -279,3 +279,139 @@ def test_transform_stream_is_lazy():
     assert produced == [0]
     next(stream)
     assert produced == [0, 1]
+
+
+def test_sequence_frames_are_written_a_few_at_a_time(tmp_path, monkeypatch):
+    """Frame by frame, compression used one core. Several frames now go to
+    writer threads at once, never more than `_SEQ_WRITERS` in flight."""
+    import threading
+    import time
+    import radiance.io.writer as writer
+
+    lock, active, peak, produced = threading.Lock(), [0], [0], []
+
+    def slow_save(arr, path, fmt, quality=18, metadata=None):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            ahead = len(produced) - int(path.stem.rsplit("_", 1)[1]) + 1001
+        time.sleep(0.02)
+        with lock:
+            active[0] -= 1
+        assert ahead <= 4, f"{ahead} frames produced ahead of the one being written"
+        path.touch()
+
+    def gen():
+        for i in range(12):
+            produced.append(i)
+            yield np.zeros((8, 8, 3), np.float32)
+
+    monkeypatch.setattr(writer, "_save_pil_image", slow_save)
+    monkeypatch.setattr(writer, "_SEQ_WRITERS", 4)
+    saved, count = writer.dispatch_write(
+        gen(), str(tmp_path / "shot"), "SEQ │ PNG (8-bit)",
+        24.0, 18, "ZIP", 1001, 4, "", True, frame_count=12)
+    assert count == 12 and len(list(Path(saved).glob("*.png"))) == 12
+    assert 1 < peak[0] <= 4, peak[0]
+
+
+def test_a_failed_frame_stops_the_sequence_with_its_error(tmp_path, monkeypatch):
+    import radiance.io.writer as writer
+
+    def save(arr, path, fmt, quality=18, metadata=None):
+        if path.stem.endswith("1003"):
+            raise OSError("disk full")
+        path.touch()
+
+    monkeypatch.setattr(writer, "_save_pil_image", save)
+    with pytest.raises(OSError, match="disk full"):
+        writer.dispatch_write(
+            (np.zeros((8, 8, 3), np.float32) for _ in range(6)),
+            str(tmp_path / "shot"), "SEQ │ PNG (8-bit)",
+            24.0, 18, "ZIP", 1001, 4, "", True, frame_count=6)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 3  Progress
+# ═══════════════════════════════════════════════════════════════════════════
+
+class _Bar:
+    def __init__(self, total):
+        self.total, self.value = total, 0
+
+    def update(self, n):
+        self.value += n
+
+    def update_absolute(self, value, total=None):
+        self.value = value
+
+
+def _record_bars(monkeypatch, *modules):
+    """Replace ProgressBar in the `comfy.utils` each module holds: other test
+    files swap the shared stub, so it may not be the one importable here."""
+    bars = []
+    for module in modules:
+        monkeypatch.setattr(module.comfy.utils, "ProgressBar",
+                            lambda total: bars.append(_Bar(total)) or bars[-1])
+    return bars
+
+
+def test_write_nodes_advance_their_progress_bars(tmp_path, monkeypatch):
+    """"Write", "Write EXR" and "Write EXR Passes" showed no progress: a
+    241-frame EXR sequence ran for a minute with nothing moving."""
+    pytest.importorskip("OpenEXR")
+    import radiance.nodes.io.write as io_nodes
+    import radiance.nodes.vfx.multipass.master as master
+
+    bars = _record_bars(monkeypatch, io_nodes, master)
+    io_nodes.RadianceWrite().write(torch.rand(5, 8, 8, 3), str(tmp_path / "w"),
+                                   "SEQ │ PNG (8-bit)", filename="shot")
+    io_nodes.RadianceEXRMultiPart().write_multipart("mp", torch.rand(3, 8, 8, 3),
+                                                    output_path=str(tmp_path / "mp"))
+    master.RadianceEXRPassesWriter().write_passes({"beauty": torch.rand(2, 8, 8, 3)}, "p",
+                                                 output_path=str(tmp_path / "p"))
+    assert [(b.total, b.value) for b in bars] == [(5, 5), (3, 3), (2, 2)]
+
+
+def test_read_decodes_a_sequence_in_order_and_advances_its_bar(tmp_path, monkeypatch):
+    """"Read" decoded a sequence one file after the other with no progress; the
+    files are now decoded several at a time, and must come back in order."""
+    pytest.importorskip("OpenEXR")
+    import radiance.nodes.io.write as io_nodes
+    from radiance.io.writer import dispatch_write
+
+    values = [i / 10.0 for i in range(12)]
+    saved, _ = dispatch_write(
+        (np.full((8, 8, 3), v, np.float32) for v in values), str(tmp_path / "plate"),
+        "SEQ │ EXR (32-bit float)", 24.0, 18, "ZIP", 1001, 4, "", True, frame_count=12)
+    bars = _record_bars(monkeypatch, io_nodes)
+    image, _mask, _info = io_nodes.RadianceRead().read(path=str(Path(saved) / "plate_####.exr"))
+    assert [(b.total, b.value) for b in bars] == [(12, 12)]
+    assert [round(float(f.mean()), 4) for f in image] == values
+
+
+def test_a_video_reports_each_frame_and_a_cancel_leaves_no_partial_file(tmp_path):
+    from radiance.io.writer import _ffmpeg_ok, dispatch_write
+    if not _ffmpeg_ok():
+        pytest.skip("ffmpeg unavailable")
+
+    def frames():
+        return (np.full((16, 16, 3), 0.5, np.float32) for _ in range(4))
+
+    seen = []
+    dispatch_write(frames(), str(tmp_path / "a"), "VID │ MP4 (H.264)",
+                   24.0, 23, "ZIP", 1001, 4, "", True, frame_count=4,
+                   on_frame=lambda written, total: seen.append((written, total)))
+    assert seen == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+    class Cancelled(BaseException):
+        """ComfyUI's InterruptProcessingException is a BaseException too."""
+
+    def cancel(written, total):
+        if written == 2:
+            raise Cancelled
+
+    with pytest.raises(Cancelled):
+        dispatch_write(frames(), str(tmp_path / "b"), "VID │ MP4 (H.264)",
+                       24.0, 23, "ZIP", 1001, 4, "", True, frame_count=4, on_frame=cancel)
+    assert not list(tmp_path.glob("b*")), "the truncated video was left behind"
