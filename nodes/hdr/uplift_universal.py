@@ -40,10 +40,10 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-import numpy as np
 import torch
 from tqdm import tqdm
 
+import comfy.model_management
 import comfy.utils
 
 from radiance.color.ops import (
@@ -910,17 +910,16 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         # source hue and edges remain unchanged.
         if recovery_applied and str(pixel_recovery_mode) != "off":
             from radiance.model.highlight_grain import settle_highlight_grain
-            hdr_np = (hdr.detach().float().cpu().numpy() * float(reference_white_nits))
-            sdr_np = rgb.detach().float().cpu().numpy()
-            grain_mask = h_conf.detach().float().cpu().numpy().clip(0.0, 1.0)
-            settled = np.empty_like(hdr_np)
-            for i in tqdm(range(hdr_np.shape[0]), desc="Highlight grain", unit="frame"):
-                settled[i] = (hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
-                              * grain_mask[i][..., None])
+            # ALBABIT-FIX: frame by frame on ComfyUI's device, written back in
+            # place (`hdr` is this node's own tensor once recovery has run).
+            device = comfy.model_management.get_torch_device()
+            nits = float(reference_white_nits)
+            for i in tqdm(range(hdr.shape[0]), desc="Highlight grain", unit="frame"):
+                frame = hdr[i].to(device, torch.float32) * nits
+                settled = settle_highlight_grain(frame, rgb[i].to(device, torch.float32))
+                weight = h_conf[i].to(device, torch.float32).clamp(0.0, 1.0)[..., None]
+                hdr[i] = ((frame + (settled - frame) * weight) / nits).to(hdr.device, hdr.dtype)
                 progress.update(1)
-            hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
-                device=hdr.device, dtype=hdr.dtype
-            )
         progress.update_absolute(progress.total)
 
         n_frames = int(img.shape[0])
