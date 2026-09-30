@@ -303,3 +303,44 @@ def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypat
     node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
                  rudra_blend=1.0, **BASE_KW)
     assert tried == ([True] if installed else [])
+
+
+class _RecordedProgress:
+    def __init__(self, total):
+        self.total, self.steps, self.absolute = total, 0, None
+
+    def update(self, n):
+        self.steps += n
+
+    def update_absolute(self, value, total=None):
+        self.absolute = value
+
+
+def test_rudra_advances_the_progress_bar_it_is_given(monkeypatch):
+    monkeypatch.setattr(px, "load_pixel_sdr2hdr_weights", lambda path, device: object())
+    monkeypatch.setattr(px, "_predict_frame", lambda model, frame, *a: frame)
+    monkeypatch.setattr(px.comfy.utils, "ProgressBar", lambda total: pytest.fail("made its own bar"))
+    bar = _RecordedProgress(6)
+    px.predict_pixel_sdr2hdr(torch.rand(3, 8, 8, 3), progress=bar)
+    assert bar.steps == 3
+
+
+def test_one_node_progress_bar_covers_rudra_and_the_grain_pass(node, monkeypatch):
+    """The node bar filled with RUDRA and sat full through the slower grain pass."""
+    bars = []
+
+    def make(total):
+        bars.append(_RecordedProgress(total))
+        return bars[-1]
+
+    def fake_predict(srgb, progress=None, **k):
+        progress.update(srgb.shape[0])
+        return torch.full_like(srgb[..., :3], 0.03)
+
+    monkeypatch.setattr(mod.comfy.utils, "ProgressBar", make)
+    monkeypatch.setattr(px, "resolve_pixel_checkpoint", lambda p="": pathlib.Path("/tmp/x.pt"))
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr", fake_predict)
+    img = torch.ones(4, 8, 8, 3)
+    node.convert(image=img, learned_backend="Direct Pixel", rudra_blend=1.0, **BASE_KW)
+    assert len(bars) == 1
+    assert (bars[0].total, bars[0].steps, bars[0].absolute) == (8, 8, 8)
