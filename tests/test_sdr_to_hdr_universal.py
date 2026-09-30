@@ -477,6 +477,10 @@ class TestRudraPath(unittest.TestCase):
             return deterministic + 0.1, highlights * 0.8, shadows * 0.6
 
         self.node._temporal_reconstruct = temporal
+        # Auto tries the temporal model only when one is installed.
+        original = self.mod.resolve_temporal_checkpoint
+        self.mod.resolve_temporal_checkpoint = lambda p="": "t.pt"
+        self.addCleanup(setattr, self.mod, "resolve_temporal_checkpoint", original)
         video = self._img().expand(5, 8, 8, 3).contiguous()
         out, _, _, h_conf, s_conf, _ = self.node.convert(
             video, "None", 1000.0, "manual", 0.5, 1.6, 0.0,
