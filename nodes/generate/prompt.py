@@ -98,6 +98,7 @@ import weakref
 import torch
 from typing import Optional
 
+import comfy.utils
 from comfy_api.latest import io
 from comfy_extras import nodes_edit_model, nodes_flux, nodes_post_processing, nodes_qwen, nodes_sd3
 
@@ -2207,6 +2208,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # which dropped camera, lens and lighting (they come after the
         # subject). ComfyUI already chunks long CLIP prompts and T5 / LLM
         # tokenizers take any length.
+        # ALBABIT-FIX: the node's progress bar, the positive then the negative.
+        # ComfyUI's text encode draws one only for scheduled hooks.
+        progress = comfy.utils.ProgressBar(2)
         pos_tokens = clip.tokenize(final_prompt)
         real_count = _real_token_count(clip, final_prompt, tokens=pos_tokens)
         window = _TRAINED_TOKEN_WINDOW.get(resolved_arch)
@@ -2232,6 +2236,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             if references:
                 flux2_refs, latent = _flux2_references(vae, references)
                 positive_cond = _with_reference_latents(positive_cond, flux2_refs)
+        progress.update(1)
 
         user_negative = bool(negative_prompt_in and negative_prompt_in.strip())
         skip_negative = (
@@ -2257,6 +2262,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             negative_cond = _encode_tokens(clip, clip.tokenize(negative_prompt))
             if flux2_refs:
                 negative_cond = _with_reference_latents(negative_cond, flux2_refs)
+        progress.update(1)
 
         # ALBABIT-FIX: weak_neg_arch only known post-execution (resolved_arch
         # depends on the real CLIP/model_meta), so js/radiance_prompt.js flags
