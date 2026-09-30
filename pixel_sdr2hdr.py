@@ -870,10 +870,9 @@ def whole_frame_memory(height: int, width: int) -> float:
 def _whole_frame_fits(frame: torch.Tensor) -> bool:
     pixels = int(frame.shape[-2]) * int(frame.shape[-1])
     if frame.is_cuda:
-        try:
-            free, _ = torch.cuda.mem_get_info(frame.device)
-        except Exception:  # noqa: BLE001 - no query, be conservative
-            return False
+        # ALBABIT-FIX: ComfyUI's free memory counts torch's cache. The driver's
+        # did not, so every frame of a clip after the first ran in tiles.
+        free = comfy.model_management.get_free_memory(frame.device)
         return whole_frame_memory(frame.shape[-2], frame.shape[-1]) < free
     return pixels <= _WHOLE_FRAME_MAX_PIXELS_CPU
 

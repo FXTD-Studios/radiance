@@ -5,6 +5,7 @@ did not catch, mostly because it probed only the mid-range of the curve or only
 the explicit-path configuration.
 """
 import pathlib
+import types
 
 import pytest
 
@@ -434,3 +435,14 @@ def test_out_of_memory_goes_again_in_half_the_chunk(node, monkeypatch):
     monkeypatch.setattr(mm, "get_free_memory", lambda d: _chunk_of(1, 12, 16))
     with pytest.raises(torch.cuda.OutOfMemoryError):
         node.convert(image=img, **kw)
+
+
+def test_whole_frame_rule_counts_what_torch_keeps_cached(monkeypatch):
+    """The driver's free figure left torch's cache out: once the first frame's
+    activations were cached, every other frame of a clip ran in tiles."""
+    frame = types.SimpleNamespace(is_cuda=True, shape=(1, 3, 1080, 1920), device="cuda:0")
+    need = px.whole_frame_memory(1080, 1920)
+    monkeypatch.setattr(px.comfy.model_management, "get_free_memory", lambda d: need * 1.01)
+    assert px._whole_frame_fits(frame)
+    monkeypatch.setattr(px.comfy.model_management, "get_free_memory", lambda d: need * 0.99)
+    assert not px._whole_frame_fits(frame)
