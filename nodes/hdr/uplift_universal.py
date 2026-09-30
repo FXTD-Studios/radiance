@@ -40,8 +40,11 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-import numpy as np
 import torch
+from tqdm import tqdm
+
+import comfy.model_management
+import comfy.utils
 
 from radiance.color.ops import (
     M_REC709_TO_ACES2065_1,
@@ -50,6 +53,7 @@ from radiance.color.ops import (
     linear_to_hlg_bt2100,
     linear_to_pq_bt2408,
 )
+from radiance.temporal_rudra import resolve_temporal_checkpoint
 
 logger = logging.getLogger("radiance.nodes.hdr.uplift_universal")
 
@@ -119,21 +123,25 @@ def _row_quantile(flat: torch.Tensor, percentile: float) -> torch.Tensor:
 
 
 def _adaptive_knees(luma: torch.Tensor, percentile: float,
-                    smoothing: float) -> torch.Tensor:
+                    smoothing: float,
+                    previous: Optional[torch.Tensor] = None) -> torch.Tensor:
     """
     Per-frame knee = `percentile` of frame luma, EMA-smoothed along the batch
     (time) axis with weight `smoothing` in [0, 1). smoothing=0 → per-frame.
-    Returns a tensor of shape [B].
+    `previous` is the last knee before this batch when a clip goes through in
+    chunks. Returns a tensor of shape [B].
     """
     b = luma.shape[0]
     if b == 0:                                   # empty batch — nothing to do
         return luma.new_zeros((0,))
-    flat = luma.reshape(b, -1)
-    q = _row_quantile(flat, percentile).clamp(0.05, 0.99)
-    if smoothing <= 0.0 or b == 1:
+    # ALBABIT-FIX: one frame at a time, so a frame's knee does not depend on
+    # how many frames share its chunk (the batch size picked kthvalue).
+    q = torch.cat([_row_quantile(frame.reshape(1, -1), percentile)
+                   for frame in luma]).clamp(0.05, 0.99)
+    if smoothing <= 0.0 or (b == 1 and previous is None):
         return q
     knees = torch.empty_like(q)
-    ema = q[0]
+    ema = q[0] if previous is None else previous
     for i in range(b):
         ema = smoothing * ema + (1.0 - smoothing) * q[i]
         knees[i] = ema
@@ -360,6 +368,7 @@ class _RudraRecoveryCore:
         recovery_mode: str,
         strength: float,
         highlight_mask: Optional[torch.Tensor] = None,
+        progress=None,
     ) -> torch.Tensor:
         """Run the direct-pixel SDR2HDRNet and blend it into evidence masks.
 
@@ -390,7 +399,7 @@ class _RudraRecoveryCore:
         predicted = predict_pixel_sdr2hdr(
             canonical_srgb, checkpoint_path=checkpoint_path,
             tile_size=int(tile_size), tile_overlap=int(tile_overlap),
-            recovery_mode=str(recovery_mode), strength=float(strength),
+            recovery_mode=str(recovery_mode), strength=float(strength), progress=progress,
         )
         # There used to be a Rec.2020 -> Rec.709 matrix here. The network is a
         # per-channel mapping and never changes primaries (RUDRA's inference
@@ -724,19 +733,14 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         if _legacy.get("vae") is not None:
             logger.info("[SDR→HDR Universal] a VAE is connected but no longer used; "
                         "learned recovery runs on the pixel model.")
-        # RESIDENT-COPY FIX: the `.clone()` here was a whole extra full-size
-        # frame batch, and it bought nothing -- out-of-place nan_to_num already
-        # returns a new tensor, so the caller's IMAGE is never written through.
-        # On a 1080p frame that is 25 MB of the roughly 125 MB this node used to
-        # keep resident across five simultaneous copies.
-        img = torch.nan_to_num(image.float(), nan=0.0, posinf=1.0, neginf=0.0)
-        if img.dim() == 3:                      # single HWC frame → batch of 1
-            img = img.unsqueeze(0)
-        if img.shape[0] == 0:                   # empty batch → empty result
+        if image.dim() == 3:                    # single HWC frame → batch of 1
+            image = image.unsqueeze(0)
+        n, height, width = (int(s) for s in image.shape[:3])
+        if n == 0:                              # empty batch → empty result
+            img = image.float()
             zeros = img[..., 0]
             return (img, zeros, zeros, zeros, zeros, "mode: empty batch\nframes: 0")
 
-        rgb, extra = img[..., :3], img[..., 3:]
         peak_scale = max(peak_nits, 100.0) / 100.0
 
         # Where SDR diffuse white lands, as distinct from the display ceiling.
@@ -757,47 +761,13 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         # learned path recovers.
         white_scale = max(float(reference_white_nits), 100.0) / 100.0
         white_scale = min(white_scale, peak_scale)
-
-        # 1 ── decode to scene-linear
-        lin = _inverse_oetf(rgb.clamp(0.0, 1.0), inverse_oetf)
-
-        # 2 ── knee per frame (adaptive + temporally smoothed, or manual)
-        luma = _luma(lin).clamp(0.0, 1.0)
-        if knee_mode == "adaptive":
-            smoothing = float(temporal_smoothing) if batch_mode == "Video Frames" else 0.0
-            knees = _adaptive_knees(luma, float(knee), smoothing)
-        else:
-            knees = torch.full((img.shape[0],), float(knee),
-                               dtype=lin.dtype, device=lin.device)
-
-        # 3 ── hue-preserving highlight expansion, up to reference white
-        luma_exp = _soft_knee_expand(luma, knees, white_scale, float(shoulder_gamma))
-        gain = luma_exp / luma.clamp(min=_EPS)
-        expanded_hdr = lin * gain.unsqueeze(-1)
-
-        mask = ((luma_exp - luma) / max(white_scale - 1.0, _EPS)).clamp(0.0, 1.0)
-
-        # RESIDENT-COPY FIX: `gain` and `luma_exp` are dead from here, and this
-        # is where they have to be released rather than at the end of the
-        # method: the measured peak of convert() is the line below, where
-        # _clipped_highlight_mask's full-size clamp copy is allocated while
-        # every intermediate above is still referenced. Releasing each
-        # intermediate at its last use is what makes the returned batch the
-        # only full-size tensor alive by the time the output is encoded.
-        del gain, luma_exp
-
-        shadows = _shadow_mask(luma, float(shadow_threshold))
-        clipped = _clipped_highlight_mask(rgb.clamp(0.0, 1.0), highlight_threshold)
+        smoothing = float(temporal_smoothing) if batch_mode == "Video Frames" else 0.0
 
         # Expand is deterministic and never invokes a learned model. Recover
         # starts from decoded SDR and changes only clipped highlights/crushed
         # shadows. Hybrid starts from the deterministic expansion and blends
         # learned reconstruction only inside those evidence masks.
         mode = processing_mode if processing_mode in {"Expand", "Recover", "Hybrid"} else "Hybrid"
-        hdr = lin if mode == "Recover" else expanded_hdr
-        recovery_applied = False
-        h_conf = torch.zeros_like(clipped)
-        s_conf = torch.zeros_like(shadows)
 
         # What actually ran, reported rather than left to the console.
         #
@@ -815,29 +785,24 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         attempts: List[str] = []
         path = "deterministic expansion"
 
-        # 3b ── temporal or direct-pixel reconstruction.
-        wants_recovery = mode in {"Recover", "Hybrid"}
-        if wants_recovery and rudra_blend > 0.0:
+        # Which learned backend runs, decided once for the whole clip.
+        use_temporal = use_pixel = False
+        if mode in {"Recover", "Hybrid"} and rudra_blend > 0.0:
             backend = learned_backend if learned_backend in {
                 "Auto", "Direct Pixel", "Temporal",
             } else "Auto"
-            is_clip = img.shape[0] > 1 and batch_mode == "Video Frames"
+            is_clip = n > 1 and batch_mode == "Video Frames"
 
             # A trained temporal model is the preferred video backend.
-            if is_clip and backend in {"Auto", "Temporal"}:
-                try:
-                    hdr, h_conf, s_conf = self._temporal_reconstruct(
-                        lin, expanded_hdr,
-                        clipped * float(rudra_blend),
-                        shadows * float(rudra_blend),
-                        peak_scale, int(temporal_window), str(temporal_checkpoint),
-                        mode == "Recover",
-                    )
-                    recovery_applied = True
-                    path = "temporal RUDRA"
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Temporal RUDRA unavailable (%s).", exc)
-                    attempts.append(f"temporal RUDRA unavailable ({exc})")
+            # ALBABIT-FIX: Auto tries it only when one is installed, as its
+            # tooltip says. None is published: a clip now logs an info line
+            # instead of a warning.
+            wants_temporal = backend == "Temporal" or (
+                backend == "Auto" and resolve_temporal_checkpoint(temporal_checkpoint) is not None)
+            if is_clip and wants_temporal:
+                use_temporal = True
+            elif is_clip and backend == "Auto":
+                logger.info("No temporal RUDRA model installed: frames are recovered one by one.")
             elif backend == "Temporal":
                 attempts.append(
                     "temporal backend needs batch_mode 'Video Frames' and at least five frames"
@@ -848,81 +813,182 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             # Ask the resolver, not the widget: an installed checkpoint in
             # models/radiance (or RADIANCE_SDR2HDR_PIXEL) is found with the
             # path left blank, which is the default.
-            if not recovery_applied and backend in {"Auto", "Direct Pixel"}:
-                if backend == "Direct Pixel" or _pixel_checkpoint_available(pixel_checkpoint):
-                    try:
-                        recovery_mask = torch.maximum(clipped, shadows)
-                        if pixel_recovery_mode == "highlights":
-                            recovery_mask = clipped
-                        elif pixel_recovery_mode == "shadows":
-                            recovery_mask = shadows
-                        elif pixel_recovery_mode == "off":
-                            recovery_mask = torch.zeros_like(clipped)
-                        hdr = self._pixel_reconstruct(
-                            lin, hdr, recovery_mask, str(pixel_checkpoint),
-                            float(rudra_blend), peak_scale, int(pixel_tile_size),
-                            int(pixel_tile_overlap), str(pixel_recovery_mode),
-                            float(pixel_strength),
-                            highlight_mask=(clipped if pixel_recovery_mode in {"highlights", "all"}
-                                            else torch.zeros_like(clipped)),
-                        )
-                        h_conf = clipped * float(rudra_blend) if pixel_recovery_mode in {"highlights", "all"} else torch.zeros_like(clipped)
-                        s_conf = shadows * float(rudra_blend) if pixel_recovery_mode in {"shadows", "all"} else torch.zeros_like(shadows)
-                        recovery_applied = True
-                        path = f"direct-pixel ({pixel_recovery_mode})"
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Direct-pixel recovery unavailable (%s).", exc)
-                        attempts.append(f"direct-pixel unavailable ({exc})")
-                else:
+            if backend in {"Auto", "Direct Pixel"}:
+                use_pixel = backend == "Direct Pixel" or _pixel_checkpoint_available(pixel_checkpoint)
+                if not use_pixel:
                     from radiance.pixel_sdr2hdr import describe_pixel_checkpoint_search
                     attempts.append(
                         "no pixel checkpoint installed; expected "
                         + describe_pixel_checkpoint_search()
                     )
 
-        # Universal always produces usable HDR. Recover mode therefore falls
-        # back to deterministic expansion if the learned path cannot run.
-        if mode == "Recover" and not recovery_applied:
-            hdr = expanded_hdr
+        # ALBABIT-FIX: chunks of frames on ComfyUI's device, written into the
+        # outputs (the whole clip at once took over 100 GB of RAM on 10 s of
+        # 1080p). Temporal RUDRA needs the whole clip, on the input's device.
+        device = comfy.model_management.get_torch_device()
+        if use_temporal:
+            chunk_device, chunk = image.device, n
+        else:
+            # About 16 float32 copies of a frame are alive at a chunk's peak.
+            frame_bytes = 16 * height * width * 3 * 4
+            # ALBABIT-FIX: RUDRA's whole-frame memory is set aside, so a chunk
+            # never sends it to tiles; ComfyUI unloads models to RAM for room.
+            reserve = 0
+            if use_pixel:
+                from radiance.pixel_sdr2hdr import whole_frame_memory
+                reserve = whole_frame_memory(height, width)
+            if device != torch.device("cpu"):
+                comfy.model_management.free_memory(reserve + 4 * frame_bytes, device)
+            free = comfy.model_management.get_free_memory(device) - reserve
+            chunk_device, chunk = device, min(max(int(free // 2 // frame_bytes), 1), 16)
 
-        # RESIDENT-COPY FIX: from here only `hdr` and the extra channels are
-        # needed. `hdr` aliases one of `lin` / `expanded_hdr` unless a learned
-        # backend replaced it, so dropping these names frees whichever of the
-        # two is not the one in use, and both once `hdr` itself is consumed.
-        # RUDRA 0.9.0-beta.2 highlight-grain correction. It operates in
-        # mastering nits, only on flat highlights, and scales luminance so
-        # source hue and edges remain unchanged.
-        if recovery_applied and str(pixel_recovery_mode) != "off":
-            from radiance.model.highlight_grain import settle_highlight_grain
-            hdr_np = (hdr.detach().float().cpu().numpy() * float(reference_white_nits))
-            sdr_np = rgb.detach().float().cpu().numpy()
-            grain_mask = h_conf.detach().float().cpu().numpy().clip(0.0, 1.0)
-            settled = np.stack([
-                hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
-                * grain_mask[i][..., None]
-                for i in range(hdr_np.shape[0])
-            ], axis=0)
-            hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
-                device=hdr.device, dtype=hdr.dtype
-            )
+        out = torch.empty((n, height, width, image.shape[-1]),
+                          dtype=torch.float32, device=image.device)
+        mask, shadows = out.new_empty((n, height, width)), out.new_empty((n, height, width))
+        h_conf, s_conf = out.new_zeros((n, height, width)), out.new_zeros((n, height, width))
 
-        n_frames = int(img.shape[0])
-        has_extra = extra.shape[-1] > 0
-        del lin, expanded_hdr, luma, rgb
-        if not has_extra:
-            del extra, img
+        # ALBABIT-FIX: one node progress bar for RUDRA then the grain pass, one
+        # step per frame each; filled at the end whichever of them ran.
+        progress = comfy.utils.ProgressBar(2 * n)
+        recovery_applied = False
 
-        # 4 ── output encoding (linear 1.0 == reference white, BT.2408)
-        out = _encode_output(hdr, output_encoding, peak_scale, white_scale)
-        del hdr
+        def convert_chunk(start, end, previous_knee):
+            """Frames start:end, written into the outputs. Returns the last knee,
+            where the EMA carries on. A function, so a chunk that runs out of
+            memory is freed before it goes again."""
+            nonlocal path, recovery_applied, use_pixel
+            img = torch.nan_to_num(image[start:end].to(chunk_device, torch.float32),
+                                   nan=0.0, posinf=1.0, neginf=0.0)
+            rgb = img[..., :3]
+            out[start:end, ..., 3:] = img[..., 3:]      # pass alpha / extra channels through
 
-        if has_extra:                           # pass alpha / extra channels through
-            out = torch.cat([out, extra], dim=-1)
-            del extra, img
+            # 1 ── decode to scene-linear
+            lin = _inverse_oetf(rgb.clamp(0.0, 1.0), inverse_oetf)
+
+            # 2 ── knee per frame (adaptive + temporally smoothed, or manual)
+            luma = _luma(lin).clamp(0.0, 1.0)
+            if knee_mode == "adaptive":
+                knees = _adaptive_knees(luma, float(knee), smoothing, previous_knee)
+            else:
+                knees = torch.full((end - start,), float(knee),
+                                   dtype=lin.dtype, device=lin.device)
+
+            # 3 ── hue-preserving highlight expansion, up to reference white
+            luma_exp = _soft_knee_expand(luma, knees, white_scale, float(shoulder_gamma))
+            gain = luma_exp / luma.clamp(min=_EPS)
+            expanded_hdr = lin * gain.unsqueeze(-1)
+
+            mask[start:end] = ((luma_exp - luma) / max(white_scale - 1.0, _EPS)).clamp(0.0, 1.0)
+
+            # RESIDENT-COPY FIX: `gain` and `luma_exp` are dead from here, and
+            # the chunk's peak is the line below, where _clipped_highlight_mask's
+            # clamp copy is allocated.
+            del gain, luma_exp
+
+            shadow = _shadow_mask(luma, float(shadow_threshold))
+            clipped = _clipped_highlight_mask(rgb.clamp(0.0, 1.0), highlight_threshold)
+
+            hdr = lin if mode == "Recover" else expanded_hdr
+            recovery_applied = False
+            h_c = torch.zeros_like(clipped)
+            s_c = torch.zeros_like(shadow)
+
+            if use_temporal:
+                try:
+                    hdr, h_c, s_c = self._temporal_reconstruct(
+                        lin, expanded_hdr,
+                        clipped * float(rudra_blend),
+                        shadow * float(rudra_blend),
+                        peak_scale, int(temporal_window), str(temporal_checkpoint),
+                        mode == "Recover",
+                    )
+                    recovery_applied = True
+                    path = "temporal RUDRA"
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Temporal RUDRA unavailable (%s).", exc)
+                    attempts.append(f"temporal RUDRA unavailable ({exc})")
+
+            if not recovery_applied and use_pixel:
+                try:
+                    recovery_mask = torch.maximum(clipped, shadow)
+                    if pixel_recovery_mode == "highlights":
+                        recovery_mask = clipped
+                    elif pixel_recovery_mode == "shadows":
+                        recovery_mask = shadow
+                    elif pixel_recovery_mode == "off":
+                        recovery_mask = torch.zeros_like(clipped)
+                    hdr = self._pixel_reconstruct(
+                        lin, hdr, recovery_mask, str(pixel_checkpoint),
+                        float(rudra_blend), peak_scale, int(pixel_tile_size),
+                        int(pixel_tile_overlap), str(pixel_recovery_mode),
+                        float(pixel_strength),
+                        highlight_mask=(clipped if pixel_recovery_mode in {"highlights", "all"}
+                                        else torch.zeros_like(clipped)),
+                        progress=progress,
+                    )
+                    h_c = clipped * float(rudra_blend) if pixel_recovery_mode in {"highlights", "all"} else torch.zeros_like(clipped)
+                    s_c = shadow * float(rudra_blend) if pixel_recovery_mode in {"shadows", "all"} else torch.zeros_like(shadow)
+                    recovery_applied = True
+                    path = f"direct-pixel ({pixel_recovery_mode})"
+                except Exception as exc:  # noqa: BLE001
+                    # ALBABIT-FIX: out of memory is retried below; any other
+                    # failure past the first chunk stops, not a half-recovered clip.
+                    if start or comfy.model_management.is_oom(exc):
+                        raise
+                    logger.warning("Direct-pixel recovery unavailable (%s).", exc)
+                    attempts.append(f"direct-pixel unavailable ({exc})")
+                    use_pixel = False
+
+            # Universal always produces usable HDR. Recover mode therefore falls
+            # back to deterministic expansion if the learned path cannot run.
+            if mode == "Recover" and not recovery_applied:
+                hdr = expanded_hdr
+
+            # RUDRA 0.9.0-beta.2 highlight-grain correction. It operates in
+            # mastering nits, only on flat highlights, and scales luminance so
+            # source hue and edges remain unchanged.
+            if recovery_applied and str(pixel_recovery_mode) != "off":
+                from radiance.model.highlight_grain import settle_highlight_grain
+                # ALBABIT-FIX: frame by frame on ComfyUI's device, written back in
+                # place (`hdr` is this node's own tensor once recovery has run).
+                nits = float(reference_white_nits)
+                for i in range(end - start):
+                    frame = hdr[i].to(device) * nits
+                    settled = settle_highlight_grain(frame, rgb[i].to(device))
+                    weight = h_c[i].to(device).clamp(0.0, 1.0)[..., None]
+                    hdr[i] = (frame + (settled - frame) * weight) / nits
+                    progress.update(1)
+
+            # 4 ── output encoding (linear 1.0 == reference white, BT.2408)
+            out[start:end, ..., :3] = _encode_output(hdr, output_encoding, peak_scale, white_scale)
+            shadows[start:end] = shadow
+            h_conf[start:end] = h_c
+            s_conf[start:end] = s_c
+            return knees[-1]
+
+        console = tqdm(total=n, desc="SDR to HDR", unit="frame")
+        start, previous_knee = 0, None
+        while start < n:
+            end = min(start + chunk, n)
+            try:
+                previous_knee = convert_chunk(start, end, previous_knee)
+            except Exception as exc:
+                # ALBABIT-FIX: VRAM taken by another app: the same frames go again
+                # in half the chunk, as ComfyUI's own nodes do.
+                if not comfy.model_management.is_oom(exc) or chunk == 1 or use_temporal:
+                    raise
+                chunk //= 2
+                logger.warning("SDR → HDR Universal: out of GPU memory, retrying with %d frames per chunk.", chunk)
+                progress.update_absolute(2 * start)
+                continue
+            console.update(end - start)
+            start = end
+        console.close()
+        progress.update_absolute(progress.total)
 
         report = self._build_report(
             mode=mode, path=path, recovery_applied=recovery_applied,
-            attempts=attempts, frames=n_frames,
+            attempts=attempts, frames=n,
             reference_white_nits=float(reference_white_nits),
             peak_nits=float(peak_nits), output_encoding=str(output_encoding),
             rudra_blend=float(rudra_blend),
