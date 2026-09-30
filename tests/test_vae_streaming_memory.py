@@ -331,50 +331,41 @@ def test_decoded_frames_are_released_as_the_loop_advances():
         f"liveness grew across the clip: first {counts[0]}, last {counts[-1]}")
 
 
-def test_uplift_universal_holds_one_full_size_copy_at_the_output_encode():
-    """SDR->HDR Universal's accumulation must be the only accumulation.
-
-    `convert` used to keep roughly five full-size RGB copies resident at once,
-    about 125 MB per 1080p frame. Counted at the moment the output encode runs
-    (the last full-size allocation in the method), the old code had five
-    full-size float32 tensors of the frame shape alive: the caller's IMAGE, the
-    node's clone of it, `lin`, `expanded_hdr` and `hdr`. It is now two: the
-    caller's IMAGE, which is not the node's to free, and `hdr` itself.
-    """
+def _uplift_overhead(num_frames, hw=64):
+    """Peak live bytes above (the five returned outputs + caller's IMAGE)."""
     mod = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     node = mod.RadianceSDRToHDRUniversal()
-    image = torch.rand(2, 128, 128, 3)
-    frame_bytes = image.numel() * image.element_size()
-    shape = tuple(image.shape)
-    live_at_encode = []
+    image = torch.rand(num_frames, hw, hw, 3)
+    input_bytes = image.numel() * image.element_size()
+    gc.collect()
+    with PeakTracker() as tracker:
+        outputs = node.convert(
+            image, "sRGB", 1000.0, "adaptive", 0.75, 1.6, 0.0,
+            "Linear", processing_mode="Expand",
+        )
+        result_bytes = sum(t.numel() * t.element_size() for t in outputs[:5])
+    del node, image, outputs
+    gc.collect()
+    return tracker.peak - result_bytes - input_bytes, result_bytes
 
-    original = mod._encode_output
 
-    def _counting(hdr, *args, **kwargs):
-        gc.collect()
-        live_at_encode.append(sum(
-            1 for obj in gc.get_objects()
-            if type(obj) is torch.Tensor
-            and tuple(obj.shape) == shape
-            and obj.dtype == torch.float32))
-        return original(hdr, *args, **kwargs)
+def test_uplift_universal_working_memory_is_flat_in_frame_count(monkeypatch):
+    """SDR->HDR Universal writes chunks of frames into its outputs.
 
-    mod._encode_output = _counting
-    try:
-        gc.collect()
-        with PeakTracker() as tracker:
-            out = node.convert(
-                image, "sRGB", 1000.0, "adaptive", 0.75, 1.6, 0.0,
-                "Linear Rec.709", processing_mode="Expand",
-            )[0]
-    finally:
-        mod._encode_output = original
+    It used to process the whole clip at once, about 16 full-size copies alive
+    at the peak: over 100 GB of RAM for 10 s of 1080p. Free memory sizes the
+    chunk; held here to two frames, the working memory above the outputs must
+    not grow with the clip. Measured 0.655 MB at 4 frames and 5.243 MB at 32
+    before, at most 0.426 MB after.
+    """
+    mod = importlib.import_module("radiance.nodes.hdr.uplift_universal")
+    monkeypatch.setattr(mod.comfy.model_management, "get_free_memory",
+                        lambda d: 2 * 2 * 16 * 64 * 64 * 3 * 4, raising=False)
+    over_short, res_short = _uplift_overhead(SHORT)
+    over_long, res_long = _uplift_overhead(LONG)
 
-    assert out.shape == image.shape
-    assert live_at_encode == [2], (
-        f"full-size tensors alive when the output is encoded: "
-        f"{live_at_encode}; expected the caller's input and `hdr` only")
-    # Peak covers the whole method, including the intermediate the expansion
-    # maths genuinely needs. Measured 7.33 full-size copies before, 6.67 after.
-    assert tracker.peak <= 7.0 * frame_bytes, (
-        f"peak {tracker.peak / frame_bytes:.2f} full-size copies")
+    assert res_long == res_short * (LONG // SHORT)
+    assert over_long <= over_short * 1.25, (
+        f"uplift working memory grew with clip length: "
+        f"{over_short / 1e6:.3f} MB at {SHORT} frames, "
+        f"{over_long / 1e6:.3f} MB at {LONG} frames")
