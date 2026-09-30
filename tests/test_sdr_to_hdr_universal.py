@@ -533,7 +533,7 @@ class TestRudraPath(unittest.TestCase):
         called = {"frames": 0}
 
         def pixel(source, base, mask, *args, **kwargs):
-            called["frames"] = source.shape[0]
+            called["frames"] += source.shape[0]    # in one call or in chunks
             return base
 
         self.node._pixel_reconstruct = pixel

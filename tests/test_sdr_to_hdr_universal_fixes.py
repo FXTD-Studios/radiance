@@ -344,3 +344,93 @@ def test_one_node_progress_bar_covers_rudra_and_the_grain_pass(node, monkeypatch
     node.convert(image=img, learned_backend="Direct Pixel", rudra_blend=1.0, **BASE_KW)
     assert len(bars) == 1
     assert (bars[0].total, bars[0].steps, bars[0].absolute) == (8, 8, 8)
+
+
+def _chunk_of(frames, h, w):
+    """Free memory that makes the node take `frames` frames per chunk, once
+    RUDRA's whole-frame memory is set aside."""
+    return px.whole_frame_memory(h, w) + 2 * frames * 16 * h * w * 3 * 4
+
+
+def test_chunks_give_the_whole_clip_result(node, monkeypatch):
+    """The chunk size follows free memory; the output must not, the knees' EMA
+    across chunks included (chunks of 3, 3 and 1 frames here)."""
+    calls = []
+
+    def fake_predict(srgb, **k):
+        calls.append(srgb.shape[0])
+        return srgb[..., :3] ** 2 * 0.05
+
+    monkeypatch.setattr(px, "resolve_pixel_checkpoint", lambda p="": pathlib.Path("/tmp/x.pt"))
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr", fake_predict)
+    torch.manual_seed(0)
+    img = torch.rand(7, 12, 16, 4) * torch.linspace(0.4, 1.2, 7).view(-1, 1, 1, 1)
+    kw = dict(BASE_KW, knee_mode="adaptive", knee=0.6, temporal_smoothing=0.8,
+              batch_mode="Video Frames", learned_backend="Direct Pixel",
+              pixel_recovery_mode="all", output_encoding="PQ (HDR10)")
+    freed = []
+    monkeypatch.setattr(mod.comfy.model_management, "free_memory", lambda need, d: freed.append(need))
+    runs = []
+    for free in (1 << 40, _chunk_of(3, 12, 16)):
+        monkeypatch.setattr(mod.comfy.model_management, "get_free_memory", lambda d, f=free: f)
+        runs.append(node.convert(image=img, **kw))
+    assert calls == [7, 3, 3, 1]
+    # ComfyUI is asked for RUDRA's whole frame and four frames of chunk.
+    assert freed == [px.whole_frame_memory(12, 16) + 4 * 16 * 12 * 16 * 3 * 4] * 2
+    whole, chunked = runs
+    for a, b in zip(whole[:5], chunked[:5]):
+        torch.testing.assert_close(a, b)
+    assert whole[5] == chunked[5]
+
+
+def test_a_failure_past_the_first_chunk_stops_the_node(node, monkeypatch):
+    """Falling back to Expand there would return a clip recovered only in part."""
+    calls = []
+
+    def fake_predict(srgb, **k):
+        calls.append(srgb.shape[0])
+        if len(calls) == 2:
+            raise RuntimeError("bad frame")
+        return torch.full_like(srgb[..., :3], 0.03)
+
+    monkeypatch.setattr(px, "resolve_pixel_checkpoint", lambda p="": pathlib.Path("/tmp/x.pt"))
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr", fake_predict)
+    monkeypatch.setattr(mod.comfy.model_management, "get_free_memory", lambda d: _chunk_of(2, 8, 8))
+    with pytest.raises(RuntimeError, match="bad frame"):
+        node.convert(image=torch.ones(4, 8, 8, 3), learned_backend="Direct Pixel", **BASE_KW)
+
+
+def test_out_of_memory_goes_again_in_half_the_chunk(node, monkeypatch):
+    """VRAM taken by another app mid-clip: the same frames go again in a smaller
+    chunk and the clip comes out as if nothing happened. At one frame it stops."""
+    calls, oom_at = [], [2]
+
+    def fake_predict(srgb, **k):
+        calls.append(srgb.shape[0])
+        if len(calls) == oom_at[0]:
+            raise torch.cuda.OutOfMemoryError("CUDA out of memory")
+        return srgb[..., :3] ** 2 * 0.05
+
+    monkeypatch.setattr(px, "resolve_pixel_checkpoint", lambda p="": pathlib.Path("/tmp/x.pt"))
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr", fake_predict)
+    mm = mod.comfy.model_management
+    torch.manual_seed(0)
+    img = torch.rand(8, 12, 16, 3) * torch.linspace(0.4, 1.2, 8).view(-1, 1, 1, 1)
+    kw = dict(BASE_KW, knee_mode="adaptive", knee=0.6, temporal_smoothing=0.8,
+              batch_mode="Video Frames", learned_backend="Direct Pixel")
+    monkeypatch.setattr(mm, "get_free_memory", lambda d: _chunk_of(4, 12, 16))
+    got = node.convert(image=img, **kw)
+    assert calls == [4, 4, 2, 2]
+
+    oom_at[0] = 0
+    monkeypatch.setattr(mm, "get_free_memory", lambda d: 1 << 40)
+    want = node.convert(image=img, **kw)
+    for a, b in zip(want[:5], got[:5]):
+        torch.testing.assert_close(a, b)
+    assert "direct-pixel" in got[5]
+
+    calls.clear()
+    oom_at[0] = 1
+    monkeypatch.setattr(mm, "get_free_memory", lambda d: _chunk_of(1, 12, 16))
+    with pytest.raises(torch.cuda.OutOfMemoryError):
+        node.convert(image=img, **kw)

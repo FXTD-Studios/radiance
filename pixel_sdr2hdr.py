@@ -862,6 +862,11 @@ _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA = 900
 _WHOLE_FRAME_MAX_PIXELS_CPU = 2_600_000
 
 
+def whole_frame_memory(height: int, width: int) -> float:
+    """Free VRAM a frame needs to run whole rather than in tiles."""
+    return int(height) * int(width) * _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA / 0.8
+
+
 def _whole_frame_fits(frame: torch.Tensor) -> bool:
     pixels = int(frame.shape[-2]) * int(frame.shape[-1])
     if frame.is_cuda:
@@ -869,7 +874,7 @@ def _whole_frame_fits(frame: torch.Tensor) -> bool:
             free, _ = torch.cuda.mem_get_info(frame.device)
         except Exception:  # noqa: BLE001 - no query, be conservative
             return False
-        return pixels * _WHOLE_FRAME_BYTES_PER_PIXEL_CUDA < 0.8 * free
+        return whole_frame_memory(frame.shape[-2], frame.shape[-1]) < free
     return pixels <= _WHOLE_FRAME_MAX_PIXELS_CPU
 
 
@@ -959,9 +964,11 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     batch, height, width = sdr_bhwc.shape[0], sdr_bhwc.shape[1], sdr_bhwc.shape[2]
     out = torch.empty((batch, height, width, 3),
                       dtype=torch.float32, device=sdr_bhwc.device)
-    # ALBABIT-FIX: a caller that runs more steps passes its own node progress bar.
+    # ALBABIT-FIX: a caller that runs more steps passes its own node progress
+    # bar, and shows its own console bar.
+    frames = tqdm(range(batch), desc="RUDRA", unit="frame", disable=progress is not None)
     progress = progress or comfy.utils.ProgressBar(batch)
-    for index in tqdm(range(batch), desc="RUDRA", unit="frame"):
+    for index in frames:
         frame = (sdr_bhwc[index:index + 1, ..., :3].to(device)
                  .float().clamp(0.0, 1.0).permute(0, 3, 1, 2))
         prediction = _predict_frame(model, frame, int(tile_size), int(tile_overlap),
