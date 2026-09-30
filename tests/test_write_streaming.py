@@ -279,3 +279,54 @@ def test_transform_stream_is_lazy():
     assert produced == [0]
     next(stream)
     assert produced == [0, 1]
+
+
+def test_sequence_frames_are_written_a_few_at_a_time(tmp_path, monkeypatch):
+    """Frame by frame, compression used one core. Several frames now go to
+    writer threads at once, never more than `_SEQ_WRITERS` in flight."""
+    import threading
+    import time
+    import radiance.io.writer as writer
+
+    lock, active, peak, produced = threading.Lock(), [0], [0], []
+
+    def slow_save(arr, path, fmt, quality=18, metadata=None):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            ahead = len(produced) - int(path.stem.rsplit("_", 1)[1]) + 1001
+        time.sleep(0.02)
+        with lock:
+            active[0] -= 1
+        assert ahead <= 4, f"{ahead} frames produced ahead of the one being written"
+        path.touch()
+
+    def gen():
+        for i in range(12):
+            produced.append(i)
+            yield np.zeros((8, 8, 3), np.float32)
+
+    monkeypatch.setattr(writer, "_save_pil_image", slow_save)
+    monkeypatch.setattr(writer, "_SEQ_WRITERS", 4)
+    saved, count = writer.dispatch_write(
+        gen(), str(tmp_path / "shot"), "SEQ │ PNG (8-bit)",
+        24.0, 18, "ZIP", 1001, 4, "", True, frame_count=12)
+    assert count == 12 and len(list(Path(saved).glob("*.png"))) == 12
+    assert 1 < peak[0] <= 4, peak[0]
+
+
+def test_a_failed_frame_stops_the_sequence_with_its_error(tmp_path, monkeypatch):
+    import radiance.io.writer as writer
+
+    def save(arr, path, fmt, quality=18, metadata=None):
+        if path.stem.endswith("1003"):
+            raise OSError("disk full")
+        path.touch()
+
+    monkeypatch.setattr(writer, "_save_pil_image", save)
+    with pytest.raises(OSError, match="disk full"):
+        writer.dispatch_write(
+            (np.zeros((8, 8, 3), np.float32) for _ in range(6)),
+            str(tmp_path / "shot"), "SEQ │ PNG (8-bit)",
+            24.0, 18, "ZIP", 1001, 4, "", True, frame_count=6)
+

@@ -72,6 +72,8 @@ import os
 import subprocess
 import tempfile
 import threading
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -225,6 +227,9 @@ _EXR_COMPRESSION_ATTRS = {
     "DWAA":         "DWAA_COMPRESSION",
     "DWAB":         "DWAB_COMPRESSION",
 }
+
+#: Sequence frames written at once (see dispatch_write).
+_SEQ_WRITERS = min(8, os.cpu_count() or 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1494,14 +1499,7 @@ def dispatch_write(
                                   start_frame, n if n is not None else 1,
                                   overwrite)
 
-        # One frame at a time: transform, write, release. `frames` is a
-        # generator in the normal path, so the frame that has just been written
-        # is the only one alive, and the sequence length is bounded by the disk
-        # rather than by RAM. The old loop also collected every written path
-        # into `saved_paths`, which was never read.
-        written = 0
-        for i, fr in enumerate(frames):
-            path = out_dir / f"{seq_stem}_{(pad_fmt % (start_frame + i))}{ext}"
+        def save(fr: np.ndarray, path: Path) -> None:
             if is_exr:
                 _save_exr(fr, path, half=half_exr, metadata=seq_meta,
                           compression=exr_compression)
@@ -1511,8 +1509,26 @@ def dispatch_write(
                 _save_hdr(fr, path)
             else:
                 _save_pil_image(fr, path, stem, quality, metadata=seq_png_meta)
-            written += 1
-            del fr
+
+        # `frames` is a generator in the normal path and at most `_SEQ_WRITERS`
+        # frames are in flight, so the sequence length is bounded by the disk
+        # rather than by RAM.
+        # ALBABIT-FIX: several frames are written at once. Compression is most
+        # of a frame's cost and runs without the GIL, but frame by frame it used
+        # one core: 58 s for 241 1080p frames in 32-bit float EXR.
+        written = 0
+        with ThreadPoolExecutor(max_workers=_SEQ_WRITERS) as pool:
+            in_flight: deque = deque()
+            for i, fr in enumerate(frames):
+                path = out_dir / f"{seq_stem}_{(pad_fmt % (start_frame + i))}{ext}"
+                in_flight.append(pool.submit(save, fr, path))
+                del fr
+                if len(in_flight) >= _SEQ_WRITERS:
+                    in_flight.popleft().result()
+                    written += 1
+            for job in in_flight:
+                job.result()
+                written += 1
 
         return str(out_dir), written
 
