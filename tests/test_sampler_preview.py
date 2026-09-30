@@ -202,7 +202,7 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
         (value, total, preview), = pbar.updates
         self.assertEqual(value, 1)
-        self.assertEqual(total, 10)
+        self.assertIsNone(total)     # the bar keeps its total over every stage
         self.assertEqual(len(preview), 3)
         self.assertEqual(preview[0], "JPEG")
         self.assertEqual(preview[2], 512)
@@ -248,7 +248,7 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
         callback(0, "latent", "x", 5)
 
-        self.assertEqual(pbar.updates, [(1, 5, None)])
+        self.assertEqual(pbar.updates, [(1, None, None)])
 
     def test_no_previewer_still_reports_progress(self):
         pbar = _PbarRecorder()
@@ -256,7 +256,17 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
         callback(4, "latent", "x", 5)
 
-        self.assertEqual(pbar.updates, [(5, 5, None)])
+        self.assertEqual(pbar.updates, [(5, None, None)])
+
+    def test_a_later_stage_does_not_shrink_the_bar(self):
+        """Stage two (steps 10-19 of 20) reported its own 10 as the total, so
+        the bar sat full from the end of stage one."""
+        pbar = _PbarRecorder()
+        callback = _make_phase_preview_callback(pbar, None, 10)
+
+        callback(2, "latent", "x", 10)
+
+        self.assertEqual(pbar.updates, [(13, None, None)])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -277,9 +287,12 @@ class TestProgressBarWiring(unittest.TestCase):
         # Nothing else may flip the flag on.
         self.assertNotIn("use_custom_preview = True", after)
 
-    def test_callback_is_none_without_a_progress_bar(self):
-        """A None callback lets comfy.sample.sample_custom run its own bar."""
-        self.assertIn("if pbar_ref is None:", self.source)
+    def test_the_node_bar_exists_without_a_preview(self):
+        """sample_custom only draws a console bar, so the node had no progress
+        at all with preview_method None."""
+        before, _, _ = self.source.partition('if preview_method != "None":')
+        self.assertIn("pbar_ref = comfy.utils.ProgressBar(", before)
+        self.assertNotIn("if pbar_ref is None:", self.source)
         self.assertIn("_make_phase_preview_callback(", self.source)
 
     def test_raw_latent_tuple_is_no_longer_sent(self):

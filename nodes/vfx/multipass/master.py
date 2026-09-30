@@ -1,10 +1,14 @@
 import os
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import torch
 import torch.nn.functional as F
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
+from tqdm import tqdm
+
+import comfy.utils
 
 from ....performance import perf_finish, perf_start
 from ....core.system.path_utils import get_safe_output_dir, safe_join, strip_path_quotes
@@ -662,13 +666,16 @@ class RadianceEXRPassesWriter:
                     logger.warning("[EXR Passes Writer] Remote copy failed: %s", ex)
             return filepath
 
+        # ALBABIT-FIX: node and console progress, one step per file written.
+        progress = comfy.utils.ProgressBar(B)
         workers = max(1, min(B, _EXR_WRITE_THREADS))
-        if workers == 1:
-            saved_paths: List[str] = [write_frame(b) for b in range(B)]
-        else:
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radiance-exr") as pool:
-                saved_paths = list(pool.map(write_frame, range(B)))   # frame order; first error raises
+        saved_paths: List[str] = []
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radiance-exr") as pool:
+            # Frame order; the first error raises.
+            for path in tqdm(pool.map(write_frame, range(B)), total=B,
+                             desc="Write EXR Passes", unit="frame"):
+                saved_paths.append(path)
+                progress.update(1)
 
         return (saved_paths[0] if saved_paths else "",)
 

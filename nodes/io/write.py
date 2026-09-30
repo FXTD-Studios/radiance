@@ -35,11 +35,15 @@ import os
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
+from tqdm import tqdm
+
+import comfy.utils
 
 try:
     from ...config.constants import VERSION as _RADIANCE_VERSION
@@ -508,6 +512,8 @@ class RadianceRead:
             ocio_colorspace=strip_path_quotes(ocio_colorspace or "") if ocio_colorspace else "",
             ocio_config=strip_path_quotes(ocio_config or "") if ocio_config else "",
             hdr_reference_nits=hdr_reference_nits,
+            # ALBABIT-FIX: node and console progress for sequences.
+            on_frame=_FrameProgress("Read"),
         )
         return (image, mask, json.dumps(info, default=str))
 
@@ -573,6 +579,24 @@ def _with_history(res, t0: float):
     if previews:
         ui["images"] = previews
     return {"ui": ui, "result": res}
+
+
+class _FrameProgress:
+    """Node and console progress for a write, sized by its first report: the
+    frame count is known only once the writer has read its input."""
+
+    def __init__(self, desc: str):
+        self.desc, self.node, self.console = desc, None, None
+
+    def __call__(self, written: int, total: int) -> None:
+        if self.node is None:
+            self.node = comfy.utils.ProgressBar(total)
+            self.console = tqdm(total=total, desc=self.desc, unit="frame")
+        self.node.update_absolute(written, total)
+        self.console.update(written - self.console.n)
+        if written == total:
+            self.console.close()
+
 
 class RadianceWrite:
     """
@@ -859,6 +883,8 @@ class RadianceWrite:
             ocio_colorspace=ocio_colorspace,
             ocio_config=strip_path_quotes(ocio_config or "") if ocio_config else "",
             hdr_reference_nits=hdr_reference_nits,
+            # ALBABIT-FIX: node and console progress for sequences and video.
+            on_frame=_FrameProgress("Write"),
         )
         return _with_history(res, t0)
 
@@ -1047,13 +1073,15 @@ class RadianceEXRMultiPart:
                 _copy_to_remote_path(filepath, remote_path)
             return filepath
 
+        # ALBABIT-FIX: node and console progress, one step per file written.
+        progress = comfy.utils.ProgressBar(batch)
         workers = max(1, min(batch, os.cpu_count() or 1, 8))
-        if workers == 1:
-            paths = [write_frame(b) for b in range(batch)]
-        else:
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radiance-exr-mp") as pool:
-                paths = list(pool.map(write_frame, range(batch)))
+        paths = []
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radiance-exr-mp") as pool:
+            for path in tqdm(pool.map(write_frame, range(batch)), total=batch,
+                             desc="Write EXR", unit="frame"):
+                paths.append(path)
+                progress.update(1)
 
         return (paths[0],)
 
