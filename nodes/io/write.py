@@ -512,6 +512,8 @@ class RadianceRead:
             ocio_colorspace=strip_path_quotes(ocio_colorspace or "") if ocio_colorspace else "",
             ocio_config=strip_path_quotes(ocio_config or "") if ocio_config else "",
             hdr_reference_nits=hdr_reference_nits,
+            # ALBABIT-FIX: node and console progress for sequences.
+            on_frame=_FrameProgress("Read"),
         )
         return (image, mask, json.dumps(info, default=str))
 

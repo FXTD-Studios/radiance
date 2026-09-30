@@ -373,6 +373,23 @@ def test_write_nodes_advance_their_progress_bars(tmp_path, monkeypatch):
     assert [(b.total, b.value) for b in bars] == [(5, 5), (3, 3), (2, 2)]
 
 
+def test_read_decodes_a_sequence_in_order_and_advances_its_bar(tmp_path, monkeypatch):
+    """"Read" decoded a sequence one file after the other with no progress; the
+    files are now decoded several at a time, and must come back in order."""
+    pytest.importorskip("OpenEXR")
+    import radiance.nodes.io.write as io_nodes
+    from radiance.io.writer import dispatch_write
+
+    values = [i / 10.0 for i in range(12)]
+    saved, _ = dispatch_write(
+        (np.full((8, 8, 3), v, np.float32) for v in values), str(tmp_path / "plate"),
+        "SEQ │ EXR (32-bit float)", 24.0, 18, "ZIP", 1001, 4, "", True, frame_count=12)
+    bars = _record_bars(monkeypatch, io_nodes)
+    image, _mask, _info = io_nodes.RadianceRead().read(path=str(Path(saved) / "plate_####.exr"))
+    assert [(b.total, b.value) for b in bars] == [(12, 12)]
+    assert [round(float(f.mean()), 4) for f in image] == values
+
+
 def test_a_video_reports_each_frame_and_a_cancel_leaves_no_partial_file(tmp_path):
     from radiance.io.writer import _ffmpeg_ok, dispatch_write
     if not _ffmpeg_ok():

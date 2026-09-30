@@ -166,10 +166,10 @@ def test_the_node_signature_still_matches_the_engine():
     # matched against it by name and order, so it must not drift. The engine
     # takes the same list minus the two the node keeps, in the same order —
     # order included, because a silent reordering is how keyword defaults start
-    # landing on the wrong widget.
+    # landing on the wrong widget — plus the progress callback the node supplies.
     node = _params(_tree("nodes/io/write.py"), "RadianceRead.read")
     engine = _params(_tree("io/reader.py"), "read_frames")
-    assert engine == [p for p in node if p not in _NODE_ONLY], (
+    assert engine == [p for p in node if p not in _NODE_ONLY] + ["on_frame"], (
         "the node and the engine disagree about the read signature:\n"
         f"  node   {node}\n  engine {engine}"
     )
