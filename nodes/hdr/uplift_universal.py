@@ -44,6 +44,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+import comfy.utils
+
 from radiance.color.ops import (
     M_REC709_TO_ACES2065_1,
     M_REC709_TO_BT2020,
@@ -362,6 +364,7 @@ class _RudraRecoveryCore:
         recovery_mode: str,
         strength: float,
         highlight_mask: Optional[torch.Tensor] = None,
+        progress=None,
     ) -> torch.Tensor:
         """Run the direct-pixel SDR2HDRNet and blend it into evidence masks.
 
@@ -392,7 +395,7 @@ class _RudraRecoveryCore:
         predicted = predict_pixel_sdr2hdr(
             canonical_srgb, checkpoint_path=checkpoint_path,
             tile_size=int(tile_size), tile_overlap=int(tile_overlap),
-            recovery_mode=str(recovery_mode), strength=float(strength),
+            recovery_mode=str(recovery_mode), strength=float(strength), progress=progress,
         )
         # There used to be a Rec.2020 -> Rec.709 matrix here. The network is a
         # per-channel mapping and never changes primaries (RUDRA's inference
@@ -816,6 +819,9 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         # ComfyUI stores by index, are unaffected.
         attempts: List[str] = []
         path = "deterministic expansion"
+        # ALBABIT-FIX: one node progress bar for RUDRA then the grain pass, one
+        # step per frame each; filled at the end whichever of them ran.
+        progress = comfy.utils.ProgressBar(2 * int(img.shape[0]))
 
         # 3b ── temporal or direct-pixel reconstruction.
         wants_recovery = mode in {"Recover", "Hybrid"}
@@ -874,6 +880,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                             float(pixel_strength),
                             highlight_mask=(clipped if pixel_recovery_mode in {"highlights", "all"}
                                             else torch.zeros_like(clipped)),
+                            progress=progress,
                         )
                         h_conf = clipped * float(rudra_blend) if pixel_recovery_mode in {"highlights", "all"} else torch.zeros_like(clipped)
                         s_conf = shadows * float(rudra_blend) if pixel_recovery_mode in {"shadows", "all"} else torch.zeros_like(shadows)
@@ -906,14 +913,15 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             hdr_np = (hdr.detach().float().cpu().numpy() * float(reference_white_nits))
             sdr_np = rgb.detach().float().cpu().numpy()
             grain_mask = h_conf.detach().float().cpu().numpy().clip(0.0, 1.0)
-            settled = np.stack([
-                hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
-                * grain_mask[i][..., None]
-                for i in tqdm(range(hdr_np.shape[0]), desc="Highlight grain", unit="frame")
-            ], axis=0)
+            settled = np.empty_like(hdr_np)
+            for i in tqdm(range(hdr_np.shape[0]), desc="Highlight grain", unit="frame"):
+                settled[i] = (hdr_np[i] + (settle_highlight_grain(hdr_np[i], sdr_np[i]) - hdr_np[i])
+                              * grain_mask[i][..., None])
+                progress.update(1)
             hdr = torch.from_numpy(settled / float(reference_white_nits)).to(
                 device=hdr.device, dtype=hdr.dtype
             )
+        progress.update_absolute(progress.total)
 
         n_frames = int(img.shape[0])
         has_extra = extra.shape[-1] > 0

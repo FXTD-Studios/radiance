@@ -929,7 +929,7 @@ def _predict_frame(model: SDR2HDRNet, frame: torch.Tensor, tile_size: int,
 def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
                           tile_size: int = 512, tile_overlap: int = 64,
                           recovery_mode: str = "highlights",
-                          strength: float = 1.0) -> torch.Tensor:
+                          strength: float = 1.0, progress=None) -> torch.Tensor:
     """Run the installed image model on an IMAGE batch.
 
     The returned BHWC tensor follows the model contract: scene-linear RGB,
@@ -959,7 +959,8 @@ def predict_pixel_sdr2hdr(sdr_bhwc: torch.Tensor, checkpoint_path: str = "",
     batch, height, width = sdr_bhwc.shape[0], sdr_bhwc.shape[1], sdr_bhwc.shape[2]
     out = torch.empty((batch, height, width, 3),
                       dtype=torch.float32, device=sdr_bhwc.device)
-    progress = comfy.utils.ProgressBar(batch)
+    # ALBABIT-FIX: a caller that runs more steps passes its own node progress bar.
+    progress = progress or comfy.utils.ProgressBar(batch)
     for index in tqdm(range(batch), desc="RUDRA", unit="frame"):
         frame = (sdr_bhwc[index:index + 1, ..., :3].to(device)
                  .float().clamp(0.0, 1.0).permute(0, 3, 1, 2))
