@@ -627,7 +627,9 @@ def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
                     "sending progress without an image.",
                     global_step, type(exc).__name__, exc,
                 )
-        pbar.update_absolute(global_step + 1, total_steps, preview)
+        # ALBABIT-FIX: the bar keeps its own total, every stage's iterations.
+        # total_steps is this stage's alone, which filled it after stage one.
+        pbar.update_absolute(global_step + 1, preview=preview)
 
     return callback
 
@@ -2221,38 +2223,31 @@ class RadianceSamplerPro:
             s for s in splits if effective_start <= s <= effective_end
         )
 
-        pbar_ref = None
+        # ALBABIT-FIX: the node's progress bar on every run, one step per
+        # iteration of every stage. It only existed with a live preview:
+        # sample_custom draws its bar in the console, never on the node.
+        pbar_ref = comfy.utils.ProgressBar(len(sigmas) - 1)
         previewer_ref = None
         use_custom_preview = False
         if preview_method != "None":
             previewer_ref = _resolve_latent_previewer(model, preview_method)
 
             if previewer_ref is not None:
-                try:
-                    # ALBABIT-FIX: ProgressBar respects the actual iterations being run
-                    actual_iterations = len(sigmas) - 1
-                    pbar_ref = comfy.utils.ProgressBar(actual_iterations)
-                    use_custom_preview = True
-                    logger.debug(f"Preview callback active: {preview_method}")
-                except (AttributeError, TypeError) as e:
-                    logger.warning(f"Failed to create preview callback: {e}")
-                    previewer_ref = None
-
-            if previewer_ref is None:
+                use_custom_preview = True
+                logger.debug(f"Preview callback active: {preview_method}")
+            else:
                 # DEFECT GUARD: disable_pbar was wired to a flag that went True
                 # whenever the widget was not "None", so a previewer that could
                 # not be built left the run with no Radiance preview AND
-                # ComfyUI's own progress bar switched off. Leaving
-                # use_custom_preview False hands progress back to Comfy.
+                # ComfyUI's console progress bar switched off. use_custom_preview
+                # stays False, so the console bar stays on.
                 logger.warning(
                     "[Radiance] preview_method='%s' produced no previewer; "
-                    "falling back to ComfyUI's built-in progress bar.",
+                    "sampling runs without a preview.",
                     preview_method,
                 )
 
         def create_phase_callback(phase_start_step):
-            if pbar_ref is None:
-                return None
             return _make_phase_preview_callback(
                 pbar_ref, previewer_ref, phase_start_step
             )

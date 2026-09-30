@@ -43,8 +43,9 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -596,6 +597,31 @@ def _resolve_sequence_paths(
     return paths
 
 
+#: Sequence files decoded at once (see _read_sequence).
+_SEQ_READERS = min(8, os.cpu_count() or 1)
+
+
+def _decode_sequence_file(path: str, layer: Optional[str], raw: bool):
+    """Decode one file of a sequence: (image, alpha, EXR info or None). It
+    does not touch the colour context, so it can run in a reader thread."""
+    if os.path.splitext(path)[1].lower() in _EXR_EXT:
+        img_t, mask_t, info, _name = _read_exr_with_info(path, layer, raw)
+        return img_t, mask_t, info
+    img_t, mask_t = _read_image(path)
+    return img_t, mask_t, None
+
+
+def _finish_sequence_frame(decoded, input_cs: str, raw: bool) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """A decoded file as (1,H,W,C) IMAGE in the working space, and its alpha."""
+    img_t, mask_t, exr_info = decoded
+    if exr_info is not None:
+        _set_file_gamut(exr_info.attributes)
+    arr = _tensor_to_np(img_t)
+    if not raw:
+        arr = _apply_input_colorspace(arr, input_cs)
+    return torch.from_numpy(arr).unsqueeze(0), mask_t
+
+
 def _read_one_sequence_frame(
     path: str,
     input_cs: str,
@@ -603,15 +629,7 @@ def _read_one_sequence_frame(
     raw: bool,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """One frame of a sequence as (1,H,W,C) IMAGE and its alpha, or None."""
-    if os.path.splitext(path)[1].lower() in _EXR_EXT:
-        img_t, mask_t, _info, _name = _read_exr_with_info(path, layer, raw)
-        _set_file_gamut(_info.attributes)
-    else:
-        img_t, mask_t = _read_image(path)
-    arr = _tensor_to_np(img_t)
-    if not raw:
-        arr = _apply_input_colorspace(arr, input_cs)
-    return torch.from_numpy(arr).unsqueeze(0), mask_t
+    return _finish_sequence_frame(_decode_sequence_file(path, layer, raw), input_cs, raw)
 
 
 def iter_sequence_frames(
@@ -657,6 +675,7 @@ def _read_sequence(
     missing_frames: str = "Skip",
     layer: Optional[str] = None,
     raw: bool = False,
+    on_frame: Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], int, int, int, float, str]:
     """Read a frame sequence into a batched IMAGE tensor, keeping its alpha.
 
@@ -677,18 +696,27 @@ def _read_sequence(
     masks: List[Optional[torch.Tensor]] = []
     blank_slots: List[int] = []
     missing_paths: List[str] = []
-    for p in paths:
-        if os.path.isfile(p):
-            img_t, mask_t = _read_one_sequence_frame(p, input_cs, layer, raw)
-            frames.append(img_t)
-            masks.append(mask_t)
-        else:
-            # Placeholder for a missing frame. Size it from a real frame below
-            # -- a fixed 8x8 tile cannot concatenate with the rest of the batch.
-            blank_slots.append(len(frames))
-            missing_paths.append(p)
-            frames.append(None)
-            masks.append(None)
+    # ALBABIT-FIX: files are decoded several at a time (decompression runs
+    # without the GIL; 241 1080p 32-bit EXRs took 23.5 s one by one). The
+    # colour decode stays here, in frame order, with the read's colour context.
+    on_disk = [p for p in paths if os.path.isfile(p)]
+    present = set(on_disk)
+    with ThreadPoolExecutor(max_workers=_SEQ_READERS) as pool:
+        decoded = pool.map(lambda p: _decode_sequence_file(p, layer, raw), on_disk)
+        for p in paths:
+            if p in present:
+                img_t, mask_t = _finish_sequence_frame(next(decoded), input_cs, raw)
+                frames.append(img_t)
+                masks.append(mask_t)
+            else:
+                # Placeholder for a missing frame. Size it from a real frame below
+                # -- a fixed 8x8 tile cannot concatenate with the rest of the batch.
+                blank_slots.append(len(frames))
+                missing_paths.append(p)
+                frames.append(None)
+                masks.append(None)
+            if on_frame is not None:
+                on_frame(len(frames), len(paths))
 
     real = next((f for f in frames if f is not None), None)
     if real is None:
@@ -1112,6 +1140,7 @@ def read_frames(
     ocio_colorspace: str = "",
     ocio_config: str = "",
     hdr_reference_nits: float = 203.0,
+    on_frame: Optional[Callable[[int, int], None]] = None,
 ):
     # Keyword-only. The parameter order below is the node's widget order,
     # which is a contract saved workflows are matched against -- so it cannot
@@ -1140,7 +1169,7 @@ def read_frames(
     try:
         image, mask, info = _read_resolved(
             path, media_type, color_space, start_frame, end_frame,
-            frame_step, max_video_frames, missing_frames, layer, raw,
+            frame_step, max_video_frames, missing_frames, layer, raw, on_frame,
         )
     except Exception as exc:
         log.error("RadianceRead: %s: %s", type(exc).__name__, exc)
@@ -1193,7 +1222,7 @@ def read_frames(
 
 def _read_resolved(
     path, media_type, color_space, start_frame, end_frame,
-    frame_step, max_video_frames, missing_frames, layer, raw,
+    frame_step, max_video_frames, missing_frames, layer, raw, on_frame=None,
 ):
     """Return (image, mask_or_None, info_dict). Raises on any failure."""
     kind = _path_kind(path) if media_type == "Auto" else media_type.lower()
@@ -1255,7 +1284,7 @@ def _read_resolved(
                 detected, start_frame, end_frame)
         batch, alpha, _w, _h, _n, _fps, meta = _read_sequence(
             path, start_frame, end_frame if end_frame > 0 else 99999,
-            frame_step, color_space, missing_frames, layer, raw,
+            frame_step, color_space, missing_frames, layer, raw, on_frame,
         )
         info = json.loads(meta)
         if detected is not None:
