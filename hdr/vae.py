@@ -101,6 +101,8 @@ import os
 import uuid
 from typing import Tuple, Dict, Any, Optional
 
+from tqdm import tqdm
+
 import comfy.model_management
 import comfy.utils
 import folder_paths
@@ -2250,6 +2252,34 @@ class RadianceVAE4KDecode:
         output.div_(weight_acc)
         return output.to(device), _tile_video_frames
 
+    @staticmethod
+    def _warn_decode_settings(hdr_mode: str, display_tonemap: str,
+                              target_space: str, hdr_output: bool) -> None:
+        # Part B: warn when display_tonemap=None with Compress(Log) → blown output
+        if hdr_mode == "Compress (Log)" and display_tonemap == "None":
+            logger.warning(
+                "[Radiance 4K Decode v2.3.8] display_tonemap='None' + Compress(Log): "
+                "scene-linear values far above 1.0 pass through without tonemapping. "
+                "ComfyUI preview/SaveImage will look overexposed. "
+                "Set display_tonemap='ACES Filmic' for filmic contrast, or 'Reinhard' "
+                "for a softer technical preview. Use 'None' only when feeding an OCIO-aware viewer."
+            )
+
+        # v2.3.9 FIX: Warn when a scene-referred target space is used with
+        # hdr_output=False. In that case we now clamp to [0,1] (see final clamp
+        # block in _vae_output_to_target), which produces a valid but
+        # DISPLAY-REFERRED result — not the wide-gamut / HDR tensor the user
+        # might expect from "ACEScg" output.
+        _SCENE_REFERRED_SPACES = {"ACEScg", "ACES 2065-1", "Rec.2020 Linear"} | set(EXTENDED_LOG_SPACES)
+        if target_space in _SCENE_REFERRED_SPACES and not hdr_output:
+            logger.warning(
+                f"[Radiance 4K Decode v2.3.9] target_space='{target_space}' + hdr_output=False: "
+                f"output will be clamped to [0,1] for ComfyUI display compatibility. "
+                f"Values above 1.0 in '{target_space}' are discarded. "
+                f"For true scene-referred / HDR output set hdr_output=True. "
+                f"For log delivery (EXR) also set display_tonemap='None'."
+            )
+
     def _vae_output_to_target(
         self,
         img: torch.Tensor,
@@ -2538,30 +2568,8 @@ class RadianceVAE4KDecode:
         # │ Log delivery EXR    │ None             │ True       │ ARRI LogC4 etc  │
         # └─────────────────────┴──────────────────┴────────────┴─────────────────┘
 
-        # Part B: warn when display_tonemap=None with Compress(Log) → blown output
-        if hdr_mode == "Compress (Log)" and display_tonemap == "None":
-            logger.warning(
-                "[Radiance 4K Decode v2.3.8] display_tonemap='None' + Compress(Log): "
-                "scene-linear values far above 1.0 pass through without tonemapping. "
-                "ComfyUI preview/SaveImage will look overexposed. "
-                "Set display_tonemap='ACES Filmic' for filmic contrast, or 'Reinhard' "
-                "for a softer technical preview. Use 'None' only when feeding an OCIO-aware viewer."
-            )
-
-        # v2.3.9 FIX: Warn when a scene-referred target space is used with
-        # hdr_output=False. In that case we now clamp to [0,1] (see final clamp
-        # block below), which produces a valid but DISPLAY-REFERRED result — not
-        # the wide-gamut / HDR tensor the user might expect from "ACEScg" output.
-        # This warning steers them toward the correct settings.
-        _SCENE_REFERRED_SPACES = {"ACEScg", "ACES 2065-1", "Rec.2020 Linear"} | set(EXTENDED_LOG_SPACES)
-        if target_space in _SCENE_REFERRED_SPACES and not hdr_output:
-            logger.warning(
-                f"[Radiance 4K Decode v2.3.9] target_space='{target_space}' + hdr_output=False: "
-                f"output will be clamped to [0,1] for ComfyUI display compatibility. "
-                f"Values above 1.0 in '{target_space}' are discarded. "
-                f"For true scene-referred / HDR output set hdr_output=True. "
-                f"For log delivery (EXR) also set display_tonemap='None'."
-            )
+        # ALBABIT-FIX: the Part B and v2.3.9 setting warnings are logged once per
+        # decode() (see _warn_decode_settings); this runs once per chunk.
 
         # BUG 1 FIX: Capture scene-linear BEFORE display_tonemap fires.
         # RHDR sidecar must contain raw scene-linear float data so the Radiance
@@ -2863,6 +2871,9 @@ class RadianceVAE4KDecode:
                     f"Ensure this is a direct encode→decode path (no sampler between "
                     f"encode and decode) for correct results."
                 )
+
+        if not _quiet_diag:
+            self._warn_decode_settings(hdr_mode, display_tonemap, target_space, hdr_output)
 
         latent = samples["samples"]
 
@@ -3231,57 +3242,89 @@ class RadianceVAE4KDecode:
                     type(_exc).__name__, _exc,
                 )
 
-        # v2.3: Pre-transform NaN/Inf guard — mode-aware, unconditional.
-        # Previously gated on source_space == "Linear", which let NaN values
-        # from non-Linear VAE outputs (e.g. sRGB, LogC4) reach _vae_output_to_target
-        # unguarded, where log/gamma functions produce further NaN explosions.
-        if torch.isnan(img).any() or torch.isinf(img).any():
+        # ALBABIT-FIX: the colour transform runs in chunks of frames on ComfyUI's
+        # device, written back into the decoded clip. ComfyUI hands the clip back
+        # in RAM, and it went through whole on the CPU: +38 GB of RAM and 11 s for
+        # 241 1080p frames. Every step is per frame; the RHDR scene-linear capture
+        # needs the whole clip, which then stays in one chunk on its own device.
+        n_frames = int(img.shape[0])
+        if self._want_scene_linear and hdr_mode == "Compress (Log)":
+            chunk_device, chunk = img.device, max(n_frames, 1)
+        else:
+            # About 12 float32 copies of a frame are alive at a chunk's peak.
+            frame_bytes = 12 * 4 * max(int(img[0].numel()) if n_frames else 1, 1)
+            free = comfy.model_management.get_free_memory(target_device)
+            chunk_device, chunk = target_device, min(max(int(free // 2 // frame_bytes), 1), 16)
+        progress = None if _quiet_diag else comfy.utils.ProgressBar(n_frames)
+        console = tqdm(total=n_frames, desc="VAE Decode (HDR)", unit="frame",
+                       disable=_quiet_diag or n_frames < 2)
+        vae_bad, nan_count, inf_count = False, 0, 0
+        for start in range(0, n_frames, chunk):
+            part = img[start:start + chunk].to(chunk_device)
+
+            # v2.3: Pre-transform NaN/Inf guard — mode-aware, unconditional.
+            # Previously gated on source_space == "Linear", which let NaN values
+            # from non-Linear VAE outputs (e.g. sRGB, LogC4) reach _vae_output_to_target
+            # unguarded, where log/gamma functions produce further NaN explosions.
+            if torch.isnan(part).any() or torch.isinf(part).any():
+                vae_bad = True
+                if hdr_mode == "Passthrough":
+                    part = torch.nan_to_num(part, nan=0.0, posinf=1.5, neginf=-0.05)
+                else:
+                    part = torch.nan_to_num(part, nan=0.0, posinf=1.0, neginf=0.0)
+
+            # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) decodes an alpha channel. The
+            # colour transform curves every channel, so a linear or log target bent
+            # the alpha too (0.5 became 0.23 in Linear). It now sees RGB only.
+            vae_alpha = part[..., 3:] if part.shape[-1] == 4 else None
+            part = self._vae_output_to_target(
+                part[..., :3], target_space, hdr_mode,
+                exposure_adjust, inverse_tonemap, target_stops,
+                source_space=source_space,
+                hdr_output=hdr_output,
+                display_tonemap=display_tonemap,
+                working_gamut=working_gamut,
+            )
+            if vae_alpha is not None:
+                part = torch.cat([part, vae_alpha.to(part)], dim=-1)
+
+            # v2.3 FIX (BUG-B enhanced): Guard for NaN/Inf *introduced by* the color
+            # transform. With v2.3's soft shoulder + denoise pipeline, this should be
+            # extremely rare — but we keep the guard for safety:
+            #
+            # Possible remaining sources of post-transform NaN/Inf:
+            #   1. Log decompression of noise that survived the soft shoulder
+            #      (values very near ceiling in steep log region → large linear)
+            #   2. Inverse tonemap with high target_stops amplifying noise to Inf
+            #   3. Out-of-gamut matrix transform producing small negatives → NaN in
+            #      downstream sRGB gamma (already handled by _safe_srgb_to_linear_extended)
+            #
+            # HDR-FIX: posinf cap is mode-aware:
+            #   hdr_output=False: cap at 65504 (fp16 max — safe for RHDR export)
+            #   hdr_output=True:  cap at fp32 max (~3.4e38) — only true Inf is replaced,
+            #                     preserving all valid HDR scene-linear values.
+            if torch.isnan(part).any() or torch.isinf(part).any():
+                nan_count += int(torch.isnan(part).sum().item())
+                inf_count += int(torch.isinf(part).sum().item())
+                posinf_val = 3.4e38 if hdr_output else 65504.0
+                part = torch.nan_to_num(part, nan=0.0, posinf=posinf_val, neginf=0.0)
+
+            done = int(part.shape[0])
+            img[start:start + done] = part.to(img.device)
+            del part, vae_alpha
+            if progress is not None:
+                progress.update(done)
+            console.update(done)
+        console.close()
+
+        if vae_bad:
             logger.warning("[Radiance 4K Decode v2.3] VAE produced NaN/Inf — sanitizing")
-            if hdr_mode == "Passthrough":
-                img = torch.nan_to_num(img, nan=0.0, posinf=1.5, neginf=-0.05)
-            else:
-                img = torch.nan_to_num(img, nan=0.0, posinf=1.0, neginf=0.0)
-
-        # ALBABIT-FIX: an RGBA VAE (Qwen-Image 2.1) decodes an alpha channel. The
-        # colour transform curves every channel, so a linear or log target bent
-        # the alpha too (0.5 became 0.23 in Linear). It now sees RGB only.
-        vae_alpha = img[..., 3:] if img.shape[-1] == 4 else None
-        img = self._vae_output_to_target(
-            img[..., :3], target_space, hdr_mode,
-            exposure_adjust, inverse_tonemap, target_stops,
-            source_space=source_space,
-            hdr_output=hdr_output,
-            display_tonemap=display_tonemap,
-            working_gamut=working_gamut,
-        )
-        if vae_alpha is not None:
-            img = torch.cat([img, vae_alpha.to(img)], dim=-1)
-
-        # v2.3 FIX (BUG-B enhanced): Guard for NaN/Inf *introduced by* the color
-        # transform. With v2.3's soft shoulder + denoise pipeline, this should be
-        # extremely rare — but we keep the guard for safety:
-        #
-        # Possible remaining sources of post-transform NaN/Inf:
-        #   1. Log decompression of noise that survived the soft shoulder
-        #      (values very near ceiling in steep log region → large linear)
-        #   2. Inverse tonemap with high target_stops amplifying noise to Inf
-        #   3. Out-of-gamut matrix transform producing small negatives → NaN in
-        #      downstream sRGB gamma (already handled by _safe_srgb_to_linear_extended)
-        #
-        # HDR-FIX: posinf cap is mode-aware:
-        #   hdr_output=False: cap at 65504 (fp16 max — safe for RHDR export)
-        #   hdr_output=True:  cap at fp32 max (~3.4e38) — only true Inf is replaced,
-        #                     preserving all valid HDR scene-linear values.
-        if torch.isnan(img).any() or torch.isinf(img).any():
-            nan_count = int(torch.isnan(img).sum().item())
-            inf_count = int(torch.isinf(img).sum().item())
+        if nan_count or inf_count:
             logger.warning(
                 f"[Radiance 4K Decode v2.3] NaN/Inf after color transform — "
                 f"sanitizing ({nan_count} NaN, {inf_count} Inf). "
                 f"Check VAE reconstruction quality and hdr_mode/source_space pairing."
             )
-            posinf_val = 3.4e38 if hdr_output else 65504.0
-            img = torch.nan_to_num(img, nan=0.0, posinf=posinf_val, neginf=0.0)
 
         # v2.0 Feature 6: Auto-crop — prefer radiance_meta, fall back to crop_padding string
         pad_h, pad_w = 0, 0
