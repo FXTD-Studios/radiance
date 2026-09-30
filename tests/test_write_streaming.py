@@ -415,3 +415,43 @@ def test_a_video_reports_each_frame_and_a_cancel_leaves_no_partial_file(tmp_path
         dispatch_write(frames(), str(tmp_path / "b"), "VID │ MP4 (H.264)",
                        24.0, 23, "ZIP", 1001, 4, "", True, frame_count=4, on_frame=cancel)
     assert not list(tmp_path.glob("b*")), "the truncated video was left behind"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 4  Video encoders and colour
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_a_video_uses_the_first_ffmpeg_that_has_its_encoder(monkeypatch):
+    """Stability Matrix puts an ffmpeg without libx265 first on PATH; the
+    imageio-ffmpeg bundle has it, and "MP4 (H.265 10-bit)" failed anyway."""
+    import radiance.core.ffmpeg as ffm
+
+    carried = {"sm/ffmpeg": frozenset({"hevc_nvenc", "prores_ks"}), "bundle/ffmpeg": frozenset({"libx265"})}
+    monkeypatch.delenv("RADIANCE_FFMPEG", raising=False)
+    monkeypatch.setattr(ffm.shutil, "which", lambda name: "sm/ffmpeg")
+    monkeypatch.setattr(ffm, "_from_imageio", lambda: "bundle/ffmpeg")
+    monkeypatch.setattr(ffm, "_encoders", lambda exe: carried[exe])
+    ffm.ffmpeg_with_encoder.cache_clear()
+    try:
+        assert ffm.ffmpeg_with_encoder("libx265") == "bundle/ffmpeg"
+        assert ffm.ffmpeg_with_encoder("prores_ks") == "sm/ffmpeg"
+        with pytest.raises(RuntimeError, match="libsvtav1"):
+            ffm.ffmpeg_with_encoder("libsvtav1")
+    finally:
+        ffm.ffmpeg_with_encoder.cache_clear()
+
+
+def test_linear_hdr_into_a_video_warns_with_the_settings_that_fix_it(monkeypatch, tmp_path):
+    """Scene-linear HDR written unchanged into a video played back too dark
+    with nothing said; display-referred SDR in the same settings is fine."""
+    from unittest.mock import MagicMock
+    import radiance.io.writer as writer
+
+    monkeypatch.setattr(writer, "log", MagicMock())
+    monkeypatch.setattr(writer, "dispatch_write", lambda *a, **k: (str(tmp_path), 1))
+    for peak, warned in ((2.0, True), (1.0, False)):
+        writer.log.warning.reset_mock()
+        writer.write_frames(torch.full((1, 8, 8, 3), peak), str(tmp_path / "v"),
+                            "VID │ MOV (ProRes 4444)")
+        messages = [str(c.args[0]) for c in writer.log.warning.call_args_list]
+        assert any("PQ (HDR10 / ST.2084)" in m and "too dark" in m for m in messages) is warned

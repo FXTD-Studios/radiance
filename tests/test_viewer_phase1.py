@@ -192,6 +192,20 @@ def test_display_preview_is_exact_ocio():
     assert np.abs(out - np.clip(ref.reshape(frame.shape), 0, 1)).max() < 1e-6
 
 
+@pytest.mark.skipif(not HAS_OCIO, reason="OpenColorIO not installed")
+def test_display_preview_takes_a_frame_with_planar_channels():
+    """ComfyUI's VAE decode returns movedim(1, -1): channels stay in planes, and
+    element-wise nodes keep that layout. OCIO failed every such HDR frame with
+    'function only supports C-contiguous (row-major) arrays'."""
+    from radiance.color.analysis import safe_tensor_to_numpy
+    from radiance.color.display_preview import display_preview
+    image = (torch.rand(1, 3, 300, 400) * 8).movedim(1, -1)
+    assert not image.is_contiguous()
+    out = display_preview(safe_tensor_to_numpy(image[0]), "linear", "ACEScg")
+    ref = display_preview(safe_tensor_to_numpy(image[0].contiguous()), "linear", "ACEScg")
+    assert np.array_equal(out, ref)
+
+
 # ── Lite Viewer, removed ─────────────────────────────────────────────────────
 
 def test_the_lite_viewer_node_is_gone():
