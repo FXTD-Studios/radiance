@@ -330,3 +330,71 @@ def test_a_failed_frame_stops_the_sequence_with_its_error(tmp_path, monkeypatch)
             str(tmp_path / "shot"), "SEQ │ PNG (8-bit)",
             24.0, 18, "ZIP", 1001, 4, "", True, frame_count=6)
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 3  Progress
+# ═══════════════════════════════════════════════════════════════════════════
+
+class _Bar:
+    def __init__(self, total):
+        self.total, self.value = total, 0
+
+    def update(self, n):
+        self.value += n
+
+    def update_absolute(self, value, total=None):
+        self.value = value
+
+
+def _record_bars(monkeypatch, *modules):
+    """Replace ProgressBar in the `comfy.utils` each module holds: other test
+    files swap the shared stub, so it may not be the one importable here."""
+    bars = []
+    for module in modules:
+        monkeypatch.setattr(module.comfy.utils, "ProgressBar",
+                            lambda total: bars.append(_Bar(total)) or bars[-1])
+    return bars
+
+
+def test_write_nodes_advance_their_progress_bars(tmp_path, monkeypatch):
+    """"Write", "Write EXR" and "Write EXR Passes" showed no progress: a
+    241-frame EXR sequence ran for a minute with nothing moving."""
+    pytest.importorskip("OpenEXR")
+    import radiance.nodes.io.write as io_nodes
+    import radiance.nodes.vfx.multipass.master as master
+
+    bars = _record_bars(monkeypatch, io_nodes, master)
+    io_nodes.RadianceWrite().write(torch.rand(5, 8, 8, 3), str(tmp_path / "w"),
+                                   "SEQ │ PNG (8-bit)", filename="shot")
+    io_nodes.RadianceEXRMultiPart().write_multipart("mp", torch.rand(3, 8, 8, 3),
+                                                    output_path=str(tmp_path / "mp"))
+    master.RadianceEXRPassesWriter().write_passes({"beauty": torch.rand(2, 8, 8, 3)}, "p",
+                                                 output_path=str(tmp_path / "p"))
+    assert [(b.total, b.value) for b in bars] == [(5, 5), (3, 3), (2, 2)]
+
+
+def test_a_video_reports_each_frame_and_a_cancel_leaves_no_partial_file(tmp_path):
+    from radiance.io.writer import _ffmpeg_ok, dispatch_write
+    if not _ffmpeg_ok():
+        pytest.skip("ffmpeg unavailable")
+
+    def frames():
+        return (np.full((16, 16, 3), 0.5, np.float32) for _ in range(4))
+
+    seen = []
+    dispatch_write(frames(), str(tmp_path / "a"), "VID │ MP4 (H.264)",
+                   24.0, 23, "ZIP", 1001, 4, "", True, frame_count=4,
+                   on_frame=lambda written, total: seen.append((written, total)))
+    assert seen == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+    class Cancelled(BaseException):
+        """ComfyUI's InterruptProcessingException is a BaseException too."""
+
+    def cancel(written, total):
+        if written == 2:
+            raise Cancelled
+
+    with pytest.raises(Cancelled):
+        dispatch_write(frames(), str(tmp_path / "b"), "VID │ MP4 (H.264)",
+                       24.0, 23, "ZIP", 1001, 4, "", True, frame_count=4, on_frame=cancel)
+    assert not list(tmp_path.glob("b*")), "the truncated video was left behind"
