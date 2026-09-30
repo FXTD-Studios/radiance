@@ -927,13 +927,13 @@ class RadianceResolution:
                     "FLOAT",
                     {
                         "default": 1.0,
-                        # ALBABIT-FIX: ComfyUI derives display precision from step's order
-                        # of magnitude, not its decimal count -- 0.25 wrongly got precision=1
-                        # ("0.3" instead of "0.25"). 0.1 has no such loss. min=0.1 (not 0) to
-                        # avoid a literal 0x scale zeroing out width/height.
+                        # ALBABIT-FIX: ComfyUI derives display precision and rounding from
+                        # step's order of magnitude: 0.25 or 0.1 give one decimal, which
+                        # rounded 0.25 (two 2x latent upscales) to 0.3. 0.05 gives two.
+                        # min=0.1 (not 0) to avoid a literal 0x scale zeroing out width/height.
                         "min": 0.1,
                         "max": 4.0,
-                        "step": 0.1,
+                        "step": 0.05,
                         "tooltip": (
                             "Scale the resolution by this factor after preset/custom. "
                             "0.5 = half res, 2.0 = double res. Applied before alignment."
@@ -1442,7 +1442,13 @@ class RadianceResolution:
         # than reusing w/h, for the same scale_factor reason as above. When
         # disabled, crop_bbox is still a well-formed full-frame box, so wiring
         # it downstream is always harmless regardless of the toggle state.
-        full_w, full_h = _align_up(req_w, align_val), _align_up(req_h, align_val)
+        # ALBABIT-FIX: below 1, the decode is this latent brought back by the
+        # pipeline's upscales. Two 2x upscales from 0.25 decode 1080 as 288 x 4 =
+        # 1152, not the 1088 re-aligned here, so the 1080 crop sat 32 px high.
+        if scale_factor < 1.0:
+            full_w, full_h = round(w / scale_factor), round(h / scale_factor)
+        else:
+            full_w, full_h = _align_up(req_w, align_val), _align_up(req_h, align_val)
         if crop_to_res:
             crop_x, crop_y = (full_w - req_w) // 2, (full_h - req_h) // 2
         else:

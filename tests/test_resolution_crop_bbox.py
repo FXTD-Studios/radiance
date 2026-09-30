@@ -101,3 +101,14 @@ class TestCropBboxPadding:
         )
         assert (w, h) == (960, 544)  # this call's own (scaled) latent size, unaffected
         assert crop_bbox == {"x": 0, "y": 4, "width": 1920, "height": 1080}
+
+    def test_two_2x_upscales_crop_the_centre_of_what_they_decode(self):
+        # 0.25: 1080 -> 270 -> aligned 288, decoded 288 x 4 = 1152 after two 2x
+        # latent upscales. The box was computed for 1088 (y=4): 32 px high.
+        node = RadianceResolution()
+        _latent, w, h, *_rest, crop_bbox = _generate(
+            node, scale_factor=0.25, enable_video=True,
+            frame_computation="Auto (Seconds)", duration_seconds=10.04,
+        )
+        assert (w, h) == (480, 288)
+        assert crop_bbox == {"x": 0, "y": 36, "width": 1920, "height": 1080}
