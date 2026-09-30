@@ -19,7 +19,8 @@ import functools
 import logging
 import os
 import shutil
-from typing import Optional
+import subprocess
+from typing import FrozenSet, Optional
 
 logger = logging.getLogger("radiance.ffmpeg")
 
@@ -103,16 +104,59 @@ def require_ffmpeg() -> str:
     )
 
 
+@functools.lru_cache(maxsize=None)
+def _encoders(exe: str) -> FrozenSet[str]:
+    """Encoder names an ffmpeg build carries (``ffmpeg -encoders``)."""
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-encoders"],
+                             capture_output=True, text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("could not list the encoders of %s: %s", exe, exc)
+        return frozenset()
+    # Lines read " V....D libx264  description"; the legend's lines read " V..... = Video".
+    return frozenset(parts[1] for parts in (line.split() for line in out.splitlines())
+                     if len(parts) > 1 and len(parts[0]) == 6 and parts[1] != "=")
+
+
+@functools.lru_cache(maxsize=None)
+def ffmpeg_with_encoder(encoder: str) -> str:
+    """The first ffmpeg that carries `encoder`, or raise naming what is missing.
+
+    ALBABIT-FIX: Stability Matrix puts its own ffmpeg first on ComfyUI's PATH,
+    a build without libx265, so "MP4 (H.265 10-bit)" failed with "Unknown
+    encoder" while the imageio-ffmpeg bundle has it. PATH is still tried
+    first; ``RADIANCE_FFMPEG``, when set, stays the only one used.
+    """
+    env = _from_env(_ENV_OVERRIDE)
+    candidates = [env] if env else [c for c in (shutil.which("ffmpeg"), _from_imageio()) if c]
+    if not candidates:
+        require_ffmpeg()
+    for exe in candidates:
+        if encoder in _encoders(exe):
+            if exe != candidates[0]:
+                logger.info("The ffmpeg on PATH (%s) has no %s encoder; using %s.",
+                            candidates[0], encoder, exe)
+            return exe
+    raise RuntimeError(
+        f"No ffmpeg found here carries the {encoder} encoder ({', '.join(candidates)}). "
+        f"Install an ffmpeg build that has it (the 'essentials' or 'full' builds do) "
+        f"and put it on PATH, or set {_ENV_OVERRIDE} to its full path."
+    )
+
+
 def reset_cache() -> None:
     """Forget the cached lookups (tests, and PATH changes at runtime)."""
     ffmpeg_exe.cache_clear()
     ffprobe_exe.cache_clear()
+    ffmpeg_with_encoder.cache_clear()
+    _encoders.cache_clear()
 
 
 __all__ = [
     "ffmpeg_exe",
     "ffprobe_exe",
     "ffmpeg_available",
+    "ffmpeg_with_encoder",
     "require_ffmpeg",
     "reset_cache",
 ]

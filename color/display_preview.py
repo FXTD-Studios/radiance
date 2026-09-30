@@ -54,7 +54,9 @@ def _apply_exact(rgb: np.ndarray, cpu) -> np.ndarray:
     # A copy, always: applyRGB works in place, and ascontiguousarray returns
     # the caller's own buffer when it is already contiguous float32, so the
     # source frame was being overwritten with display values.
-    flat = np.array(rgb.reshape(-1, 3), dtype=np.float32, copy=True)
+    # ALBABIT-FIX: in C order. A VAE-decoded IMAGE keeps its channels in planes,
+    # the default order="K" copy kept that layout, and applyRGB rejects it.
+    flat = np.array(rgb.reshape(-1, 3), dtype=np.float32, order="C", copy=True)
     workers = max(1, min(16, os.cpu_count() or 1))
     if workers == 1 or flat.shape[0] < 65536:
         cpu.applyRGB(flat)
