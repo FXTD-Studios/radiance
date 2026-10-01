@@ -6575,6 +6575,80 @@ else:
      * three paths that drop to the 8-bit proxy used to only console.warn and
      * the status bar went on claiming FP32 (see _updateBitDepthBadge).
      */
+    /**
+     * ALBABIT-FIX: workers that fetch and decode RHDR sidecars, built from
+     * _parseRHDR's own source. Decoding on the main thread (about 40 ms per
+     * 1080p frame) held sequence playback near 22 frames/s and cut its sound.
+     * null when workers cannot run: frames are then decoded here, as before.
+     */
+    static _sidecarWorkers() {
+        if (RadianceViewer._sidecarPool !== undefined) return RadianceViewer._sidecarPool;
+        RadianceViewer._sidecarPool = null;
+        try {
+            const p = RadianceViewer.prototype;
+            const src = `const RadianceViewer = {};
+class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} }
+const decoder = new Decoder();
+self.onmessage = async ({ data: { id, url } }) => {
+    try {
+        const buffer = await (await fetch(url)).arrayBuffer();
+        if (buffer.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buffer, 0, 4)) !== 'RHDR') {
+            self.postMessage({ id, buffer }, [buffer]);
+            return;
+        }
+        const parsed = await decoder._parseRHDR(buffer);
+        const transfer = parsed ? new Set([parsed.data.buffer, parsed.fp16data?.buffer].filter(Boolean)) : [];
+        self.postMessage({ id, parsed }, [...transfer]);
+    } catch (e) {
+        self.postMessage({ id, error: String(e?.message || e) });
+    }
+};`;
+            const script = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+            const workers = Array.from({ length: RadianceViewer.frameWindowConcurrency() }, () => {
+                const w = new Worker(script);
+                w.jobs = new Map();
+                w.onmessage = ({ data }) => {
+                    const done = w.jobs.get(data.id);
+                    w.jobs.delete(data.id);
+                    done?.(data);
+                };
+                w.onerror = (e) => {
+                    for (const done of w.jobs.values()) done({ workerFailed: e.message || 'worker error' });
+                    w.jobs.clear();
+                };
+                return w;
+            });
+            let lastId = 0;
+            RadianceViewer._sidecarPool = {
+                decode(url) {
+                    const w = workers.reduce((a, b) => (b.jobs.size < a.jobs.size ? b : a));
+                    const id = ++lastId;
+                    return new Promise((resolve) => {
+                        w.jobs.set(id, resolve);
+                        w.postMessage({ id, url });
+                    });
+                },
+            };
+        } catch (e) {
+            console.warn('[Radiance] Sidecar workers unavailable, decoding frames on the main thread:', e);
+        }
+        return RadianceViewer._sidecarPool;
+    }
+
+    /** Fetch and parse one float sidecar, in a worker when there are some. */
+    async _fetchSidecar(url) {
+        const pool = RadianceViewer._sidecarWorkers();
+        if (pool) {
+            const reply = await pool.decode(new URL(url, location.href).href);
+            if (reply.error) throw new Error(reply.error);
+            if (reply.buffer) return this._parseHDRBuffer(reply.buffer);       // not RHDR
+            if (!reply.workerFailed) return reply.parsed;
+            console.warn('[Radiance] Sidecar worker failed, decoding frames on the main thread:', reply.workerFailed);
+            RadianceViewer._sidecarPool = null;
+        }
+        return this._parseHDRBuffer(await (await fetch(url)).arrayBuffer());
+    }
+
     _loadSequenceFrame(imgData, idx, generation) {
         if (!imgData) return Promise.resolve(null);
 
@@ -6613,10 +6687,8 @@ else:
         let hdrPromise = Promise.resolve(null);
         if (imgData.hdr_sidecar) {
             const hdrUrl = viewUrl(imgData.hdr_sidecar, imgData.subfolder, imgData.type);
-            hdrPromise = fetch(hdrUrl)
-                .then((r) => r.arrayBuffer())
-                .then(async (buffer) => {
-                    const npy = await this._parseHDRBuffer(buffer);
+            hdrPromise = this._fetchSidecar(hdrUrl)
+                .then((npy) => {
                     if (!npy) {
                         // _parseRHDR returns null with no DecompressionStream
                         // and on a payload-size integrity mismatch.
@@ -20512,9 +20584,17 @@ else:
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
         // Also create Float32Array for CPU-side reads (probe, scopes)
+        // ALBABIT-FIX: through a table of all 65536 half values, built once.
+        // _halfToFloat per sample took 135 ms per 1080p RGBA frame on the main
+        // thread, capping playback near 7 frames/s; the table takes 5 ms.
+        if (!RadianceViewer._halfTable) {
+            RadianceViewer._halfTable = new Float32Array(65536);
+            for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
+        }
+        const table = RadianceViewer._halfTable;
         const fp32 = new Float32Array(fp16Raw.length);
         for (let i = 0; i < fp16Raw.length; i++) {
-            fp32[i] = this._halfToFloat(fp16Raw[i]);
+            fp32[i] = table[fp16Raw[i]];
         }
 
         return {
