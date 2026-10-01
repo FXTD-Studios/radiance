@@ -9917,6 +9917,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.isPlaying = !this.isPlaying;
         this._audioBlocked = false;
         this._waitingForFrame = false;
+        this._lastTick = 0;
         this._syncSequenceAudio();
         this._updatePlayBtn();
 
@@ -9956,8 +9957,27 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const now = performance.now();
         const interval = 1000 / (this.playbackFps || 24);
+        // Smoothed time between ticks (see "Realtime" below).
+        this._tickGap = this._lastTick ? this._tickGap * 0.8 + (now - this._lastTick) * 0.2 : 0;
+        this._lastTick = now;
 
         if (now - this.lastFrameTime >= interval) {
+            // ALBABIT-FIX: "Realtime" holds real time on a page that ticks slower
+            // than the clip runs: it skips to the frame now due. A faster page
+            // catches a late tick up by showing the next frames sooner. It only
+            // skipped frames not loaded yet, so a slow page played slow.
+            const behind = now - this.lastFrameTime;
+            if (this.playEveryFrame === false && !this._waitingForFrame && this._tickGap > 0.75 * interval
+                && behind >= 2 * interval && behind <= interval + 500) {
+                while (now - this.lastFrameTime >= 2 * interval) {
+                    const skip = this._nextPlayFrame();
+                    if (skip.stop) break;
+                    this.currentFrame = skip.frame;
+                    this.playDirection = skip.dir;
+                    this.lastFrameTime += interval;
+                    this.droppedFrames = (this.droppedFrames || 0) + 1;
+                }
+            }
             // 3.5.0: the next frame may not be paged in yet. "Every frame"
             // (default, what a review needs) waits for it; "realtime" keeps the
             // clock and counts the frame as dropped. It used to move the
@@ -10036,8 +10056,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         const stalled = !!this._waitingForFrame;
         const playing = this.isPlaying && !this.videoMode && this.playDirection !== -1 && !stalled;
         if (!playing) audio.pause();
-        if (Number.isFinite(time) && Math.abs(audio.currentTime - time) > 0.12) audio.currentTime = time;
-        audio.playbackRate = Math.max(0.0625, Math.min(16, (this.playbackFps || fps) / fps));
+        const rate = Math.max(0.0625, Math.min(16, (this.playbackFps || fps) / fps));
+        const drift = audio.currentTime - time;
+        // ALBABIT-FIX: while playing, a small drift steers the sound's rate
+        // (pitch kept) and only a jump (a click, a loop) moves it. It was
+        // pulled back each time the picture fell 0.12 s behind, replaying that
+        // much: on a slow page, a second, delayed track every half second.
+        if (playing && Math.abs(drift) < 0.5) {
+            // Smoothed, so the rate does not follow the picture's frame steps.
+            const d = this._audioDrift = (this._audioDrift ?? drift) * 0.9 + drift * 0.1;
+            const steer = Math.abs(d) < 0.04 ? 1 : Math.max(0.5, Math.min(1.5, 1 - 5 * d));
+            audio.playbackRate = rate * Math.round(steer * 20) / 20;
+        } else {
+            this._audioDrift = null;
+            if (Number.isFinite(time) && Math.abs(drift) > 0.12) audio.currentTime = time;
+            audio.playbackRate = rate;
+        }
         if (playing && audio.paused && !this._audioPlayPending && !this._audioBlocked) {
             this._audioPlayPending = true;
             audio.play().catch(error => {

@@ -130,6 +130,40 @@ test('during playback the side panel is redrawn four times a second, not per fra
     assert.equal(v.draws, 4);
 });
 
+test('while playing, a small drift steers the sound instead of pulling it back', () => {
+    // On a slow page the picture fell 0.12 s behind every half second and the
+    // sound was pulled back each time, replaying that much: a second track.
+    const v = viewer();
+    const audio = v._sequenceAudio = {
+        currentTime: 1.2, paused: false, playbackRate: 1,             // the sound 0.2 s ahead
+        play() { this.paused = false; return Promise.resolve(); },
+        pause() { this.paused = true; },
+    };
+    v._sequenceAudioFps = 24; v.isPlaying = true; v.currentFrame = 24; // the picture at 1.0 s
+    for (let k = 0; k < 30; k++) v._syncSequenceAudio();
+    assert.equal(audio.currentTime, 1.2, 'the sound was pulled back');
+    assert.ok(audio.playbackRate < 1, `the sound was not slowed down (rate ${audio.playbackRate})`);
+    audio.currentTime = 3;                                             // a jump: a click, a loop
+    v._syncSequenceAudio();
+    assert.equal(audio.currentTime, 1, 'a jump no longer moves the sound');
+    assert.equal(audio.playbackRate, 1);
+});
+
+test('on a page too slow for the clip, "Realtime" skips to the frame due', () => {
+    // It only skipped frames not loaded yet: shown one a tick, a slow page
+    // played the clip slow in both modes.
+    for (const every of [true, false]) {
+        rafQueue.length = 0;
+        const v = viewer();
+        v.playEveryFrame = every;
+        v.togglePlayback();
+        for (let k = 0; k < 30; k++) { now += 66; rafQueue.shift()?.(now); }   // 2 s, ticks 66 ms apart
+        rafQueue.length = 0;
+        if (every) assert.ok(v.currentFrame <= 31, `"Every frame" shows every frame, one a tick: ${v.currentFrame}`);
+        else assert.ok(v.currentFrame >= 44, `2 s at 24 fps is 48 frames, "Realtime" reached ${v.currentFrame}`);
+    }
+});
+
 test('a late tick is caught up, so playback holds the clip rate', () => {
     // The loop kept only the remainder of a late tick, so every late tick
     // slowed the picture: 13.7 frames/s in Edge on a 24 fps clip, the sound
