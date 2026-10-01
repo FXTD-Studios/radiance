@@ -195,6 +195,20 @@ def test_frames_prepared_together_come_back_in_order_with_their_own_pixels(temp_
 
 
 @pytest.mark.real_torch
+def test_compare_frames_prepared_together_come_back_in_order(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    values = [0.5 + i for i in range(12)]
+    img = torch.full((12, 8, 8, 3), 0.5)
+    compare = torch.tensor(values).view(-1, 1, 1, 1).expand(-1, 8, 8, 3).contiguous()
+    entries = [e for e in RadianceViewer().view(img, compare_image=compare, unique_id="p10")["ui"]["radiance_images"]
+               if e.get("is_compare")]
+    assert [e["frame"] for e in entries] == list(range(len(values)))
+    for e, v in zip(entries, values):
+        _, px = _rhdr(os.path.join(temp_out, e["hdr_sidecar"]))
+        assert px[4, 4, 0] == v, f"compare frame {e['frame']} holds {px[4, 4, 0]}, expected {v}"
+
+
+@pytest.mark.real_torch
 def test_depth_frames_prepared_together_come_back_in_order(temp_out):
     from radiance.nodes.monitor.viewer import RadianceViewer
     values = [0.05 * (i + 1) for i in range(12)]
