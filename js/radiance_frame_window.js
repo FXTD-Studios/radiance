@@ -138,6 +138,11 @@ export class RadianceFrameWindow {
         return this._resident.has(idx);
     }
 
+    /** Frames held and frames loading, for the timeline's cache marks. */
+    cacheState() {
+        return { held: [...this._resident.keys()], loading: [...this._pending.keys()] };
+    }
+
     get(idx) {
         return this._resident.get(idx) || null;
     }
