@@ -181,6 +181,7 @@ def test_linear_preview_goes_through_aces2_like_the_float_path(temp_out):
     assert abs(int(px[4, 4, 0]) - 89) <= 1, f"0.18 through ACES 2.0 SDR is 89/255, got {px[4, 4, 0]}"
 
 
+@pytest.mark.real_torch
 def test_frames_prepared_together_come_back_in_order_with_their_own_pixels(temp_out):
     """Several frames are prepared at once; the payload keeps the clip's order."""
     from radiance.nodes.monitor.viewer import RadianceViewer
