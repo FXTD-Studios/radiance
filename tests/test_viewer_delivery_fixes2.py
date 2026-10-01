@@ -176,10 +176,12 @@ def test_viewer_purges_before_writing_and_tracks_after():
 
 
 def test_float_payloads_use_cheap_compression():
-    """level 6 cost ~0.6s per 32MB frame for ~2% over level 1."""
+    """level 6 cost ~0.6s per 32MB frame for ~2% over level 1. The frame and
+    depth sidecars are now stored (level 0): level 1 still cost 264 ms per
+    1080p frame to write and ~50 ms of the browser's main thread to inflate."""
     src = _src("nodes/monitor/viewer.py")
     assert "level=6" not in src, "zlib level 6 is back on a float payload"
-    assert src.count("level=1") >= 3
+    assert src.count("level=0") >= 3 and "level=1" not in src
 
 
 # ── 5. Medium batch ─────────────────────────────────────────────────────────

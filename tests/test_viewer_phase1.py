@@ -181,6 +181,48 @@ def test_linear_preview_goes_through_aces2_like_the_float_path(temp_out):
     assert abs(int(px[4, 4, 0]) - 89) <= 1, f"0.18 through ACES 2.0 SDR is 89/255, got {px[4, 4, 0]}"
 
 
+@pytest.mark.real_torch
+def test_frames_prepared_together_come_back_in_order_with_their_own_pixels(temp_out):
+    """Several frames are prepared at once; the payload keeps the clip's order."""
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    values = [0.5 + i for i in range(12)]                                  # linear by Auto
+    img = torch.tensor(values).view(-1, 1, 1, 1).expand(-1, 8, 8, 3).contiguous()
+    entries = RadianceViewer().view(img, unique_id="p8")["ui"]["radiance_images"]
+    assert [e["frame"] for e in entries] == list(range(len(values)))
+    for e, v in zip(entries, values):
+        _, px = _rhdr(os.path.join(temp_out, e["hdr_sidecar"]))
+        assert px[4, 4, 0] == v, f"frame {e['frame']} holds {px[4, 4, 0]}, expected {v}"
+
+
+@pytest.mark.real_torch
+def test_compare_frames_prepared_together_come_back_in_order(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    values = [0.5 + i for i in range(12)]
+    img = torch.full((12, 8, 8, 3), 0.5)
+    compare = torch.tensor(values).view(-1, 1, 1, 1).expand(-1, 8, 8, 3).contiguous()
+    entries = [e for e in RadianceViewer().view(img, compare_image=compare, unique_id="p10")["ui"]["radiance_images"]
+               if e.get("is_compare")]
+    assert [e["frame"] for e in entries] == list(range(len(values)))
+    for e, v in zip(entries, values):
+        _, px = _rhdr(os.path.join(temp_out, e["hdr_sidecar"]))
+        assert px[4, 4, 0] == v, f"compare frame {e['frame']} holds {px[4, 4, 0]}, expected {v}"
+
+
+@pytest.mark.real_torch
+def test_depth_frames_prepared_together_come_back_in_order(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    values = [0.05 * (i + 1) for i in range(12)]
+    img = torch.full((12, 8, 8, 3), 0.5)
+    depth = torch.tensor(values).view(-1, 1, 1, 1).expand(-1, 8, 8, 3).contiguous()
+    entries = [e for e in RadianceViewer().view(img, zdepth=depth, unique_id="p9")["ui"]["radiance_images"]
+               if e.get("is_zdepth")]
+    assert [e["frame"] for e in entries] == list(range(len(values)))
+    for e, v in zip(entries, values):
+        assert e["depth_range"][0] == pytest.approx(v), f"depth frame {e['frame']} holds another frame's depth"
+        _, px = _rhdr(os.path.join(temp_out, e["hdr_sidecar"]))
+        assert px[4, 4, 0] == pytest.approx(v, abs=1e-3)
+
+
 @pytest.mark.skipif(not HAS_OCIO, reason="OpenColorIO not installed")
 def test_display_preview_is_exact_ocio():
     from radiance.color.display_preview import aces2_processor, display_preview
