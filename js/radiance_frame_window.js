@@ -84,6 +84,8 @@ export class RadianceFrameWindow {
 
         this.entries = [];
         this.playhead = 0;
+        /** A looping range, { start, end }, or null (see _wanted). */
+        this.loop = null;
 
         this._resident = new Map();   // idx -> payload
         this._bytes = new Map();      // idx -> charged size
@@ -154,9 +156,34 @@ export class RadianceFrameWindow {
         return { start, end: start + size - 1 };
     }
 
-    inSpan(idx) {
+    /**
+     * Frames the window holds, each with its distance from the playhead: the
+     * span. ALBABIT-FIX: in a looping range, the same read-ahead runs through
+     * the out point and on from the in point, so playback no longer stops at
+     * the loop to load the frames it wraps to.
+     */
+    _wanted() {
+        const wanted = new Map();
+        const loop = this.loop;
+        if (loop && this.playhead >= loop.start && this.playhead <= loop.end) {
+            const size = Math.min(this.windowSize, this.entries.length);
+            const behind = Math.floor((size - 1) / 3);
+            const length = loop.end - loop.start + 1;
+            for (let d = -behind; d < size - behind; d++) {
+                let f = this.playhead + d;
+                if (f < 0) continue;
+                if (f > loop.end) f = loop.start + (f - loop.start) % length;
+                if (!wanted.has(f)) wanted.set(f, Math.abs(d));
+            }
+            return wanted;
+        }
         const { start, end } = this.span();
-        return idx >= start && idx <= end;
+        for (let i = start; i <= end; i++) wanted.set(i, Math.abs(i - this.playhead));
+        return wanted;
+    }
+
+    inSpan(idx) {
+        return this._wanted().has(idx);
     }
 
     /**
@@ -197,9 +224,7 @@ export class RadianceFrameWindow {
      * interleaved with N decompressions. 10,000 frames was 100M iterations.
      */
     isWindowReady() {
-        const { start, end } = this.span();
-        if (end < start) return true;
-        for (let i = start; i <= end; i++) {
+        for (const i of this._wanted().keys()) {
             if (!this._resident.has(i)) return false;
         }
         return true;
@@ -232,16 +257,11 @@ export class RadianceFrameWindow {
     }
 
     _refill() {
-        const { start, end } = this.span();
-        if (end < start) return;
         // Nearest to the playhead first, so a scrub shows something quickly.
-        const wanted = [];
-        for (let i = start; i <= end; i++) {
-            if (this._resident.has(i) || this._pending.has(i) || this._queued.has(i)) continue;
-            wanted.push(i);
-        }
-        wanted.sort((a, b) => Math.abs(a - this.playhead) - Math.abs(b - this.playhead));
-        for (const i of wanted) {
+        const wanted = [...this._wanted()]
+            .filter(([i]) => !(this._resident.has(i) || this._pending.has(i) || this._queued.has(i)))
+            .sort((a, b) => a[1] - b[1]);
+        for (const [i] of wanted) {
             this._queue.push(i);
             this._queued.add(i);
         }
@@ -309,9 +329,10 @@ export class RadianceFrameWindow {
         ) {
             let victim = null;
             let worst = -1;
+            const wanted = this._wanted();
             for (const idx of this._resident.keys()) {
                 if (idx === this.playhead) continue;   // never evict what is on screen
-                const d = Math.abs(idx - this.playhead);
+                const d = wanted.get(idx) ?? Math.abs(idx - this.playhead);
                 if (d > worst) { worst = d; victim = idx; }
             }
             if (victim === null) break;
@@ -321,10 +342,10 @@ export class RadianceFrameWindow {
     }
 
     _evictOutsideSpan() {
-        const { start, end } = this.span();
+        const wanted = this._wanted();
         for (const idx of [...this._resident.keys()]) {
             if (idx === this.playhead) continue;
-            if (idx < start || idx > end) {
+            if (!wanted.has(idx)) {
                 this._release(idx);
                 this.evictCount++;
             }
@@ -332,10 +353,10 @@ export class RadianceFrameWindow {
     }
 
     _dropQueuedOutsideSpan() {
-        const { start, end } = this.span();
+        const wanted = this._wanted();
         const keep = [];
         for (const idx of this._queue) {
-            if (idx >= start && idx <= end) keep.push(idx);
+            if (wanted.has(idx)) keep.push(idx);
             else this._queued.delete(idx);
         }
         this._queue = keep;
