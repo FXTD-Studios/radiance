@@ -9900,6 +9900,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Frame-sequence mode
         this.isPlaying = !this.isPlaying;
         this._audioBlocked = false;
+        this._waitingForFrame = false;
         this._syncSequenceAudio();
         this._updatePlayBtn();
 
@@ -9950,10 +9951,31 @@ self.onmessage = async ({ data: { id, url } }) => {
             // would never show, and a loop longer than the paging window waited
             // for an in point that had been paged out: playback froze.
             const step = this._nextPlayFrame();
+            // ALBABIT-FIX: once playback waits, it resumes with a few frames in
+            // hand (or when the window has nothing left to load), not on the
+            // first one to land, which stopped it again on the next frame.
+            let buffered = this._frameReady(step.frame);
+            const win = this._frameWindow;
+            if (buffered && this._waitingForFrame && win && (win.inFlight || win.queuedCount)) {
+                const [a, b] = this._range();
+                for (let k = 1, f = step.frame + step.dir; k < 6 && f >= a && f <= b; k++, f += step.dir) {
+                    if (!this._frameReady(f)) { buffered = false; break; }
+                }
+            }
             if (step.stop) {
                 this._advance();                       // play-once: stops here
-            } else if (!this._frameReady(step.frame) && this.playEveryFrame !== false) {
+            } else if (!buffered && (this.playEveryFrame !== false || this._waitingForFrame
+                || !this._frameReady(this.currentFrame))) {
+                // ALBABIT-FIX: "Realtime" drops a late frame, but after a jump
+                // (a click on the timeline, a loop back to the in point)
+                // nothing is loaded around the playhead: it waits there too.
+                // It used to chase the frames, each landing after the playhead
+                // had left: 80 dropped in 12 s, the sound pulled back each time.
                 this._stallCount = (this._stallCount || 0) + 1;
+                // ALBABIT-FIX: the clock waits with the picture (and the sound,
+                // paused meanwhile), so the frame goes up as soon as it lands.
+                this._waitingForFrame = true;
+                this.lastFrameTime = now - interval;
                 if (this._frameWindow && !this._frameWindow.inSpan(step.frame)) {
                     // A loop wrapping back to its in point: that frame is
                     // outside the paging window, and loading it there would
@@ -9969,8 +9991,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             } else {
                 const ready = this._frameReady(step.frame);
                 if (!ready) this.droppedFrames = (this.droppedFrames || 0) + 1;
+                this._waitingForFrame = false;
                 this._advance();
-                this.lastFrameTime = now - ((now - this.lastFrameTime) % interval);
+                // ALBABIT-FIX: a late tick's time is kept and caught up, so
+                // playback holds the clip's rate. Only the remainder was kept:
+                // every late tick slowed the picture, and the sound was pulled
+                // back to it every 0.12 s (an audible cut). Half a second
+                // behind (a hidden tab), the clock starts again from now.
+                this.lastFrameTime = now - this.lastFrameTime > interval + 500
+                    ? now : this.lastFrameTime + interval;
             }
         }
 
@@ -9983,7 +10012,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!audio) return;
         const fps = this._sequenceAudioFps || this.playbackFps || 24;
         const time = this.currentFrame / fps;
-        const stalled = this._frameReady && !this._frameReady(this._nextPlayFrame().frame);
+        // ALBABIT-FIX: the sound pauses only while playback actually waits for
+        // a frame. It paused whenever the next frame was still loading, even
+        // with time to spare, and in "Realtime", which never waits.
+        const stalled = !!this._waitingForFrame;
         const playing = this.isPlaying && !this.videoMode && this.playDirection !== -1 && !stalled;
         if (!playing) audio.pause();
         if (Number.isFinite(time) && Math.abs(audio.currentTime - time) > 0.12) audio.currentTime = time;

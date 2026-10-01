@@ -59,12 +59,69 @@ test('sequence audio follows play, seek, rate, stalls and reverse without starti
     assert.equal(plays, 1); assert.equal(audio.currentTime, 1);
     v.playbackFps = 48; v._syncSequenceAudio();
     assert.equal(audio.playbackRate, 2);
-    v.frameImages[25] = undefined; v._syncSequenceAudio();
-    assert.equal(audio.paused, true, 'buffering pauses audio');
-    v.frameImages[25] = true; v.playDirection = -1; v._syncSequenceAudio();
+    v._waitingForFrame = true; v._syncSequenceAudio();
+    assert.equal(audio.paused, true, 'waiting for a frame pauses audio');
+    v._waitingForFrame = false; v.playDirection = -1; v._syncSequenceAudio();
     assert.equal(audio.paused, true, 'reverse playback is silent');
     v.currentFrame = 0; v.isPlaying = false; v._syncSequenceAudio();
     assert.equal(audio.currentTime, 0, 'loop/seek returns audio to the playhead');
+});
+
+test('the sound pauses only while playback waits for a frame, never in Realtime', () => {
+    // It paused whenever the next frame was still loading, even 40 ms before
+    // it was due: measured in Edge, "Every frame" cut the sound 11 times in 7 s.
+    for (const every of [true, false]) {
+        const v = viewer();
+        const audio = v._sequenceAudio = {
+            currentTime: 0, paused: true, playbackRate: 1,
+            play() { this.paused = false; return Promise.resolve(); },
+            pause() { this.paused = true; },
+        };
+        v._sequenceAudioFps = 24; v.playEveryFrame = every;
+        v.frameImages[2] = undefined;                      // still loading
+        v.togglePlayback();
+        assert.equal(audio.paused, false, 'frame 2 is not due yet: the sound plays');
+        run(v, 100);                                       // frame 2 is due now
+        assert.equal(audio.paused, every,
+            every ? '"Every frame" waits for it, and the sound with it' : '"Realtime" drops it, the sound goes on');
+        rafQueue.length = 0;
+    }
+});
+
+test('after a jump, playback resumes with a few frames in hand, not one', () => {
+    // It resumed on the first frame to land and stopped again on the next:
+    // after a click on the timeline, a cut in the sound per frame.
+    for (const every of [true, false]) {
+        rafQueue.length = 0;
+        const v = viewer();
+        v.playEveryFrame = every;
+        v._frameWindow = { inFlight: 2, queuedCount: 4, inSpan: () => true, settle() {},
+                           has: (i) => !!v.frameImages[i], ensure: () => Promise.resolve() };
+        v.togglePlayback();
+        v.setFrame(40);                                    // a click on the timeline
+        for (let i = 40; i < v.totalFrames; i++) v.frameImages[i] = undefined;
+        run(v, 100);
+        v.frameImages[40] = v.frameImages[41] = true;      // the first frames land
+        run(v, 100);
+        assert.equal(v.currentFrame, 40, 'one frame in hand: still waiting');
+        for (let i = 42; i < 47; i++) v.frameImages[i] = true;
+        run(v, 100);
+        assert.ok(v.currentFrame > 40, 'six frames in hand: playing again');
+        rafQueue.length = 0;
+    }
+});
+
+test('a late tick is caught up, so playback holds the clip rate', () => {
+    // The loop kept only the remainder of a late tick, so every late tick
+    // slowed the picture: 13.7 frames/s in Edge on a 24 fps clip, the sound
+    // pulled back to it every half second.
+    rafQueue.length = 0;
+    const v = viewer();
+    v.togglePlayback();
+    for (let k = 0; k < 5; k++) { now += 100; rafQueue.shift()?.(now); }   // 0.5 s of late ticks
+    for (let k = 0; k < 20; k++) { now += 16; rafQueue.shift()?.(now); }   // then 60 Hz ticks
+    rafQueue.length = 0;
+    assert.ok(v.currentFrame >= 18, `0.82 s at 24 fps is 19 frames, shown ${v.currentFrame}`);
 });
 
 /** Paging window like RadianceFrameWindow: holds `size` frames ahead of the playhead. */
