@@ -94,8 +94,18 @@ _VIEWER_UTIL_NAMES = (
 )
 globals().update({name: getattr(_viewer_utils, name) for name in _VIEWER_UTIL_NAMES})
 
-#: Frames prepared at once (see RadianceViewer.view).
+#: Frames prepared at once (see _prepare_in_order).
 _FRAME_WORKERS = min(8, os.cpu_count() or 1)
+
+
+def _prepare_in_order(prepare, count: int) -> list:
+    """prepare(i) for i in range(count), several at once, results in order.
+
+    ALBABIT-FIX: compression, EXR, OCIO and PNG release the GIL. One frame
+    after another, 241 1080p HDR frames took 158 s in the Viewer, now 29 s.
+    """
+    with ThreadPoolExecutor(max_workers=_FRAME_WORKERS) as pool:
+        return list(pool.map(prepare, range(count)))
 
 # ── 3.5.0: source colour tagging ───────────────────────────────────────────────
 # The viewer used to receive every frame as fp32 with no tag and treat all float
@@ -571,12 +581,8 @@ class RadianceViewer:
                     logger.warning(f"Error processing frame {frame_idx}: {e}")
                 return entries
 
-            # ALBABIT-FIX: several frames at once, in order. Compression, EXR,
-            # OCIO and PNG release the GIL: 241 1080p HDR frames took 158 s,
-            # now 29 s.
-            with ThreadPoolExecutor(max_workers=_FRAME_WORKERS) as pool:
-                for entries in pool.map(frame_entries, range(batch_size)):
-                    images_list.extend(entries)
+            for entries in _prepare_in_order(frame_entries, batch_size):
+                images_list.extend(entries)
 
             # Compare image
             if compare_image is not None:
@@ -891,10 +897,8 @@ class RadianceViewer:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
                 # Clamp to the fp16 range: 1e5 used to become +inf.
                 fp16_data = np.clip(frame_to_save, -65504.0, 65504.0).astype(np.float16).tobytes()
-                # ALBABIT-FIX: stored (zlib level 0, same format and values).
-                # Level 1 took 264 ms per 1080p frame here, and inflating it
-                # took about 50 ms of the browser's main thread per frame:
-                # playback fell to 14 frames/s and pulled the sound back.
+                # ALBABIT-FIX: stored (level 0, same format). Level 1 cost 264 ms
+                # here and ~50 ms of the browser's main thread per 1080p frame.
                 compressed = zlib.compress(fp16_data, level=0)
                 header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 0)
                 with open(rhdr_filepath, "wb") as rhdr_f:
@@ -1144,11 +1148,8 @@ class RadianceViewer:
                 logger.warning(f"Error processing compare frame {cmp_idx}: {e}")
                 return None
 
-        # ALBABIT-FIX: several compare frames at once, in order, as for the
-        # image (see view): with "compare_image" connected, 241 1080p frames
-        # took 148 s in the Viewer, now 46 s.
-        with ThreadPoolExecutor(max_workers=_FRAME_WORKERS) as pool:
-            result.extend(meta for meta in pool.map(compare_entry, range(cmp_batch)) if meta)
+        # ALBABIT-FIX: in parallel too (241 1080p frames: 148 s -> 46 s).
+        result.extend(meta for meta in _prepare_in_order(compare_entry, cmp_batch) if meta)
 
         return result
 
@@ -1283,11 +1284,8 @@ class RadianceViewer:
                 logger.warning(f"Error processing zdepth frame {depth_idx}: {e}")
                 return None
 
-        # ALBABIT-FIX: several depth frames at once, in order, as for the
-        # image (see view): with "zdepth" connected, 241 1080p frames took
-        # 73 s in the Viewer, now 29 s.
-        with ThreadPoolExecutor(max_workers=_FRAME_WORKERS) as pool:
-            result.extend(meta for meta in pool.map(depth_entry, range(depth_batch)) if meta)
+        # ALBABIT-FIX: in parallel too (241 1080p frames with depth: 73 s -> 29 s).
+        result.extend(meta for meta in _prepare_in_order(depth_entry, depth_batch) if meta)
 
         return result
 

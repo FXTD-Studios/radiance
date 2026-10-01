@@ -6590,9 +6590,8 @@ else:
      */
     /**
      * ALBABIT-FIX: workers that fetch and decode RHDR sidecars, built from
-     * _parseRHDR's own source. Decoding on the main thread (about 40 ms per
-     * 1080p frame) held sequence playback near 22 frames/s and cut its sound.
-     * null when workers cannot run: frames are then decoded here, as before.
+     * _parseRHDR's own source (on the main thread, ~40 ms per 1080p frame).
+     * null when workers cannot run: frames are decoded here, as before.
      */
     static _sidecarWorkers() {
         if (RadianceViewer._sidecarPool !== undefined) return RadianceViewer._sidecarPool;
@@ -9957,27 +9956,12 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const now = performance.now();
         const interval = 1000 / (this.playbackFps || 24);
-        // Smoothed time between ticks (see "Realtime" below).
+        // Smoothed time between ticks (see _skipToDueFrame).
         this._tickGap = this._lastTick ? this._tickGap * 0.8 + (now - this._lastTick) * 0.2 : 0;
         this._lastTick = now;
 
         if (now - this.lastFrameTime >= interval) {
-            // ALBABIT-FIX: "Realtime" holds real time on a page that ticks slower
-            // than the clip runs: it skips to the frame now due. A faster page
-            // catches a late tick up by showing the next frames sooner. It only
-            // skipped frames not loaded yet, so a slow page played slow.
-            const behind = now - this.lastFrameTime;
-            if (this.playEveryFrame === false && !this._waitingForFrame && this._tickGap > 0.75 * interval
-                && behind >= 2 * interval && behind <= interval + 500) {
-                while (now - this.lastFrameTime >= 2 * interval) {
-                    const skip = this._nextPlayFrame();
-                    if (skip.stop) break;
-                    this.currentFrame = skip.frame;
-                    this.playDirection = skip.dir;
-                    this.lastFrameTime += interval;
-                    this.droppedFrames = (this.droppedFrames || 0) + 1;
-                }
-            }
+            if (this.playEveryFrame === false) this._skipToDueFrame(now, interval);
             // 3.5.0: the next frame may not be paged in yet. "Every frame"
             // (default, what a review needs) waits for it; "realtime" keeps the
             // clock and counts the frame as dropped. It used to move the
@@ -9989,29 +9973,14 @@ self.onmessage = async ({ data: { id, url } }) => {
             // would never show, and a loop longer than the paging window waited
             // for an in point that had been paged out: playback froze.
             const step = this._nextPlayFrame();
-            // ALBABIT-FIX: once playback waits, it resumes with a few frames in
-            // hand (or when the window has nothing left to load), not on the
-            // first one to land, which stopped it again on the next frame.
-            let buffered = this._frameReady(step.frame);
-            const win = this._frameWindow;
-            if (buffered && this._waitingForFrame && win && (win.inFlight || win.queuedCount)) {
-                const [a, b] = this._range();
-                for (let k = 1, f = step.frame + step.dir; k < 6 && f >= a && f <= b; k++, f += step.dir) {
-                    if (!this._frameReady(f)) { buffered = false; break; }
-                }
-            }
             if (step.stop) {
                 this._advance();                       // play-once: stops here
-            } else if (!buffered && (this.playEveryFrame !== false || this._waitingForFrame
-                || !this._frameReady(this.currentFrame))) {
-                // ALBABIT-FIX: "Realtime" drops a late frame, but after a jump
-                // (a click on the timeline, a loop back to the in point)
-                // nothing is loaded around the playhead: it waits there too.
-                // It used to chase the frames, each landing after the playhead
-                // had left: 80 dropped in 12 s, the sound pulled back each time.
+            } else if (!this._hasFramesInHand(step) && (this.playEveryFrame !== false
+                || this._waitingForFrame || !this._frameReady(this.currentFrame))) {
+                // ALBABIT-FIX: the clock waits with the picture, the sound
+                // pauses. "Realtime" waits too after a jump (a click, a loop):
+                // it chased frames that landed after the playhead had left.
                 this._stallCount = (this._stallCount || 0) + 1;
-                // ALBABIT-FIX: the clock waits with the picture (and the sound,
-                // paused meanwhile), so the frame goes up as soon as it lands.
                 this._waitingForFrame = true;
                 this.lastFrameTime = now - interval;
                 if (this._frameWindow && !this._frameWindow.inSpan(step.frame)) {
@@ -10031,10 +10000,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 if (!ready) this.droppedFrames = (this.droppedFrames || 0) + 1;
                 this._waitingForFrame = false;
                 this._advance();
-                // ALBABIT-FIX: a late tick's time is kept and caught up, so
-                // playback holds the clip's rate. Only the remainder was kept:
-                // every late tick slowed the picture, and the sound was pulled
-                // back to it every 0.12 s (an audible cut). Half a second
+                // ALBABIT-FIX: a late tick's time is caught up, not dropped (the
+                // picture ran slow and pulled the sound back). Half a second
                 // behind (a hidden tab), the clock starts again from now.
                 this.lastFrameTime = now - this.lastFrameTime > interval + 500
                     ? now : this.lastFrameTime + interval;
@@ -10045,23 +10012,56 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.isPlaying) this._seqRAF = requestAnimationFrame(() => this._seqPlaybackLoop());
     }
 
+    /**
+     * ALBABIT-FIX: "Realtime" on a page that ticks slower than the clip skips
+     * to the frame now due. A faster page catches a late tick up by showing
+     * the next frames sooner. A slow page used to play the clip slow.
+     */
+    _skipToDueFrame(now, interval) {
+        const behind = now - this.lastFrameTime;
+        if (this._waitingForFrame || this._tickGap <= 0.75 * interval
+            || behind < 2 * interval || behind > interval + 500) return;
+        while (now - this.lastFrameTime >= 2 * interval) {
+            const skip = this._nextPlayFrame();
+            if (skip.stop) break;
+            this.currentFrame = skip.frame;
+            this.playDirection = skip.dir;
+            this.lastFrameTime += interval;
+            this.droppedFrames = (this.droppedFrames || 0) + 1;
+        }
+    }
+
+    /**
+     * ALBABIT-FIX: whether the step's frame can go up. Once playback waits, it
+     * resumes with a few frames in hand (or nothing left to load), not on the
+     * first to land, which stopped it again on the next frame.
+     */
+    _hasFramesInHand(step) {
+        if (!this._frameReady(step.frame)) return false;
+        const win = this._frameWindow;
+        if (!this._waitingForFrame || !win || !(win.inFlight || win.queuedCount)) return true;
+        const [a, b] = this._range();
+        for (let k = 1, f = step.frame + step.dir; k < 6 && f >= a && f <= b; k++, f += step.dir) {
+            if (!this._frameReady(f)) return false;
+        }
+        return true;
+    }
+
     _syncSequenceAudio() {
         const audio = this._sequenceAudio;
         if (!audio) return;
         const fps = this._sequenceAudioFps || this.playbackFps || 24;
         const time = this.currentFrame / fps;
-        // ALBABIT-FIX: the sound pauses only while playback actually waits for
-        // a frame. It paused whenever the next frame was still loading, even
-        // with time to spare, and in "Realtime", which never waits.
+        // ALBABIT-FIX: the sound pauses only while playback waits for a frame,
+        // not whenever the next one is still loading.
         const stalled = !!this._waitingForFrame;
         const playing = this.isPlaying && !this.videoMode && this.playDirection !== -1 && !stalled;
         if (!playing) audio.pause();
         const rate = Math.max(0.0625, Math.min(16, (this.playbackFps || fps) / fps));
         const drift = audio.currentTime - time;
         // ALBABIT-FIX: while playing, a small drift steers the sound's rate
-        // (pitch kept) and only a jump (a click, a loop) moves it. It was
-        // pulled back each time the picture fell 0.12 s behind, replaying that
-        // much: on a slow page, a second, delayed track every half second.
+        // (pitch kept); only a jump moves it. Pulled back each time the picture
+        // fell 0.12 s behind, it replayed that much: a second, delayed track.
         if (playing && Math.abs(drift) < 0.5) {
             // Smoothed, so the rate does not follow the picture's frame steps.
             const d = this._audioDrift = (this._audioDrift ?? drift) * 0.9 + drift * 0.1;
@@ -10551,11 +10551,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         // v4.3: Repaint sparkline current-frame marker on every frame change
         if (this._frameSparklines) this._drawSparklines();
         if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
-        // ALBABIT-FIX: during playback the panel is redrawn four times a
-        // second, not on every frame. EFFECTS, which the "Depth" view opens,
-        // redraws the frame's depth map: about 55 ms a frame, which held
-        // playback near 18 frames/s and pulled the sound back every 0.8 s,
-        // heard as a second, delayed track. Stopping redraws it once more.
+        // ALBABIT-FIX: at most four times a second during playback. EFFECTS
+        // (opened by "Depth") redraws the depth map, ~55 ms: 18 frames/s.
         if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
             && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
             this._hudDrawnAt = performance.now();
@@ -20681,9 +20678,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
         // Also create Float32Array for CPU-side reads (probe, scopes)
-        // ALBABIT-FIX: through a table of all 65536 half values, built once.
-        // _halfToFloat per sample took 135 ms per 1080p RGBA frame on the main
-        // thread, capping playback near 7 frames/s; the table takes 5 ms.
+        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
+        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
         if (!RadianceViewer._halfTable) {
             RadianceViewer._halfTable = new Float32Array(65536);
             for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
@@ -21841,11 +21837,9 @@ app.registerExtension({
             const srcFps = Number(message.fps?.[0]);
             if (Number.isFinite(srcFps) && srcFps > 0) viewer.setPlaybackFps?.(srcFps);
 
-            // ALBABIT-FIX: a compare sequence as long as the clip pages with
-            // its frames, like the depth and the brackets: every compare frame
-            // was requested at once, full size, and held for the whole run. A
-            // shorter compare input (a still) is still loaded whole: its last
-            // frame stands for the rest of the clip.
+            // ALBABIT-FIX: a compare sequence as long as the clip pages with its
+            // frames (it was all loaded at once, full size). A shorter one (a
+            // still) is loaded whole: its last frame stands for the rest.
             const pageCompare = compareImages.length >= mainImages.length;
             if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
             viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
