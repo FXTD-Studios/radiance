@@ -194,6 +194,21 @@ def test_frames_prepared_together_come_back_in_order_with_their_own_pixels(temp_
         assert px[4, 4, 0] == v, f"frame {e['frame']} holds {px[4, 4, 0]}, expected {v}"
 
 
+@pytest.mark.real_torch
+def test_depth_frames_prepared_together_come_back_in_order(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    values = [0.05 * (i + 1) for i in range(12)]
+    img = torch.full((12, 8, 8, 3), 0.5)
+    depth = torch.tensor(values).view(-1, 1, 1, 1).expand(-1, 8, 8, 3).contiguous()
+    entries = [e for e in RadianceViewer().view(img, zdepth=depth, unique_id="p9")["ui"]["radiance_images"]
+               if e.get("is_zdepth")]
+    assert [e["frame"] for e in entries] == list(range(len(values)))
+    for e, v in zip(entries, values):
+        assert e["depth_range"][0] == pytest.approx(v), f"depth frame {e['frame']} holds another frame's depth"
+        _, px = _rhdr(os.path.join(temp_out, e["hdr_sidecar"]))
+        assert px[4, 4, 0] == pytest.approx(v, abs=1e-3)
+
+
 @pytest.mark.skipif(not HAS_OCIO, reason="OpenColorIO not installed")
 def test_display_preview_is_exact_ocio():
     from radiance.color.display_preview import aces2_processor, display_preview
