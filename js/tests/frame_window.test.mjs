@@ -267,6 +267,20 @@ test('under the byte ceiling the loop keeps its in point and lets played frames 
     assert.ok(!win.has(185), 'a frame already played is still held');
 });
 
+test('cacheState reports the frames held and the frames loading', async () => {
+    const stub = stubLoader();
+    const win = makeWindow(stub, { concurrency: 2 });
+    win.setSequence(sequence(100), 0);
+    await Promise.resolve();
+    await Promise.resolve();
+    const loading = win.cacheState().loading;
+    assert.equal(loading.length, 2, 'the loads in flight are the frames loading');
+    await drain(win);
+    const { held, loading: after } = win.cacheState();
+    assert.deepEqual(after, []);
+    assert.deepEqual(held.sort((a, b) => a - b), [...Array(16).keys()]);
+});
+
 test('without a loop the window stops at the last frame', async () => {
     const stub = stubLoader();
     const win = makeWindow(stub);

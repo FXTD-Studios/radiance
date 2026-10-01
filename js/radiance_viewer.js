@@ -2272,6 +2272,10 @@ class RadianceViewer {
             .radiance-simple-bar .rsb-play.is-active { background: #39aaff; color: #071019; }
             .radiance-simple-bar .rsb-frame { font-family: var(--radiance-font-mono); min-width: 64px; }
             .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #39aaff; }
+            .radiance-simple-bar .radiance-cache-marks { flex: 1 1 120px; min-width: 60px; }
+            .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
+            .radiance-cache-marks > input { position: relative; }
+            .radiance-cache-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
             .radiance-simple-bar .rsb-b { color: rgba(232,238,247,.55); white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; max-width: 150px; min-width: 0; }
             .radiance-simple-bar .rsb-pin { border: 1px solid rgba(255,255,255,.14); }
@@ -2386,7 +2390,7 @@ class RadianceViewer {
             this._syncCompareUI();
         }, 'rsb-pin');
         const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
-        bar.append(transport, scrub, frame, cmp, this._sbBLabel, this._sbPin, fit);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbPin, fit);
         return bar;
     }
 
@@ -2414,6 +2418,70 @@ class RadianceViewer {
         if (this._sbPin) {
             this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
             this._sbPin.disabled = !this.image && !this.renderer?.textures?.image;
+        }
+    }
+
+    /**
+     * ALBABIT-FIX: a canvas under host's content where _drawCacheMarks puts a
+     * small mark for each frame the paging window holds. measure() says where
+     * frame 0 and the last frame sit and the marks' top; it runs on resize
+     * only, never on a frame of playback.
+     */
+    _addCacheMarks(host, measure) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'radiance-cache-canvas';
+        host.prepend(canvas);
+        const marks = { canvas, measure, geo: null };
+        (this._cacheMarks ||= []).push(marks);
+        new ResizeObserver(() => {
+            marks.geo = measure();
+            this._queueCacheMarks();
+        }).observe(host);
+        return marks;
+    }
+
+    /** The simple bar's slider, over cache marks; its native thumb is 16 px. */
+    _withCacheMarks(input) {
+        const wrap = document.createElement('div');
+        wrap.className = 'radiance-cache-marks';
+        wrap.append(input);
+        this._addCacheMarks(wrap, () => ({
+            w: wrap.clientWidth, h: wrap.clientHeight,
+            x0: input.offsetLeft + 8, span: input.offsetWidth - 16,
+            top: input.offsetTop + input.offsetHeight / 2 - 9,
+        }));
+        return wrap;
+    }
+
+    _queueCacheMarks() {
+        if (this._cacheMarks && !this._cacheMarksRAF) {
+            this._cacheMarksRAF = requestAnimationFrame(() => this._drawCacheMarks());
+        }
+    }
+
+    /** One mark per frame held above each timeline slider, paler while it loads. */
+    _drawCacheMarks() {
+        this._cacheMarksRAF = 0;
+        const total = this.totalFrames || 0;
+        const state = this._frameWindow && total > 1 ? this._frameWindow.cacheState() : { held: [], loading: [] };
+        const dpr = window.devicePixelRatio || 1;
+        const tick = Math.max(1, Math.round(dpr));
+        for (const { canvas, geo } of this._cacheMarks) {
+            if (!geo?.w) continue;                             // not laid out (the other UI mode)
+            const w = Math.round(geo.w * dpr), h = Math.round(geo.h * dpr);
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            ctx.shadowColor = 'rgba(57,170,255,0.7)';
+            ctx.shadowBlur = 3 * dpr;
+            const y = Math.round(geo.top * dpr);
+            for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
+                ctx.fillStyle = `rgba(57,170,255,${alpha})`;
+                for (const f of frames) {
+                    const x = geo.x0 + (f / (total - 1)) * geo.span;
+                    ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
+                }
+            }
         }
     }
 
@@ -3292,6 +3360,20 @@ class RadianceViewer {
             handle.style.cssText = 'position:absolute; top:0; left:50%; transform:translateX(-50%); border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid #ff3333;';
             playhead.appendChild(handle);
             this.sequenceTrack.appendChild(playhead);
+
+            // ALBABIT-FIX: the cache marks, at the top of V1 under the playhead.
+            // Clearing the track above took their canvas out.
+            const track = this.sequenceTrack;
+            if (this._trackMarks) track.prepend(this._trackMarks.canvas);
+            else {
+                this._trackMarks = this._addCacheMarks(track, () => ({
+                    w: track.clientWidth, h: track.clientHeight, x0: 0, span: track.clientWidth,
+                    top: (track.querySelector('.radiance-pro-lane-v1')?.offsetTop ?? 0) + 2,
+                }));
+                this._trackMarks.canvas.style.zIndex = '40';
+            }
+            this._trackMarks.geo = this._trackMarks.measure();
+            this._queueCacheMarks();
 
             this._lastTimelineStateStr = stateStr;
 
@@ -6560,6 +6642,7 @@ else:
                     this._renderReferenceRightHUD?.();
                 }
                 if (this._allFramesReady()) this.updateFrameDisplay();
+                this._queueCacheMarks();
             },
             onEvict: (idx) => {
                 // The whole point of the window: drop the decoded pixels for a
@@ -6571,6 +6654,7 @@ else:
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
                 if (this._compareEntries.length) this.frameCompareImages[idx] = null;
+                this._queueCacheMarks();
             },
             onError: (err, idx) => {
                 console.warn('[Radiance] Frame', idx, 'failed to load:', err);
@@ -10501,6 +10585,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 && (this.loopMode || (this.loop ? 'loop' : 'once')) === 'loop';
             this._frameWindow.loop = loops ? { start: a, end: b } : null;
             this._frameWindow.setPlayhead(idx);
+            this._queueCacheMarks();
             if (!this._frameWindow.has(idx)) {
                 this._frameWindow.ensure(idx).then(() => {
                     if (this.currentFrame === idx) this._displaySequenceFrame(idx);
