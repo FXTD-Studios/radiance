@@ -9919,6 +9919,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 cancelAnimationFrame(this._seqRAF);
                 this._seqRAF = null;
             }
+            // ALBABIT-FIX: the panel shows the frame playback stopped on.
+            if (this._hudDrawnAt) this._renderReferenceRightHUD?.();
         }
     }
 
@@ -10499,7 +10501,14 @@ self.onmessage = async ({ data: { id, url } }) => {
         // v4.3: Repaint sparkline current-frame marker on every frame change
         if (this._frameSparklines) this._drawSparklines();
         if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
-        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)) {
+        // ALBABIT-FIX: during playback the panel is redrawn four times a
+        // second, not on every frame. EFFECTS, which the "Depth" view opens,
+        // redraws the frame's depth map: about 55 ms a frame, which held
+        // playback near 18 frames/s and pulled the sound back every 0.8 s,
+        // heard as a second, delayed track. Stopping redraws it once more.
+        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
+            && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
+            this._hudDrawnAt = performance.now();
             this._renderReferenceRightHUD?.();
         }
 
