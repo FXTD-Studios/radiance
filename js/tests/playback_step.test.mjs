@@ -34,7 +34,8 @@ function methodSource(name) {
     return rest.slice(0, end) + '\n    }';
 }
 
-const METHODS = ['_nextPlayFrame', '_advance', '_seqPlaybackLoop', 'shuttle', '_videoReverse', '_frameReady', '_syncSequenceAudio'];
+const METHODS = ['_nextPlayFrame', '_advance', '_seqPlaybackLoop', '_skipToDueFrame', '_hasFramesInHand',
+    'shuttle', '_videoReverse', '_frameReady', '_syncSequenceAudio'];
 
 // Fake clock and RAF, shared by every stand-in.
 let now = 0;

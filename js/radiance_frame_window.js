@@ -157,10 +157,9 @@ export class RadianceFrameWindow {
     }
 
     /**
-     * Frames the window holds, each with its distance from the playhead: the
-     * span. ALBABIT-FIX: in a looping range, the same read-ahead runs through
-     * the out point and on from the in point, so playback no longer stops at
-     * the loop to load the frames it wraps to.
+     * Frames the window holds, each with its distance from the playhead.
+     * ALBABIT-FIX: in a looping range the read-ahead runs on from the in
+     * point, so playback no longer stops at the loop to load it.
      */
     _wanted() {
         const wanted = new Map();
