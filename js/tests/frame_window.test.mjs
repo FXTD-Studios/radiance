@@ -413,3 +413,14 @@ test('the window bounds are named constants, not magic numbers', () => {
     assert.ok(DEFAULT_FRAME_WINDOW > 0 && DEFAULT_FRAME_WINDOW < 128);
     assert.ok(DEFAULT_FETCH_CONCURRENCY > 0 && DEFAULT_FETCH_CONCURRENCY <= 8);
 });
+
+test('the simple bar is enabled as soon as a sequence is installed', () => {
+    // It waited for a full window, which a 1080p clip never reaches (13 of 16
+    // frames fit the byte budget): Play and the slider stayed off in Simple
+    // mode until the user switched to Advanced and back.
+    const src = read('radiance_viewer.js');
+    const start = src.indexOf('    _installFrameWindow(');
+    const body = src.slice(start, src.indexOf('\n    }\n', start));
+    assert.match(body, /setSequence\([^)]*\);[\s\S]*this\._syncSimpleTransport/,
+        'installing a sequence does not update the simple bar');
+});
