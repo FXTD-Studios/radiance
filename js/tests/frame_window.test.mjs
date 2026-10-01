@@ -244,6 +244,38 @@ test('a jump outside the window pages the frame in on demand', async () => {
     assert.ok(stub.live.size <= win.windowSize);
 });
 
+test('a looping range reads its in point ahead of the wrap', async () => {
+    // Playback stopped at the loop to load the in point: it was outside the
+    // window until the playhead got there.
+    const stub = stubLoader();
+    const win = makeWindow(stub);
+    win.setSequence(sequence(200), 0);
+    win.loop = { start: 0, end: 199 };
+    win.setPlayhead(195);
+    await drain(win);
+    for (let f = 0; f < 6; f++) assert.ok(win.has(f), `frame ${f}, past the out point, is not loaded`);
+    assert.ok(win.inSpan(0) && win.isWindowReady());
+});
+
+test('under the byte ceiling the loop keeps its in point and lets played frames go', async () => {
+    const stub = stubLoader();
+    const win = makeWindow(stub, { maxBytes: 13 * FRAME_BYTES });   // what a 1080p clip leaves room for
+    win.setSequence(sequence(200), 0);
+    win.loop = { start: 0, end: 199 };
+    for (let f = 180; f <= 197; f++) { win.setPlayhead(f); await drain(win); }
+    assert.ok(win.has(0) && win.has(1), 'the in point was evicted before frames already played');
+    assert.ok(!win.has(185), 'a frame already played is still held');
+});
+
+test('without a loop the window stops at the last frame', async () => {
+    const stub = stubLoader();
+    const win = makeWindow(stub);
+    win.setSequence(sequence(200), 0);
+    win.setPlayhead(195);
+    await drain(win);
+    assert.ok(!win.has(0) && !win.inSpan(0));
+});
+
 test('a new sequence releases the previous one', async () => {
     const stub = stubLoader();
     const win = makeWindow(stub);

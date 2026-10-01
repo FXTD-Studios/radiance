@@ -10442,6 +10442,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         // frame in on demand; ensure() jumps it ahead of the read-ahead queue
         // and _displaySequenceFrame() puts it up when it lands.
         if (this._frameWindow) {
+            // ALBABIT-FIX: a looping playback reads its in point ahead of the
+            // wrap (it stopped there to load it).
+            const [a, b] = this._range();
+            const loops = this.isPlaying && this.playDirection !== -1
+                && (this.loopMode || (this.loop ? 'loop' : 'once')) === 'loop';
+            this._frameWindow.loop = loops ? { start: a, end: b } : null;
             this._frameWindow.setPlayhead(idx);
             if (!this._frameWindow.has(idx)) {
                 this._frameWindow.ensure(idx).then(() => {
