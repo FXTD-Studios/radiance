@@ -2424,10 +2424,8 @@ class RadianceViewer {
     }
 
     /**
-     * ALBABIT-FIX: a canvas under host's content where _drawCacheMarks puts a
-     * small mark for each frame the paging window holds. measure() says where
-     * frame 0 and the last frame sit and the marks' top; it runs on resize
-     * only, never on a frame of playback.
+     * ALBABIT-FIX: a canvas under host's content for the cache marks (see
+     * _drawCacheMarks). measure() places them; it runs on resize only.
      */
     _addCacheMarks(host, measure) {
         const canvas = document.createElement('canvas');
@@ -2442,6 +2440,24 @@ class RadianceViewer {
         return marks;
     }
 
+    /**
+     * ALBABIT-FIX: the sequence dock's cache marks, at the top of V1 under the
+     * playhead. Called after each rebuild of the track, which removes them.
+     */
+    _placeTrackMarks() {
+        const track = this.sequenceTrack;
+        if (this._trackMarks) track.prepend(this._trackMarks.canvas);
+        else {
+            this._trackMarks = this._addCacheMarks(track, () => ({
+                w: track.clientWidth, h: track.clientHeight, x0: 0, span: track.clientWidth,
+                top: (track.querySelector('.radiance-pro-lane-v1')?.offsetTop ?? 0) + 2,
+            }));
+            this._trackMarks.canvas.style.zIndex = '40';
+        }
+        this._trackMarks.geo = this._trackMarks.measure();
+        this._queueCacheMarks();
+    }
+
     /** The simple bar's slider, over cache marks; its native thumb is 16 px. */
     _withCacheMarks(input) {
         const wrap = document.createElement('div');
@@ -2453,6 +2469,38 @@ class RadianceViewer {
             top: input.offsetTop + input.offsetHeight / 2 - 9,
         }));
         return wrap;
+    }
+
+    _queueCacheMarks() {
+        if (this._cacheMarks && !this._cacheMarksRAF) {
+            this._cacheMarksRAF = requestAnimationFrame(() => this._drawCacheMarks());
+        }
+    }
+
+    /** One mark per frame the paging window holds, paler while it loads. */
+    _drawCacheMarks() {
+        this._cacheMarksRAF = 0;
+        const total = this.totalFrames || 0;
+        const state = this._frameWindow && total > 1 ? this._frameWindow.cacheState() : { held: [], loading: [] };
+        const dpr = window.devicePixelRatio || 1;
+        const tick = Math.max(1, Math.round(dpr));
+        for (const { canvas, geo } of this._cacheMarks) {
+            if (!geo?.w) continue;                             // not laid out (the other UI mode)
+            const w = Math.round(geo.w * dpr), h = Math.round(geo.h * dpr);
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            ctx.shadowColor = 'rgba(57,170,255,0.7)';
+            ctx.shadowBlur = 3 * dpr;
+            const y = Math.round(geo.top * dpr);
+            for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
+                ctx.fillStyle = `rgba(57,170,255,${alpha})`;
+                for (const f of frames) {
+                    const x = geo.x0 + (f / (total - 1)) * geo.span;
+                    ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
+                }
+            }
+        }
     }
 
     /** ALBABIT-FIX: a sound on/off button next to Play, in both bars. */
@@ -2484,38 +2532,6 @@ class RadianceViewer {
             b.disabled = !hasSound;
             b.title = !hasSound ? 'No sound in this clip' : muted ? 'Sound off: click to turn it on' : 'Sound on: click to mute';
             b.setAttribute('aria-pressed', String(muted));
-        }
-    }
-
-    _queueCacheMarks() {
-        if (this._cacheMarks && !this._cacheMarksRAF) {
-            this._cacheMarksRAF = requestAnimationFrame(() => this._drawCacheMarks());
-        }
-    }
-
-    /** One mark per frame held above each timeline slider, paler while it loads. */
-    _drawCacheMarks() {
-        this._cacheMarksRAF = 0;
-        const total = this.totalFrames || 0;
-        const state = this._frameWindow && total > 1 ? this._frameWindow.cacheState() : { held: [], loading: [] };
-        const dpr = window.devicePixelRatio || 1;
-        const tick = Math.max(1, Math.round(dpr));
-        for (const { canvas, geo } of this._cacheMarks) {
-            if (!geo?.w) continue;                             // not laid out (the other UI mode)
-            const w = Math.round(geo.w * dpr), h = Math.round(geo.h * dpr);
-            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, w, h);
-            ctx.shadowColor = 'rgba(57,170,255,0.7)';
-            ctx.shadowBlur = 3 * dpr;
-            const y = Math.round(geo.top * dpr);
-            for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
-                ctx.fillStyle = `rgba(57,170,255,${alpha})`;
-                for (const f of frames) {
-                    const x = geo.x0 + (f / (total - 1)) * geo.span;
-                    ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
-                }
-            }
         }
     }
 
@@ -3395,19 +3411,7 @@ class RadianceViewer {
             playhead.appendChild(handle);
             this.sequenceTrack.appendChild(playhead);
 
-            // ALBABIT-FIX: the cache marks, at the top of V1 under the playhead.
-            // Clearing the track above took their canvas out.
-            const track = this.sequenceTrack;
-            if (this._trackMarks) track.prepend(this._trackMarks.canvas);
-            else {
-                this._trackMarks = this._addCacheMarks(track, () => ({
-                    w: track.clientWidth, h: track.clientHeight, x0: 0, span: track.clientWidth,
-                    top: (track.querySelector('.radiance-pro-lane-v1')?.offsetTop ?? 0) + 2,
-                }));
-                this._trackMarks.canvas.style.zIndex = '40';
-            }
-            this._trackMarks.geo = this._trackMarks.measure();
-            this._queueCacheMarks();
+            this._placeTrackMarks();
 
             this._lastTimelineStateStr = stateStr;
 
