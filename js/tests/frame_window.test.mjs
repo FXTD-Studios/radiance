@@ -321,6 +321,8 @@ test('measureFramePayload charges the float data, the proxy and the brackets', (
         }),
         400 + 200 + 400 * 3,
     );
+    // A paged compare frame is one more full-size bitmap.
+    assert.equal(measureFramePayload({ hdr, compare: { width: 10, height: 10 } }), 400 + 200 + 400);
 });
 
 test('exposure brackets are paged with their frame, not loaded all at once', () => {
@@ -343,6 +345,18 @@ test('z-depth is paged with its frame too', () => {
         'depth is not carried on the paged frame payload');
     assert.match(src, /this\.frameZdepthImages\[idx\] = null/,
         'depth is not released when its frame is evicted');
+});
+
+test('a compare sequence is paged with its frame too', () => {
+    // It was the last unbounded loader: every compare frame requested at once,
+    // full size, and held for the whole run. A still is still loaded whole.
+    const src = read('radiance_viewer.js');
+    assert.match(src, /if \(!pageCompare\) compareImages\.forEach/,
+        'a compare sequence as long as the clip is loaded all at once again');
+    assert.match(src, /payload\.compare = compare/,
+        'compare is not carried on the paged frame payload');
+    assert.match(src, /this\.frameCompareImages\[idx\] = null/,
+        'compare is not released when its frame is evicted');
 });
 
 // ── the viewer is wired to it ───────────────────────────────────────────────
