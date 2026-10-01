@@ -6524,11 +6524,13 @@ else:
      * eviction the slots are nulled, which is what actually releases the
      * Float32Array and lets the tab survive a 10,000-frame shot.
      */
-    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null) {
+    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null) {
         if (this._frameWindow) this._frameWindow.clear();
         this._hdrFallbackReasons = [];
         this._bracketByFrame = bracketByFrame || new Map();
         this._zdepthEntries = Array.isArray(zdepthEntries) ? zdepthEntries : [];
+        this._compareEntries = Array.isArray(compareEntries) ? compareEntries : [];
+        this._compareShown = false;
 
         this._frameWindow = new _RadianceFrameWindow({
             windowSize: RadianceViewer.frameWindowSize(),
@@ -6543,6 +6545,16 @@ else:
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
+                if (payload.compare) {
+                    this.frameCompareImages[idx] = payload.compare;
+                    if (idx === this.currentFrame) {
+                        // The first compare frame of a run sets B up, as
+                        // when the whole sequence was loaded at once.
+                        if (this._compareShown) this._updateCompareForFrame(idx, true);
+                        else this.setCompareImage(payload.compare);
+                        this._compareShown = true;
+                    }
+                }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
                     this._renderReferenceRightHUD?.();
@@ -6558,6 +6570,7 @@ else:
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
+                if (this._compareEntries.length) this.frameCompareImages[idx] = null;
             },
             onError: (err, idx) => {
                 console.warn('[Radiance] Frame', idx, 'failed to load:', err);
@@ -6748,6 +6761,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         const depthEntry = this._zdepthEntries ? this._zdepthEntries[idx] : null;
+        const compareEntry = this._compareEntries ? this._compareEntries[idx] : null;
 
         return Promise.all([
             imgPromise,
@@ -6755,7 +6769,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(brackets && brackets.low),
             loadBracket(brackets && brackets.high),
             loadBracket(depthEntry),
-        ]).then(([img, hdr, low, high, depth]) => {
+            loadBracket(compareEntry),
+        ]).then(([img, hdr, low, high, depth, compare]) => {
             if (this.generationID !== generation) return null;
             if (!img && !hdr) return null;
             payload.img = img;
@@ -6763,6 +6778,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
+            payload.compare = compare;
             return payload;
         });
     }
@@ -21791,10 +21807,18 @@ app.registerExtension({
             const srcFps = Number(message.fps?.[0]);
             if (Number.isFinite(srcFps) && srcFps > 0) viewer.setPlaybackFps?.(srcFps);
 
-            viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages);
+            // ALBABIT-FIX: a compare sequence as long as the clip pages with
+            // its frames, like the depth and the brackets: every compare frame
+            // was requested at once, full size, and held for the whole run. A
+            // shorter compare input (a still) is still loaded whole: its last
+            // frame stands for the rest of the clip.
+            const pageCompare = compareImages.length >= mainImages.length;
+            if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
+            viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
+                pageCompare ? compareImages : null);
 
             // Load compare images
-            compareImages.forEach((imgData, idx) => {
+            if (!pageCompare) compareImages.forEach((imgData, idx) => {
                 const cmp = new Image();
                 cmp.crossOrigin = 'anonymous';
                 cmp.onload = () => {

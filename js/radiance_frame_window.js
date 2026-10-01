@@ -52,7 +52,7 @@ export function measureFramePayload(payload) {
         if (hdr.data && typeof hdr.data.byteLength === 'number') bytes += hdr.data.byteLength;
         if (hdr.fp16data && typeof hdr.fp16data.byteLength === 'number') bytes += hdr.fp16data.byteLength;
     }
-    for (const key of ['img', 'bracketLow', 'bracketHigh']) {
+    for (const key of ['img', 'bracketLow', 'bracketHigh', 'compare']) {
         const img = payload[key];
         if (img && img.width && img.height) bytes += img.width * img.height * 4;
     }
