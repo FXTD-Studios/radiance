@@ -6700,6 +6700,10 @@ else:
         });
 
         this._frameWindow.setSequence(entries, this.currentFrame || 0);
+        // ALBABIT-FIX: the simple bar learns the frame count now. It waited for
+        // a full window, which a 1080p clip never reaches (13 of 16 frames fit
+        // the byte budget): Play and the slider stayed off in Simple mode.
+        this._syncSimpleTransport?.();
     }
 
     /**
