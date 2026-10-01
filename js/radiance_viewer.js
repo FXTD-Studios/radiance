@@ -2276,6 +2276,8 @@ class RadianceViewer {
             .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
             .radiance-cache-marks > input { position: relative; }
             .radiance-cache-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+            .radiance-mute { display: inline-flex; align-items: center; justify-content: center; }
+            .radiance-mute:disabled { opacity: .35; cursor: default; }
             .radiance-simple-bar .rsb-b { color: rgba(232,238,247,.55); white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; max-width: 150px; min-width: 0; }
             .radiance-simple-bar .rsb-pin { border: 1px solid rgba(255,255,255,.14); }
@@ -2357,7 +2359,7 @@ class RadianceViewer {
         this._sbPrev = btn('‹', 'Previous frame (Left)', () => this.prevFrame?.());
         this._sbPlay = btn('▶', 'Play / pause (Space)', () => this.togglePlayback(), 'rsb-play');
         this._sbNext = btn('›', 'Next frame (Right)', () => this.nextFrame?.());
-        transport.append(this._sbPrev, this._sbPlay, this._sbNext);
+        transport.append(this._sbPrev, this._sbPlay, this._sbNext, this._muteButton());
 
         const scrub = document.createElement('input');
         scrub.type = 'range'; scrub.min = '0'; scrub.max = '0'; scrub.step = '1'; scrub.value = '0';
@@ -2451,6 +2453,38 @@ class RadianceViewer {
             top: input.offsetTop + input.offsetHeight / 2 - 9,
         }));
         return wrap;
+    }
+
+    /** ALBABIT-FIX: a sound on/off button next to Play, in both bars. */
+    _muteButton() {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'radiance-mute';
+        b.setAttribute('aria-label', 'Sound');
+        b.onclick = () => this._setAudioMuted(!this.audioMuted);
+        (this._muteButtons ||= []).push(b);
+        this._syncMuteButtons();
+        return b;
+    }
+
+    _setAudioMuted(muted) {
+        this.audioMuted = muted;
+        if (this._sequenceAudio) this._sequenceAudio.muted = muted;
+        this._syncMuteButtons();
+    }
+
+    _syncMuteButtons() {
+        const muted = !!this.audioMuted, hasSound = !!this._sequenceAudio;
+        const waves = muted ? '<path d="M11 6l4 4M15 6l-4 4"/>'
+            : '<path d="M10.8 5.6a3.4 3.4 0 0 1 0 4.8M12.7 3.7a6 6 0 0 1 0 8.6"/>';
+        for (const b of this._muteButtons || []) {
+            b.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" '
+                + 'stroke-width="1.5" stroke-linecap="round" aria-hidden="true">'
+                + '<path d="M2 6h2.6L8 3.2v9.6L4.6 10H2z" fill="currentColor" stroke="none"/>' + waves + '</svg>';
+            b.disabled = !hasSound;
+            b.title = !hasSound ? 'No sound in this clip' : muted ? 'Sound off: click to turn it on' : 'Sound on: click to mute';
+            b.setAttribute('aria-pressed', String(muted));
+        }
     }
 
     _queueCacheMarks() {
@@ -2881,7 +2915,7 @@ class RadianceViewer {
         next.textContent = '›';
         next.title = 'Next frame';
         next.onclick = () => this.nextFrame();
-        controls.append(prev, this.sequencePlayButton, next);
+        controls.append(prev, this.sequencePlayButton, next, this._muteButton());
         this.sequenceRange = document.createElement('input');
         this.sequenceRange.type = 'range';
         this.sequenceRange.className = 'radiance-pro-sequence-range';
@@ -21829,8 +21863,10 @@ app.registerExtension({
             const audio = message.audio?.[0];
             if (audio?.filename) {
                 viewer._sequenceAudio = new Audio(api.apiURL('/view?' + new URLSearchParams(audio)));
+                viewer._sequenceAudio.muted = !!viewer.audioMuted;
                 viewer._sequenceAudioFps = Number(message.audio_fps?.[0]) || Number(message.fps?.[0]) || 24;
             }
+            viewer._syncMuteButtons();
 
             // v3.1: Increment generation ID to invalidate in-flight async loads from previous results
             viewer.generationID++;
