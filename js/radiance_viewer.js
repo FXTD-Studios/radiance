@@ -2272,6 +2272,12 @@ class RadianceViewer {
             .radiance-simple-bar .rsb-play.is-active { background: #39aaff; color: #071019; }
             .radiance-simple-bar .rsb-frame { font-family: var(--radiance-font-mono); min-width: 64px; }
             .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #39aaff; }
+            .radiance-simple-bar .radiance-cache-marks { flex: 1 1 120px; min-width: 60px; }
+            .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
+            .radiance-cache-marks > input { position: relative; }
+            .radiance-cache-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+            .radiance-mute { display: inline-flex; align-items: center; justify-content: center; }
+            .radiance-mute:disabled { opacity: .35; cursor: default; }
             .radiance-simple-bar .rsb-b { color: rgba(232,238,247,.55); white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; max-width: 150px; min-width: 0; }
             .radiance-simple-bar .rsb-pin { border: 1px solid rgba(255,255,255,.14); }
@@ -2353,7 +2359,7 @@ class RadianceViewer {
         this._sbPrev = btn('‹', 'Previous frame (Left)', () => this.prevFrame?.());
         this._sbPlay = btn('▶', 'Play / pause (Space)', () => this.togglePlayback(), 'rsb-play');
         this._sbNext = btn('›', 'Next frame (Right)', () => this.nextFrame?.());
-        transport.append(this._sbPrev, this._sbPlay, this._sbNext);
+        transport.append(this._sbPrev, this._sbPlay, this._sbNext, this._muteButton());
 
         const scrub = document.createElement('input');
         scrub.type = 'range'; scrub.min = '0'; scrub.max = '0'; scrub.step = '1'; scrub.value = '0';
@@ -2386,7 +2392,7 @@ class RadianceViewer {
             this._syncCompareUI();
         }, 'rsb-pin');
         const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
-        bar.append(transport, scrub, frame, cmp, this._sbBLabel, this._sbPin, fit);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbPin, fit);
         return bar;
     }
 
@@ -2414,6 +2420,118 @@ class RadianceViewer {
         if (this._sbPin) {
             this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
             this._sbPin.disabled = !this.image && !this.renderer?.textures?.image;
+        }
+    }
+
+    /**
+     * ALBABIT-FIX: a canvas under host's content for the cache marks (see
+     * _drawCacheMarks). measure() places them; it runs on resize only.
+     */
+    _addCacheMarks(host, measure) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'radiance-cache-canvas';
+        host.prepend(canvas);
+        const marks = { canvas, measure, geo: null };
+        (this._cacheMarks ||= []).push(marks);
+        new ResizeObserver(() => {
+            marks.geo = measure();
+            this._queueCacheMarks();
+        }).observe(host);
+        return marks;
+    }
+
+    /**
+     * ALBABIT-FIX: the sequence dock's cache marks, at the top of V1 under the
+     * playhead. Called after each rebuild of the track, which removes them.
+     */
+    _placeTrackMarks() {
+        const track = this.sequenceTrack;
+        if (this._trackMarks) track.prepend(this._trackMarks.canvas);
+        else {
+            this._trackMarks = this._addCacheMarks(track, () => ({
+                w: track.clientWidth, h: track.clientHeight, x0: 0, span: track.clientWidth,
+                top: (track.querySelector('.radiance-pro-lane-v1')?.offsetTop ?? 0) + 2,
+            }));
+            this._trackMarks.canvas.style.zIndex = '40';
+        }
+        this._trackMarks.geo = this._trackMarks.measure();
+        this._queueCacheMarks();
+    }
+
+    /** The simple bar's slider, over cache marks; its native thumb is 16 px. */
+    _withCacheMarks(input) {
+        const wrap = document.createElement('div');
+        wrap.className = 'radiance-cache-marks';
+        wrap.append(input);
+        this._addCacheMarks(wrap, () => ({
+            w: wrap.clientWidth, h: wrap.clientHeight,
+            x0: input.offsetLeft + 8, span: input.offsetWidth - 16,
+            top: input.offsetTop + input.offsetHeight / 2 - 9,
+        }));
+        return wrap;
+    }
+
+    _queueCacheMarks() {
+        if (this._cacheMarks && !this._cacheMarksRAF) {
+            this._cacheMarksRAF = requestAnimationFrame(() => this._drawCacheMarks());
+        }
+    }
+
+    /** One mark per frame the paging window holds, paler while it loads. */
+    _drawCacheMarks() {
+        this._cacheMarksRAF = 0;
+        const total = this.totalFrames || 0;
+        const state = this._frameWindow && total > 1 ? this._frameWindow.cacheState() : { held: [], loading: [] };
+        const dpr = window.devicePixelRatio || 1;
+        const tick = Math.max(1, Math.round(dpr));
+        for (const { canvas, geo } of this._cacheMarks) {
+            if (!geo?.w) continue;                             // not laid out (the other UI mode)
+            const w = Math.round(geo.w * dpr), h = Math.round(geo.h * dpr);
+            if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            ctx.shadowColor = 'rgba(57,170,255,0.7)';
+            ctx.shadowBlur = 3 * dpr;
+            const y = Math.round(geo.top * dpr);
+            for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
+                ctx.fillStyle = `rgba(57,170,255,${alpha})`;
+                for (const f of frames) {
+                    const x = geo.x0 + (f / (total - 1)) * geo.span;
+                    ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
+                }
+            }
+        }
+    }
+
+    /** ALBABIT-FIX: a sound on/off button next to Play, in both bars. */
+    _muteButton() {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'radiance-mute';
+        b.setAttribute('aria-label', 'Sound');
+        b.onclick = () => this._setAudioMuted(!this.audioMuted);
+        (this._muteButtons ||= []).push(b);
+        this._syncMuteButtons();
+        return b;
+    }
+
+    _setAudioMuted(muted) {
+        this.audioMuted = muted;
+        if (this._sequenceAudio) this._sequenceAudio.muted = muted;
+        this._syncMuteButtons();
+    }
+
+    _syncMuteButtons() {
+        const muted = !!this.audioMuted, hasSound = !!this._sequenceAudio;
+        const waves = muted ? '<path d="M11 6l4 4M15 6l-4 4"/>'
+            : '<path d="M10.8 5.6a3.4 3.4 0 0 1 0 4.8M12.7 3.7a6 6 0 0 1 0 8.6"/>';
+        for (const b of this._muteButtons || []) {
+            b.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" '
+                + 'stroke-width="1.5" stroke-linecap="round" aria-hidden="true">'
+                + '<path d="M2 6h2.6L8 3.2v9.6L4.6 10H2z" fill="currentColor" stroke="none"/>' + waves + '</svg>';
+            b.disabled = !hasSound;
+            b.title = !hasSound ? 'No sound in this clip' : muted ? 'Sound off: click to turn it on' : 'Sound on: click to mute';
+            b.setAttribute('aria-pressed', String(muted));
         }
     }
 
@@ -2813,7 +2931,7 @@ class RadianceViewer {
         next.textContent = '›';
         next.title = 'Next frame';
         next.onclick = () => this.nextFrame();
-        controls.append(prev, this.sequencePlayButton, next);
+        controls.append(prev, this.sequencePlayButton, next, this._muteButton());
         this.sequenceRange = document.createElement('input');
         this.sequenceRange.type = 'range';
         this.sequenceRange.className = 'radiance-pro-sequence-range';
@@ -3292,6 +3410,8 @@ class RadianceViewer {
             handle.style.cssText = 'position:absolute; top:0; left:50%; transform:translateX(-50%); border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid #ff3333;';
             playhead.appendChild(handle);
             this.sequenceTrack.appendChild(playhead);
+
+            this._placeTrackMarks();
 
             this._lastTimelineStateStr = stateStr;
 
@@ -6524,11 +6644,13 @@ else:
      * eviction the slots are nulled, which is what actually releases the
      * Float32Array and lets the tab survive a 10,000-frame shot.
      */
-    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null) {
+    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null) {
         if (this._frameWindow) this._frameWindow.clear();
         this._hdrFallbackReasons = [];
         this._bracketByFrame = bracketByFrame || new Map();
         this._zdepthEntries = Array.isArray(zdepthEntries) ? zdepthEntries : [];
+        this._compareEntries = Array.isArray(compareEntries) ? compareEntries : [];
+        this._compareShown = false;
 
         this._frameWindow = new _RadianceFrameWindow({
             windowSize: RadianceViewer.frameWindowSize(),
@@ -6543,11 +6665,22 @@ else:
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
+                if (payload.compare) {
+                    this.frameCompareImages[idx] = payload.compare;
+                    if (idx === this.currentFrame) {
+                        // The first compare frame of a run sets B up, as
+                        // when the whole sequence was loaded at once.
+                        if (this._compareShown) this._updateCompareForFrame(idx, true);
+                        else this.setCompareImage(payload.compare);
+                        this._compareShown = true;
+                    }
+                }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
                     this._renderReferenceRightHUD?.();
                 }
                 if (this._allFramesReady()) this.updateFrameDisplay();
+                this._queueCacheMarks();
             },
             onEvict: (idx) => {
                 // The whole point of the window: drop the decoded pixels for a
@@ -6558,6 +6691,8 @@ else:
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
+                if (this._compareEntries.length) this.frameCompareImages[idx] = null;
+                this._queueCacheMarks();
             },
             onError: (err, idx) => {
                 console.warn('[Radiance] Frame', idx, 'failed to load:', err);
@@ -6575,6 +6710,79 @@ else:
      * three paths that drop to the 8-bit proxy used to only console.warn and
      * the status bar went on claiming FP32 (see _updateBitDepthBadge).
      */
+    /**
+     * ALBABIT-FIX: workers that fetch and decode RHDR sidecars, built from
+     * _parseRHDR's own source (on the main thread, ~40 ms per 1080p frame).
+     * null when workers cannot run: frames are decoded here, as before.
+     */
+    static _sidecarWorkers() {
+        if (RadianceViewer._sidecarPool !== undefined) return RadianceViewer._sidecarPool;
+        RadianceViewer._sidecarPool = null;
+        try {
+            const p = RadianceViewer.prototype;
+            const src = `const RadianceViewer = {};
+class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} }
+const decoder = new Decoder();
+self.onmessage = async ({ data: { id, url } }) => {
+    try {
+        const buffer = await (await fetch(url)).arrayBuffer();
+        if (buffer.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buffer, 0, 4)) !== 'RHDR') {
+            self.postMessage({ id, buffer }, [buffer]);
+            return;
+        }
+        const parsed = await decoder._parseRHDR(buffer);
+        const transfer = parsed ? new Set([parsed.data.buffer, parsed.fp16data?.buffer].filter(Boolean)) : [];
+        self.postMessage({ id, parsed }, [...transfer]);
+    } catch (e) {
+        self.postMessage({ id, error: String(e?.message || e) });
+    }
+};`;
+            const script = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+            const workers = Array.from({ length: RadianceViewer.frameWindowConcurrency() }, () => {
+                const w = new Worker(script);
+                w.jobs = new Map();
+                w.onmessage = ({ data }) => {
+                    const done = w.jobs.get(data.id);
+                    w.jobs.delete(data.id);
+                    done?.(data);
+                };
+                w.onerror = (e) => {
+                    for (const done of w.jobs.values()) done({ workerFailed: e.message || 'worker error' });
+                    w.jobs.clear();
+                };
+                return w;
+            });
+            let lastId = 0;
+            RadianceViewer._sidecarPool = {
+                decode(url) {
+                    const w = workers.reduce((a, b) => (b.jobs.size < a.jobs.size ? b : a));
+                    const id = ++lastId;
+                    return new Promise((resolve) => {
+                        w.jobs.set(id, resolve);
+                        w.postMessage({ id, url });
+                    });
+                },
+            };
+        } catch (e) {
+            console.warn('[Radiance] Sidecar workers unavailable, decoding frames on the main thread:', e);
+        }
+        return RadianceViewer._sidecarPool;
+    }
+
+    /** Fetch and parse one float sidecar, in a worker when there are some. */
+    async _fetchSidecar(url) {
+        const pool = RadianceViewer._sidecarWorkers();
+        if (pool) {
+            const reply = await pool.decode(new URL(url, location.href).href);
+            if (reply.error) throw new Error(reply.error);
+            if (reply.buffer) return this._parseHDRBuffer(reply.buffer);       // not RHDR
+            if (!reply.workerFailed) return reply.parsed;
+            console.warn('[Radiance] Sidecar worker failed, decoding frames on the main thread:', reply.workerFailed);
+            RadianceViewer._sidecarPool = null;
+        }
+        return this._parseHDRBuffer(await (await fetch(url)).arrayBuffer());
+    }
+
     _loadSequenceFrame(imgData, idx, generation) {
         if (!imgData) return Promise.resolve(null);
 
@@ -6613,10 +6821,8 @@ else:
         let hdrPromise = Promise.resolve(null);
         if (imgData.hdr_sidecar) {
             const hdrUrl = viewUrl(imgData.hdr_sidecar, imgData.subfolder, imgData.type);
-            hdrPromise = fetch(hdrUrl)
-                .then((r) => r.arrayBuffer())
-                .then(async (buffer) => {
-                    const npy = await this._parseHDRBuffer(buffer);
+            hdrPromise = this._fetchSidecar(hdrUrl)
+                .then((npy) => {
                     if (!npy) {
                         // _parseRHDR returns null with no DecompressionStream
                         // and on a payload-size integrity mismatch.
@@ -6676,6 +6882,7 @@ else:
         });
 
         const depthEntry = this._zdepthEntries ? this._zdepthEntries[idx] : null;
+        const compareEntry = this._compareEntries ? this._compareEntries[idx] : null;
 
         return Promise.all([
             imgPromise,
@@ -6683,7 +6890,8 @@ else:
             loadBracket(brackets && brackets.low),
             loadBracket(brackets && brackets.high),
             loadBracket(depthEntry),
-        ]).then(([img, hdr, low, high, depth]) => {
+            loadBracket(compareEntry),
+        ]).then(([img, hdr, low, high, depth, compare]) => {
             if (this.generationID !== generation) return null;
             if (!img && !hdr) return null;
             payload.img = img;
@@ -6691,6 +6899,7 @@ else:
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
+            payload.compare = compare;
             return payload;
         });
     }
@@ -9828,6 +10037,8 @@ else:
         // Frame-sequence mode
         this.isPlaying = !this.isPlaying;
         this._audioBlocked = false;
+        this._waitingForFrame = false;
+        this._lastTick = 0;
         this._syncSequenceAudio();
         this._updatePlayBtn();
 
@@ -9846,6 +10057,8 @@ else:
                 cancelAnimationFrame(this._seqRAF);
                 this._seqRAF = null;
             }
+            // ALBABIT-FIX: the panel shows the frame playback stopped on.
+            if (this._hudDrawnAt) this._renderReferenceRightHUD?.();
         }
     }
 
@@ -9865,8 +10078,12 @@ else:
 
         const now = performance.now();
         const interval = 1000 / (this.playbackFps || 24);
+        // Smoothed time between ticks (see _skipToDueFrame).
+        this._tickGap = this._lastTick ? this._tickGap * 0.8 + (now - this._lastTick) * 0.2 : 0;
+        this._lastTick = now;
 
         if (now - this.lastFrameTime >= interval) {
+            if (this.playEveryFrame === false) this._skipToDueFrame(now, interval);
             // 3.5.0: the next frame may not be paged in yet. "Every frame"
             // (default, what a review needs) waits for it; "realtime" keeps the
             // clock and counts the frame as dropped. It used to move the
@@ -9880,8 +10097,14 @@ else:
             const step = this._nextPlayFrame();
             if (step.stop) {
                 this._advance();                       // play-once: stops here
-            } else if (!this._frameReady(step.frame) && this.playEveryFrame !== false) {
+            } else if (!this._hasFramesInHand(step) && (this.playEveryFrame !== false
+                || this._waitingForFrame || !this._frameReady(this.currentFrame))) {
+                // ALBABIT-FIX: the clock waits with the picture, the sound
+                // pauses. "Realtime" waits too after a jump (a click, a loop):
+                // it chased frames that landed after the playhead had left.
                 this._stallCount = (this._stallCount || 0) + 1;
+                this._waitingForFrame = true;
+                this.lastFrameTime = now - interval;
                 if (this._frameWindow && !this._frameWindow.inSpan(step.frame)) {
                     // A loop wrapping back to its in point: that frame is
                     // outside the paging window, and loading it there would
@@ -9897,8 +10120,13 @@ else:
             } else {
                 const ready = this._frameReady(step.frame);
                 if (!ready) this.droppedFrames = (this.droppedFrames || 0) + 1;
+                this._waitingForFrame = false;
                 this._advance();
-                this.lastFrameTime = now - ((now - this.lastFrameTime) % interval);
+                // ALBABIT-FIX: a late tick's time is caught up, not dropped (the
+                // picture ran slow and pulled the sound back). Half a second
+                // behind (a hidden tab), the clock starts again from now.
+                this.lastFrameTime = now - this.lastFrameTime > interval + 500
+                    ? now : this.lastFrameTime + interval;
             }
         }
 
@@ -9906,16 +10134,66 @@ else:
         if (this.isPlaying) this._seqRAF = requestAnimationFrame(() => this._seqPlaybackLoop());
     }
 
+    /**
+     * ALBABIT-FIX: "Realtime" on a page that ticks slower than the clip skips
+     * to the frame now due. A faster page catches a late tick up by showing
+     * the next frames sooner. A slow page used to play the clip slow.
+     */
+    _skipToDueFrame(now, interval) {
+        const behind = now - this.lastFrameTime;
+        if (this._waitingForFrame || this._tickGap <= 0.75 * interval
+            || behind < 2 * interval || behind > interval + 500) return;
+        while (now - this.lastFrameTime >= 2 * interval) {
+            const skip = this._nextPlayFrame();
+            if (skip.stop) break;
+            this.currentFrame = skip.frame;
+            this.playDirection = skip.dir;
+            this.lastFrameTime += interval;
+            this.droppedFrames = (this.droppedFrames || 0) + 1;
+        }
+    }
+
+    /**
+     * ALBABIT-FIX: whether the step's frame can go up. Once playback waits, it
+     * resumes with a few frames in hand (or nothing left to load), not on the
+     * first to land, which stopped it again on the next frame.
+     */
+    _hasFramesInHand(step) {
+        if (!this._frameReady(step.frame)) return false;
+        const win = this._frameWindow;
+        if (!this._waitingForFrame || !win || !(win.inFlight || win.queuedCount)) return true;
+        const [a, b] = this._range();
+        for (let k = 1, f = step.frame + step.dir; k < 6 && f >= a && f <= b; k++, f += step.dir) {
+            if (!this._frameReady(f)) return false;
+        }
+        return true;
+    }
+
     _syncSequenceAudio() {
         const audio = this._sequenceAudio;
         if (!audio) return;
         const fps = this._sequenceAudioFps || this.playbackFps || 24;
         const time = this.currentFrame / fps;
-        const stalled = this._frameReady && !this._frameReady(this._nextPlayFrame().frame);
+        // ALBABIT-FIX: the sound pauses only while playback waits for a frame,
+        // not whenever the next one is still loading.
+        const stalled = !!this._waitingForFrame;
         const playing = this.isPlaying && !this.videoMode && this.playDirection !== -1 && !stalled;
         if (!playing) audio.pause();
-        if (Number.isFinite(time) && Math.abs(audio.currentTime - time) > 0.12) audio.currentTime = time;
-        audio.playbackRate = Math.max(0.0625, Math.min(16, (this.playbackFps || fps) / fps));
+        const rate = Math.max(0.0625, Math.min(16, (this.playbackFps || fps) / fps));
+        const drift = audio.currentTime - time;
+        // ALBABIT-FIX: while playing, a small drift steers the sound's rate
+        // (pitch kept); only a jump moves it. Pulled back each time the picture
+        // fell 0.12 s behind, it replayed that much: a second, delayed track.
+        if (playing && Math.abs(drift) < 0.5) {
+            // Smoothed, so the rate does not follow the picture's frame steps.
+            const d = this._audioDrift = (this._audioDrift ?? drift) * 0.9 + drift * 0.1;
+            const steer = Math.abs(d) < 0.04 ? 1 : Math.max(0.5, Math.min(1.5, 1 - 5 * d));
+            audio.playbackRate = rate * Math.round(steer * 20) / 20;
+        } else {
+            this._audioDrift = null;
+            if (Number.isFinite(time) && Math.abs(drift) > 0.12) audio.currentTime = time;
+            audio.playbackRate = rate;
+        }
         if (playing && audio.paused && !this._audioPlayPending && !this._audioBlocked) {
             this._audioPlayPending = true;
             audio.play().catch(error => {
@@ -10338,7 +10616,14 @@ else:
         // frame in on demand; ensure() jumps it ahead of the read-ahead queue
         // and _displaySequenceFrame() puts it up when it lands.
         if (this._frameWindow) {
+            // ALBABIT-FIX: a looping playback reads its in point ahead of the
+            // wrap (it stopped there to load it).
+            const [a, b] = this._range();
+            const loops = this.isPlaying && this.playDirection !== -1
+                && (this.loopMode || (this.loop ? 'loop' : 'once')) === 'loop';
+            this._frameWindow.loop = loops ? { start: a, end: b } : null;
             this._frameWindow.setPlayhead(idx);
+            this._queueCacheMarks();
             if (!this._frameWindow.has(idx)) {
                 this._frameWindow.ensure(idx).then(() => {
                     if (this.currentFrame === idx) this._displaySequenceFrame(idx);
@@ -10389,7 +10674,11 @@ else:
         // v4.3: Repaint sparkline current-frame marker on every frame change
         if (this._frameSparklines) this._drawSparklines();
         if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
-        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)) {
+        // ALBABIT-FIX: at most four times a second during playback. EFFECTS
+        // (opened by "Depth") redraws the depth map, ~55 ms: 18 frames/s.
+        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
+            && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
+            this._hudDrawnAt = performance.now();
             this._renderReferenceRightHUD?.();
         }
 
@@ -20512,9 +20801,16 @@ else:
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
         // Also create Float32Array for CPU-side reads (probe, scopes)
+        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
+        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
+        if (!RadianceViewer._halfTable) {
+            RadianceViewer._halfTable = new Float32Array(65536);
+            for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
+        }
+        const table = RadianceViewer._halfTable;
         const fp32 = new Float32Array(fp16Raw.length);
         for (let i = 0; i < fp16Raw.length; i++) {
-            fp32[i] = this._halfToFloat(fp16Raw[i]);
+            fp32[i] = table[fp16Raw[i]];
         }
 
         return {
@@ -21571,8 +21867,10 @@ app.registerExtension({
             const audio = message.audio?.[0];
             if (audio?.filename) {
                 viewer._sequenceAudio = new Audio(api.apiURL('/view?' + new URLSearchParams(audio)));
+                viewer._sequenceAudio.muted = !!viewer.audioMuted;
                 viewer._sequenceAudioFps = Number(message.audio_fps?.[0]) || Number(message.fps?.[0]) || 24;
             }
+            viewer._syncMuteButtons();
 
             // v3.1: Increment generation ID to invalidate in-flight async loads from previous results
             viewer.generationID++;
@@ -21664,10 +21962,16 @@ app.registerExtension({
             const srcFps = Number(message.fps?.[0]);
             if (Number.isFinite(srcFps) && srcFps > 0) viewer.setPlaybackFps?.(srcFps);
 
-            viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages);
+            // ALBABIT-FIX: a compare sequence as long as the clip pages with its
+            // frames (it was all loaded at once, full size). A shorter one (a
+            // still) is loaded whole: its last frame stands for the rest.
+            const pageCompare = compareImages.length >= mainImages.length;
+            if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
+            viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
+                pageCompare ? compareImages : null);
 
             // Load compare images
-            compareImages.forEach((imgData, idx) => {
+            if (!pageCompare) compareImages.forEach((imgData, idx) => {
                 const cmp = new Image();
                 cmp.crossOrigin = 'anonymous';
                 cmp.onload = () => {

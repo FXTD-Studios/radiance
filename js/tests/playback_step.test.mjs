@@ -34,7 +34,8 @@ function methodSource(name) {
     return rest.slice(0, end) + '\n    }';
 }
 
-const METHODS = ['_nextPlayFrame', '_advance', '_seqPlaybackLoop', 'shuttle', '_videoReverse', '_frameReady', '_syncSequenceAudio'];
+const METHODS = ['_nextPlayFrame', '_advance', '_seqPlaybackLoop', '_skipToDueFrame', '_hasFramesInHand',
+    'shuttle', '_videoReverse', '_frameReady', '_syncSequenceAudio'];
 
 // Fake clock and RAF, shared by every stand-in.
 let now = 0;
@@ -59,12 +60,122 @@ test('sequence audio follows play, seek, rate, stalls and reverse without starti
     assert.equal(plays, 1); assert.equal(audio.currentTime, 1);
     v.playbackFps = 48; v._syncSequenceAudio();
     assert.equal(audio.playbackRate, 2);
-    v.frameImages[25] = undefined; v._syncSequenceAudio();
-    assert.equal(audio.paused, true, 'buffering pauses audio');
-    v.frameImages[25] = true; v.playDirection = -1; v._syncSequenceAudio();
+    v._waitingForFrame = true; v._syncSequenceAudio();
+    assert.equal(audio.paused, true, 'waiting for a frame pauses audio');
+    v._waitingForFrame = false; v.playDirection = -1; v._syncSequenceAudio();
     assert.equal(audio.paused, true, 'reverse playback is silent');
     v.currentFrame = 0; v.isPlaying = false; v._syncSequenceAudio();
     assert.equal(audio.currentTime, 0, 'loop/seek returns audio to the playhead');
+});
+
+test('the sound pauses only while playback waits for a frame, never in Realtime', () => {
+    // It paused whenever the next frame was still loading, even 40 ms before
+    // it was due: measured in Edge, "Every frame" cut the sound 11 times in 7 s.
+    for (const every of [true, false]) {
+        const v = viewer();
+        const audio = v._sequenceAudio = {
+            currentTime: 0, paused: true, playbackRate: 1,
+            play() { this.paused = false; return Promise.resolve(); },
+            pause() { this.paused = true; },
+        };
+        v._sequenceAudioFps = 24; v.playEveryFrame = every;
+        v.frameImages[2] = undefined;                      // still loading
+        v.togglePlayback();
+        assert.equal(audio.paused, false, 'frame 2 is not due yet: the sound plays');
+        run(v, 100);                                       // frame 2 is due now
+        assert.equal(audio.paused, every,
+            every ? '"Every frame" waits for it, and the sound with it' : '"Realtime" drops it, the sound goes on');
+        rafQueue.length = 0;
+    }
+});
+
+test('after a jump, playback resumes with a few frames in hand, not one', () => {
+    // It resumed on the first frame to land and stopped again on the next:
+    // after a click on the timeline, a cut in the sound per frame.
+    for (const every of [true, false]) {
+        rafQueue.length = 0;
+        const v = viewer();
+        v.playEveryFrame = every;
+        v._frameWindow = { inFlight: 2, queuedCount: 4, inSpan: () => true, settle() {},
+                           has: (i) => !!v.frameImages[i], ensure: () => Promise.resolve() };
+        v.togglePlayback();
+        v.setFrame(40);                                    // a click on the timeline
+        for (let i = 40; i < v.totalFrames; i++) v.frameImages[i] = undefined;
+        run(v, 100);
+        v.frameImages[40] = v.frameImages[41] = true;      // the first frames land
+        run(v, 100);
+        assert.equal(v.currentFrame, 40, 'one frame in hand: still waiting');
+        for (let i = 42; i < 47; i++) v.frameImages[i] = true;
+        run(v, 100);
+        assert.ok(v.currentFrame > 40, 'six frames in hand: playing again');
+        rafQueue.length = 0;
+    }
+});
+
+test('during playback the side panel is redrawn four times a second, not per frame', () => {
+    // EFFECTS, which the "Depth" view opens, redrew the frame's depth map on
+    // every frame (about 55 ms): playback fell to 18 frames/s in Edge and the
+    // sound was pulled back every 0.8 s, heard as a second, delayed track.
+    const Viewer = new Function(`return class { ${methodSource('setFrame')} }`)();
+    const v = Object.assign(new Viewer(), {
+        currentFrame: 0, isPlaying: true, _referenceRightTab: 'effects', draws: 0,
+        frameHDRData: [], frameImages: [], frameZdepthImages: null, renderer: null, _frameWindow: null,
+        _syncSequenceAudio() {}, _updateCompareForFrame() {}, render() {}, updateInfo() {}, updateFrameDisplay() {},
+        _renderReferenceRightHUD() { this.draws++; },
+    });
+    for (let f = 1; f <= 48; f++) { now += 1000 / 24; v.setFrame(f); }   // two seconds at 24 fps
+    assert.ok(v.draws >= 7 && v.draws <= 9, `two seconds of playback redrew the panel ${v.draws} times`);
+    v.isPlaying = false;
+    v.draws = 0;
+    for (let f = 49; f <= 52; f++) { now += 5; v.setFrame(f); }           // stopped: every scrub
+    assert.equal(v.draws, 4);
+});
+
+test('while playing, a small drift steers the sound instead of pulling it back', () => {
+    // On a slow page the picture fell 0.12 s behind every half second and the
+    // sound was pulled back each time, replaying that much: a second track.
+    const v = viewer();
+    const audio = v._sequenceAudio = {
+        currentTime: 1.2, paused: false, playbackRate: 1,             // the sound 0.2 s ahead
+        play() { this.paused = false; return Promise.resolve(); },
+        pause() { this.paused = true; },
+    };
+    v._sequenceAudioFps = 24; v.isPlaying = true; v.currentFrame = 24; // the picture at 1.0 s
+    for (let k = 0; k < 30; k++) v._syncSequenceAudio();
+    assert.equal(audio.currentTime, 1.2, 'the sound was pulled back');
+    assert.ok(audio.playbackRate < 1, `the sound was not slowed down (rate ${audio.playbackRate})`);
+    audio.currentTime = 3;                                             // a jump: a click, a loop
+    v._syncSequenceAudio();
+    assert.equal(audio.currentTime, 1, 'a jump no longer moves the sound');
+    assert.equal(audio.playbackRate, 1);
+});
+
+test('on a page too slow for the clip, "Realtime" skips to the frame due', () => {
+    // It only skipped frames not loaded yet: shown one a tick, a slow page
+    // played the clip slow in both modes.
+    for (const every of [true, false]) {
+        rafQueue.length = 0;
+        const v = viewer();
+        v.playEveryFrame = every;
+        v.togglePlayback();
+        for (let k = 0; k < 30; k++) { now += 66; rafQueue.shift()?.(now); }   // 2 s, ticks 66 ms apart
+        rafQueue.length = 0;
+        if (every) assert.ok(v.currentFrame <= 31, `"Every frame" shows every frame, one a tick: ${v.currentFrame}`);
+        else assert.ok(v.currentFrame >= 44, `2 s at 24 fps is 48 frames, "Realtime" reached ${v.currentFrame}`);
+    }
+});
+
+test('a late tick is caught up, so playback holds the clip rate', () => {
+    // The loop kept only the remainder of a late tick, so every late tick
+    // slowed the picture: 13.7 frames/s in Edge on a 24 fps clip, the sound
+    // pulled back to it every half second.
+    rafQueue.length = 0;
+    const v = viewer();
+    v.togglePlayback();
+    for (let k = 0; k < 5; k++) { now += 100; rafQueue.shift()?.(now); }   // 0.5 s of late ticks
+    for (let k = 0; k < 20; k++) { now += 16; rafQueue.shift()?.(now); }   // then 60 Hz ticks
+    rafQueue.length = 0;
+    assert.ok(v.currentFrame >= 18, `0.82 s at 24 fps is 19 frames, shown ${v.currentFrame}`);
 });
 
 /** Paging window like RadianceFrameWindow: holds `size` frames ahead of the playhead. */
