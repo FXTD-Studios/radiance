@@ -16,6 +16,7 @@ import math
 import sys
 import io
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 try:
     from aiohttp import web
     from server import PromptServer
@@ -92,6 +93,19 @@ _VIEWER_UTIL_NAMES = (
     "save_16bit_png", "RadianceType", "image_video_type",
 )
 globals().update({name: getattr(_viewer_utils, name) for name in _VIEWER_UTIL_NAMES})
+
+#: Frames prepared at once (see _prepare_in_order).
+_FRAME_WORKERS = min(8, os.cpu_count() or 1)
+
+
+def _prepare_in_order(prepare, count: int) -> list:
+    """prepare(i) for i in range(count), several at once, results in order.
+
+    ALBABIT-FIX: compression, EXR, OCIO and PNG release the GIL. One frame
+    after another, 241 1080p HDR frames took 158 s in the Viewer, now 29 s.
+    """
+    with ThreadPoolExecutor(max_workers=_FRAME_WORKERS) as pool:
+        return list(pool.map(prepare, range(count)))
 
 # ── 3.5.0: source colour tagging ───────────────────────────────────────────────
 # The viewer used to receive every frame as fp32 with no tag and treat all float
@@ -496,7 +510,9 @@ class RadianceViewer:
             _viewer_purge_temp(_purge_key)
 
             view_space = (source_encoding, source_colorspace)
-            for frame_idx in range(batch_size):
+
+            def frame_entries(frame_idx: int) -> List[Dict[str, Any]]:
+                entries: List[Dict[str, Any]] = []
                 try:
                     frame_result = self._process_frame(
                         image,
@@ -511,7 +527,7 @@ class RadianceViewer:
                     if frame_result is not None:
                         frame_result["frame"] = frame_idx
                         frame_result["total_frames"] = batch_size
-                        images_list.append(frame_result)
+                        entries.append(frame_result)
                         
                     # ── Exposure Bracketing ────────────────────────────────────
                     if exposure_bracketing and frame_result is not None:
@@ -546,7 +562,7 @@ class RadianceViewer:
                             low_res["bracket_label"] = "low"
                             low_res["frame"] = frame_idx
                             low_res["total_frames"] = batch_size
-                            images_list.append(low_res)
+                            entries.append(low_res)
                             
                         # High (+2 EV)
                         high_res = self._process_frame(
@@ -559,11 +575,14 @@ class RadianceViewer:
                             high_res["bracket_label"] = "high"
                             high_res["frame"] = frame_idx
                             high_res["total_frames"] = batch_size
-                            images_list.append(high_res)
+                            entries.append(high_res)
 
                 except (RuntimeError, ValueError) as e:
                     logger.warning(f"Error processing frame {frame_idx}: {e}")
-                    continue
+                return entries
+
+            for entries in _prepare_in_order(frame_entries, batch_size):
+                images_list.extend(entries)
 
             # Compare image
             if compare_image is not None:
@@ -856,7 +875,7 @@ class RadianceViewer:
             try:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
                 fp32_bytes = frame_to_save.astype(np.float32).tobytes()
-                compressed = zlib.compress(fp32_bytes, level=1)  # level 1: float data barely compresses
+                compressed = zlib.compress(fp32_bytes, level=0)  # ALBABIT-FIX: stored, see the fp16 path
                 # flags=1 signals fp32 to the viewer parser
                 header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 1)
                 with open(rhdr_filepath, "wb") as rhdr_f:
@@ -878,7 +897,9 @@ class RadianceViewer:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
                 # Clamp to the fp16 range: 1e5 used to become +inf.
                 fp16_data = np.clip(frame_to_save, -65504.0, 65504.0).astype(np.float16).tobytes()
-                compressed = zlib.compress(fp16_data, level=1)  # level 1: float data barely compresses
+                # ALBABIT-FIX: stored (level 0, same format). Level 1 cost 264 ms
+                # here and ~50 ms of the browser's main thread per 1080p frame.
+                compressed = zlib.compress(fp16_data, level=0)
                 header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 0)
                 with open(rhdr_filepath, "wb") as rhdr_f:
                     rhdr_f.write(header)
@@ -1107,7 +1128,7 @@ class RadianceViewer:
         cmp_batch = compare_image.shape[0] if compare_image.dim() == 4 else 1
         # No artificial frame cap on compare channel
 
-        for cmp_idx in range(cmp_batch):
+        def compare_entry(cmp_idx: int) -> Optional[Dict[str, Any]]:
             try:
                 frame_result = self._process_frame(
                     compare_image,
@@ -1122,10 +1143,13 @@ class RadianceViewer:
                 if frame_result is not None:
                     frame_result["is_compare"] = True
                     frame_result["frame"] = cmp_idx
-                    result.append(frame_result)
+                return frame_result
             except (RuntimeError, ValueError) as e:
                 logger.warning(f"Error processing compare frame {cmp_idx}: {e}")
-                continue
+                return None
+
+        # ALBABIT-FIX: in parallel too (241 1080p frames: 148 s -> 46 s).
+        result.extend(meta for meta in _prepare_in_order(compare_entry, cmp_batch) if meta)
 
         return result
 
@@ -1152,7 +1176,7 @@ class RadianceViewer:
         depth_batch = zdepth.shape[0] if zdepth.dim() == 4 else 1
         # No artificial frame cap on depth channel
 
-        for depth_idx in range(depth_batch):
+        def depth_entry(depth_idx: int) -> Optional[Dict[str, Any]]:
             try:
                 if zdepth.dim() == 4:
                     depth_frame = safe_tensor_to_numpy(zdepth[depth_idx])
@@ -1172,7 +1196,7 @@ class RadianceViewer:
                             + 0.0722 * depth_frame[..., 2]
                         )
                 else:
-                    continue
+                    return None
 
                 d_min = float(depth_np.min())
                 d_max = float(depth_np.max())
@@ -1197,7 +1221,7 @@ class RadianceViewer:
                     depth_filepath = safe_join(output_dir, depth_filename)
                 except ValueError as e:
                     logger.error(f"Invalid zdepth path: {e}")
-                    continue
+                    return None
 
                 try:
                     if use_16bit:
@@ -1219,7 +1243,7 @@ class RadianceViewer:
                         )
                 except (IOError, OSError) as e:
                     logger.warning(f"Failed to save zdepth frame {depth_idx}: {e}")
-                    continue
+                    return None
 
                 frame_meta: Dict[str, Any] = {
                     "filename": depth_filename,
@@ -1245,7 +1269,7 @@ class RadianceViewer:
                         else:
                             payload = depth_np.astype(np.float16).tobytes()
                             rhdr_flags = 0  # fp16 marker — viewer uses HALF_FLOAT texture
-                        compressed = zlib.compress(payload, level=1)  # level 1: float data barely compresses
+                        compressed = zlib.compress(payload, level=0)  # ALBABIT-FIX: stored, see _process_frame
                         header = struct.pack("<4sHHHH", b"RHDR", dw, dh, dc, rhdr_flags)
                         with open(npy_filepath, "wb") as rhdr_f:
                             rhdr_f.write(header)
@@ -1254,11 +1278,14 @@ class RadianceViewer:
                     except (IOError, OSError, ValueError) as e:
                         logger.warning(f"Failed to save depth sidecar {depth_idx}: {e}")
 
-                result.append(frame_meta)
+                return frame_meta
 
             except (RuntimeError, ValueError) as e:
                 logger.warning(f"Error processing zdepth frame {depth_idx}: {e}")
-                continue
+                return None
+
+        # ALBABIT-FIX: in parallel too (241 1080p frames with depth: 73 s -> 29 s).
+        result.extend(meta for meta in _prepare_in_order(depth_entry, depth_batch) if meta)
 
         return result
 
