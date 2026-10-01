@@ -869,7 +869,7 @@ class RadianceViewer:
             try:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
                 fp32_bytes = frame_to_save.astype(np.float32).tobytes()
-                compressed = zlib.compress(fp32_bytes, level=1)  # level 1: float data barely compresses
+                compressed = zlib.compress(fp32_bytes, level=0)  # ALBABIT-FIX: stored, see the fp16 path
                 # flags=1 signals fp32 to the viewer parser
                 header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 1)
                 with open(rhdr_filepath, "wb") as rhdr_f:
@@ -891,7 +891,11 @@ class RadianceViewer:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
                 # Clamp to the fp16 range: 1e5 used to become +inf.
                 fp16_data = np.clip(frame_to_save, -65504.0, 65504.0).astype(np.float16).tobytes()
-                compressed = zlib.compress(fp16_data, level=1)  # level 1: float data barely compresses
+                # ALBABIT-FIX: stored (zlib level 0, same format and values).
+                # Level 1 took 264 ms per 1080p frame here, and inflating it
+                # took about 50 ms of the browser's main thread per frame:
+                # playback fell to 14 frames/s and pulled the sound back.
+                compressed = zlib.compress(fp16_data, level=0)
                 header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 0)
                 with open(rhdr_filepath, "wb") as rhdr_f:
                     rhdr_f.write(header)
