@@ -1,6 +1,6 @@
 {
   "name": "radiance-comfyui",
-  "version": "3.5.2",
+  "version": "3.5.3",
   "description": "Radiance – Professional HDR Image Processing Suite for ComfyUI",
   "private": true,
   "scripts": {

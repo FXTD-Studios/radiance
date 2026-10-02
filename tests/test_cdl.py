@@ -194,12 +194,11 @@ class TestCDLXMLRoundTrip(unittest.TestCase):
             data = json.loads(result[0])
             self.assertAlmostEqual(data["saturation"], 0.72, places=4)
 
-    def test_import_missing_file_returns_identity(self):
-        result = RadianceCDLImport().load("/does/not/exist.cdl")
-        data = json.loads(result[0])
-        # Should return identity-ish defaults (empty dict or defaults)
-        # The node returns empty dict on error
-        self.assertIsInstance(result, tuple)
+    def test_import_missing_file_raises(self):
+        # FIX-006: a missing CDL used to return an identity grade, so the
+        # shot was delivered ungraded with no error.
+        with self.assertRaises(FileNotFoundError):
+            RadianceCDLImport().load("/does/not/exist.cdl")
 
     def test_round_trip_individual_float_outputs(self):
         """Import returns (cdl_data, sr, sg, sb, or, og, ob, pr, pg, pb, sat)."""

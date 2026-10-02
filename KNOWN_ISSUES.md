@@ -4,6 +4,25 @@ Tracked limitations and tech debt. Full production approval remains open: the
 video visual-acceptance failure below blocks production approval of temporal windowing. Other limitations
 apply to the specific workflows and backends described here.
 
+## 3.5.3 P0 fixes: open acceptance items
+
+All 18 P0 fixes (FIX-001 to FIX-018) are implemented with regression tests.
+These parts of the release gate need checks that cannot run in CI:
+
+- **CDL in Nuke and Resolve (FIX-006).** Files are verified with an
+  independent reader (OpenColorIO). Load a `.cdl`, `.cc` and `.ccc` from CDL
+  Export in Nuke (OCIOCDLTransform) and Resolve and confirm the grade.
+- **8x upscale on CUDA (FIX-011/012).** Geometry is tested with the bicubic
+  backend; run 8x Image, Tiler and Video once with Real-ESRGAN on a GPU.
+- **ACES 2.0 Cinema (DCI-P3 D60)** has no view in the pinned OCIO config,
+  so it always runs the labelled Radiance approximation. Cinema (DCI-P3 D65)
+  uses the ACES 2.0 100-nit P3-D65 rendering with gamma 2.6.
+- **Saved ACES 2.0 Tonescale nodes** keep `grey_target` 0.10 and run the
+  labelled creative curve; set 0 for the reference tone scale.
+- **RGBA on review utilities.** Focus Peaking, Split View, Contact Sheet and
+  Video Assembler still raise on 4-channel input (TEN-007, P1). No colour is
+  changed; they fail rather than run.
+
 ## Architecture / tech debt
 
 - **Route registration keeps an idempotency guard.** aiohttp routes register

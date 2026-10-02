@@ -138,7 +138,7 @@ Export current CDL values to an ASC-compliant .cdl or .cc file.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `file_path` | string | `grading/shot_01_output.cdl` |  | Destination .cdl path. A relative path is written under ComfyUI's output/ folder; absolute paths are used as given. |
+| `file_path` | string | `grading/shot_01_output.cdl` |  | Destination .cdl, .cc or .ccc path; the extension picks the ASC document type (any other extension becomes .cdl). A relative path is written under ComfyUI's output/ folder; absolute paths are used as given. |
 | `slope_r` | float | 1 | 0 to 4, step 0.001 | Red slope (gain) written to the file. 1.0 = unity. |
 | `slope_g` | float | 1 | 0 to 4, step 0.001 | Green slope (gain) written to the file. 1.0 = unity. |
 | `slope_b` | float | 1 | 0 to 4, step 0.001 | Blue slope (gain) written to the file. 1.0 = unity. |
@@ -148,7 +148,7 @@ Export current CDL values to an ASC-compliant .cdl or .cc file.
 | `power_r` | float | 1 | 0.01 to 4, step 0.001 | Red power (exponent) written to the file. 1.0 = unity. |
 | `power_g` | float | 1 | 0.01 to 4, step 0.001 | Green power (exponent) written to the file. 1.0 = unity. |
 | `power_b` | float | 1 | 0.01 to 4, step 0.001 | Blue power (exponent) written to the file. 1.0 = unity. |
-| `saturation` | float | 1 | 0 to 4, step 0.001 | Saturation written to the file's SaturationNode. 1.0 = unity. |
+| `saturation` | float | 1 | 0 to 4, step 0.001 | Saturation written to the file's SatNode. 1.0 = unity. |
 | `cdl_data` (optional) | string |  |  | JSON CDL data (from CDL Import or the cdl_info output of a CDL node). When connected, its values replace the sliders above. |
 
 **Outputs**

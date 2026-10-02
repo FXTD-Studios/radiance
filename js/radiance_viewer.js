@@ -7498,8 +7498,15 @@ self.onmessage = async ({ data: { id, url } }) => {
     // v3.0 #7: ASC CDL Export — writes current grading state as .cdl XML
     _exportCDL() {
         // Gain (slope), Lift (offset), Power (gamma), Saturation
-        const slope = this.gain || [1, 1, 1];
-        const offset = this.lift || [0, 0, 0];
+        // FIX-006: CDL is (in * slope + offset) ^ power. The Viewer applies
+        // exposure, offset, gain, then gamma (^ 1/gamma), so slope = 2^exposure
+        // * gain and offset = offset * gain. Lift is luma-pivoted, not a CDL
+        // offset; it used to be written as one.
+        const _k = Math.pow(2, this.exposure || 0);
+        const _gain = this.gain || [1, 1, 1];
+        const _off = this.offset || [0, 0, 0];
+        const slope = _gain.map(g => _k * g);
+        const offset = _off.map((o, i) => o * _gain[i]);
         // Power: inverse of gamma (CDL power = 1/gamma for gamma>0)
         const gamma = this.gamma && Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
         const power = gamma.map(g => g > 0 ? (1.0 / g).toFixed(6) : '1.000000');
@@ -7511,7 +7518,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const xml = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.2">',
+            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">',
             '  <ColorDecision>',
             '    <!-- Radiance Viewer v3.0 Grade Export -->',
             '    <ColorCorrection id="radiance_grade">',
@@ -7614,13 +7621,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                     const satEl = doc.querySelector('Saturation');
                     const sat = satEl ? parseFloat(satEl.textContent) : 1.0;
 
+                    // FIX-006: inverse of _exportCDL. The Viewer grade is
+                    // ((in * 2^exposure + offset) * gain) ^ (1/gamma), so a CDL
+                    // maps to gain = slope, offset = Offset / slope, gamma =
+                    // 1/power, with exposure and lift at identity. Offset used to
+                    // be loaded into the luma-pivoted lift.
                     if (slope && slope.length === 3) {
                         this.gain = slope;
                         if (this.renderer) this.renderer.setGain(...slope);
+                        this.exposure = 0.0;
+                        if (this.renderer) this.renderer.setExposure(0.0);
+                        this.lift = [0, 0, 0];
+                        if (this.renderer) this.renderer.setLift(0, 0, 0);
                     }
                     if (offset && offset.length === 3) {
-                        this.lift = offset;
-                        if (this.renderer) this.renderer.setLift(...offset);
+                        const s3 = (slope && slope.length === 3) ? slope : [1, 1, 1];
+                        const off = offset.map((o, i) => Math.abs(s3[i]) > 1e-9 ? o / s3[i] : o);
+                        this.offset = off;
+                        if (this.renderer) this.renderer.setOffset(...off);
                     }
                     if (power && power.length === 3) {
                         // CDL Power → gamma: g = 1/power

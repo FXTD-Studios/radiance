@@ -5,6 +5,7 @@ import torch
 from typing import Tuple, Dict, Any, Optional
 
 from radiance.exceptions import validate_image_input
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.grade")
 
@@ -219,6 +220,8 @@ def _match_grade_params(source: torch.Tensor, target: torch.Tensor) -> Dict[str,
     }
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceGrade:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Professional color grading with per-channel Lift/Gamma/Gain/Offset, Contrast, Saturation, cinematic presets, optional grade matching, and JSON preset file loading."
@@ -327,6 +330,8 @@ class RadianceGrade:
         return (img, grade_info)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceApplyGradeInfo:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Apply a saved grade_info JSON to any image."
@@ -375,6 +380,8 @@ class RadianceApplyGradeInfo:
         return (graded, grade_info)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("source", strip=("reference",))
 class RadianceGradeMatch:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Match source image color statistics to a reference image using LAB mean/std matching."

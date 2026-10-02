@@ -509,8 +509,8 @@ class RadianceEXRPassesWriter:
     CATEGORY = "FXTD STUDIOS/Radiance/Load & Save"
     DESCRIPTION = "Write all passes inside the RADIANCE_PASSES bundle into a single-part multilayer or true multi-part OpenEXR file."
     FUNCTION = "write_passes"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("output_path",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("output_path", "manifest")
     OUTPUT_NODE = True
 
     @classmethod
@@ -648,8 +648,11 @@ class RadianceEXRPassesWriter:
                 ok = _write_exr_singlepart_multilayer(filepath, parts, bit_depth, comp, meta)
             else:
                 ok = write_exr_multipart(filepath, parts, bit_depth, comp, meta)
-            if not ok:
-                raise RuntimeError(f"[EXR Passes Writer] Failed to write EXR file: {filepath}")
+            # write_exr_multipart is True only when this exact file holds every
+            # pass (FIX-015); it used to be True after writing per-pass files
+            # under other names, and this node then reported filepath.
+            if not ok or not os.path.isfile(filepath):
+                raise RuntimeError(f"[EXR Passes Writer] Failed to write EXR file with every pass: {filepath}")
 
             logger.info("[EXR Passes Writer] Saved %d layers → %s", len(parts), filepath)
 
@@ -677,7 +680,9 @@ class RadianceEXRPassesWriter:
                 saved_paths.append(path)
                 progress.update(1)
 
-        return (saved_paths[0] if saved_paths else "",)
+        manifest = {"complete": len(saved_paths) == B, "layout": exr_layout,
+                    "passes": sorted(pass_tensors), "files": saved_paths}
+        return (saved_paths[0] if saved_paths else "", json.dumps(manifest, indent=2))
 
 
 NODE_CLASS_MAPPINGS = {

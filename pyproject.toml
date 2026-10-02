@@ -7,7 +7,7 @@ name = "radiance"
 description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to HDR, HDR VAE encode and decode, OCIO colour management, EXR I/O, a pro Viewer, and Nuke / Resolve handoff."
 # Keep in step with config/constants.py VERSION, package.json and CHANGELOG.md;
 # tests/test_version_sync.py fails if they drift.
-version = "3.5.2"
+version = "3.5.3"
 readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
@@ -53,7 +53,7 @@ dependencies = [
     "numpy>=1.22",
     "OpenEXR>=3.2.0; python_version < '3.14'",   # no cp314 wheel yet; EXR falls back to OpenImageIO
     "OpenImageIO>=3.0.0",
-    "opencolorio>=2.3.0",
+    "opencolorio>=2.5.0",   # ACES 2.0 reference Output Transforms (built-in studio config v4)
     "transformers>=4.36.0",
     "diffusers>=0.33.0",    # Multipass Estimate: Marigold IID materials and lighting
     "accelerate>=0.26.0",   # low-memory loading of the Marigold UNets
@@ -95,7 +95,7 @@ full = [
     "opencv-python>=4.7",
     "OpenEXR>=3.0",
     "OpenImageIO>=3.0",
-    "opencolorio>=2.2",
+    "opencolorio>=2.5",
     "tifffile>=2023.7.10",
     "colour-science>=0.4",
     "transformers>=4.35",

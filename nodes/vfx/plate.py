@@ -4,9 +4,12 @@ import numpy as np
 import logging
 
 from radiance.core.tensor.chunking import FrameSink, chunks, compute_device, frames_per_chunk
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.vfx.plate")
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("target", strip=("reference",))
 class RadianceHDRGrainMatcher:
     """
     ◎ Radiance HDR Grain Matcher

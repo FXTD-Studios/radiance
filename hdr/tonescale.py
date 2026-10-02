@@ -86,3 +86,68 @@ def aces2_midgrey_fraction(peak_nits: float) -> float:
     """
     peak = max(float(peak_nits), 1e-6)
     return aces2_midgrey_nits(peak) / peak
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ACES 2.0 reference tone scale (the Output Transform's Tonescale_fwd)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Constants and formulas from the ACES 2.0 Output Transform (aces-core
+# Lib.Academy.OutputTransform, tone scale parameters). Verified against the
+# OCIO studio-config-v4.0.0_aces-v2.0 Output Transforms to 1e-3 nits for
+# 0.18 / 1.0 / 10.0 at 500, 1000, 2000 and 4000 nits
+# (tests/test_p0_color_fixes.py).
+
+ACES2_TS_N_R = 100.0     # normalised white, nits
+ACES2_TS_G = 1.15        # contrast exponent
+ACES2_TS_C = 0.18        # scene mid grey
+ACES2_TS_C_D = 10.013    # display mid grey at 100 nits
+ACES2_TS_W_G = 0.14      # mid-grey rise per stop of peak
+ACES2_TS_T_1 = 0.04      # shadow toe
+ACES2_TS_R_HIT_MIN = 128.0
+ACES2_TS_R_HIT_MAX = 896.0
+
+
+class ACES2TonescaleParams:
+    """Precomputed ACES 2.0 tone scale constants for one peak luminance."""
+
+    def __init__(self, peak_nits: float, g: float = ACES2_TS_G, t_1: float = ACES2_TS_T_1):
+        n = max(float(peak_nits), 1.0)
+        n_r = ACES2_TS_N_R
+        r_hit = ACES2_TS_R_HIT_MIN + (ACES2_TS_R_HIT_MAX - ACES2_TS_R_HIT_MIN) * (
+            math.log(n / n_r) / math.log(10000.0 / 100.0))
+        m_0 = n / n_r
+        m_1 = 0.5 * (m_0 + math.sqrt(m_0 * (m_0 + 4.0 * t_1)))
+        u = ((r_hit / m_1) / ((r_hit / m_1) + 1.0)) ** g
+        m = m_1 / u
+        w_i = math.log(n / 100.0) / math.log(2.0)
+        c_t = ACES2_TS_C_D / n_r * (1.0 + w_i * ACES2_TS_W_G)
+        g_ip = 0.5 * (c_t + math.sqrt(c_t * (c_t + 4.0 * t_1)))
+        g_ipp2 = -(m_1 * (g_ip / m) ** (1.0 / g)) / ((g_ip / m) ** (1.0 / g) - 1.0)
+        w_2 = ACES2_TS_C / g_ipp2
+        s_2 = w_2 * m_1
+        u_2 = ((r_hit / m_1) / ((r_hit / m_1) + w_2)) ** g
+        self.peak_nits = n
+        self.n = n / n_r          # peak in 100-nit units
+        self.g = g
+        self.t_1 = t_1
+        self.s_2 = s_2
+        self.m_2 = m_1 / u_2
+
+    def forward(self, Y):
+        """Scene luminance (1.0 = 100-nit diffuse white) -> display nits / 100.
+
+        Accepts floats, numpy arrays and torch tensors. Negative input maps to
+        0, as in the reference.
+        """
+        if isinstance(Y, (int, float)):
+            Yp = max(float(Y), 0.0)
+        else:
+            Yp = Y.clip(0.0, None) if not hasattr(Y, "clamp") else Y.clamp(min=0.0)
+        f = self.m_2 * (Yp / (Yp + self.s_2)) ** self.g
+        return f * f / (f + self.t_1)
+
+
+def aces2_tonescale_nits(Y: float, peak_nits: float) -> float:
+    """Display luminance in nits for scene luminance ``Y`` at ``peak_nits``."""
+    return float(ACES2TonescaleParams(peak_nits).forward(float(Y))) * ACES2_TS_N_R

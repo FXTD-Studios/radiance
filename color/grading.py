@@ -376,3 +376,64 @@ def apply_grading(
         out = apply_lut(out, lut_name, lut_intensity)
 
     return out
+
+
+def grading_to_cdl(grading: dict) -> dict:
+    """ASC CDL equivalent of a Viewer grade (FIX-006).
+
+    The Viewer applies, in order: exposure (x 2^e), offset (+o), lift
+    (luma-pivoted), gain (x g), gamma (^ 1/gamma), then saturation with
+    Rec.709 luma. Without lift and the non-SOP controls this is exactly
+
+        ((in * 2^e + o) * g) ^ (1/gamma)  =  (in * slope + offset) ^ power
+        slope = 2^e * g,  offset = o * g,  power = 1 / gamma
+
+    The CDL sidecars used to write slope = gain, offset = offset (or the
+    Viewer's lift) and power = gamma, i.e. the inverse curve. Controls a CDL
+    cannot carry are listed in ``not_represented`` and ``exact`` is False.
+    """
+    import math
+
+    def _rgb(key, default):
+        v = grading.get(key, default)
+        if isinstance(v, (int, float)):
+            v = [v, v, v]
+        try:
+            v = [float(x) for x in list(v)[:3]]
+        except (TypeError, ValueError):
+            v = [default] * 3
+        return v if len(v) == 3 else [default] * 3
+
+    def _f(key, default):
+        try:
+            return float(grading.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    e = _f("exposure", 0.0)
+    gain = _rgb("gain", 1.0)
+    off = _rgb("offset", 0.0)
+    gam = _rgb("gamma", 1.0)
+    k = 2.0 ** e
+    slope = [k * g for g in gain]
+    offset = [o * g for o, g in zip(off, gain)]
+    power = [1.0 / max(gm, 0.01) for gm in gam]
+    sat = _f("saturation", 1.0)
+
+    checks = {
+        "lift": any(abs(x) > 1e-6 for x in _rgb("lift", 0.0)),
+        "contrast": abs(_f("contrast", 1.0) - 1.0) > 1e-6,
+        "shadows": abs(_f("shadows", 0.0)) > 1e-6,
+        "highlights": abs(_f("highlights", 0.0)) > 1e-6,
+        "hue_shift": abs(_f("hue_shift", 0.0)) > 1e-6,
+        "temperature": abs(_f("temperature", 0.0)) > 1e-6,
+        "tint": abs(_f("tint", 0.0)) > 1e-6,
+        "lut": str(grading.get("lut_name", "None")) not in ("None", "", "none"),
+        "lumaMix": abs(_f("lumaMix", 1.0) - 1.0) > 1e-6,
+        "gamut_compression": bool(grading.get("gamut_compression", False)),
+        "colorScience ACEScct": str(grading.get("colorScience", "0")) in ("1", "ACEScct"),
+    }
+    not_represented = [k for k, on in checks.items() if on]
+    ok = all(math.isfinite(v) for v in slope + offset + power + [sat])
+    return {"slope": slope, "offset": offset, "power": power, "saturation": sat,
+            "exact": ok and not not_represented, "not_represented": not_represented}
