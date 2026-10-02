@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover - exercised by the CI import smoke-test
 import folder_paths
 
 # Re-import modular components
-from radiance.cache import _viewer_cache_get, _progress_set
+from radiance.cache import _viewer_cache_get, _viewer_source_get, _progress_set
 from radiance.config.constants import VERSION as _RADIANCE_VERSION
 from radiance.color.grading import apply_grading
 
@@ -156,6 +156,45 @@ def _resolve_write_colorspace(ui_cs: str) -> str:
     )
 
 
+_LINEAR_SOURCES = ("Linear Rec.709 (sRGB)", "Linear Rec.2020", "Linear P3-D65", "ACEScg", "ACES2065-1")
+
+
+def _resolve_export_source(instance_key: str, images) -> tuple:
+    """``(encoding, working_space)`` of the cached Viewer frames.
+
+    encoding is "srgb" or "linear"; working_space is the writer's name for
+    the linear space the export is written from. Falls back to the Viewer's
+    Auto rule when no record exists (a cache filled by an older build).
+    """
+    rec = _viewer_source_get(instance_key)
+    if rec is None:
+        from radiance.color.viewer_space import resolve_viewer_input_space
+        rec = resolve_viewer_input_space("Auto", images)
+    encoding, colorspace = rec
+    if encoding == "linear":
+        return "linear", colorspace if colorspace in _LINEAR_SOURCES else "Linear Rec.709 (sRGB)"
+    return "srgb", "Linear Rec.709 (sRGB)"
+
+
+def _srgb_decode_np(frame: "np.ndarray") -> "np.ndarray":
+    """sRGB EOTF on the RGB channels (sign-preserving); alpha untouched. Returns a copy."""
+    out = np.array(frame, dtype=np.float32, copy=True)
+    rgb = out[..., :3]
+    a = np.abs(rgb)
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    out[..., :3] = lin * np.sign(rgb)
+    return out
+
+
+def _srgb_encode_display(t: "torch.Tensor") -> "torch.Tensor":
+    """Linear -> sRGB display values in [0, 1] (for thumbnails); alpha kept."""
+    out = t.detach().float().clone()
+    rgb = out[..., :3].clamp(0.0, 1.0)
+    out[..., :3] = torch.where(rgb <= 0.0031308, rgb * 12.92,
+                               1.055 * rgb.clamp(min=1e-12) ** (1 / 2.4) - 0.055)
+    return out
+
+
 def _note(warnings: list, message: str) -> None:
     """Record something the operator asked for that did not happen.
 
@@ -190,13 +229,11 @@ def get_next_version(directory: str, filename_base: str) -> str:
 
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
     """Write an ACES Metadata File (.amf) alongside the exported media."""
-    slope  = grading.get('gain',       [1.0, 1.0, 1.0])
-    offset = grading.get('offset',     [0.0, 0.0, 0.0])
-    power  = grading.get('gamma',      [1.0, 1.0, 1.0])
-    sat    = float(grading.get('saturation', 1.0))
-    if not isinstance(slope,  list): slope  = [float(slope)]  * 3
-    if not isinstance(offset, list): offset = [float(offset)] * 3
-    if not isinstance(power,  list): power  = [float(power)]  * 3
+    # FIX-006: map the Viewer grade to SOP properly (power = 1/gamma,
+    # offset scaled by gain, exposure folded into slope).
+    from radiance.color.grading import grading_to_cdl
+    _cdl = grading_to_cdl(grading)
+    slope, offset, power, sat = _cdl["slope"], _cdl["offset"], _cdl["power"], _cdl["saturation"]
 
     # Map output color_space to ACES ODT URN
     _ODT_MAP = {
@@ -329,6 +366,12 @@ async def radiance_deliver_endpoint(request):
         start_idx = max(0, min(start_idx, total_frames - 1))
         end_idx = max(start_idx + 1, min(end_idx, total_frames))
         images = images[start_idx:end_idx]
+
+        # FIX-018: what the cached pixels are, as the Viewer resolved them.
+        # The export used to assume Linear Rec.709 for every source, so a
+        # display-encoded ComfyUI IMAGE delivered as "sRGB" was sRGB-encoded a
+        # second time (washed out), and as EXR it was labelled linear.
+        source_encoding, source_colorspace = _resolve_export_source(instance_key, images)
         
         # ─── Process Options ──────────────────────────────────────────
         filename_prefix = settings.get('filename', 'Radiance_Deliver')
@@ -517,6 +560,12 @@ async def radiance_deliver_endpoint(request):
                         "current": int(5 + 80 * i / _n_frames), "total": 100,
                         "status": "grading", "message": f"Grading frame {i + 1}/{_n_frames}"})
                 frame_np = images[i].cpu().numpy()
+                if source_encoding == "srgb":
+                    # FIX-018: the Viewer linearises a display-encoded source
+                    # BEFORE grading (radiance_webgl.js "1b. Linearize"); the
+                    # export graded the encoded values. Decode first, as the
+                    # Viewer does, so the grade and the master match it.
+                    frame_np = _srgb_decode_np(frame_np)
                 graded = apply_grading(
                     img=frame_np,
                     exposure=exposure,
@@ -761,36 +810,24 @@ async def radiance_deliver_endpoint(request):
 
             is_exr = 'EXR' in output_format or 'exr' in output_format.lower()
             bake_grade_exr = settings.get('bake_grade', False) and is_exr
+
+            # FIX-018: hand the writer linear values in the source's space.
+            # A display-encoded (sRGB) source is decoded once here, so every
+            # output encoding -- sRGB included -- is applied exactly once.
+            # This replaces the old bake branch that guessed the source from
+            # the OUTPUT colour space. The thumbnail keeps the display frame.
+            # graded_tensor is linear in the source's space: a display-encoded
+            # source was decoded before grading (above). The thumbnail is a
+            # display picture, so it is sRGB-encoded from the linear grade.
+            n_graded = graded_tensor.shape[0]
+            thumb_frame = _srgb_encode_display(graded_tensor[min(n_graded - 1, 10 if n_graded > 10 else 0)])
+            write_working_space = source_colorspace
+
             if bake_grade_exr:
-                # AUDIT-FIX: this used to read
-                # `color_space in ('sRGB (Standard)', 'Linear (sRGB)')`, so a
-                # master that is already linear was linearised a SECOND time --
-                # about 2.2 gamma down in the midtones -- and logged as "sRGB to
-                # linear applied". The else branch's own comment says "already
-                # linear", which is exactly why 'Linear (sRGB)' does not belong
-                # in the list above it.
-                if color_space == 'sRGB (Standard)':
-                    try:
-                        gt_np = graded_tensor.cpu().numpy().astype(np.float32)
-                        lo = gt_np <= 0.04045
-                        gt_np[lo]  = gt_np[lo] / 12.92
-                        gt_np[~lo] = np.power((gt_np[~lo] + 0.055) / 1.055, 2.4)
-                        graded_tensor = torch.from_numpy(gt_np)
-                        logger.info('[Deliver] Grade baked into EXR — sRGB→linear applied')
-                    except Exception as _e:
-                        logger.warning(f'[Deliver] Grade bake linearize failed: {_e}')
-                        _note(warnings,
-                              f"Grade bake linearise failed, the EXR is still "
-                              f"{color_space}: {type(_e).__name__}: {_e}")
-                else:
-                    logger.info(f'[Deliver] Grade baked into EXR — {color_space} (already linear)')
-                # Baking means the EXR holds scene-linear values, so the writer
-                # must not re-encode them. It used to be handed 'sRGB' anyway,
-                # which applied the forward EOTF straight back over the bake --
-                # a perfect round trip, so `bake_grade` was inert for the one
-                # colour space it was meant to handle, while the log line above
-                # said it had been applied.
+                # The EXR holds scene-linear values in the source's space; the
+                # writer must not re-encode them.
                 write_colorspace_effective = 'Linear (pass-through)'
+                logger.info(f'[Deliver] Grade baked into linear EXR ({write_working_space})')
             else:
                 write_colorspace_effective = write_colorspace
 
@@ -842,6 +879,7 @@ async def radiance_deliver_endpoint(request):
                 format=write_format,
                 filename=filename_prefix,
                 color_space=write_colorspace_effective,
+                working_space=write_working_space,
                 fps=fps,
                 quality=quality,
                 broadcast_safe=broadcast_safe,
@@ -851,8 +889,6 @@ async def radiance_deliver_endpoint(request):
             # ─── Post-Export: Thumbnails & Sidecars ────────────────────────
             try:
                 import PIL.Image
-                n_graded = graded_tensor.shape[0]
-                thumb_frame = graded_tensor[min(n_graded - 1, 10 if n_graded > 10 else 0)]
                 thumb_np = (thumb_frame.cpu().numpy() * 255).clip(0, 255).astype(np.uint8)
                 thumb_img = PIL.Image.fromarray(thumb_np)
                 # JPEG cannot store an alpha channel: PIL raises
@@ -871,19 +907,19 @@ async def radiance_deliver_endpoint(request):
             
                 # ASC CDL Sidecar Export
                 if settings.get('export_cdl', False):
-                    slope = grading.get('gain', 1.0)
-                    offset = grading.get('offset', 0.0)
-                    power = grading.get('gamma', 1.0)
-                    sat = grading.get('saturation', 1.0)
-                    if not isinstance(slope, list): slope = [slope]*3
-                    if not isinstance(offset, list): offset = [offset]*3
-                    if not isinstance(power, list): power = [power]*3
-                
-                    cdl = f"""<ColorCorrection id="◎ Radiance_grade">\n  <SOPNode>\n    <Slope>{slope[0]:.6f} {slope[1]:.6f} {slope[2]:.6f}</Slope>\n    <Offset>{offset[0]:.6f} {offset[1]:.6f} {offset[2]:.6f}</Offset>\n    <Power>{power[0]:.6f} {power[1]:.6f} {power[2]:.6f}</Power>\n  </SOPNode>\n  <SatNode>\n    <Saturation>{sat:.6f}</Saturation>\n  </SatNode>\n</ColorCorrection>"""
+                    from radiance.color.grading import grading_to_cdl
+                    _cdl = grading_to_cdl(grading)
+                    slope, offset, power, sat = (_cdl["slope"], _cdl["offset"],
+                                                 _cdl["power"], _cdl["saturation"])
+                    if not _cdl["exact"]:
+                        logger.warning("[Deliver] CDL sidecar cannot carry: %s; it approximates the grade.",
+                                       ", ".join(_cdl["not_represented"]))
                     cdl_path = os.path.splitext(path)[0] + ".cdl"
                     try:
-                        with open(cdl_path, "w", encoding="utf-8") as f:
-                            f.write(cdl)
+                        from radiance.io.formats import write_cdl_file
+                        write_cdl_file(cdl_path, slope, offset, power, sat,
+                                       description=f"Radiance grade {version_str}",
+                                       cc_id=os.path.splitext(os.path.basename(path))[0])
                     except Exception as _ce:
                         logger.warning("[Deliver] CDL export failed: %s", _ce)
 

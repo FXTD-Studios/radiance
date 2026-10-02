@@ -4,6 +4,7 @@ import logging
 from typing import Tuple, Dict, Any
 
 from .utils import tensor_to_numpy_float32, numpy_to_tensor_float32
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.hdr.recovery")
 
@@ -15,6 +16,8 @@ except ImportError:
     SCIPY_AVAILABLE = False
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceHighlightSynthesis:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """

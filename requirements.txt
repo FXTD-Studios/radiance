@@ -8,7 +8,7 @@ OpenEXR>=3.2.0; python_version < "3.14"
 # Imath ships inside the OpenEXR wheel — do NOT add a separate Imath dependency (PyPI imath maxes at 0.0.2).
 OpenImageIO>=3.0.0
 # DPX has no Pillow plugin; OpenImageIO is the VFX-industry-standard library for it.
-opencolorio>=2.3.0
+opencolorio>=2.5.0
 # colour-science, einops and torchsde were declared here but imported nowhere
 # in the package; colour-science remains available via the `full` extra.
 transformers>=4.36.0

@@ -22,6 +22,7 @@ Architecture note (LTX-Video alignment):
 
 import torch
 import logging
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger      = logging.getLogger("radiance.hdr_encoder")
 diag_logger = logging.getLogger("radiance.diagnostics")
@@ -242,6 +243,8 @@ class RadianceHDRTurboEncoder:
 # RadianceHDRPerChannelNorm  (new — mirrors vae_per_channel_normalize)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceHDRPerChannelNorm:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = "Per-channel normalise HDR tensors for stable latent space encoding."

@@ -855,3 +855,4 @@ Write all passes inside the RADIANCE_PASSES bundle into a single-part multilayer
 | Output | Type |
 | :--- | :--- |
 | `output_path` | STRING |
+| `manifest` | STRING |

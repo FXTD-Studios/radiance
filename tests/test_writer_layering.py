@@ -167,7 +167,7 @@ def test_the_node_signature_still_matches_the_engine():
         "the node and the engine disagree about the write signature:\n"
         f"  node   {node}\n  engine {engine}"
     )
-    assert engine[len(node):] == ["read_media", "on_frame"], (
+    assert engine[len(node):] == ["read_media", "on_frame", "receipt"], (
         f"unexpected extra engine parameters: {engine[len(node):]}"
     )
 

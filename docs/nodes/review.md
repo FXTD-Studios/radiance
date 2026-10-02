@@ -176,7 +176,7 @@ Check every frame against a delivery policy (peak nits, clipping, black crush, l
 | `mode` | choice | `Guard` | `Preset`, `Guard` | Preset: output a policy JSON (data1) and its description (data2); the image is not checked. Guard: check the image against a policy. |
 | `image` | IMAGE |  |  | Frames to check. Peak nits are read as set by signal; clipping, black crush and luma are measured on the values as they are. Ignored in Preset mode. |
 | `preset` (optional) | choice | `Broadcast SDR` | `Broadcast SDR`, `Cinema HDR (P3-PQ)`, `OTT HDR10`, `Social Media`, `Custom` | Delivery policy to output in Preset mode. Custom uses the custom_* values. |
-| `policy_file` (optional) | string |  |  | Optional path to a policy JSON file; when it loads, it replaces the preset. A failed load logs a warning and falls back to the preset. Preset mode only. |
+| `policy_file` (optional) | string |  |  | Optional path to a policy JSON file; when it loads, it replaces the preset. A file that fails to load or validate stops the node with an error. Preset mode only. |
 | `custom_max_peak_nits` (optional) | float | 1000 | 0 to 10000, step 10 | Custom preset: highest allowed peak, in nits (read as set by signal in Guard mode). Preset mode only. |
 | `custom_max_clipping` (optional) | float | 0.01 | 0 to 1, step 0.001 | Custom preset: highest allowed fraction of pixels with luma above 0.99 (0.01 = 1%). Preset mode only. |
 | `custom_max_black_crush` (optional) | float | 0.05 | 0 to 1, step 0.001 | Custom preset: highest allowed fraction of pixels with luma below 0.01 (0.05 = 5%). Preset mode only. |
