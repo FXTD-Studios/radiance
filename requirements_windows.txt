@@ -6,7 +6,7 @@ OpenEXR>=3.2.0; python_version < "3.14"
 # Imath ships inside the OpenEXR wheel — do NOT add a separate Imath dependency (PyPI imath maxes at 0.0.2).
 OpenImageIO>=3.0.0
 # DPX has no Pillow plugin; OpenImageIO is the VFX-industry-standard library for it.
-opencolorio>=2.3.0
+opencolorio>=2.5.0
 transformers>=4.36.0
 # Multipass Estimate runs Marigold IID (materials and lighting) through diffusers;
 # accelerate lets its 1.7 GB UNets load without a second full-size copy in RAM.

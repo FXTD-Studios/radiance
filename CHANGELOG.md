@@ -2,6 +2,68 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [3.5.3] - 2026-10-02
+
+Maintenance release: the P0 correctness fixes from the 29 September 2026
+audit (FIX-001 to FIX-018). Every fix has a regression test in
+`tests/test_p0_*.py`; 51 of those tests fail on 3.5.2.
+
+### Upgrade notes
+
+- OpenColorIO 2.5 or newer is required (`opencolorio>=2.5.0`). The ACES 2.0
+  Output Transform runs the Academy reference from OCIO's built-in
+  `studio-config-v4.0.0_aces-v2.0_ocio-v2.5`.
+- ACES 2.0 Tonescale: new nodes default to the ACES 2.0 reference tone
+  scale (`grey_target` 0). Saved workflows keep their stored 0.10, which is
+  now labelled a creative curve in `curve_info`; set it to 0 for the
+  reference.
+- EXR Multi-Part is strict by default: an incomplete file stops the node.
+  Turn `strict` off to get the per-part fallback, listed in the new
+  `manifest` output.
+- CDL Import raises on a missing or unreadable file instead of returning an
+  identity grade.
+
+### Fixed
+
+- **ACES 2.0** (FIX-001, 002, 003): the Tonescale node defaulted to grey at
+  10% of peak (100 nits on a 1000-nit master); it now runs the ACES 2.0
+  tone scale, matching OCIO to 1e-3 nits. The Output Transform runs the OCIO
+  reference (`engine` Auto / OCIO reference / Radiance approximation; the
+  approximation is labelled). "S-2126 Compliance" is now "ACES 2.0 Output
+  Check", a per-frame comparison with the reference (node ID unchanged).
+- **White Balance** (FIX-004, 005): accepts its `ocio_context` input; the
+  Bradford adaptation runs in XYZ from Rec.709 RGB; 6500 K is D65 (daylight
+  locus), so the default is neutral; alpha passes through.
+- **ASC CDL** (FIX-006): one writer for CDL Export, the delivery sidecar and
+  the AMF, producing standard `.cdl` / `.cc` / `.ccc` documents in
+  `urn:ASC:CDL:v1.01`, read back by OpenColorIO in the tests. The Viewer
+  grade maps to SOP correctly (power = 1/gamma, offset x gain, exposure in
+  slope); the Viewer's CDL import is the inverse of its export.
+- **Policy Guard and QC** (FIX-007): NaN/Inf frames, malformed or
+  unloadable policies and invalid tensors fail instead of passing; strict
+  QC (`fail_on_errors`) also stops on invalid input and analysis errors.
+- **Alpha** (FIX-008): more than 20 colour, exposure and normalisation nodes leave
+  alpha untouched; several of them used to raise on RGBA.
+- **Batches** (FIX-009): HDR Shadow / Highlight Recovery, HDR 360 Generate
+  and the legacy ACES 2.0 Output Transform process every frame.
+- **Inputs** (FIX-010): Float32 Convert's normalise no longer divides the
+  upstream tensor in place.
+- **Upscale** (FIX-011, 012, 013): the 8x confidence map matches the image;
+  Upscale Video's 8x mode no longer raises, its temporal windows blend the
+  same source frame, and flow compensation (default on) no longer raises on
+  multi-window clips; the Tiler and the pre-denoise no longer clip HDR.
+- **Bit Depth Convert** (FIX-014): 16-bit Float with dithering stays float
+  instead of becoming an 8-bit quantise.
+- **EXR delivery** (FIX-015, 016): multi-part writes report what is on
+  disk; EXR Multi-Part and Write EXR Passes return a `manifest`; Write lists
+  exactly the files it produced and the backend that wrote each one.
+- **DPX** (FIX-017): pass-through is tagged "User defined" instead of
+  linear; linear DPX refuses to clip values above 1.0.
+- **Viewer to delivery** (FIX-018): the export knows what the Viewer's
+  pixels are. A display-encoded source is linearised before grading, as the
+  Viewer does, so an sRGB IMAGE delivered as sRGB is no longer encoded
+  twice and linear EXRs carry the source's colour space.
+
 ## [3.5.2] - 2026-09-28
 
 3.5.1 did not reach the Comfy Registry: its tag pointed at a commit that
