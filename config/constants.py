@@ -2,7 +2,7 @@
 
 PACKAGE_NAME = "radiance"
 PACKAGE_DISPLAY_NAME = "Radiance"
-VERSION = "3.5.2"
+VERSION = "3.5.3"
 AUTHOR = "Radiance"
 WEB_DIRECTORY = "./js"
 

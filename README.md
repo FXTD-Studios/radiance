@@ -5,7 +5,7 @@
 
 **HDR, colour management, VFX tools, and image review inside ComfyUI.**
 
-[![Version](https://img.shields.io/badge/version-3.5.2-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.2)
+[![Version](https://img.shields.io/badge/version-3.5.3-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.3)
 [![Installations](https://img.shields.io/badge/installations-6.9K-blue?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
 [![Release](https://img.shields.io/badge/release-stable-brightgreen?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
 [![OS](https://img.shields.io/badge/OS-Windows%20%7C%20Mac%20%7C%20Linux-5C7CFA?style=for-the-badge)](https://github.com/fxtd-studios/radiance)
@@ -160,6 +160,8 @@ Start in **Simple mode** for image review, comparison, and playback. Switch to *
 
 ## Before you start
 
+- **OpenColorIO 2.5+:** the ACES 2.0 Output Transform uses the Academy reference from OCIO's built-in ACES 2.0 config. With an older OCIO it falls back to an approximation and says so in its info output.
+- **3.5.3 correctness release:** every P0 audit fix (FIX-001 to FIX-018) is done; see the [changelog](CHANGELOG.md) for the upgrade notes (saved ACES 2.0 Tonescale nodes, strict EXR Multi-Part, CDL Import errors).
 - **Additional models:** some tools download models on first use. Multipass Estimate requires substantially larger downloads than SDR → HDR.
 - **Long-video windowing:** experimental and disabled by default. Some scenes can distort when split into temporal windows.
 - **Viewer backend:** WebGL is the default. Optional WebGPU support has feature limitations.
