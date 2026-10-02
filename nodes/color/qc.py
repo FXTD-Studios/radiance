@@ -107,6 +107,14 @@ def _evaluate_policy(stats: Dict[str, float], policy: Dict[str, Any],
     def _viol(rule: str, actual: Any, limit: Any, severity: str = "error"):
         violations.append({"rule": rule, "actual": actual, "limit": limit, "severity": severity})
 
+    # FIX-007: a NaN statistic fails every ">" below, so NaN/Inf frames passed.
+    if stats.get("non_finite", 0):
+        _viol("non_finite_values", f"{int(stats['non_finite'])} NaN/Inf value(s)", "0")
+    bad = [k for k, v in stats.items()
+           if isinstance(v, float) and not math.isfinite(v) and k != "peak_nits"]
+    if bad or not math.isfinite(float(stats.get("peak_nits", 0.0))):
+        _viol("analysis_not_finite", ", ".join(bad) or "peak_nits", "finite statistics")
+
     # Peak was only checked for policies under 200 nits, so an HDR policy's
     # max_peak_nits was never enforced. 1.0 = 100 nits (BT.1886 reference).
     max_nits = float(policy.get("max_peak_nits", 1000.0))
@@ -137,6 +145,33 @@ def _evaluate_policy(stats: Dict[str, float], policy: Dict[str, Any],
     warnings = sum(1 for v in violations if v["severity"] == "warning")
     score = max(0, 100 - errors * 25 - warnings * 5)
     return errors == 0, violations, score
+
+
+_POLICY_NUMERIC_KEYS = ("max_peak_nits", "max_clipping", "max_black_crush",
+                        "min_luma", "max_luma", "max_saturation")
+
+
+def _validate_policy(pol: Any, source: str) -> Dict[str, Any]:
+    """Reject a policy that would silently pass everything (FIX-007).
+
+    A malformed policy used to become ``{}`` (no limits, everything passes)
+    and a policy file that failed to load fell back to the preset.
+    """
+    if not isinstance(pol, dict):
+        raise ValueError(f"Policy Guard: {source} must be a JSON object, got {type(pol).__name__}.")
+    for key in _POLICY_NUMERIC_KEYS:
+        if key not in pol:
+            continue
+        v = pol[key]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)) or float(v) < 0:
+            raise ValueError(f"Policy Guard: {source} has an invalid {key!r}: {v!r} "
+                             "(expected a finite number >= 0).")
+    req = pol.get("require_metadata", [])
+    if not isinstance(req, list) or not all(isinstance(k, str) for k in req):
+        raise ValueError(f"Policy Guard: {source} 'require_metadata' must be a list of strings.")
+    if not any(k in pol for k in _POLICY_NUMERIC_KEYS) and not req:
+        raise ValueError(f"Policy Guard: {source} sets no limits; it would pass every image.")
+    return pol
 
 
 def _generate_html_report(report: Dict) -> str:
@@ -211,6 +246,8 @@ class RadianceQC:
             export_format: str = "json"):
         if mode == "Analyze":
             if image is None:
+                if fail_on_errors:
+                    raise ValueError("RadianceQC: image is required in Analyze mode")
                 return self._error("image is required in Analyze mode")
             return self._analyze(image, black_threshold, white_threshold, overlay_opacity,
                                 banding_threshold, enable_focus_check,
@@ -223,12 +260,23 @@ class RadianceQC:
     def _analyze(self, image, black_threshold, white_threshold, overlay_opacity,
                  banding_threshold, enable_focus_check,
                  enable_artifacts_check, enable_noise_check, fail_on_errors):
+        # FIX-007: with fail_on_errors on, an invalid input or an analysis
+        # failure stops the graph too; it used to return an "ERROR" status
+        # and let the delivery continue.
+        def _fail(message):
+            if fail_on_errors:
+                raise RuntimeError(f"RadianceQC: {message}")
+            return self._error(message)
+
         try:
             if not isinstance(image, torch.Tensor) or image.dim() != 4:
-                return self._error(f"Expected (B,H,W,C) tensor, got {type(image)}")
+                return _fail(f"Expected (B,H,W,C) tensor, got {type(image).__name__} "
+                             f"{tuple(getattr(image, 'shape', ()))}")
             B, H, W, C = image.shape
             if C not in [1, 3, 4]:
-                return self._error(f"Invalid channels: {C}")
+                return _fail(f"Invalid channels: {C}")
+            if B == 0 or H == 0 or W == 0:
+                return _fail(f"Empty image {tuple(image.shape)}")
 
             levels = defects.analyze_levels(image, black_threshold, white_threshold)
             gamut = defects.check_gamut(image)
@@ -266,6 +314,16 @@ class RadianceQC:
                 max_val = levels["max_val"][i].item()
 
                 frame_lines.append(f"Range: [{min_val:.4f}, {max_val:.4f}]")
+
+                # FIX-007: NaN fails every comparison, so a NaN frame used to
+                # pass every check. Non-finite values now fail the frame.
+                non_finite = int((~torch.isfinite(image[i])).sum().item())
+                if non_finite:
+                    frame_lines.append(f"  NON-FINITE: {non_finite} NaN/Inf value(s)")
+                    frame_pass = False
+                frame_data["checks"]["finite"] = {
+                    "status": "FAIL" if non_finite else "PASS", "non_finite_count": non_finite,
+                }
 
                 if crushed_pct > 0:
                     frame_lines.append(f"  CRUSHED: {crushed_pct:.2f}% < {black_threshold}")
@@ -361,6 +419,8 @@ class RadianceQC:
             else:
                 blocking = False
         except Exception as exc:
+            if fail_on_errors:
+                raise RuntimeError(f"RadianceQC: analysis failed: {type(exc).__name__}: {exc}") from exc
             return self._error(f"Analysis failed: {type(exc).__name__}: {exc}")
         # fail_on_errors stops the graph, as its name says. It used to add
         # "(BLOCKING)" to the status and let everything downstream run.
@@ -431,7 +491,7 @@ class RadiancePolicyGuard:
             },
             "optional": {
                 "preset": (list(_PRESETS.keys()), {"default": "Broadcast SDR", "tooltip": "Delivery policy to output in Preset mode. Custom uses the custom_* values."}),
-                "policy_file": ("STRING", {"default": "", "tooltip": "Optional path to a policy JSON file; when it loads, it replaces the preset. A failed load logs a warning and falls back to the preset. Preset mode only."}),
+                "policy_file": ("STRING", {"default": "", "tooltip": "Optional path to a policy JSON file; when it loads, it replaces the preset. A file that fails to load or validate stops the node with an error. Preset mode only."}),
                 "custom_max_peak_nits": ("FLOAT", {"default": 1000.0, "min": 0.0, "max": 10000.0, "step": 10.0, "tooltip": "Custom preset: highest allowed peak, in nits (read as set by signal in Guard mode). Preset mode only."}),
                 "custom_max_clipping": ("FLOAT", {"default": 0.01, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Custom preset: highest allowed fraction of pixels with luma above 0.99 (0.01 = 1%). Preset mode only."}),
                 "custom_max_black_crush": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Custom preset: highest allowed fraction of pixels with luma below 0.01 (0.05 = 5%). Preset mode only."}),
@@ -478,12 +538,14 @@ class RadiancePolicyGuard:
 
     def _preset(self, preset, policy_file, max_peak_nits, max_clipping, max_black_crush, max_saturation):
         if policy_file.strip():
+            path = strip_path_quotes(policy_file.strip())
             try:
-                with open(policy_file.strip()) as f:
+                with open(path) as f:
                     pol = json.load(f)
-                return (json.dumps(pol), pol.get("description", "Custom file policy"))
             except Exception as exc:
-                logger.warning("Policy file load failed: %s", exc)
+                raise ValueError(f"Policy Guard: policy file {path!r} could not be loaded: {exc}") from exc
+            _validate_policy(pol, f"policy file {path!r}")
+            return (json.dumps(pol), pol.get("description", "Custom file policy"))
         pol = dict(_PRESETS.get(preset, _PRESETS["Custom"]))
         if preset == "Custom":
             pol.update({"max_peak_nits": max_peak_nits, "max_clipping": max_clipping,
@@ -495,8 +557,9 @@ class RadiancePolicyGuard:
         if policy_str.strip():
             try:
                 pol = json.loads(policy_str)
-            except Exception:
-                pol = {}
+            except Exception as exc:
+                raise ValueError(f"Policy Guard: policy is not valid JSON: {exc}") from exc
+            _validate_policy(pol, "policy input")
         else:
             pol = {"max_peak_nits": max_peak_nits, "max_clipping": max_clipping,
                    "max_black_crush": max_black_crush, "max_saturation": max_saturation,
@@ -511,9 +574,19 @@ class RadiancePolicyGuard:
             elif pair:
                 meta_keys.append(pair)
 
+        if not isinstance(image, torch.Tensor) or image.dim() not in (3, 4):
+            raise ValueError(f"Policy Guard: expected an IMAGE (B,H,W,C), got "
+                             f"{type(image).__name__} {tuple(getattr(image, 'shape', ()))}.")
         arr = image.detach().cpu().float().numpy()
         if arr.ndim == 3:
             arr = arr[None]
+        if arr.shape[-1] not in (1, 3, 4) or 0 in arr.shape:
+            raise ValueError(f"Policy Guard: unsupported image shape {tuple(arr.shape)}; "
+                             "expected (B,H,W,C) with 1, 3 or 4 channels.")
+        if arr.shape[-1] == 1:
+            arr = np.repeat(arr, 3, axis=-1)
+        arr = arr[..., :3]
+        non_finite = int((~np.isfinite(arr)).sum())
         # Every frame, worst case per metric. Only frame 0 used to be read, so
         # a clip that clipped from frame 2 on passed.
         per_frame = [_policy_analyse(f) for f in arr]
@@ -525,6 +598,7 @@ class RadiancePolicyGuard:
         stats["peak_nits"] = max(_peak_nits(f, signal) for f in arr)
         stats["signal"] = signal
         stats["frames_checked"] = len(per_frame)
+        stats["non_finite"] = non_finite
         stats["worst_clipping_frame"] = int(np.argmax([p["clipping"] for p in per_frame]))
         passed, violations, score = _evaluate_policy(stats, pol, meta_keys)
 

@@ -5,18 +5,19 @@ Radiance · ACES 2.0 Full Implementation
 
 Nodes
 ─────
-  RadianceACES2Tonescale          Daniele Evo forward tonescale (official curve)
+  RadianceACES2Tonescale          ACES 2.0 reference tone scale (or a labelled creative curve)
   RadianceACES2ReachGamutCompress ACES 2.0 reach-based gamut compression
-  RadianceACES2OutputTransformFull Full ACES 2.0 pipeline (Evo + reach + EOTF)
+  RadianceACES2OutputTransformFull ACES 2.0 Output Transform (OCIO reference; labelled approximation fallback)
   RadianceACESMetadataFile        Write / read ACES Metadata File (AMF) sidecar
-  RadianceACES2Compliance         Academy S-2126 compliance diagnostic
+  RadianceACES2Compliance         ACES 2.0 Output Check (compare against the OCIO reference)
 
 Math references
 ───────────────
   • ACES 2.0 DRT design: Daniele Evo tonescale (Scott Dyer / Thomas Mansencal)
       Academy ACES project — github.com/ampas/aces-dev
   • AMF specification: Academy TB-2014-009 / S-2019-001
-  • S-2126: Academy specification for ACES 2.0 Output Transform compliance
+  • ACES 2.0 reference Output Transforms: OpenColorIO built-in
+      studio-config-v4.0.0_aces-v2.0_ocio-v2.5 (radiance.hdr.aces2_ocio)
   • Reach gamut compression: ACES Gamut Compression Implementation Guide
 """
 
@@ -541,100 +542,22 @@ def _parse_amf(xml_str: str) -> dict:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# § 5  S-2126 COMPLIANCE CHECK
-# ═════════════════════════════════════════════════════════════════════════════
-
-def _s2126_check(
-    image_ap1:    np.ndarray,  # scene-linear ACEScg patch (H, W, 3)
-    output_image: np.ndarray,  # display-referred output after full OT (H, W, 3)
-    peak_nits:    float,
-    output_type:  str,
-) -> dict:
-    """
-    Run Academy S-2126 compliance diagnostics.
-
-    Checks performed (subset of S-2126):
-    ──────────────────────────────────
-    1. Middle grey mapping: scene 0.18 → ~10 % of peak (SDR) / ~10 nits (HDR)
-    2. Output clamp: no values above peak after encoding
-    3. Black crush: no negative display values
-    4. Dynamic range: output pixel range is non-trivial (> 2 stops)
-    5. Gamut encode: all values inside display gamut [0, 1]
-
-    Returns a dict of {check_name: "PASS" | "FAIL: reason"}.
-    """
-    results: dict[str, str] = {}
-
-    luma_in  = float((image_ap1 @ LUMA_AP1).mean())
-    luma_out = float(output_image.mean())
-
-    # --- 1. Middle grey mapping ---
-    # Only meaningful if input scene-linear mean is near 0.18
-    if 0.10 <= luma_in <= 0.30:
-        expected_fraction = 0.10   # 10 % of peak
-        expected_out = expected_fraction
-        tolerance = 0.04
-        if abs(luma_out - expected_out) <= tolerance:
-            results["middle_grey_mapping"] = "PASS"
-        else:
-            results["middle_grey_mapping"] = (
-                f"FAIL: expected ≈{expected_out:.3f}, got {luma_out:.3f}"
-            )
-    else:
-        results["middle_grey_mapping"] = "SKIP (input not near 18% grey)"
-
-    # --- 2. Output clamp ---
-    max_val = float(output_image.max())
-    if max_val <= 1.0 + 1e-4:
-        results["output_clamp"] = "PASS"
-    else:
-        results["output_clamp"] = f"FAIL: max value {max_val:.4f} > 1.0"
-
-    # --- 3. Black crush ---
-    min_val = float(output_image.min())
-    if min_val >= -1e-4:
-        results["black_crush"] = "PASS"
-    else:
-        results["black_crush"] = f"FAIL: min value {min_val:.6f} < 0"
-
-    # --- 4. Dynamic range ---
-    positive = output_image[output_image > 1e-5]
-    if len(positive) > 0:
-        ratio = float(positive.max()) / float(positive.min())
-        stops = math.log2(ratio) if ratio > 1.0 else 0.0
-        if stops >= 2.0:
-            results["dynamic_range"] = f"PASS ({stops:.1f} stops in output)"
-        else:
-            results["dynamic_range"] = f"FAIL: only {stops:.1f} stops — output may be crushed"
-    else:
-        results["dynamic_range"] = "FAIL: no positive output values"
-
-    # --- 5. Gamut containment ---
-    out_of_gamut = int((output_image < -0.01).sum() + (output_image > 1.01).sum())
-    pct = out_of_gamut / max(output_image.size, 1) * 100.0
-    if pct < 0.5:
-        results["gamut_containment"] = f"PASS ({pct:.2f}% pixels marginally out)"
-    else:
-        results["gamut_containment"] = f"FAIL: {pct:.2f}% pixels outside [0,1]"
-
-    return results
-
-
-# ═════════════════════════════════════════════════════════════════════════════
 # NODE 1 — RadianceACES2Tonescale
 # ═════════════════════════════════════════════════════════════════════════════
 
 class RadianceACES2Tonescale:
     """
-    Apply the Daniele Evo forward tonescale (ACES 2.0 official curve).
+    Apply the ACES 2.0 tone scale to scene-linear ACEScg.
 
-    This is the tone curve used in the ACES 2.0 Display Rendering Transform
-    reference implementation.  It maps scene-linear ACEScg luminance to
-    display-referred luminance using a smooth Hill / Michaelis-Menten rational
-    function, parameterised to place 18% grey at 10% of peak display output.
+    grey_target = 0 (default) runs the ACES 2.0 Output Transform's own tone
+    scale (radiance.hdr.tonescale.ACES2TonescaleParams), verified against the
+    OCIO ACES 2.0 studio config. A grey_target above 0 switches to a creative
+    Hill curve that places 18% grey at that fraction of peak; it is labelled
+    as such in curve_info and is not the reference curve.
 
-    Unlike the legacy DRT S-curve in hdr/color.py, this matches the Academy
-    reference design's analytical form and parameter set.
+    This is the tone scale only, on luminance or per channel. The full Output
+    Transform (JMh, chroma compression, gamut mapping) is
+    RadianceACES2OutputTransformFull.
     """
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
@@ -671,9 +594,11 @@ class RadianceACES2Tonescale:
                     "tooltip": "Contrast exponent g. ACES 2.0 reference = 1.15.",
                 }),
                 "grey_target": ("FLOAT", {
-                    "default": 0.10, "min": 0.05, "max": 0.30, "step": 0.005,
-                    "tooltip": "Display grey target as fraction of peak. "
-                               "Standard = 0.10 (10 nits of 100 SDR).",
+                    "default": 0.0, "min": 0.0, "max": 0.30, "step": 0.005,
+                    "tooltip": "0 = ACES 2.0 reference: the Output Transform's own tone scale, "
+                               "18% grey at 10.0 / 14.5 / 16.8 nits for 100 / 1000 / 4000-nit peaks. "
+                               "Above 0 = creative: 18% grey placed at this fraction of peak on a "
+                               "Hill curve (not the ACES 2.0 curve).",
                 }),
                 "toe_scene": ("FLOAT", {
                     "default": 0.04, "min": 0.005, "max": 0.20, "step": 0.005,
@@ -689,28 +614,55 @@ class RadianceACES2Tonescale:
         peak_nits: float,
         mode: str,
         contrast_g: float = 1.15,
-        grey_target: float = 0.10,
+        grey_target: float = 0.0,
         toe_scene: float = 0.04,
     ):
-        params = _DanieleEvoParams(
-            peak_nits  = peak_nits,
-            g          = contrast_g,
-            grey_target= grey_target,
-            toe_scene  = toe_scene,
-        )
+        from radiance.core.tensor.alpha import split_rgb_alpha, merge_rgb_alpha
+        rgb, alpha = split_rgb_alpha(image)
+        rgb = rgb.float()
 
-        rgb = image.float()
-        if mode == "luminance_preserving":
-            mapped = _torch_daniele_evo_luma_preserving(rgb, params)
+        # FIX-001: the widget used to default to grey_target=0.10, which bypassed
+        # the per-peak ACES grey and put 18% grey at 10% of peak (100 nits on a
+        # 1000-nit master). 0 now selects the ACES 2.0 reference tone scale.
+        reference = grey_target <= 0.0
+        if reference:
+            from radiance.hdr.tonescale import ACES2TonescaleParams
+            ts = ACES2TonescaleParams(peak_nits, g=contrast_g, t_1=toe_scene)
+            n = ts.n
+            curve = ts.forward
+            grey_nits = float(ts.forward(0.18)) * 100.0
         else:
-            mapped = _torch_daniele_evo_fwd(rgb, params)
-        out = (mapped / params.n).clamp(0.0, 1.0)
+            params = _DanieleEvoParams(
+                peak_nits  = peak_nits,
+                g          = contrast_g,
+                grey_target= grey_target,
+                toe_scene  = toe_scene,
+            )
+            n = params.n
+            curve = lambda x: _torch_daniele_evo_fwd(x, params)  # noqa: E731
+            grey_nits = grey_target * peak_nits
 
-        info = (
-            f"Daniele Evo · peak {peak_nits} nits · g={contrast_g:.2f} · "
-            f"grey {grey_target*100:.0f}% · toe {toe_scene:.3f} | "
-            f"K={params.K:.4f}"
-        )
+        if mode == "luminance_preserving":
+            luma_w = _as_torch_matrix(LUMA_AP1, rgb)
+            luma = (rgb * luma_w).sum(dim=-1, keepdim=True)
+            mapped_l = curve(luma)
+            scale = torch.where(luma > 1e-10, mapped_l / luma.clamp(min=1e-10), torch.zeros_like(luma))
+            mapped = rgb * scale
+        else:
+            mapped = curve(rgb)
+        out = merge_rgb_alpha((mapped / n).clamp(0.0, 1.0), alpha)
+
+        if reference:
+            info = (
+                f"ACES 2.0 reference tone scale · peak {peak_nits:g} nits · g={contrast_g:.2f} · "
+                f"toe {toe_scene:.3f} · 18% grey -> {grey_nits:.3f} nits"
+            )
+        else:
+            info = (
+                f"Creative Hill curve (not ACES 2.0 reference) · peak {peak_nits:g} nits · "
+                f"g={contrast_g:.2f} · grey {grey_target*100:.1f}% of peak ({grey_nits:.1f} nits) · "
+                f"toe {toe_scene:.3f} | K={params.K:.4f}"
+            )
         log.info("ACES2Tonescale: %s", info)
 
         return (out, info)
@@ -832,9 +784,9 @@ class RadianceACES2ReachGamutCompress:
 
 class RadianceACES2OutputTransformFull:
     """
-    Complete ACES 2.0 Output Transform (reference-accurate).
+    ACES 2.0 Output Transform.
 
-    Pipeline:
+    Radiance approximation pipeline (engine fallback):
       1. Input colorspace conversion → ACEScg (AP1) scene-linear
       2. Creative white scale + exposure
       3. Reach gamut compression (ACES 2.0 official)
@@ -842,8 +794,11 @@ class RadianceACES2OutputTransformFull:
       5. Output gamut matrix (AP1 → sRGB / P3-D65 / Rec.2020)
       6. OETF encoding (sRGB / PQ / HLG / DCI γ2.6)
 
-    This node supersedes the legacy ACES2OutputTransform in hdr/color.py for
-    high-accuracy deliveries requiring full Academy S-2126 compliance.
+    engine="Auto" (default) runs the Academy reference through OpenColorIO's
+    pinned ACES 2.0 studio config (radiance.hdr.aces2_ocio). The steps above
+    are the Radiance approximation, used only when the reference cannot run
+    (OCIO < 2.5, or DCI-P3 D60 which the config does not pair) and labelled
+    "APPROXIMATION" in transform_info.
     """
 
     OUTPUT_TRANSFORMS = [
@@ -896,10 +851,19 @@ class RadianceACES2OutputTransformFull:
                 }),
                 "gamut_compress_strength": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 1.5, "step": 0.05,
-                    "tooltip": "ACES 2.0 reach gamut compression strength.",
+                    "tooltip": "Reach gamut compression strength. Radiance approximation only: the OCIO reference has its own gamut mapping and ignores this.",
+                }),
+                "engine": (cls.ENGINES, {
+                    "default": cls.ENGINES[0],
+                    "tooltip": "Auto: the Academy reference through OpenColorIO's pinned ACES 2.0 studio config "
+                               "(OCIO >= 2.5), else the Radiance approximation, labelled as such in transform_info. "
+                               "OCIO reference: fail rather than fall back. Radiance approximation: the luminance "
+                               "tone scale + reach compression math; not the reference.",
                 }),
             },
         }
+
+    ENGINES = ["Auto", "OCIO reference", "Radiance approximation"]
 
     @staticmethod
     def _peak_nits(output_transform: str, peak_luminance: float) -> float:
@@ -924,7 +888,63 @@ class RadianceACES2OutputTransformFull:
         exposure_adjust:          float = 0.0,
         creative_white_scale:     float = 1.0,
         gamut_compress_strength:  float = 1.0,
+        engine:                   str   = "Auto",
     ):
+        # FIX-002: production output goes through the Academy reference (OCIO,
+        # pinned config). The Radiance math is kept as a labelled approximation.
+        from radiance.core.tensor.alpha import split_rgb_alpha, merge_rgb_alpha
+        from radiance.hdr import aces2_ocio
+
+        rgb_all, alpha = split_rgb_alpha(image)
+        if engine != "Radiance approximation":
+            ok, reason = aces2_ocio.reference_available(output_transform)
+            if ok:
+                return self._transform_reference(
+                    rgb_all, alpha, input_colorspace, output_transform,
+                    exposure_adjust, creative_white_scale, surround,
+                    peak_luminance, gamut_compress_strength)
+            if engine == "OCIO reference":
+                raise RuntimeError(f"ACES 2.0 Output Transform: OCIO reference unavailable: {reason}")
+            log.warning("ACES2FullOT: OCIO reference unavailable (%s); using the Radiance approximation.", reason)
+            approx_reason = reason
+        else:
+            approx_reason = "selected"
+
+        out, info = self._transform_approx(
+            rgb_all, input_colorspace, output_transform, peak_luminance, surround,
+            exposure_adjust, creative_white_scale, gamut_compress_strength)
+        info = f"APPROXIMATION, not the ACES 2.0 reference ({approx_reason}) | " + info
+        return (merge_rgb_alpha(out, alpha), info)
+
+    def _transform_reference(self, rgb, alpha, input_colorspace, output_transform,
+                             exposure_adjust, creative_white_scale, surround,
+                             peak_luminance, gamut_compress_strength):
+        from radiance.core.tensor.alpha import merge_rgb_alpha
+        from radiance.hdr import aces2_ocio
+
+        gain = (2.0 ** exposure_adjust) * creative_white_scale
+        arr = rgb.detach().float().cpu().numpy()
+        if gain != 1.0:
+            arr = arr * gain
+        frames = [aces2_ocio.apply_reference(f, input_colorspace, output_transform) for f in arr.reshape(-1, *arr.shape[-3:])]
+        out_np = np.stack(frames).reshape(arr.shape)
+        out = torch.from_numpy(out_np).to(device=rgb.device, dtype=torch.float32).clamp(0.0, 1.0)
+        ignored = []
+        if surround != "Dim":
+            ignored.append("surround")
+        if gamut_compress_strength != 1.0:
+            ignored.append("gamut_compress_strength")
+        if "SDR" in output_transform and peak_luminance != 100.0:
+            ignored.append("peak_luminance")
+        info = f"ACES 2.0 reference | {input_colorspace} → {output_transform} | {aces2_ocio.describe(output_transform)}"
+        if ignored:
+            info += " | ignored by the reference: " + ", ".join(ignored)
+        log.info("ACES2FullOT: %s", info)
+        return (merge_rgb_alpha(out, alpha), info)
+
+    def _transform_approx(self, image, input_colorspace, output_transform, peak_luminance,
+                          surround, exposure_adjust, creative_white_scale,
+                          gamut_compress_strength):
         rgb = image.float()
 
         if exposure_adjust != 0.0:
@@ -985,7 +1005,7 @@ class RadianceACES2OutputTransformFull:
         info = " | ".join(info_parts)
         log.info("ACES2FullOT: %s", info)
 
-        return (out, info)
+        return out, info
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1125,21 +1145,38 @@ class RadianceACESMetadataFile:
 
 class RadianceACES2Compliance:
     """
-    Academy S-2126 Compliance Diagnostic.
+    ACES 2.0 Output Check.
 
-    Runs a suite of checks against a pair of scene-linear (AP1) and
-    display-referred images to verify that the output transform conforms to
-    the Academy S-2126 ACES 2.0 Output Transform specification.
+    Compares a rendered display image against the Academy reference Output
+    Transform (OpenColorIO, pinned ACES 2.0 studio config) for the same
+    ACEScg scene image, on every frame, and reports finite values, display
+    range and the deviation from the reference.
 
-    Typical use: wire the pre-OT ACEScg image into scene_image and the
-    post-OT result into display_image, then read the report string.
+    FIX-003: this node used to be called an "S-2126 Compliance" diagnostic.
+    It never implemented S-2126; its checks were a hard-coded 10%-of-peak
+    grey on encoded values plus range heuristics. It is now a scoped
+    comparison against the reference, and says when it cannot make one.
+    The node ID is unchanged so saved workflows still load.
     """
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
-    DESCRIPTION = "Validate an image against ACES 2.0 specification thresholds."
+    DESCRIPTION = ("Compare a display render against the ACES 2.0 reference Output Transform (OpenColorIO) "
+                   "for the same ACEScg image. Not a certification against any Academy specification.")
     FUNCTION     = "check"
     RETURN_TYPES = ("STRING", "INT")
     RETURN_NAMES = ("report", "pass_count")
+
+    OUTPUT_TYPES = {
+        "SDR_sRGB": "ACES 2.0 SDR (sRGB/Rec.709)",
+        "SDR_P3": "ACES 2.0 SDR (P3-D65)",
+        "HDR_PQ_1000": "ACES 2.0 HDR (Rec.2100 PQ 1000 nits)",
+        "HDR_PQ_2000": "ACES 2.0 HDR (Rec.2100 PQ 2000 nits)",
+        "HDR_PQ_4000": "ACES 2.0 HDR (Rec.2100 PQ 4000 nits)",
+        "HDR_HLG": "ACES 2.0 HDR (Rec.2100 HLG)",
+    }
+    # Display code values. 1/1023 is one 10-bit code value.
+    MAX_TOLERANCE = 2.0 / 1023.0
+    MEAN_TOLERANCE = 0.5 / 1023.0
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1149,17 +1186,18 @@ class RadianceACES2Compliance:
                     "tooltip": "Scene-linear ACEScg image BEFORE the output transform.",
                 }),
                 "display_image": ("IMAGE", {
-                    "tooltip": "Display-referred image AFTER the full output transform.",
+                    "tooltip": "Display-encoded image AFTER the output transform under test.",
                 }),
                 "output_type": (
-                    ["SDR_sRGB", "SDR_P3", "HDR_PQ_1000", "HDR_PQ_2000", "HDR_PQ_4000", "HDR_HLG"],
-                    {"default": "SDR_sRGB", "tooltip": "Output type named in the report header. Currently a label only: the same checks and thresholds run for every choice."},
+                    list(cls.OUTPUT_TYPES),
+                    {"default": "SDR_sRGB", "tooltip": "ACES 2.0 Output Transform the display image is meant to be. "
+                                                      "The reference is rendered for this output and compared."},
                 ),
             },
             "optional": {
                 "peak_nits": ("FLOAT", {
                     "default": 100.0, "min": 48.0, "max": 10000.0, "step": 1.0,
-                    "tooltip": "Display peak in nits shown in the report header. Currently a label only: the checks do not use it.",
+                    "tooltip": "Shown in the report header only; the peak comes from output_type.",
                 }),
             },
         }
@@ -1171,14 +1209,52 @@ class RadianceACES2Compliance:
         output_type:   str,
         peak_nits:     float = 100.0,
     ):
-        scene_np   = scene_image.detach().cpu().float().numpy()
-        display_np = display_image.detach().cpu().float().numpy()
+        from radiance.hdr import aces2_ocio
 
-        # Use first frame if batch
-        s = scene_np[0]   if scene_np.ndim   == 4 else scene_np
-        d = display_np[0] if display_np.ndim == 4 else display_np
+        s_all = scene_image.detach().cpu().float().numpy()
+        d_all = display_image.detach().cpu().float().numpy()
+        if s_all.ndim == 3:
+            s_all = s_all[None]
+        if d_all.ndim == 3:
+            d_all = d_all[None]
+        s_all = s_all[..., :3]
+        d_all = d_all[..., :3]
+        results: dict[str, str] = {}
 
-        results = _s2126_check(s, d, peak_nits, output_type)
+        if s_all.shape != d_all.shape:
+            results["shape_match"] = f"FAIL: scene {s_all.shape} vs display {d_all.shape}"
+        else:
+            results["shape_match"] = f"PASS ({s_all.shape[0]} frame(s))"
+
+        bad_s = int((~np.isfinite(s_all)).sum())
+        bad_d = int((~np.isfinite(d_all)).sum())
+        results["finite_values"] = ("PASS" if bad_s == 0 and bad_d == 0
+                                    else f"FAIL: {bad_s} NaN/Inf in scene, {bad_d} in display")
+
+        finite_d = d_all[np.isfinite(d_all)]
+        if finite_d.size and (finite_d.min() < -1e-4 or finite_d.max() > 1.0 + 1e-4):
+            results["display_range"] = f"FAIL: values span [{finite_d.min():.4f}, {finite_d.max():.4f}], outside [0, 1]"
+        else:
+            results["display_range"] = "PASS"
+
+        target = self.OUTPUT_TYPES.get(output_type)
+        ok, reason = aces2_ocio.reference_available(target)
+        if not ok:
+            results["reference_match"] = f"SKIP (no reference: {reason})"
+        elif s_all.shape != d_all.shape or bad_s or bad_d:
+            results["reference_match"] = "SKIP (inputs failed the checks above)"
+        else:
+            ref = np.stack([aces2_ocio.apply_reference(f, "ACEScg", target) for f in s_all])
+            ref = np.clip(ref, 0.0, 1.0)
+            err = np.abs(ref - d_all)
+            max_err, mean_err = float(err.max()), float(err.mean())
+            worst = int(np.argmax(err.reshape(err.shape[0], -1).max(axis=1)))
+            verdict = "PASS" if (max_err <= self.MAX_TOLERANCE and mean_err <= self.MEAN_TOLERANCE) else "FAIL"
+            results["reference_match"] = (
+                f"{verdict}: max |Δ| {max_err * 1023:.2f}, mean {mean_err * 1023:.3f} "
+                f"(10-bit codes; limits {self.MAX_TOLERANCE * 1023:.1f} / {self.MEAN_TOLERANCE * 1023:.1f}); "
+                f"worst frame {worst}"
+            )
 
         pass_count  = sum(1 for v in results.values() if v.startswith("PASS"))
         skip_count  = sum(1 for v in results.values() if v.startswith("SKIP"))
@@ -1186,21 +1262,23 @@ class RadianceACES2Compliance:
 
         lines = [
             "═══════════════════════════════════════════════",
-            f"  Radiance S-2126 Compliance Report",
-            f"  Output: {output_type}  Peak: {peak_nits} nits",
+            "  Radiance ACES 2.0 Output Check",
+            f"  Output: {output_type}  Peak: {peak_nits:g} nits",
+            f"  Reference: {aces2_ocio.PINNED_CONFIG}",
             "═══════════════════════════════════════════════",
         ]
-        for check, verdict in results.items():
+        for name, verdict in results.items():
             icon = "✓" if verdict.startswith("PASS") else ("⚠" if verdict.startswith("SKIP") else "✗")
-            lines.append(f"  {icon}  {check:28s}  {verdict}")
+            lines.append(f"  {icon}  {name:20s}  {verdict}")
         lines += [
             "───────────────────────────────────────────────",
             f"  PASS {pass_count}  SKIP {skip_count}  FAIL {fail_count}",
+            "  Not a certification against an Academy specification.",
             "═══════════════════════════════════════════════",
         ]
 
         report = "\n".join(lines)
-        log.info("ACES2Compliance: %d pass, %d fail (%s)", pass_count, fail_count, output_type)
+        log.info("ACES2OutputCheck: %d pass, %d skip, %d fail (%s)", pass_count, skip_count, fail_count, output_type)
         return (report, pass_count)
 
 
@@ -1217,9 +1295,9 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "RadianceACES2Tonescale":          "◎ Radiance ACES 2.0 Daniele Evo Tonescale",
+    "RadianceACES2Tonescale":          "◎ Radiance ACES 2.0 Tonescale",
     "RadianceACES2ReachGamutCompress": "◎ Radiance ACES 2.0 Reach Gamut Compress",
     "RadianceACES2OutputTransformFull": "◎ Radiance ACES 2.0 Output Transform",
     "RadianceACESMetadataFile":        "◎ Radiance ACES Metadata File (AMF)",
-    "RadianceACES2Compliance":         "◎ Radiance ACES 2.0 S-2126 Compliance",
+    "RadianceACES2Compliance":         "◎ Radiance ACES 2.0 Output Check",
 }

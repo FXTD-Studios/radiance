@@ -152,7 +152,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RadianceDaVinciWideGamut": "◎ DaVinci Wide Gamut",
     "RadianceARRIWideGamut4": "◎ ARRI Wide Gamut 4",
     # nodes/hdr/aces2.py says in its own docstring that it supersedes this one
-    # "for high-accuracy deliveries requiring full Academy S-2126 compliance",
+    # for production deliveries (it runs the OCIO ACES 2.0 reference),
     # so both ship and the label has to say which is which. Without the suffix
     # the two would land in the menu under one identical name.
     "RadianceACES2OutputTransform": "◎ ACES 2.0 Output Transform (Legacy)",
