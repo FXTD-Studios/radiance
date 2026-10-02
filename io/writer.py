@@ -363,7 +363,21 @@ class OutputColour:
     def yuv_matrix(self) -> str:
         return "bt2020" if self.gamut == "Rec.2020" else "bt709"
 
+    @property
+    def is_pass_through(self) -> bool:
+        return self.color_space == "Linear (pass-through)" and not self.ocio_colorspace
+
     def dpx_attributes(self) -> Dict[str, Any]:
+        """DPX header fields that describe the pixels actually written (FIX-017).
+
+        Pass-through writes the IMAGE values unchanged, so their transfer is
+        whatever the IMAGE carries (in ComfyUI usually display-encoded); it
+        used to be labelled with the working space, so a display-encoded
+        image was tagged "Linear". It is now "User defined" with no colour
+        space claim.
+        """
+        if self.is_pass_through:
+            return {"dpx:Transfer": "User defined", "dpx:Colorimetric": "User defined"}
         name = self.encoding.name if self.encoding else ""
         transfer = ("ITU-R 709-4" if name.startswith("Rec.709") else
                     "Linear" if self.is_linear else
@@ -582,8 +596,11 @@ def _resolve_exr_compression(name: str, openexr_module) -> Tuple[Any, str]:
 
 def _save_exr(arr_f32: np.ndarray, path: Path, half: bool,
               metadata: dict | None = None,
-              compression: str = "ZIP") -> None:
+              compression: str = "ZIP") -> str:
     """Write a float array to OpenEXR, preserving channel count and alpha.
+
+    Returns the backend that wrote the file ("OpenEXR", or an OpenCV
+    fallback note listing what it could not write).
 
     Accepts (H,W), (H,W,1), (H,W,3) or (H,W,4) float data. Scene-linear
     values above 1.0 are preserved. On unrecoverable failure this raises a
@@ -638,7 +655,7 @@ def _save_exr(arr_f32: np.ndarray, path: Path, half: bool,
             for name, plane in channels
         }
         OpenEXR.File(header, channels_dict).write(str(path))
-        return
+        return "OpenEXR"
     except ImportError as exc:
         errors.append(f"OpenEXR module unavailable ({exc})")
     except Exception as exc:  # malformed data, write error, etc.
@@ -673,7 +690,11 @@ def _save_exr(arr_f32: np.ndarray, path: Path, half: bool,
              cv2.IMWRITE_EXR_TYPE_HALF if half else cv2.IMWRITE_EXR_TYPE_FLOAT],
         )
         if ok:
-            return
+            # FIX-016: the fallback drops every header attribute (colour
+            # metadata, workflow) and the compression choice. Say so in the
+            # receipt instead of reporting a normal write.
+            return (f"OpenCV fallback ({'; '.join(errors)}): header metadata and "
+                    f"{compression} compression not written")
         errors.append("cv2.imwrite returned False (OpenCV built without EXR support?)")
     except ImportError as exc:
         errors.append(f"OpenCV unavailable ({exc})")
@@ -701,7 +722,21 @@ def _save_dpx(arr_f32: np.ndarray, path: Path, attributes: Optional[Dict[str, An
         raise RuntimeError(
             f"Failed to write DPX '{path}'. Install OpenImageIO (pip install OpenImageIO)."
         )
-    arr = np.ascontiguousarray(np.clip(arr_f32, 0, 1), dtype=np.float32)
+    raw = np.asarray(arr_f32, dtype=np.float32)
+    rgb = raw[..., :3] if raw.ndim == 3 else raw
+    if not np.isfinite(rgb).all():
+        raise ValueError(f"DPX '{path}': the image has NaN/Inf values; DPX stores 0-1 integers.")
+    over = int((rgb > 1.0 + 1e-6).sum())
+    if over and (attributes or {}).get("dpx:Transfer") == "Linear":
+        # FIX-017: 10-bit integer linear cannot hold scene-linear HDR. Values
+        # above 1.0 used to be clipped silently under a "Linear" label.
+        raise ValueError(
+            f"DPX '{path}': {over} linear value(s) above 1.0 would be clipped. DPX is a 10-bit "
+            "integer format: write a log encoding (ARRI LogC, ACEScct, ...) or use EXR for linear HDR.")
+    if over or int((rgb < -1e-6).sum()):
+        log.warning("DPX '%s': %d value(s) outside 0-1 clipped (DPX stores 0-1 integers).",
+                    path, over + int((rgb < -1e-6).sum()))
+    arr = np.ascontiguousarray(np.clip(raw, 0, 1), dtype=np.float32)
     h, w = arr.shape[:2]
     c = arr.shape[2] if arr.ndim == 3 else 1
 
@@ -1254,6 +1289,7 @@ def write_frames(
     hdr_reference_nits: float = 203.0,
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
+    receipt:        Optional[Dict[str, Any]] = None,
 ):
     output_path = strip_path_quotes(output_path)
     # Built before any frame is touched, so a bad colour setting fails before
@@ -1345,8 +1381,12 @@ def write_frames(
             effective_audio_source, overwrite,
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
-            on_frame=on_frame,
+            on_frame=on_frame, receipt=receipt,
         )
+        if receipt is not None:
+            receipt.update({"format": format, "requested_frames": n, "written_frames": count,
+                            "complete": count == (1 if format in _FMT_IMAGE else n),
+                            "colour": colour.how or colour.label})
         log.info("RadianceWrite: saved %d frame(s) → %s  [%s]", count, saved, colour.how or colour.label)
         # Return the saved path so programmatic callers (delivery/handler.py)
         # can report it. ComfyUI ignores extra tuple entries for a node whose
@@ -1416,8 +1456,12 @@ def dispatch_write(
     colour:         Optional["OutputColour"] = None,
     has_alpha:      bool = False,
     on_frame:       Optional[Callable[[int, int], None]] = None,
+    receipt:        Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
+
+    When ``receipt`` is a dict it is filled with the files actually written
+    (``files``: [{"path", "frame", "writer"}]), sorted by frame (FIX-016).
 
     `frames` is any iterable of (H,W,C) float32 frames -- a list, an ndarray,
     or a generator that produces one frame at a time and never holds the
@@ -1459,15 +1503,17 @@ def dispatch_write(
             raise ValueError("RadianceWrite: no frames to write.")
         path = resolve_output_path(output_path, ext, overwrite)
         meta = _workflow_metadata(prompt, extra_pnginfo)
+        writer = stem
         if "EXR" in stem:
-            _save_exr(first, path, half="16-bit" in stem, metadata={**meta, **colour.exr_attributes()},
-                      compression=exr_compression)
+            writer = _save_exr(first, path, half="16-bit" in stem, metadata={**meta, **colour.exr_attributes()},
+                               compression=exr_compression)
         elif "DPX" in stem:
             _save_dpx(first, path, colour.dpx_attributes())
         elif "HDR" in stem:
             _save_hdr(first, path)
         else:
             _save_pil_image(first, path, stem, quality, metadata=meta)
+        _record(receipt, path, None, writer)
         return str(path), 1
 
     # ── Video ─────────────────────────────────────────────────────────
@@ -1495,6 +1541,9 @@ def dispatch_write(
             colour=colour,
             has_alpha=has_alpha,
         )
+        _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
+        if receipt is not None:
+            receipt["frames_encoded"] = encoded[0]
         return str(out), encoded[0]
 
     # ── Sequences ─────────────────────────────────────────────────────
@@ -1532,16 +1581,18 @@ def dispatch_write(
                                   start_frame, n if n is not None else 1,
                                   overwrite)
 
-        def save(fr: np.ndarray, path: Path) -> None:
+        def save(fr: np.ndarray, path: Path, frame: int) -> None:
+            writer = stem
             if is_exr:
-                _save_exr(fr, path, half=half_exr, metadata=seq_meta,
-                          compression=exr_compression)
+                writer = _save_exr(fr, path, half=half_exr, metadata=seq_meta,
+                                   compression=exr_compression)
             elif is_dpx:
                 _save_dpx(fr, path, colour.dpx_attributes())
             elif is_hdr:
                 _save_hdr(fr, path)
             else:
                 _save_pil_image(fr, path, stem, quality, metadata=seq_png_meta)
+            _record(receipt, path, frame, writer)
 
         # `frames` is a generator in the normal path and at most `_SEQ_WRITERS`
         # frames are in flight, so the sequence length is bounded by the disk
@@ -1562,13 +1613,29 @@ def dispatch_write(
             in_flight: deque = deque()
             for i, fr in enumerate(frames):
                 path = out_dir / f"{seq_stem}_{(pad_fmt % (start_frame + i))}{ext}"
-                in_flight.append(pool.submit(save, fr, path))
+                in_flight.append(pool.submit(save, fr, path, start_frame + i))
                 del fr
                 if len(in_flight) >= _SEQ_WRITERS:
                     finish(in_flight.popleft())
             for job in in_flight:
                 finish(job)
 
+        if receipt is not None:
+            receipt.setdefault("files", []).sort(key=lambda e: (e["frame"] is None, e["frame"]))
         return str(out_dir), written
 
     raise ValueError(f"Unknown format: {format!r}")
+
+
+_RECEIPT_LOCK = threading.Lock()
+
+
+def _record(receipt: Optional[Dict[str, Any]], path, frame: Optional[int], writer: Optional[str]) -> None:
+    """Add one written file to a dispatch_write receipt (thread-safe)."""
+    if receipt is None:
+        return
+    p = Path(str(path))
+    entry = {"path": str(p), "frame": frame, "writer": writer or "",
+             "bytes": p.stat().st_size if p.is_file() else 0}
+    with _RECEIPT_LOCK:
+        receipt.setdefault("files", []).append(entry)

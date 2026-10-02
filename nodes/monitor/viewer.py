@@ -114,42 +114,12 @@ def _prepare_in_order(prepare, count: int) -> list:
 # camera log curve from the frame's median. Every frame is now tagged; the names
 # are OpenColorIO ACES studio-config colour spaces, so the frontend hands them
 # straight to OCIO.
-VIEWER_INPUT_SPACES = [
-    "Auto",
-    "sRGB (ComfyUI IMAGE)",
-    "Linear Rec.709 (sRGB)",
-    "ACEScg",
-    "Linear Rec.2020",
-    "Linear P3-D65",
-    "ACES2065-1",
-]
-SRGB_COLORSPACE = "sRGB Encoded Rec.709 (sRGB)"
-
-
-def resolve_viewer_input_space(choice: str, image: Any) -> Tuple[str, str]:
-    """-> (encoding "srgb" | "linear", OCIO colour-space name).
-
-    Auto: a ComfyUI IMAGE is display-encoded sRGB by convention and lives in
-    0-1. Values above 1.0 or below 0 only come from scene-linear producers, so
-    they mark the batch linear (Rec.709 primaries, Radiance's working space).
-    The decision is per batch, never per frame, so a clip cannot flip between
-    two looks when one frame crosses 1.0.
-    """
-    if choice and choice != "Auto":
-        if choice.startswith("sRGB"):
-            return "srgb", SRGB_COLORSPACE
-        return "linear", choice
-    try:
-        t = image if isinstance(image, torch.Tensor) else None
-        if t is not None and t.numel():
-            rgb = t[..., :3] if t.shape[-1] >= 3 else t
-            hi = float(rgb.amax())
-            lo = float(rgb.amin())
-            if hi > 1.0 + 1e-3 or lo < -1e-3:
-                return "linear", "Linear Rec.709 (sRGB)"
-    except Exception:  # noqa: BLE001 - fall back to the ComfyUI convention
-        pass
-    return "srgb", SRGB_COLORSPACE
+# Moved to radiance.color.viewer_space so the delivery export (which must not
+# import node modules) resolves a source exactly as the Viewer does.
+from radiance.color.viewer_space import (  # noqa: E402
+    VIEWER_INPUT_SPACES, SRGB_COLORSPACE, resolve_viewer_input_space,
+)
+from radiance.core.tensor.alpha import alpha_passthrough  # noqa: E402
 
 
 def _video_fps(value: Any) -> Optional[float]:
@@ -680,6 +650,8 @@ class RadianceViewer:
                 _graph_part = ""
             instance_key = f"{_graph_part}:{_node_part}" if _graph_part else _node_part
             _viewer_cache_set(instance_key, image)
+            from radiance.cache import _viewer_source_set
+            _viewer_source_set(instance_key, source_encoding, source_colorspace)
 
             # ── v6.2: Flicker Heatmap & Cut Markers ─────────────────
             flicker_data = [] # Normalized deltas [0..1]
@@ -1331,6 +1303,8 @@ class RadianceViewer:
             return np.zeros_like(img_f, dtype=np.uint8)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceGradeApply:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """

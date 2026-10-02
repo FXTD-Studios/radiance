@@ -2,6 +2,7 @@ import torch
 import logging
 import json
 from typing import Tuple
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.curves")
 
@@ -60,6 +61,8 @@ def _apply_curve_1d(x: torch.Tensor, ctrl_x: list, ctrl_y: list) -> torch.Tensor
     return result
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceHueCurves:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Per-hue selective colour adjustment: a piecewise-linear curve over hue shifts hue, saturation or lightness of the colours it targets. HDR values above 1.0 are scaled down for the HSL maths and restored afterwards."
@@ -131,6 +134,8 @@ class RadianceHueCurves:
         return (graded, info)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceCurves:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "RGB curve grading with piecewise-linear control points: a master curve on all three channels, then per-channel red, green and blue curves. Values beyond the end points are extrapolated along the last segment, so HDR values are not clipped."

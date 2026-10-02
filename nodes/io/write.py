@@ -61,13 +61,14 @@ except ImportError:
 # surface, and it reaches none of them directly any more.
 
 try:
-    from ...hdr.io import write_exr_robust, write_exr_multipart
+    from ...hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report
 except ImportError:
     try:
-        from hdr.io import write_exr_robust, write_exr_multipart  # type: ignore[import]
+        from hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report  # type: ignore[import]
     except ImportError:
         write_exr_robust = None      # type: ignore[assignment]
         write_exr_multipart = None   # type: ignore[assignment]
+        write_exr_multipart_report = None   # type: ignore[assignment]
 
 try:
     from ...path_utils import get_safe_output_dir, strip_path_quotes
@@ -526,6 +527,26 @@ class RadianceRead:
 _PREVIEWABLE = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def _history_entries_for(paths) -> list:
+    """``{filename, subfolder, type}`` entries for an explicit list of files."""
+    out_root = None
+    if _HAS_FOLDER_PATHS:
+        try:
+            out_root = Path(_folder_paths.get_output_directory()).resolve()
+        except Exception:  # noqa: BLE001
+            out_root = None
+    entries = []
+    for f in paths:
+        rf = Path(f).resolve()
+        if out_root is not None and (rf == out_root or out_root in rf.parents):
+            rel = rf.relative_to(out_root)
+            sub = "" if str(rel.parent) == "." else rel.parent.as_posix()
+            entries.append({"filename": rf.name, "subfolder": sub, "type": "output"})
+        else:
+            entries.append({"filename": rf.name, "subfolder": str(rf.parent), "type": "absolute"})
+    return entries
+
+
 def _history_entries(saved, t0: float) -> list:
     """Files this write produced, as ComfyUI ``{filename, subfolder, type}``.
 
@@ -562,18 +583,28 @@ def _history_entries(saved, t0: float) -> list:
     return entries
 
 
-def _with_history(res, t0: float):
+def _with_history(res, t0: float, receipt: Optional[Dict[str, Any]] = None):
     """Wrap a write result with a ComfyUI ``ui`` block listing its files.
 
     ``images`` (which the frontend previews through ``/view``) only gets
     PNG / JPEG / WEBP files inside the output directory; EXR, DPX, TIFF and
     video would show as broken images. Every file is in ``radiance_files``.
+
+    FIX-016: with a writer receipt the list is the files this write actually
+    produced. It used to be every file in the sequence folder modified since
+    the write started, which picked up other writes to the same folder.
+    The receipt itself is in ``radiance_manifest``.
     """
     saved = res[0] if isinstance(res, tuple) and res else None
-    entries = _history_entries(saved, t0)
+    if receipt and receipt.get("files"):
+        entries = _history_entries_for([e["path"] for e in receipt["files"]])
+    else:
+        entries = _history_entries(saved, t0)
     if not entries:
         return res
     ui = {"radiance_files": entries}
+    if receipt:
+        ui["radiance_manifest"] = [json.dumps(receipt, default=str)]
     previews = [e for e in entries if e["type"] == "output"
                 and Path(e["filename"]).suffix.lower() in _PREVIEWABLE]
     if previews:
@@ -861,6 +892,7 @@ class RadianceWrite:
         them). ``result`` keeps the old tuple for programmatic callers.
         """
         t0 = time.time()
+        receipt: Dict[str, Any] = {"files": []}
         res = _write_frames(
             image=image,
             output_path=output_path,
@@ -888,8 +920,9 @@ class RadianceWrite:
             hdr_reference_nits=hdr_reference_nits,
             # ALBABIT-FIX: node and console progress for sequences and video.
             on_frame=_FrameProgress("Write"),
+            receipt=receipt,
         )
-        return _with_history(res, t0)
+        return _with_history(res, t0, receipt)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # § 5  RadianceEXRMultiPart — multi-layer AOV EXR writer
@@ -930,16 +963,20 @@ class RadianceEXRMultiPart:
       • albedo      → albedo.R/G/B
       • custom_1/2  → <name>.R/G/B
 
-    Fallback: if OpenEXR v2 multi-part is unavailable the node writes
-    separate per-part .exr files instead.
+    strict (default): a frame whose multi-part file is not complete stops the
+    node. Off: if multi-part writing fails, each part is written to its own
+    <prefix>.<frame>.<part>.exr. Either way the manifest output lists the
+    files actually written and every part's status (FIX-015/016); it used to
+    report the multi-part name, which did not exist after a fallback.
     """
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ IO & Delivery"
     DESCRIPTION = ("Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, albedo, "
-                   "two custom). Values are written unchanged; if multi-part output fails, one EXR per part is written.")
+                   "two custom). Values are written unchanged. Strict (default) fails an incomplete file; "
+                   "otherwise one EXR per part is written. The manifest lists every file written.")
     FUNCTION    = "write_multipart"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("output_path",)
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("output_path", "manifest")
     OUTPUT_NODE = True
 
     @classmethod
@@ -978,6 +1015,9 @@ class RadianceEXRMultiPart:
                     "tooltip": "Frame number of the first image in the batch, used in the file name; later frames count up from it. An AOV with one frame is used for every frame."}),
                 "custom_metadata": ("STRING", {"default": "", "multiline": True,
                     "tooltip": "Extra header attributes, one key=value per line. Keys are stored with a 'rad_' prefix unless they are standard EXR names (owner, comments, capDate and so on)."}),
+                "strict": ("BOOLEAN", {"default": True,
+                    "tooltip": "On: stop with an error unless every frame is one multi-part EXR holding every part. "
+                               "Off: if multi-part writing fails, write one EXR per part instead and list them in manifest."}),
             },
         }
 
@@ -998,7 +1038,8 @@ class RadianceEXRMultiPart:
         remote_path: str = "",
         frame_index: int = 1,
         custom_metadata: str = "",
-    ) -> Tuple[str]:
+        strict: bool = True,
+    ) -> Tuple[str, str]:
         import datetime, re as _re
 
         output_path = strip_path_quotes(output_path)
@@ -1048,45 +1089,61 @@ class RadianceEXRMultiPart:
                 raise ValueError(f"[EXRMultiPart] '{name}' has {tensor.shape[0]} frames; beauty has {batch}. "
                                  "Use the same count, or one frame to repeat.")
             named.append((tensor, name))
+        _names = [n for _, n in named]
+        _dupes = sorted({n for n in _names if _names.count(n) > 1})
+        if _dupes:
+            # A custom part named like a standard one replaced it silently.
+            raise ValueError(f"[EXRMultiPart] Duplicate part name(s): {', '.join(_dupes)}.")
 
         def _t(t: torch.Tensor, b: int) -> np.ndarray:
             arr = t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]
             return arr.detach().float().cpu().numpy()
 
-        def write_frame(b: int) -> str:
+        def write_frame(b: int) -> Dict[str, Any]:
             frame_num = str(frame_index + b).zfill(4)
             filepath  = os.path.join(out_dir, f"{filename_prefix}.{frame_num}.exr")
             parts: Dict[str, np.ndarray] = {name: _t(t, b) for t, name in named}
 
-            if write_exr_multipart is not None:
-                ok = write_exr_multipart(filepath, parts, bit_depth, comp, meta)
-            elif write_exr_robust is not None:
-                log.warning("[EXRMultiPart] multi-part unavailable — writing beauty-only EXR")
-                ok = write_exr_robust(filepath, parts["beauty"], bit_depth, comp, meta)
+            if write_exr_multipart_report is None:
+                raise RuntimeError("[EXRMultiPart] No EXR writer available")
+            receipt = write_exr_multipart_report(filepath, parts, bit_depth, comp, meta,
+                                                 allow_fallback=not strict)
+            receipt["frame"] = frame_index + b
+            if not receipt["complete"] or (strict and receipt["mode"] != "multipart"):
+                failed = [n for n, st in receipt["parts"].items() if st["status"] != "written"]
+                raise RuntimeError(
+                    f"[EXRMultiPart] Incomplete write for frame {frame_index + b}: "
+                    f"{receipt['error'] or 'parts not written: ' + ', '.join(failed)}. "
+                    f"Files written: {receipt['files'] or 'none'}")
+            if receipt["mode"] != "multipart":
+                log.warning("[EXRMultiPart] Frame %d written as %d per-part files, not %s",
+                            frame_index + b, len(receipt["files"]), filepath)
             else:
-                log.error("[EXRMultiPart] No EXR writer available")
-                ok = False
-
-            if not ok:
-                raise RuntimeError(f"[EXRMultiPart] Failed to write: {filepath}")
-
-            log.info("[EXRMultiPart] Wrote %d parts → %s", len(parts), filepath)
+                log.info("[EXRMultiPart] Wrote %d parts → %s", len(parts), filepath)
 
             if remote_path:
-                _copy_to_remote_path(filepath, remote_path)
-            return filepath
+                for f in receipt["files"]:
+                    receipt.setdefault("remote_copies", {})[f] = _copy_to_remote_path(f, remote_path)
+            return receipt
 
         # ALBABIT-FIX: node and console progress, one step per file written.
         progress = comfy.utils.ProgressBar(batch)
         workers = max(1, min(batch, os.cpu_count() or 1, 8))
-        paths = []
+        receipts = []
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="radiance-exr-mp") as pool:
-            for path in tqdm(pool.map(write_frame, range(batch)), total=batch,
-                             desc="Write EXR", unit="frame"):
-                paths.append(path)
+            for r in tqdm(pool.map(write_frame, range(batch)), total=batch,
+                          desc="Write EXR", unit="frame"):
+                receipts.append(r)
                 progress.update(1)
 
-        return (paths[0],)
+        files = [f for r in receipts for f in r["files"]]
+        manifest = {
+            "complete": all(r["complete"] for r in receipts),
+            "mode": sorted({r["mode"] for r in receipts}),
+            "files": files,
+            "frames": receipts,
+        }
+        return (files[0] if files else "", json.dumps(manifest, indent=2))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

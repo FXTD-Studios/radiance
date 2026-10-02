@@ -1197,7 +1197,7 @@ class RadianceProUpscale:
                     upscaled = upscaled.astype(np.float16).astype(np.float32)
                 elif output_bit_depth == "8-bit":
                     upscaled = np.clip(upscaled, 0, 1)
-                    upscaled = (upscaled * 255).astype(np.uint8).astype(np.float32) / 255.0
+                    upscaled = np.round(upscaled * 255.0).astype(np.float32) / 255.0
 
                 results.append(upscaled)
 
@@ -1586,15 +1586,21 @@ class RadianceBitDepthConvert:
 
         info = f"Converted to {output_depth}"
 
-        # ── Fast tensor-only passthrough cases ────────────────────────────────
-        if output_depth == "32-bit Float":
-            return (image.float(), info)
-
-        if output_depth == "16-bit Float" and dithering == "None":
-            return (image.half().float(), info)
+        # ── Float storage: no integer quantisation, so no dithering ──────────
+        # FIX-014: "16-bit Float" with any dithering fell through to the
+        # integer path with levels defaulting to 255, i.e. it became an 8-bit
+        # quantise with values clamped to [0, 1]. Float targets now only round
+        # to their storage precision and keep HDR values and negatives.
+        if output_depth in ("32-bit Float", "16-bit Float"):
+            out = image.float() if output_depth == "32-bit Float" else image.half().float()
+            if dithering != "None":
+                info += f" (dithering '{dithering}' not applied: float storage is not quantised to integer levels)"
+            return (out, info)
 
         levels_map = {"16-bit Int": 65535, "10-bit": 1023, "8-bit": 255}
-        levels = levels_map.get(output_depth, 255)
+        if output_depth not in levels_map:
+            raise ValueError(f"Bit Depth Convert: unknown output_depth {output_depth!r}.")
+        levels = levels_map[output_depth]
 
         # ── Floyd-Steinberg: inherently sequential, stays on CPU per-frame ────
         if dithering == "Floyd-Steinberg":

@@ -134,7 +134,7 @@ Output node: writes or displays, no graph outputs.
 
 `RadianceEXRMultiPart`
 
-Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, albedo, two custom). Values are written unchanged; if multi-part output fails, one EXR per part is written.
+Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, albedo, two custom). Values are written unchanged. Strict (default) fails an incomplete file; otherwise one EXR per part is written. The manifest lists every file written.
 
 **Inputs**
 
@@ -155,9 +155,11 @@ Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, 
 | `remote_path` (optional) | string |  |  | Optional second folder (for example a NAS or UNC share) the finished file is copied to. A failed copy only logs a warning. |
 | `frame_index` (optional) | int | 1 |  | Frame number of the first image in the batch, used in the file name; later frames count up from it. An AOV with one frame is used for every frame. |
 | `custom_metadata` (optional) | string |  | multi-line text | Extra header attributes, one key=value per line. Keys are stored with a 'rad_' prefix unless they are standard EXR names (owner, comments, capDate and so on). |
+| `strict` (optional) | boolean | on |  | On: stop with an error unless every frame is one multi-part EXR holding every part. Off: if multi-part writing fails, write one EXR per part instead and list them in manifest. |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
 | `output_path` | STRING |
+| `manifest` | STRING |
