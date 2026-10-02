@@ -82,6 +82,28 @@ def _viewer_cache_get(key: str) -> Optional[torch.Tensor]:
         return None
 
 
+# What the cached Viewer pixels are: {instance_id: (encoding, colorspace)},
+# encoding "srgb" (display-encoded ComfyUI IMAGE) or "linear", colorspace the
+# Viewer's resolved input space. The delivery export reads it so the master is
+# encoded from what the pixels really are (FIX-018).
+_VIEWER_SOURCE: collections.OrderedDict = collections.OrderedDict()
+_VIEWER_SOURCE_LOCK = threading.Lock()
+
+
+def _viewer_source_set(key: str, encoding: str, colorspace: str) -> None:
+    with _VIEWER_SOURCE_LOCK:
+        _VIEWER_SOURCE[key] = (str(encoding), str(colorspace))
+        _VIEWER_SOURCE.move_to_end(key)
+        while len(_VIEWER_SOURCE) > 256:
+            _VIEWER_SOURCE.popitem(last=False)
+
+
+def _viewer_source_get(key: str):
+    """``(encoding, colorspace)`` recorded for ``key``, or None."""
+    with _VIEWER_SOURCE_LOCK:
+        return _VIEWER_SOURCE.get(key)
+
+
 # Stores active export progress: {instance_id: {current, total, status, message}}
 _VIEWER_PROGRESS_MAX = 32
 _VIEWER_PROGRESS: collections.OrderedDict = collections.OrderedDict()

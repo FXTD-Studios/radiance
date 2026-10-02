@@ -72,35 +72,104 @@ def _save_pick_buffer(
         return False
 
 
+#: The ASC CDL XML namespace. ASC CDL v1.2 still uses the v1.01 schema URN;
+#: "urn:ASC:CDL:v1.2" is not a published namespace.
+ASC_CDL_NAMESPACE = "urn:ASC:CDL:v1.01"
+
+
+def _cdl_triplet(name: str, values, *, positive: bool = False, non_negative: bool = False):
+    import math
+    vals = [float(v) for v in (values if isinstance(values, (list, tuple)) else [values] * 3)]
+    if len(vals) != 3 or not all(math.isfinite(v) for v in vals):
+        raise ValueError(f"ASC CDL {name} must be three finite numbers, got {values!r}.")
+    if positive and any(v <= 0 for v in vals):
+        raise ValueError(f"ASC CDL {name} must be > 0, got {vals}.")
+    if non_negative and any(v < 0 for v in vals):
+        raise ValueError(f"ASC CDL {name} must be >= 0, got {vals}.")
+    return vals
+
+
 def build_cdl_xml(
     slope: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
     power: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     saturation: float = 1.0,
-    description: str = "◎ Radiance Viewer Grade",
+    description: str = "Radiance Viewer Grade",
+    cc_id: str = "radiance_grade",
+    container: str = "cdl",
 ) -> str:
-    """Build an ASC CDL XML string compatible with Nuke, DaVinci Resolve, OCIO."""
-    s = " ".join(f"{v:.6f}" for v in slope)
-    o = " ".join(f"{v:.6f}" for v in offset)
-    p = " ".join(f"{v:.6f}" for v in power)
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<ColorDecisionList xmlns="urn:ASC:CDL:v1.2">\n'
-        '  <ColorDecision>\n'
-        f'    <!-- {description} -->\n'
-        '    <ColorCorrection id="◎ Radiance_grade">\n'
-        '      <SOPNode>\n'
-        f'        <Slope>{s}</Slope>\n'
-        f'        <Offset>{o}</Offset>\n'
-        f'        <Power>{p}</Power>\n'
-        '      </SOPNode>\n'
-        '      <SatNode>\n'
-        f'        <Saturation>{saturation:.6f}</Saturation>\n'
-        '      </SatNode>\n'
-        '      </ColorCorrection>\n'
-        '  </ColorDecision>\n'
-        '</ColorDecisionList>\n'
-    )
+    """The one ASC CDL writer for Radiance (FIX-006).
+
+    ``container`` picks the document type by file extension:
+
+    * ``"cdl"``: ``<ColorDecisionList><ColorDecision><ColorCorrection>``
+    * ``"cc"``:  a single ``<ColorCorrection>``
+    * ``"ccc"``: ``<ColorCorrectionCollection><ColorCorrection>``
+
+    Elements follow the ASC CDL v1.2 schema (SOPNode Slope/Offset/Power,
+    SatNode Saturation) in the ``urn:ASC:CDL:v1.01`` namespace, which is what
+    OCIO, Nuke and Resolve read. Values are validated: slope and saturation
+    >= 0, power > 0, everything finite. The id is ASCII so every reader can
+    select it.
+    """
+    import math
+    import re
+    import xml.etree.ElementTree as _ET
+
+    s = _cdl_triplet("Slope", slope, non_negative=True)
+    o = _cdl_triplet("Offset", offset)
+    p = _cdl_triplet("Power", power, positive=True)
+    sat = float(saturation)
+    if not math.isfinite(sat) or sat < 0:
+        raise ValueError(f"ASC CDL Saturation must be a finite number >= 0, got {saturation!r}.")
+    container = container.lower().lstrip(".")
+    if container not in ("cdl", "cc", "ccc"):
+        raise ValueError(f"ASC CDL container must be cdl, cc or ccc, got {container!r}.")
+    cc_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", cc_id).strip("_") or "radiance_grade"
+
+    def _fmt(vals):
+        return " ".join(f"{v:.6f}" for v in vals)
+
+    def _cc(parent=None):
+        attrs = {"id": cc_id}
+        cc = _ET.SubElement(parent, "ColorCorrection", attrs) if parent is not None \
+            else _ET.Element("ColorCorrection", dict(attrs, xmlns=ASC_CDL_NAMESPACE))
+        sop = _ET.SubElement(cc, "SOPNode")
+        if description:
+            _ET.SubElement(sop, "Description").text = description
+        _ET.SubElement(sop, "Slope").text = _fmt(s)
+        _ET.SubElement(sop, "Offset").text = _fmt(o)
+        _ET.SubElement(sop, "Power").text = _fmt(p)
+        sat_node = _ET.SubElement(cc, "SatNode")
+        _ET.SubElement(sat_node, "Saturation").text = f"{sat:.6f}"
+        return cc
+
+    if container == "cc":
+        root = _cc()
+    elif container == "ccc":
+        root = _ET.Element("ColorCorrectionCollection", {"xmlns": ASC_CDL_NAMESPACE})
+        _cc(root)
+    else:
+        root = _ET.Element("ColorDecisionList", {"xmlns": ASC_CDL_NAMESPACE})
+        _cc(_ET.SubElement(root, "ColorDecision"))
+    _ET.indent(root, space="  ")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + _ET.tostring(root, encoding="unicode") + "\n"
+
+
+def write_cdl_file(path: str, slope, offset, power, saturation, description: str = "Radiance grade",
+                   cc_id: str = "radiance_grade") -> str:
+    """Write an ASC CDL file; the extension (.cdl, .cc, .ccc) picks the container."""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext not in ("cdl", "cc", "ccc"):
+        raise ValueError(f"ASC CDL path must end in .cdl, .cc or .ccc: {path!r}")
+    xml = build_cdl_xml(slope, offset, power, saturation, description=description,
+                        cc_id=cc_id, container=ext)
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(xml)
+    return path
 
 
 def save_16bit_png(filepath: str, img_uint16: np.ndarray) -> bool:

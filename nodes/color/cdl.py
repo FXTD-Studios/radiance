@@ -99,8 +99,8 @@ class RadianceCDLImport:
     def load(self, file_path):
         file_path = resolve_input_path(file_path)
         if not os.path.isfile(file_path):
-            logger.error(f"[CDL Import] File not found: {file_path}")
-            return (json.dumps({}), 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+            # Used to return an identity grade, so a missing file delivered ungraded.
+            raise FileNotFoundError(f"[CDL Import] File not found: {file_path}")
         try:
             tree = ET.parse(file_path)
             root = tree.getroot()
@@ -117,8 +117,7 @@ class RadianceCDLImport:
             data = {"slope": slope, "offset": offset, "power": power, "saturation": saturation}
             return (json.dumps(data), *slope, *offset, *power, saturation)
         except Exception as e:
-            logger.error(f"[CDL Import] Failed to parse CDL: {e}")
-            return (json.dumps({}), 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+            raise ValueError(f"[CDL Import] Failed to parse CDL {file_path!r}: {e}") from e
 
 
 class RadianceCDLExport:
@@ -136,7 +135,8 @@ class RadianceCDLExport:
                 "file_path": ("STRING", {
                     "default": "grading/shot_01_output.cdl",
                     "tooltip": (
-                        "Destination .cdl path. A relative path is written under "
+                        "Destination .cdl, .cc or .ccc path; the extension picks the ASC document "
+                        "type (any other extension becomes .cdl). A relative path is written under "
                         "ComfyUI's output/ folder; absolute paths are used as given."
                     ),
                 }),
@@ -149,7 +149,7 @@ class RadianceCDLExport:
                 "power_r": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 4.0, "step": 0.001, "tooltip": "Red power (exponent) written to the file. 1.0 = unity."}),
                 "power_g": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 4.0, "step": 0.001, "tooltip": "Green power (exponent) written to the file. 1.0 = unity."}),
                 "power_b": ("FLOAT", {"default": 1.0, "min": 0.01, "max": 4.0, "step": 0.001, "tooltip": "Blue power (exponent) written to the file. 1.0 = unity."}),
-                "saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.001, "tooltip": "Saturation written to the file's SaturationNode. 1.0 = unity."}),
+                "saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.001, "tooltip": "Saturation written to the file's SatNode. 1.0 = unity."}),
             },
             "optional": {
                 "cdl_data": ("STRING", {"forceInput": True, "tooltip": "JSON CDL data (from CDL Import or the cdl_info output of a CDL node). When connected, its values replace the sliders above."}),
@@ -158,26 +158,27 @@ class RadianceCDLExport:
 
     def save(self, file_path, slope_r, slope_g, slope_b, offset_r, offset_g, offset_b,
              power_r, power_g, power_b, saturation, cdl_data=None):
+        from radiance.io.formats import write_cdl_file
         file_path = resolve_output_path(file_path)
         if cdl_data:
+            # A cdl_data string that does not parse used to log and silently
+            # export the slider values instead.
             try:
                 d = json.loads(cdl_data)
-                slope_r, slope_g, slope_b = d.get("slope", [slope_r, slope_g, slope_b])
-                offset_r, offset_g, offset_b = d.get("offset", [offset_r, offset_g, offset_b])
-                power_r, power_g, power_b = d.get("power", [power_r, power_g, power_b])
-                saturation = d.get("saturation", saturation)
             except Exception as exc:
-                logger.warning("[nodes_cdl] save: %s", exc)
+                raise ValueError(f"CDL Export: cdl_data is not valid JSON: {exc}") from exc
+            slope_r, slope_g, slope_b = d.get("slope", [slope_r, slope_g, slope_b])
+            offset_r, offset_g, offset_b = d.get("offset", [offset_r, offset_g, offset_b])
+            power_r, power_g, power_b = d.get("power", [power_r, power_g, power_b])
+            saturation = d.get("saturation", saturation)
 
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        root = std_ET.Element("ColorDecisionList", {"xmlns": "urn:ASC:CDL:v1.01"})
-        cd = std_ET.SubElement(root, "ColorDecision")
-        sop = std_ET.SubElement(cd, "SOPNode")
-        std_ET.SubElement(sop, "Slope").text = f"{slope_r:.6f} {slope_g:.6f} {slope_b:.6f}"
-        std_ET.SubElement(sop, "Offset").text = f"{offset_r:.6f} {offset_g:.6f} {offset_b:.6f}"
-        std_ET.SubElement(sop, "Power").text = f"{power_r:.6f} {power_g:.6f} {power_b:.6f}"
-        sat = std_ET.SubElement(cd, "SaturationNode")
-        std_ET.SubElement(sat, "Saturation").text = f"{saturation:.6f}"
-        tree = std_ET.ElementTree(root)
-        tree.write(file_path, xml_declaration=True, encoding='UTF-8')
+        # FIX-006: the file used to put SOPNode directly under ColorDecision
+        # (no ColorCorrection) and named the saturation node "SaturationNode";
+        # OCIO, Nuke and Resolve read neither. One writer now produces the
+        # standard document for .cdl, .cc and .ccc.
+        if os.path.splitext(file_path)[1].lower() not in (".cdl", ".cc", ".ccc"):
+            file_path = os.path.splitext(file_path)[0] + ".cdl"
+        stem = os.path.splitext(os.path.basename(file_path))[0]
+        write_cdl_file(file_path, [slope_r, slope_g, slope_b], [offset_r, offset_g, offset_b],
+                       [power_r, power_g, power_b], saturation, cc_id=stem)
         return (file_path,)

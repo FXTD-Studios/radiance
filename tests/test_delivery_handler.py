@@ -197,13 +197,17 @@ def test_the_amf_lands_next_to_the_media_and_parses(tmp_path):
 
 
 def test_the_cdl_values_are_the_grade_that_was_passed(tmp_path):
-    """A sidecar carrying someone else's numbers is worse than no sidecar."""
+    """A sidecar carrying someone else's numbers is worse than no sidecar.
+
+    The Viewer applies (in + offset) * gain, then ^ (1/gamma), so the SOP
+    equivalent is slope = gain, offset = offset * gain, power = 1/gamma
+    (FIX-006; power used to be written as gamma, the inverse curve)."""
     amf = _amf(tmp_path, {"gain": [1.25, 1.0, 0.75], "offset": [0.01, 0.0, -0.02],
                           "gamma": [0.9, 1.0, 1.1], "saturation": 1.4})
     text = amf.read_text(encoding="utf-8")
     assert "1.250000 1.000000 0.750000" in text, "Slope is not the gain"
-    assert "0.010000 0.000000 -0.020000" in text, "Offset is not the offset"
-    assert "0.900000 1.000000 1.100000" in text, "Power is not the gamma"
+    assert "0.012500 0.000000 -0.015000" in text, "Offset is not offset * gain"
+    assert "1.111111 1.000000 0.909091" in text, "Power is not 1 / gamma"
     assert "1.400000" in text, "Saturation missing"
 
 
