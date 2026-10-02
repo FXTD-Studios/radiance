@@ -62,6 +62,7 @@ CHANGELOG v3.0.0 vs v2.5:
 """
 
 import inspect
+import threading
 import logging
 import math
 import json
@@ -811,7 +812,7 @@ class RadianceNDISender:
     _ndi_send_instance = None
     _ndi_video_frame   = None
     _ndi_stream_name   = None     # BUG 5 FIX: track active stream name
-    _ndi_lock = __import__("threading").RLock()
+    _ndi_lock = threading.RLock()
 
     @classmethod
     def INPUT_TYPES(cls):

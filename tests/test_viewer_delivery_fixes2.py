@@ -152,7 +152,8 @@ def test_temp_file_helpers_purge_the_previous_generation():
     src = _src("nodes/monitor/viewer.py")
     start = src.index("_VIEWER_TEMP_FILES")
     end = src.index("class RadianceViewer:")
-    ns = {"Dict": dict, "List": list, "os": os,
+    import threading
+    ns = {"Dict": dict, "List": list, "os": os, "threading": threading,
           "logger": types.SimpleNamespace(debug=lambda *a, **k: None)}
     exec(src[start:end], ns)
 

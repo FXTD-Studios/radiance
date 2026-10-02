@@ -4,6 +4,7 @@
 # `globals().update({... getattr(_viewer_utils, name) ...})` below. Static linters
 # cannot see through that, so F821 (undefined name) is disabled for this file.
 import json
+import threading
 import struct
 import torch
 import numpy as np
@@ -33,9 +34,7 @@ except ImportError:  # pragma: no cover - exercised by the CI import smoke-test
     web = None
     PromptServer = None
 
-# v3.1: Enable OpenEXR support in OpenCV
-# Essential for 32-bit float export
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+# OPENCV_IO_ENABLE_OPENEXR is set once at package init (config/env.py).
 from typing import Dict, Any, Optional, List, Tuple
 
 import folder_paths
@@ -197,7 +196,7 @@ def _viewer_fingerprint(image: Any, other: Dict[str, Any]) -> str:
 # so scrubbing a slider and re-queueing a 240-frame shot ten times left ~30,000
 # orphaned files and >100 GB in the temp directory until ComfyUI restarted.
 _VIEWER_TEMP_FILES: Dict[str, List[str]] = {}
-_VIEWER_TEMP_LOCK = __import__("threading").Lock()
+_VIEWER_TEMP_LOCK = threading.Lock()
 
 
 def _viewer_track_temp(instance_key: str, paths: List[str]) -> None:

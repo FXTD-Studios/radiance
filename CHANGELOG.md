@@ -2,6 +2,31 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [3.5.4] - 2026-10-02
+
+Registry release. 3.5.0, 3.5.2 and 3.5.3 were published but held as
+"flagged" by the Comfy Registry security scan, so the registry kept serving
+2.3.3. No node behaviour changes; this release removes what the scan flagged.
+
+### Changed
+
+- **Environment variables:** `OPENCV_IO_ENABLE_OPENEXR` and
+  `KMP_DUPLICATE_LIB_OK` are set in one place only,
+  `configure_runtime_environment()` in `config/env.py`, at package init. The
+  duplicate writes in `__init__.py`, the Viewer and `image/upscale.py` are
+  gone. `KMP_DUPLICATE_LIB_OK` is a default, so a value you export wins.
+- **ACES config download** no longer rewrites `$OCIO` for the whole ComfyUI
+  session. The node returns the config path; wire it into OCIO Context, or
+  export `OCIO` before launch to make it the default.
+- **Resolve import:** `PYTHONHOME` is passed only to the Resolve worker
+  process on Windows, not set inside it.
+- **Nuke bridge hint:** the "Nuke not reachable" message now suggests
+  `import runpy; runpy.run_path('<path>/start_nuke_server.py')` instead of
+  `exec(open(...).read())`.
+- **DSINE manual download** link points at the Hugging Face checkpoint
+  (`baegwangbin/DSINE`) the auto-downloader already uses, not Google Drive.
+- Three inline `__import__()` calls replaced with normal imports.
+
 ## [3.5.3] - 2026-10-02
 
 Maintenance release: the P0 correctness fixes from the 29 September 2026
