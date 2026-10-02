@@ -8,12 +8,11 @@ Coverage
   TestDanieleEvoMath         Pure-math unit tests for the Evo tonescale
   TestReachGamutCompress     Pure-math tests for reach gamut compression
   TestAMFBuildParse          AMF XML round-trip (no torch)
-  TestS2126Check             Compliance checker logic (no torch)
   TestACES2TonescaleNode     ComfyUI node (torch required)
   TestACES2ReachGamutNode    ComfyUI node (torch required)
   TestACES2FullOTNode        Full output transform node (torch required)
   TestACESMetadataFileNode   AMF node (no torch for write/read mode)
-  TestACES2ComplianceNode    Compliance node (torch required)
+  TestACES2ComplianceNode    ACES 2.0 Output Check node (torch required)
   TestNodeRegistration       Verify all 5 nodes are registered
 """
 
@@ -47,7 +46,6 @@ from radiance.nodes.hdr.aces2 import (
     _reach_gamut_compress,
     _build_amf,
     _parse_amf,
-    _s2126_check,
     _pq_encode,
     _hlg_encode,
     _srgb_encode,
@@ -304,80 +302,6 @@ class TestAMFBuildParse:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# § 4  S-2126 compliance checker — pure numpy
-# ═════════════════════════════════════════════════════════════════════════════
-
-class TestS2126Check:
-    CATEGORY = "FXTD STUDIOS/Radiance/◎ Pipeline"
-
-    def _make_grey_pair(self, scene_grey=0.18, display_grey=0.10):
-        """Make a uniform scene image and a uniform display image."""
-        scene   = np.full((64, 64, 3), scene_grey,   dtype=np.float32)
-        display = np.full((64, 64, 3), display_grey,  dtype=np.float32)
-        return scene, display
-
-    def test_middle_grey_pass(self):
-        s, d = self._make_grey_pair(0.18, 0.10)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["middle_grey_mapping"].startswith("PASS"), r["middle_grey_mapping"]
-
-    def test_middle_grey_fail(self):
-        s, d = self._make_grey_pair(0.18, 0.30)   # wrong midtone
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["middle_grey_mapping"].startswith("FAIL"), r["middle_grey_mapping"]
-
-    def test_output_clamp_pass(self):
-        s, d = self._make_grey_pair(0.18, 0.10)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["output_clamp"].startswith("PASS")
-
-    def test_output_clamp_fail(self):
-        s = np.full((8, 8, 3), 0.18, dtype=np.float32)
-        d = np.full((8, 8, 3), 1.5,  dtype=np.float32)   # over-bright
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["output_clamp"].startswith("FAIL")
-
-    def test_black_crush_pass(self):
-        s, d = self._make_grey_pair(0.18, 0.10)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["black_crush"].startswith("PASS")
-
-    def test_black_crush_fail(self):
-        s = np.full((8, 8, 3), 0.18, dtype=np.float32)
-        d = np.full((8, 8, 3), -0.1, dtype=np.float32)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["black_crush"].startswith("FAIL")
-
-    def test_dynamic_range_pass(self):
-        """Wide-range display (>2 stops) should pass."""
-        s = np.ones((8, 8, 3), dtype=np.float32) * 0.18
-        d = np.ones((8, 8, 3), dtype=np.float32)
-        d[:4, :, :] = 0.01   # dark half
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["dynamic_range"].startswith("PASS")
-
-    def test_dynamic_range_fail(self):
-        """Flat/crushed output should fail the dynamic range check."""
-        s = np.ones((8, 8, 3), dtype=np.float32) * 0.18
-        d = np.ones((8, 8, 3), dtype=np.float32) * 0.5   # totally flat
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        # Ratio = 1.0 → 0 stops → FAIL
-        assert r["dynamic_range"].startswith("FAIL")
-
-    def test_gamut_containment_pass(self):
-        s, d = self._make_grey_pair(0.18, 0.10)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["gamut_containment"].startswith("PASS")
-
-    def test_skip_when_not_near_grey(self):
-        """Middle-grey check should be skipped when scene luma ≠ 18%."""
-        s = np.full((8, 8, 3), 2.0, dtype=np.float32)   # very bright scene
-        d = np.full((8, 8, 3), 0.9, dtype=np.float32)
-        r = _s2126_check(s, d, 100.0, "SDR_sRGB")
-        assert r["middle_grey_mapping"].startswith("SKIP")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
 # § 5  EOTF encoders — numpy (no torch)
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -451,7 +375,7 @@ class TestACES2TonescaleNode:
         img = torch.rand(2, 16, 16, 3)
         out, info = node.apply(img, peak_nits=1000.0, mode="per_channel")
         assert out.shape == img.shape
-        assert "Daniele Evo" in info
+        assert "ACES 2.0 reference tone scale" in info
 
     def test_hdr_peak_in_info(self):
         node = RadianceACES2Tonescale()
@@ -515,8 +439,10 @@ class TestACES2FullOTNode:
     def test_cinema_white_options_produce_distinct_colour_transforms(self):
         node = RadianceACES2OutputTransformFull()
         image = torch.tensor([[[[0.30, 0.20, 0.10], [0.18, 0.18, 0.18]]]])
-        d60, _ = node.transform(image, "ACEScg", "ACES 2.0 Cinema (DCI-P3 D60)")
-        d65, _ = node.transform(image, "ACEScg", "ACES 2.0 Cinema (DCI-P3 D65)")
+        d60, _ = node.transform(image, "ACEScg", "ACES 2.0 Cinema (DCI-P3 D60)",
+                                engine="Radiance approximation")
+        d65, _ = node.transform(image, "ACEScg", "ACES 2.0 Cinema (DCI-P3 D65)",
+                                engine="Radiance approximation")
         assert not torch.allclose(d60[..., 0, :], d65[..., 0, :], atol=1e-4)
         torch.testing.assert_close(d60[..., 1, :], d65[..., 1, :])
         assert torch.isfinite(d60).all()
@@ -531,7 +457,7 @@ class TestACES2FullOTNode:
         )
         assert out.min() >= -1e-4
         assert out.max() <= 1.0 + 1e-4
-        assert "ACES 2.0 Full OT" in info
+        assert "ACES 2.0" in info
 
     def test_hdr_pq_output_range(self):
         node = RadianceACES2OutputTransformFull()
@@ -686,57 +612,50 @@ class TestACESMetadataFileNode:
 
 @skip_no_torch
 class TestACES2ComplianceNode:
-    CATEGORY = "FXTD STUDIOS/Radiance/◎ Pipeline"
+    """ACES 2.0 Output Check (node ID RadianceACES2Compliance)."""
 
     def _make(self, val, shape=(1, 32, 32, 3)):
         return torch.full(shape, val, dtype=torch.float32)
 
-    def test_good_sdr_passes(self):
-        """A proper SDR result (18% grey → 10%) should collect PASS on key checks."""
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18)
-        display = self._make(0.10)
-        report, pass_count = node.check(scene, display, "SDR_sRGB", peak_nits=100.0)
-        assert pass_count >= 3
-        assert "PASS" in report
+    def test_reference_render_passes(self):
+        scene = torch.rand(2, 16, 16, 3) * 4.0
+        display, _ = RadianceACES2OutputTransformFull().transform(
+            scene, "ACEScg", "ACES 2.0 SDR (sRGB/Rec.709)", engine="OCIO reference")
+        report, pass_count = RadianceACES2Compliance().check(scene, display, "SDR_sRGB")
+        assert "✗" not in report, report
+        assert pass_count == 4
 
-    def test_crushed_output_fails_dr(self):
-        """Flat/crushed output must fail the dynamic range check."""
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18)
-        display = self._make(0.5)  # uniform flat
-        report, _ = node.check(scene, display, "SDR_sRGB")
-        assert "dynamic_range" in report.lower() or "FAIL" in report
+    def test_approximation_fails_reference_match(self):
+        scene = torch.rand(1, 16, 16, 3) * 4.0
+        display, _ = RadianceACES2OutputTransformFull().transform(
+            scene, "ACEScg", "ACES 2.0 SDR (sRGB/Rec.709)", engine="Radiance approximation")
+        report, _ = RadianceACES2Compliance().check(scene, display, "SDR_sRGB")
+        assert "reference_match" in report and "FAIL" in report
 
-    def test_output_over_one_fails_clamp(self):
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18)
-        display = self._make(1.5)  # overbright
-        report, pass_count = node.check(scene, display, "SDR_sRGB")
-        assert "FAIL" in report
+    def test_wrong_frame_only_on_frame_two_fails(self):
+        scene = torch.rand(3, 8, 8, 3)
+        display, _ = RadianceACES2OutputTransformFull().transform(
+            scene, "ACEScg", "ACES 2.0 SDR (sRGB/Rec.709)", engine="OCIO reference")
+        display = display.clone()
+        display[2] = 0.5
+        report, _ = RadianceACES2Compliance().check(scene, display, "SDR_sRGB")
+        assert "FAIL" in report and "worst frame 2" in report
 
-    def test_report_format(self):
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18)
-        display = self._make(0.10)
-        report, _ = node.check(scene, display, "SDR_sRGB")
-        assert "S-2126" in report
-        assert "PASS" in report or "FAIL" in report
+    def test_output_over_one_fails_range(self):
+        report, _ = RadianceACES2Compliance().check(self._make(0.18), self._make(1.5), "SDR_sRGB")
+        assert "display_range" in report and "FAIL" in report
 
-    def test_pass_count_type(self):
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18)
-        display = self._make(0.10)
-        _, pass_count = node.check(scene, display, "SDR_sRGB")
+    def test_nan_fails(self):
+        d = self._make(0.1)
+        d[0, 0, 0, 0] = float("nan")
+        report, _ = RadianceACES2Compliance().check(self._make(0.18), d, "SDR_sRGB")
+        assert "finite_values" in report and "FAIL" in report
+
+    def test_report_makes_no_specification_claim(self):
+        report, pass_count = RadianceACES2Compliance().check(self._make(0.18), self._make(0.1), "SDR_sRGB")
+        assert "S-2126" not in report
+        assert "Not a certification" in report
         assert isinstance(pass_count, int)
-
-    def test_batch_first_frame_used(self):
-        """Compliance should handle batched input (uses frame 0)."""
-        node = RadianceACES2Compliance()
-        scene   = self._make(0.18, (3, 32, 32, 3))
-        display = self._make(0.10, (3, 32, 32, 3))
-        report, _ = node.check(scene, display, "SDR_sRGB")
-        assert report  # no crash
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -11,6 +11,7 @@ from radiance.radiance_ocio import get_ocio_manager
 # Shared torch-math primitives — single source of truth for matrix ops.
 # Replaces the fragile try/except private-API import from nodes_hdr_colorspace.
 from radiance.color.ops import apply_matrix_3x3, M_REC709_TO_ACESCG, M_ACESCG_TO_REC709
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.colorscience")
 
@@ -21,6 +22,17 @@ _BRADFORD = torch.tensor([
 ], dtype=torch.float64)
 
 _BRADFORD_INV = torch.inverse(_BRADFORD)
+
+# Rec.709 / sRGB primaries, D65 white (IEC 61966-2-1). White Balance works on
+# scene-linear Rec.709 RGB, so the cone-space adaptation has to be wrapped in
+# RGB->XYZ and XYZ->RGB; applying the Bradford matrix straight to RGB values
+# treated R,G,B as X,Y,Z and tinted every neutral (FIX-005).
+_M_709_TO_XYZ = torch.tensor([
+    [0.4123907992659595, 0.3575843393838780, 0.1804807884018343],
+    [0.2126390058715104, 0.7151686787677559, 0.0721923153607337],
+    [0.0193308187155918, 0.1191947797946259, 0.9505321522496608],
+], dtype=torch.float64)
+_M_XYZ_TO_709 = torch.inverse(_M_709_TO_XYZ)
 
 _ILLUMINANT_XY = {
     "D50": (0.3457, 0.3585), "D55": (0.3324, 0.3474), "D60": (0.3217, 0.3377),
@@ -34,28 +46,55 @@ def _xy_to_XYZ(xy: Tuple[float, float]) -> torch.Tensor:
     return torch.tensor([x / y, 1.0, (1.0 - x - y) / y], dtype=torch.float64)
 
 
-def _build_bradford_matrix(src_illuminant: str, dst_illuminant: str) -> torch.Tensor:
-    src_XYZ = _xy_to_XYZ(_ILLUMINANT_XY.get(src_illuminant, _ILLUMINANT_XY["D65"]))
-    dst_XYZ = _xy_to_XYZ(_ILLUMINANT_XY.get(dst_illuminant, _ILLUMINANT_XY["D65"]))
+def _bradford_xyz(src_xy: Tuple[float, float], dst_xy: Tuple[float, float]) -> torch.Tensor:
+    """XYZ->XYZ von Kries adaptation in Bradford cone space (float64).
+
+    White points are normalised to Y=1 so the adaptation preserves luminance
+    of the white.
+    """
+    src_XYZ = _xy_to_XYZ(src_xy)
+    dst_XYZ = _xy_to_XYZ(dst_xy)
     src_cone = _BRADFORD @ src_XYZ
     dst_cone = _BRADFORD @ dst_XYZ
-    scale = dst_cone / src_cone.clamp(min=1e-9)
-    M = _BRADFORD_INV @ torch.diag(scale) @ _BRADFORD
-    return M.float()
+    scale = dst_cone / src_cone.clamp(min=1e-12)
+    return _BRADFORD_INV @ torch.diag(scale) @ _BRADFORD
+
+
+def _bradford_rgb_matrix(src_xy: Tuple[float, float], dst_xy: Tuple[float, float]) -> torch.Tensor:
+    """Linear Rec.709 RGB->RGB matrix that adapts white ``src_xy`` to ``dst_xy``."""
+    return (_M_XYZ_TO_709 @ _bradford_xyz(src_xy, dst_xy) @ _M_709_TO_XYZ).float()
+
+
+def _build_bradford_matrix(src_illuminant: str, dst_illuminant: str) -> torch.Tensor:
+    d65 = _ILLUMINANT_XY["D65"]
+    return _bradford_rgb_matrix(_ILLUMINANT_XY.get(src_illuminant, d65),
+                                _ILLUMINANT_XY.get(dst_illuminant, d65))
 
 
 def _temperature_to_xy(kelvin: float) -> Tuple[float, float]:
+    """White point for a colour temperature.
+
+    4000 K and up: the CIE daylight locus (D series), with the nominal
+    temperature corrected for the 1968 change of c2 (x 1.4388/1.4380), so
+    6500 K is D65 and the node's default is neutral. It used the Planckian
+    locus everywhere, whose 6500 K point is not D65 and left a magenta cast
+    (gains 1.043 / 0.984 / 1.035) at the default (FIX-005). Below 4000 K the
+    Planckian (Kang et al.) approximation is kept.
+    """
     T = max(1667.0, min(kelvin, 25000.0))
-    if T <= 4000:
-        x = (-0.2661239e9 / T**3 - 0.2343580e6 / T**2 + 0.8776956e3 / T + 0.179910)
-    else:
-        x = (-3.0258469e9 / T**3 + 2.1070379e6 / T**2 + 0.2226347e3 / T + 0.240390)
+    if T >= 4000.0:
+        Td = T * 1.4388 / 1.4380
+        if Td <= 7000.0:
+            x = -4.6070e9 / Td**3 + 2.9678e6 / Td**2 + 0.09911e3 / Td + 0.244063
+        else:
+            x = -2.0064e9 / Td**3 + 1.9018e6 / Td**2 + 0.24748e3 / Td + 0.237040
+        y = -3.000 * x * x + 2.870 * x - 0.275
+        return (x, y)
+    x = (-0.2661239e9 / T**3 - 0.2343580e6 / T**2 + 0.8776956e3 / T + 0.179910)
     if T <= 2222:
         y = (-1.1063814 * x**3 - 1.34811020 * x**2 + 2.18555832 * x - 0.20219683)
-    elif T <= 4000:
-        y = (-0.9549476 * x**3 - 1.37418593 * x**2 + 2.09137015 * x - 0.16748867)
     else:
-        y = (3.0817580 * x**3 - 5.87338670 * x**2 + 3.75112997 * x - 0.37001483)
+        y = (-0.9549476 * x**3 - 1.37418593 * x**2 + 2.09137015 * x - 0.16748867)
     return (x, y)
 
 
@@ -95,8 +134,17 @@ class RadianceWhiteBalance:
               temperature: float = 6500.0, tint: float = 0.0,
               src_illuminant: str = "D65", dst_illuminant: str = "D50",
               gain_r: float = 1.0, gain_g: float = 1.0, gain_b: float = 1.0,
-              strength: float = 1.0, grade_info_in: str = None):
-        img = image.clone()
+              strength: float = 1.0, grade_info_in: str = None,
+              ocio_context=None):
+        # FIX-004: ocio_context is a declared optional input; connecting it
+        # used to raise "unexpected keyword argument".
+        if ocio_context is not None:
+            from radiance.nodes.color.ocio import ensure_context_loaded
+            ensure_context_loaded(ocio_context)
+
+        from radiance.core.tensor.alpha import split_rgb_alpha, merge_rgb_alpha
+        rgb_in, alpha = split_rgb_alpha(image)
+        img = rgb_in.float()
         device = img.device
 
         if preset != "Manual" and mode == "Temperature / Tint":
@@ -107,14 +155,7 @@ class RadianceWhiteBalance:
             temperature = preset_map.get(preset, temperature)
 
         if mode == "Temperature / Tint":
-            target_xy = _temperature_to_xy(temperature)
-            src_xy = _ILLUMINANT_XY["D65"]
-            src_XYZ = _xy_to_XYZ(src_xy)
-            dst_XYZ = _xy_to_XYZ(target_xy)
-            src_cone = _BRADFORD @ src_XYZ
-            dst_cone = _BRADFORD @ dst_XYZ
-            scale = dst_cone / src_cone.clamp(min=1e-9)
-            M = (_BRADFORD_INV @ torch.diag(scale) @ _BRADFORD).float().to(device)
+            M = _bradford_rgb_matrix(_ILLUMINANT_XY["D65"], _temperature_to_xy(temperature)).to(device)
             tint_gain = torch.tensor([1.0, math.pow(2.0, -tint * 0.5), 1.0], dtype=torch.float32, device=device)
             result = torch.einsum('ij,...j->...i', M, img)
             result = result * tint_gain
@@ -126,7 +167,8 @@ class RadianceWhiteBalance:
             result = img * gains
 
         if strength < 1.0:
-            result = torch.lerp(image, result, strength)
+            result = torch.lerp(img, result, strength)
+        result = merge_rgb_alpha(result.to(image.dtype), alpha)
 
         grade_info = json.dumps({
             "node": "RadianceWhiteBalance", "mode": mode, "preset": preset,
@@ -138,6 +180,8 @@ class RadianceWhiteBalance:
         return (result, grade_info)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceColorSpaceConvert:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = (
@@ -406,6 +450,8 @@ _M_XYZ_TO_REC2020 = torch.tensor([
 ], dtype=torch.float32)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceACESTransform:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = (

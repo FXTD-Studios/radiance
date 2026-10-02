@@ -33,6 +33,7 @@ from radiance.color.transfer import (
     tensor_linear_to_vlog, tensor_vlog_to_linear,
     tensor_linear_to_davinci_intermediate, tensor_davinci_intermediate_to_linear,
 )
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.hdr.color")
 
@@ -125,25 +126,31 @@ class ImageToFloat32:
     def convert(
         self, image: torch.Tensor, normalize: bool = False, source_gamma: float = 1.0
     ) -> Tuple[torch.Tensor]:
-        # Ensure float32
-        img = image.float()
+        # Ensure float32. FIX-010: `.float()` returns the SAME tensor for a
+        # float32 input, so the per-frame normalise below divided the
+        # upstream node's output in place. Always work on a copy.
+        img = image.float().clone()
+        rgb = img[..., :3]
 
         # v2.1 FIX: Apply source gamma linearization (was completely unused before)
+        # FIX-008: gamma and normalise are colour operations; alpha is untouched.
         if source_gamma != 1.0:
-            img = _sign_pow_torch(img, source_gamma)
+            rgb.copy_(_sign_pow_torch(rgb, source_gamma))
 
         # v2.1 FIX: Normalize PER-FRAME, not global batch max.
         # Old code: img / img.max() — one bright pixel in any frame
         # crushed the entire batch (e.g., 0.5 → 0.01 if max was 50.0).
         if normalize:
             for i in range(img.shape[0]):
-                frame_max = img[i].max()
+                frame_max = rgb[i].max()
                 if frame_max > 1.0:
-                    img[i] = img[i] / frame_max
+                    rgb[i] = rgb[i] / frame_max
 
         return (img,)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class Float32ColorCorrect:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
@@ -418,6 +425,8 @@ class Float32ColorCorrect:
         return (img,)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class ColorSpaceConvert:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     """
@@ -954,6 +963,8 @@ _ADAPT_D65_TO_D60 = _chromatic_adaptation(_WP_D65_XY, _WP_D60_XY)
 _ADAPT_D60_TO_D65 = _chromatic_adaptation(_WP_D60_XY, _WP_D65_XY)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class DaVinciWideGamut:
     """
     Convert to/from DaVinci Wide Gamut and DaVinci Intermediate.
@@ -1076,6 +1087,8 @@ class DaVinciWideGamut:
         return (numpy_to_tensor_float32(result_batch),)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class ARRIWideGamut4:
     """
     Convert to/from ARRI Wide Gamut 4 (AWG4) for Alexa 35.
@@ -1604,11 +1617,22 @@ class ACES2OutputTransform:
         exposure_adjust: float = 0.0,
         gamut_compress: float = 1.0,
     ) -> Tuple[torch.Tensor, str]:
+        # FIX-009: only image[0] was transformed and a 1-frame batch returned.
+        # FIX-008: RGBA failed in the matrix step. Every frame now goes
+        # through the transform on RGB, with alpha passed through.
+        batch = tensor_to_numpy_float32(image)
+        if batch.ndim == 3:
+            batch = batch[None]
+        outs, info = [], ""
+        for frame in batch:
+            out, info = self._transform_frame(
+                np.ascontiguousarray(frame[..., :3]), input_colorspace, output_transform,
+                peak_luminance, surround, creative_white_scale, exposure_adjust, gamut_compress)
+            outs.append(np.concatenate([out, frame[..., 3:]], axis=-1) if frame.shape[-1] > 3 else out)
+        return (numpy_to_tensor_float32(np.stack(outs).astype(np.float32)), info)
 
-        img = tensor_to_numpy_float32(image)
-        if img.ndim == 4:
-            img = img[0]
-
+    def _transform_frame(self, img, input_colorspace, output_transform, peak_luminance,
+                         surround, creative_white_scale, exposure_adjust, gamut_compress):
         # 1. Apply exposure
         if exposure_adjust != 0:
             img = img * (2.0**exposure_adjust)
@@ -1718,4 +1742,4 @@ class ACES2OutputTransform:
             info += f" | Peak: {peak_nits} nits"
         info += f" | Surround: {surround}"
 
-        return (numpy_to_tensor_float32(output), info)
+        return output.astype(np.float32), info

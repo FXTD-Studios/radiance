@@ -135,8 +135,17 @@ class Harness:
         self.key = key
         self.calls = []          # (kwargs) recorded by the write_frames spy
 
-    def put(self, frames):
+    def put(self, frames, source=("linear", "Linear Rec.709 (sRGB)")):
+        """Cache frames as the Viewer would, with the input space it resolved.
+
+        Linear by default: these tests compare delivered pixels with cached
+        ones through a linear EXR, which is only an identity for a linear
+        source (FIX-018). Display-encoded sources are covered in
+        tests/test_p0_delivery_fixes.py.
+        """
         cache._viewer_cache_set(self.key, frames)
+        if source is not None:
+            cache._viewer_source_set(self.key, *source)
 
     def run(self, settings=None, grading=None, payload=None, raise_with=None):
         if payload is None:
@@ -190,6 +199,8 @@ def h(tmp_path, monkeypatch, real_aiohttp_web, request):
 
     with cache._VIEWER_CACHE_LOCK:
         cache._VIEWER_CACHE.pop(key, None)
+    with cache._VIEWER_SOURCE_LOCK:
+        cache._VIEWER_SOURCE.pop(key, None)
     with cache._VIEWER_PROGRESS_LOCK:
         cache._VIEWER_PROGRESS.pop(key, None)
 
@@ -991,12 +1002,11 @@ def test_a_failing_file_manager_does_not_fail_the_delivery(h, monkeypatch):
 def test_bake_grade_linearises_an_srgb_encoded_plate_into_the_exr(h):
     """0.5 sRGB is 0.2140 linear. Without the bake it stays 0.5.
 
-    The colour space has to be `sRGB (Standard)` for this to be the right
-    thing to do. These two tests used to run on the harness default,
-    `Linear (sRGB)`, which is the case that must NOT be linearised -- see
+    The decode follows the SOURCE the Viewer resolved (FIX-018), not the
+    output colour space: a linear source must NOT be linearised -- see
     `test_bake_grade_leaves_an_already_linear_master_alone` below.
     """
-    h.put(flat(0.5))
+    h.put(flat(0.5), source=("srgb", "sRGB Encoded Rec.709 (sRGB)"))
     body = h.body(h.run({"bake_grade": True, "colorSpace": "sRGB (Standard)"}))
     assert h.pixel(h.exrs()[0])[0] == pytest.approx(0.21404, abs=1e-4)
     meta = json.loads(open(os.path.splitext(body["path"])[0] + "_meta.json",
@@ -1006,7 +1016,7 @@ def test_bake_grade_linearises_an_srgb_encoded_plate_into_the_exr(h):
 
 def test_bake_grade_uses_the_low_slope_below_the_srgb_knee(h):
     """0.02 is under 0.04045, so it divides by 12.92 rather than powing."""
-    h.put(flat(0.02))
+    h.put(flat(0.02), source=("srgb", "sRGB Encoded Rec.709 (sRGB)"))
     h.run({"bake_grade": True, "colorSpace": "sRGB (Standard)"})
     assert h.pixel(h.exrs()[0])[0] == pytest.approx(0.02 / 12.92, abs=1e-6)
 

@@ -7,8 +7,8 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 36 nodes. [All sections](README.md)
 
 - [ACES 2.0 Gamut Compress](#aces-20-gamut-compress)
+- [ACES 2.0 Output Check](#aces-20-output-check)
 - [ACES 2.0 Output Transform](#aces-20-output-transform)
-- [ACES 2.0 S-2126 Compliance](#aces-20-s-2126-compliance)
 - [ACES 2.0 Tonescale](#aces-20-tonescale)
 - [ACES Config Manager](#aces-config-manager)
 - [ACES Metadata File (AMF)](#aces-metadata-file-amf)
@@ -69,6 +69,28 @@ Compress out-of-gamut values using the ACES 2.0 Reach Gamut method.
 | `image` | IMAGE |
 | `compress_info` | STRING |
 
+## ACES 2.0 Output Check
+
+`RadianceACES2Compliance`
+
+Compare a display render against the ACES 2.0 reference Output Transform (OpenColorIO) for the same ACEScg image. Not a certification against any Academy specification.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `scene_image` | IMAGE |  |  | Scene-linear ACEScg image BEFORE the output transform. |
+| `display_image` | IMAGE |  |  | Display-encoded image AFTER the output transform under test. |
+| `output_type` | choice | `SDR_sRGB` | `SDR_sRGB`, `SDR_P3`, `HDR_PQ_1000`, `HDR_PQ_2000`, `HDR_PQ_4000`, `HDR_HLG` | ACES 2.0 Output Transform the display image is meant to be. The reference is rendered for this output and compared. |
+| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Shown in the report header only; the peak comes from output_type. |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `report` | STRING |
+| `pass_count` | INT |
+
 ## ACES 2.0 Output Transform
 
 `RadianceACES2OutputTransformFull`
@@ -82,11 +104,12 @@ Full ACES 2.0 Output Transform (RRT + ODT) for display rendering.
 | `image` | IMAGE |  |  | Scene-linear image in the space chosen by input_colorspace (18% grey = 0.18). A display-encoded sRGB image must be linearised first. |
 | `input_colorspace` | choice | `ACEScg` | `ACEScg`, `ACES2065-1`, `Linear_sRGB`, `Linear_Rec2020` | Primaries of the incoming linear image; it is converted to ACEScg (AP1) before the transform. No transfer curve is removed. |
 | `output_transform` | choice | `ACES 2.0 SDR (sRGB/Rec.709)` | `ACES 2.0 SDR (sRGB/Rec.709)`, `ACES 2.0 SDR (P3-D65)`, `ACES 2.0 HDR (Rec.2100 PQ 1000 nits)`, `ACES 2.0 HDR (Rec.2100 PQ 2000 nits)`, `ACES 2.0 HDR (Rec.2100 PQ 4000 nits)`, `ACES 2.0 HDR (Rec.2100 HLG)`, `ACES 2.0 Cinema (DCI-P3 D60)`, `ACES 2.0 Cinema (DCI-P3 D65)` | Target display: sets primaries, encoding (sRGB, PQ, HLG or gamma 2.6) and peak. Output is display-encoded 0 to 1. Cinema D60 targets P3 at ACES white; Cinema D65 targets P3 at D65. Match the display calibration. |
-| `peak_luminance` (optional) | float | 100 | 48 to 10000, step 1 | Display peak luminance in nits for the SDR and HLG outputs. Ignored for the PQ outputs (fixed by their name) and Cinema (fixed 48 nits). |
+| `peak_luminance` (optional) | float | 100 | 48 to 10000, step 1 | Display peak luminance in nits, used only by the Radiance approximation for the SDR and HLG outputs. The OCIO reference fixes the peak by the output's name (SDR and Cinema 100 nits, HLG 1000 nits). |
 | `surround` (optional) | choice | `Dim` | `Dark`, `Dim`, `Average` | Viewing environment — affects contrast parameter g. |
 | `exposure_adjust` (optional) | float | 0 | -4 to 4, step 0.1 | Exposure adjustment in stops before transform. |
 | `creative_white_scale` (optional) | float | 1 | 0.5 to 2, step 0.01 | Linear multiplier on all channels after conversion to ACEScg, so it acts as extra exposure (2.0 = +1 stop), not a white point change. 1.0 = no change. |
-| `gamut_compress_strength` (optional) | float | 1 | 0 to 1.5, step 0.05 | ACES 2.0 reach gamut compression strength. |
+| `gamut_compress_strength` (optional) | float | 1 | 0 to 1.5, step 0.05 | Reach gamut compression strength. Radiance approximation only: the OCIO reference has its own gamut mapping and ignores this. |
+| `engine` (optional) | choice | `Auto` | `Auto`, `OCIO reference`, `Radiance approximation` | Auto: the Academy reference through OpenColorIO's pinned ACES 2.0 studio config (OCIO >= 2.5), else the Radiance approximation, labelled as such in transform_info. OCIO reference: fail rather than fall back. Radiance approximation: the luminance tone scale + reach compression math; not the reference. |
 
 **Outputs**
 
@@ -94,28 +117,6 @@ Full ACES 2.0 Output Transform (RRT + ODT) for display rendering.
 | :--- | :--- |
 | `image` | IMAGE |
 | `transform_info` | STRING |
-
-## ACES 2.0 S-2126 Compliance
-
-`RadianceACES2Compliance`
-
-Validate an image against ACES 2.0 specification thresholds.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `scene_image` | IMAGE |  |  | Scene-linear ACEScg image BEFORE the output transform. |
-| `display_image` | IMAGE |  |  | Display-referred image AFTER the full output transform. |
-| `output_type` | choice | `SDR_sRGB` | `SDR_sRGB`, `SDR_P3`, `HDR_PQ_1000`, `HDR_PQ_2000`, `HDR_PQ_4000`, `HDR_HLG` | Output type named in the report header. Currently a label only: the same checks and thresholds run for every choice. |
-| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Display peak in nits shown in the report header. Currently a label only: the checks do not use it. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `report` | STRING |
-| `pass_count` | INT |
 
 ## ACES 2.0 Tonescale
 
@@ -131,7 +132,7 @@ Apply the ACES 2.0 Tonescale operator with configurable parameters.
 | `peak_nits` | float | 100 | 48 to 10000, step 1 | Display peak luminance in cd/m². 100 = SDR, 1000/2000/4000 = HDR. |
 | `mode` | choice | `luminance_preserving` | `luminance_preserving`, `per_channel` | luminance_preserving: tone-map luma then scale RGB — preserves hue/saturation. per_channel: apply curve independently to R, G, B — may introduce hue shifts but avoids colour casts. |
 | `contrast_g` (optional) | float | 1.15 | 0.8 to 1.6, step 0.01 | Contrast exponent g. ACES 2.0 reference = 1.15. |
-| `grey_target` (optional) | float | 0.1 | 0.05 to 0.3, step 0.005 | Display grey target as fraction of peak. Standard = 0.10 (10 nits of 100 SDR). |
+| `grey_target` (optional) | float | 0 | 0 to 0.3, step 0.005 | 0 = ACES 2.0 reference: the Output Transform's own tone scale, 18% grey at 10.0 / 14.5 / 16.8 nits for 100 / 1000 / 4000-nit peaks. Above 0 = creative: 18% grey placed at this fraction of peak on a Hill curve (not the ACES 2.0 curve). |
 | `toe_scene` (optional) | float | 0.04 | 0.005 to 0.2, step 0.005 | Scene luminance below which a linear toe is applied. Prevents gamma lift in deep shadows. |
 
 **Outputs**
@@ -652,7 +653,7 @@ Recover shadow and highlight detail from a single HDR image for better color gra
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Linear HDR image (values above 1.0 allowed). Only the first frame of a batch is processed. |
+| `image` | IMAGE |  |  | Linear HDR image (values above 1.0 allowed). Every frame of a batch is processed; alpha passes through unchanged. |
 | `shadow_amount` | float | 0.5 | 0 to 2, step 0.05 | Shadow gain at black: pixels are multiplied by up to 1 + amount, fading out with luma (see shadow_tone). 0 = off. |
 | `highlight_amount` | float | 0.5 | 0 to 2, step 0.05 | Highlight compression above highlight_tone, never clipping. At the default, luma 1.0 is scaled by 0.8 and brighter values more. 0 = off. |
 | `shadow_tone` (optional) | float | 0.25 | 0 to 0.5, step 0.01 | Linear-luma width of the shadow lift. It decays exponentially and is down to about 5% at this luma. |

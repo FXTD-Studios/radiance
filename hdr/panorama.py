@@ -279,11 +279,14 @@ class HDR360Generate:
         exposure_adjust: float = 0.0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        img = tensor_to_numpy_float32(source_image)
-        if img.ndim == 4:
-            img = img[0]
-
-        src_h, src_w = img.shape[:2]
+        # FIX-009: only frame 0 was projected and a 1-frame batch returned.
+        # The mapping is computed once and every frame is sampled through it.
+        batch = tensor_to_numpy_float32(source_image)
+        if batch.ndim == 3:
+            batch = batch[None]
+        if batch.ndim != 4:
+            raise ValueError(f"HDR 360 Generate needs an IMAGE batch, got {tuple(batch.shape)}")
+        src_h, src_w = batch.shape[1:3]
 
         # Generate equirectangular UV grid
         xyz = self._equirectangular_to_xyz(output_width, output_height)
@@ -401,16 +404,22 @@ class HDR360Generate:
         # Apply fill mode
         u, v, mask = self._apply_fill_mode(u, v, fill_mode)
 
-        # Sample the source image
-        panorama = self._sample_image(img, u, v, interpolation, fill_mode)
+        frames = []
+        for img in batch:
+            # Sample the source image
+            panorama = self._sample_image(img, u, v, interpolation, fill_mode)
+            if panorama.ndim == 2:
+                panorama = panorama[..., np.newaxis]
 
-        # Apply mask for black fill mode
-        if fill_mode == "Black":
-            panorama = panorama * mask[..., np.newaxis]
+            # Apply mask for black fill mode (coverage: alpha included)
+            if fill_mode == "Black":
+                panorama = panorama * mask[..., np.newaxis]
 
-        # Apply exposure adjustment
-        if exposure_adjust != 0:
-            panorama = panorama * (2.0**exposure_adjust)
+            # Exposure is colour: RGB only, alpha untouched (FIX-008)
+            if exposure_adjust != 0:
+                panorama = panorama.copy()
+                panorama[..., :3] = panorama[..., :3] * (2.0**exposure_adjust)
+            frames.append(panorama.astype(np.float32))
 
         # Create UV map for visualization
         uv_map = np.stack([u, v, mask], axis=-1).astype(np.float32)
@@ -423,11 +432,10 @@ class HDR360Generate:
         # torch.from_numpy gives exact (H,W,C), .unsqueeze(0) gives (1,H,W,C).
         # Ensure panorama is 3D before conversion — cv2.remap always returns
         # (out_H, out_W, C) for color inputs, but be explicit for safety.
-        if panorama.ndim == 2:
-            panorama = panorama[..., np.newaxis]  # grayscale → (H,W,1)
         if uv_map.ndim == 2:
             uv_map = uv_map[..., np.newaxis]
-        panorama_t = torch.from_numpy(panorama.astype(np.float32)).unsqueeze(0)  # (1,H,W,C)
+        panorama_t = torch.from_numpy(np.stack(frames))                          # (B,H,W,C)
+        # The UV map is the projection geometry, the same for every frame.
         uv_map_t   = torch.from_numpy(uv_map.astype(np.float32)).unsqueeze(0)   # (1,H,W,3)
         return (panorama_t, uv_map_t)
 
