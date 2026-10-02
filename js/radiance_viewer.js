@@ -7621,13 +7621,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                     const satEl = doc.querySelector('Saturation');
                     const sat = satEl ? parseFloat(satEl.textContent) : 1.0;
 
+                    // FIX-006: inverse of _exportCDL. The Viewer grade is
+                    // ((in * 2^exposure + offset) * gain) ^ (1/gamma), so a CDL
+                    // maps to gain = slope, offset = Offset / slope, gamma =
+                    // 1/power, with exposure and lift at identity. Offset used to
+                    // be loaded into the luma-pivoted lift.
                     if (slope && slope.length === 3) {
                         this.gain = slope;
                         if (this.renderer) this.renderer.setGain(...slope);
+                        this.exposure = 0.0;
+                        if (this.renderer) this.renderer.setExposure(0.0);
+                        this.lift = [0, 0, 0];
+                        if (this.renderer) this.renderer.setLift(0, 0, 0);
                     }
                     if (offset && offset.length === 3) {
-                        this.lift = offset;
-                        if (this.renderer) this.renderer.setLift(...offset);
+                        const s3 = (slope && slope.length === 3) ? slope : [1, 1, 1];
+                        const off = offset.map((o, i) => Math.abs(s3[i]) > 1e-9 ? o / s3[i] : o);
+                        this.offset = off;
+                        if (this.renderer) this.renderer.setOffset(...off);
                     }
                     if (power && power.length === 3) {
                         // CDL Power → gamma: g = 1/power

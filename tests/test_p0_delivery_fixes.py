@@ -253,3 +253,42 @@ def test_unrecorded_source_falls_back_to_the_viewer_auto_rule(deliver):
     root = deliver(torch.full((1, 4, 4, 3), 0.5), None,
                    {"format": "Image Sequence — PNG (8-bit)", "colorSpace": "sRGB (Standard)"})
     assert Image.open(next(root.rglob("*.png"))).getpixel((0, 0))[0] == 128
+
+
+def test_srgb_source_is_graded_in_linear_like_the_viewer(deliver):
+    """The Viewer linearises an sRGB source before grading; +1 stop on sRGB 0.5
+    is 2 x 0.21404 linear, not decode(min(1.0, 2 x 0.5))."""
+    out = _deliver_graded(deliver, {"exposure": 1.0})
+    assert out == pytest.approx(2 * 0.21404, abs=1e-4)
+
+
+def _deliver_graded(deliver, grade):
+    # deliver() uses IDENTITY_GRADE; patch it for this call.
+    import tests.test_delivery_endpoints as tde
+    saved = dict(tde.IDENTITY_GRADE)
+    tde.IDENTITY_GRADE.update(grade)
+    try:
+        root = deliver(torch.full((1, 4, 4, 3), 0.5), SRGB_SRC,
+                       {"format": "Image Sequence — EXR (32-bit)", "colorSpace": "Linear (sRGB)",
+                        "filename": "Graded"})
+    finally:
+        tde.IDENTITY_GRADE.clear()
+        tde.IDENTITY_GRADE.update(saved)
+    exr = sorted(root.rglob("Graded*.exr"))[0]
+    return oiio.ImageBuf(str(exr)).getpixel(0, 0)[0]
+
+
+def test_failed_multipart_write_leaves_no_partial_file(tmp_path, monkeypatch):
+    import OpenEXR
+
+    class _Partial:
+        def __init__(self, parts):
+            pass
+
+        def write(self, path):
+            open(path, "wb").write(b"truncated")
+            raise RuntimeError("disk full")
+    monkeypatch.setattr(OpenEXR, "File", _Partial)
+    r = hdr_io.write_exr_multipart_report(str(tmp_path / "f.exr"), _parts())
+    assert r["mode"] == "failed" and r["files"] == []
+    assert not (tmp_path / "f.exr").exists()

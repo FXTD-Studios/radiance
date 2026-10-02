@@ -1621,7 +1621,7 @@ def dispatch_write(
                 finish(job)
 
         if receipt is not None:
-            receipt["files"].sort(key=lambda e: (e["frame"] is None, e["frame"]))
+            receipt.setdefault("files", []).sort(key=lambda e: (e["frame"] is None, e["frame"]))
         return str(out_dir), written
 
     raise ValueError(f"Unknown format: {format!r}")

@@ -323,7 +323,7 @@ class RadianceVideoHDRConditioner:
 # ===========================================================================
 
 # FIX-008: colour maths on RGB only; alpha passes through untouched.
-@alpha_passthrough("image")
+@alpha_passthrough("image", outputs=(0, 1))
 class RadianceVideoHDRDecode:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Video"
     DESCRIPTION = ("Encode decoded sRGB video frames (IMAGE, not latents) to an HDR signal at the "

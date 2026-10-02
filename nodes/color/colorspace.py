@@ -72,17 +72,29 @@ def _build_bradford_matrix(src_illuminant: str, dst_illuminant: str) -> torch.Te
 
 
 def _temperature_to_xy(kelvin: float) -> Tuple[float, float]:
+    """White point for a colour temperature.
+
+    4000 K and up: the CIE daylight locus (D series), with the nominal
+    temperature corrected for the 1968 change of c2 (x 1.4388/1.4380), so
+    6500 K is D65 and the node's default is neutral. It used the Planckian
+    locus everywhere, whose 6500 K point is not D65 and left a magenta cast
+    (gains 1.043 / 0.984 / 1.035) at the default (FIX-005). Below 4000 K the
+    Planckian (Kang et al.) approximation is kept.
+    """
     T = max(1667.0, min(kelvin, 25000.0))
-    if T <= 4000:
-        x = (-0.2661239e9 / T**3 - 0.2343580e6 / T**2 + 0.8776956e3 / T + 0.179910)
-    else:
-        x = (-3.0258469e9 / T**3 + 2.1070379e6 / T**2 + 0.2226347e3 / T + 0.240390)
+    if T >= 4000.0:
+        Td = T * 1.4388 / 1.4380
+        if Td <= 7000.0:
+            x = -4.6070e9 / Td**3 + 2.9678e6 / Td**2 + 0.09911e3 / Td + 0.244063
+        else:
+            x = -2.0064e9 / Td**3 + 1.9018e6 / Td**2 + 0.24748e3 / Td + 0.237040
+        y = -3.000 * x * x + 2.870 * x - 0.275
+        return (x, y)
+    x = (-0.2661239e9 / T**3 - 0.2343580e6 / T**2 + 0.8776956e3 / T + 0.179910)
     if T <= 2222:
         y = (-1.1063814 * x**3 - 1.34811020 * x**2 + 2.18555832 * x - 0.20219683)
-    elif T <= 4000:
-        y = (-0.9549476 * x**3 - 1.37418593 * x**2 + 2.09137015 * x - 0.16748867)
     else:
-        y = (3.0817580 * x**3 - 5.87338670 * x**2 + 3.75112997 * x - 0.37001483)
+        y = (-0.9549476 * x**3 - 1.37418593 * x**2 + 2.09137015 * x - 0.16748867)
     return (x, y)
 
 
