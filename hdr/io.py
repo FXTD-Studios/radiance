@@ -348,13 +348,14 @@ def build_radiance_hdr_metadata(
 #                    EXR MULTI-PART WRITER (v2.4 Phase 5.4)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def write_exr_multipart(
+def write_exr_multipart_report(
     filepath: str,
     parts: Dict[str, np.ndarray],
     bit_depth: str = "16-bit Half Float",
     compression: str = "ZIP",
     metadata: Optional[Dict[str, Any]] = None,
-) -> bool:
+    allow_fallback: bool = False,
+) -> Dict[str, Any]:
     """
     Write a multi-part EXR v2 file with named layers.
 
@@ -380,12 +381,29 @@ def write_exr_multipart(
         compression: EXR compression (ZIP, PIZ, ZIPS, etc.).
         metadata: Optional dict of string metadata embedded in each part header.
 
-    Returns:
-        True on success, False on failure.
+    Returns a receipt (FIX-015/016)::
+
+        {"mode": "multipart" | "per_part" | "failed",
+         "complete": bool,            # every requested part is on disk
+         "files": [paths written],    # the real files, not the requested name
+         "parts": {name: {"status": "written" | "failed" | "skipped",
+                          "file": path or None, "error": str or None}},
+         "error": str or None}
+
+    With ``allow_fallback`` False (strict) a failed multi-part write writes
+    nothing else and reports "failed". With it True, each part goes to its
+    own ``<base>.<part>.exr`` and the receipt lists exactly those files.
     """
-    if not parts:
+    receipt: Dict[str, Any] = {"mode": "failed", "complete": False, "files": [],
+                               "parts": {}, "error": None}
+    for _n, _img in (parts or {}).items():
+        receipt["parts"][_n] = {"status": "skipped" if _img is None else "failed",
+                                "file": None, "error": None if _img is not None else "no image"}
+    requested = [n for n, img in (parts or {}).items() if img is not None]
+    if not requested:
         logger.warning("[EXR MultiPart] No parts provided.")
-        return False
+        receipt["error"] = "no parts provided"
+        return receipt
 
     ptype_str = "HALF" if "16" in bit_depth else "FLOAT"
 
@@ -460,27 +478,73 @@ def write_exr_multipart(
 
             OpenEXR.File(exr_parts).write(filepath)
 
-            logger.info(f"[EXR MultiPart] Written {len(exr_parts)} parts → {filepath}")
-            return True
+            # Read the part names back: the receipt reports what is on disk.
+            written_names = [p.name() for p in OpenEXR.File(filepath).parts]
+            for name in requested:
+                ok = name in written_names
+                receipt["parts"][name] = {"status": "written" if ok else "failed",
+                                          "file": filepath if ok else None,
+                                          "error": None if ok else "part missing after write"}
+            receipt["files"] = [filepath]
+            receipt["complete"] = all(n in written_names for n in requested)
+            receipt["mode"] = "multipart"
+            if not receipt["complete"]:
+                receipt["error"] = "parts missing after write: " + ", ".join(
+                    n for n in requested if n not in written_names)
+            logger.info(f"[EXR MultiPart] Written {len(written_names)} parts → {filepath}")
+            return receipt
 
         except Exception as e:
+            receipt["error"] = f"OpenEXR multi-part failed: {e}"
+            if not allow_fallback:
+                logger.error(f"[EXR MultiPart] {receipt['error']}")
+                return receipt
             logger.warning(f"[EXR MultiPart] OpenEXR multi-part failed ({e}), falling back to per-layer files.")
+    else:
+        receipt["error"] = "OpenEXR is not installed"
+        if not allow_fallback:
+            logger.error("[EXR MultiPart] OpenEXR is not installed; multi-part EXR unavailable.")
+            return receipt
 
     # ── Fallback: write separate EXR files per part ───────────────────────────
     base, _ = os.path.splitext(filepath)
-    success_count = 0
-    for part_name, img in parts.items():
-        if img is None:
-            continue
+    receipt["mode"] = "per_part"
+    for part_name in requested:
         layer_path = f"{base}.{part_name}.exr"
-        arr = np.asarray(img, dtype=np.float32)
-        if write_exr_robust(layer_path, arr, bit_depth, compression, metadata):
-            success_count += 1
+        arr = np.asarray(parts[part_name], dtype=np.float32)
+        try:
+            ok = bool(write_exr_robust(layer_path, arr, bit_depth, compression, metadata))
+            err = None if ok else "writer returned False"
+        except Exception as exc:  # noqa: BLE001 - recorded per part
+            ok, err = False, str(exc)
+        ok = ok and os.path.isfile(layer_path)
+        receipt["parts"][part_name] = {"status": "written" if ok else "failed",
+                                       "file": layer_path if ok else None, "error": err}
+        if ok:
+            receipt["files"].append(layer_path)
             logger.info(f"[EXR MultiPart] Fallback→ wrote {layer_path}")
 
-    if success_count > 0:
-        logger.warning(
-            f"[EXR MultiPart] Wrote {success_count} separate EXR files instead of multi-part "
-            f"(OpenEXR multi-part unavailable). Load each file individually in Nuke."
-        )
-    return success_count > 0
+    receipt["complete"] = all(receipt["parts"][n]["status"] == "written" for n in requested)
+    logger.warning(
+        f"[EXR MultiPart] Wrote {len(receipt['files'])} of {len(requested)} parts as separate EXR files "
+        f"instead of one multi-part file. Load each file individually in Nuke."
+    )
+    return receipt
+
+
+def write_exr_multipart(
+    filepath: str,
+    parts: Dict[str, np.ndarray],
+    bit_depth: str = "16-bit Half Float",
+    compression: str = "ZIP",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """True only when ``filepath`` is a multi-part EXR holding every part.
+
+    It used to return True after silently writing per-part files under other
+    names (or only some of them), so callers reported a file that did not
+    exist. Use ``write_exr_multipart_report`` for the fallback and receipt.
+    """
+    r = write_exr_multipart_report(filepath, parts, bit_depth, compression, metadata,
+                                   allow_fallback=False)
+    return r["mode"] == "multipart" and r["complete"]

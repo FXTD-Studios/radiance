@@ -7498,8 +7498,15 @@ self.onmessage = async ({ data: { id, url } }) => {
     // v3.0 #7: ASC CDL Export — writes current grading state as .cdl XML
     _exportCDL() {
         // Gain (slope), Lift (offset), Power (gamma), Saturation
-        const slope = this.gain || [1, 1, 1];
-        const offset = this.lift || [0, 0, 0];
+        // FIX-006: CDL is (in * slope + offset) ^ power. The Viewer applies
+        // exposure, offset, gain, then gamma (^ 1/gamma), so slope = 2^exposure
+        // * gain and offset = offset * gain. Lift is luma-pivoted, not a CDL
+        // offset; it used to be written as one.
+        const _k = Math.pow(2, this.exposure || 0);
+        const _gain = this.gain || [1, 1, 1];
+        const _off = this.offset || [0, 0, 0];
+        const slope = _gain.map(g => _k * g);
+        const offset = _off.map((o, i) => o * _gain[i]);
         // Power: inverse of gamma (CDL power = 1/gamma for gamma>0)
         const gamma = this.gamma && Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
         const power = gamma.map(g => g > 0 ? (1.0 / g).toFixed(6) : '1.000000');
@@ -7511,7 +7518,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const xml = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.2">',
+            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">',
             '  <ColorDecision>',
             '    <!-- Radiance Viewer v3.0 Grade Export -->',
             '    <ColorCorrection id="radiance_grade">',
