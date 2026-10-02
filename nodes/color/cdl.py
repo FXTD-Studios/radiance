@@ -6,9 +6,12 @@ import xml.etree.ElementTree as std_ET
 import defusedxml.ElementTree as ET
 
 from radiance.path_utils import resolve_input_path, resolve_output_path
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.cdl")
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceCDLTransform:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = "Apply an ASC CDL (Slope/Offset/Power/Saturation) colour transform."

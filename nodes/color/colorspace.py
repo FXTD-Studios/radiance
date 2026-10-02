@@ -11,6 +11,7 @@ from radiance.radiance_ocio import get_ocio_manager
 # Shared torch-math primitives — single source of truth for matrix ops.
 # Replaces the fragile try/except private-API import from nodes_hdr_colorspace.
 from radiance.color.ops import apply_matrix_3x3, M_REC709_TO_ACESCG, M_ACESCG_TO_REC709
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.colorscience")
 
@@ -167,6 +168,8 @@ class RadianceWhiteBalance:
         return (result, grade_info)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceColorSpaceConvert:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = (
@@ -435,6 +438,8 @@ _M_XYZ_TO_REC2020 = torch.tensor([
 ], dtype=torch.float32)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceACESTransform:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     DESCRIPTION = (

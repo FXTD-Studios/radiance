@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from radiance.core.tensor.chunking import FrameSink, chunks, compute_device, frames_per_chunk
+from radiance.core.tensor.alpha import alpha_passthrough
 
 class RadianceSDRtoHDRExpand:
     """
@@ -75,6 +76,8 @@ class RadianceSDRtoHDRExpand:
         return (result,)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceHDRSynthesisEngine:
     """
     ◎ Radiance HDR Synthesis Engine
@@ -194,6 +197,8 @@ class RadianceHDRSynthesisEngine:
         return (result.permute(0, 2, 3, 1), mask_out)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceRelightEngine:
     """
     ◎ Radiance Relight Engine

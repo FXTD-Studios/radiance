@@ -33,6 +33,7 @@ logger = logging.getLogger("radiance.video.hdr")
 import json
 import math
 from typing import Any, Dict, List, Optional, Tuple
+from radiance.core.tensor.alpha import alpha_passthrough
 
 try:
     import torch
@@ -321,6 +322,8 @@ class RadianceVideoHDRConditioner:
 # Node: RadianceVideoHDRDecode
 # ===========================================================================
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceVideoHDRDecode:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Video"
     DESCRIPTION = ("Encode decoded sRGB video frames (IMAGE, not latents) to an HDR signal at the "

@@ -119,6 +119,7 @@ def _prepare_in_order(prepare, count: int) -> list:
 from radiance.color.viewer_space import (  # noqa: E402
     VIEWER_INPUT_SPACES, SRGB_COLORSPACE, resolve_viewer_input_space,
 )
+from radiance.core.tensor.alpha import alpha_passthrough  # noqa: E402
 
 
 def _video_fps(value: Any) -> Optional[float]:
@@ -1302,6 +1303,8 @@ class RadianceViewer:
             return np.zeros_like(img_f, dtype=np.uint8)
 
 
+# FIX-008: colour maths on RGB only; alpha passes through untouched.
+@alpha_passthrough("image")
 class RadianceGradeApply:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Color"
     """

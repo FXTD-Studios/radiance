@@ -35,6 +35,7 @@ import numpy as np
 import torch
 
 from radiance.path_utils import strip_path_quotes
+from radiance.core.tensor.alpha import alpha_passthrough
 
 log = logging.getLogger("radiance.aces2")
 
@@ -672,6 +673,8 @@ class RadianceACES2Tonescale:
 # NODE 2 — RadianceACES2ReachGamutCompress
 # ═════════════════════════════════════════════════════════════════════════════
 
+# FIX-008: gamut compression is colour maths; alpha passes through.
+@alpha_passthrough("image")
 class RadianceACES2ReachGamutCompress:
     """
     ACES 2.0 Reach-Based Gamut Compression.
