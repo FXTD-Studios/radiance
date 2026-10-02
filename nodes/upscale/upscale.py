@@ -454,6 +454,45 @@ def _as_2x(upscale_fn: Any) -> Any:
     return _fn_2x
 
 
+def _cascade_confidence(conf_first: torch.Tensor, conf_second: torch.Tensor) -> torch.Tensor:
+    """Combine the two tile-geometry maps of the 8x cascade at the final size.
+
+    FIX-011: the second pass's map (8x) used to be shrunk onto the first
+    pass's grid (4x), so the confidence output was half the size of the image
+    and broadcasting it to the image size raised.
+    """
+    first_up = F.interpolate(
+        conf_first.permute(0, 3, 1, 2), size=conf_second.shape[1:3],
+        mode="bilinear", align_corners=False,
+    ).permute(0, 2, 3, 1)
+    return ((first_up + conf_second) / 2.0).clamp(0, 1)
+
+
+def _hdr_to_sr_domain(x: torch.Tensor, hdr_mode: str) -> Tuple[torch.Tensor, bool, float, int]:
+    """Bring ``x`` into the [0, 1) domain SR networks are trained on.
+
+    Returns ``(y, preserved, input_max, negative_count)``. With HDR preserved,
+    a global Reinhard maps [0, inf) into [0, 1) and ``_hdr_from_sr_domain``
+    inverts it. "clamp" clips to [0, 1] on purpose. Negative scene-linear
+    values cannot survive an LDR network and are clamped to 0; the count is
+    reported.
+    """
+    in_max = float(x.max()) if x.numel() else 1.0
+    negatives = int((x < 0).sum().item()) if x.numel() else 0
+    preserve = (hdr_mode == "preserve") or (hdr_mode == "auto" and in_max > 1.0 + 1e-4)
+    if preserve:
+        base = x.clamp(min=0.0)
+        return base / (1.0 + base), True, in_max, negatives
+    return x.clamp(0.0, 1.0), False, in_max, negatives
+
+
+def _hdr_from_sr_domain(y: torch.Tensor, preserved: bool) -> torch.Tensor:
+    if preserved:
+        y = y.clamp(0.0, 1.0 - 1e-6)
+        return y / (1.0 - y)
+    return y.clamp(0, 1)
+
+
 _warned_blend_modes: set = set()
 
 
@@ -1543,9 +1582,13 @@ class RadianceUpscaleTiler:
             upscale_model=upscale_model, tile_size=tile_size, overlap=overlap,
         )
 
+        # FIX-013: the Tiler clipped every value above 1.0. HDR input now goes
+        # through the same Reinhard round trip as Upscale Image (hdr_mode auto).
+        proc, hdr_kept, hdr_max, n_neg = _hdr_to_sr_domain(images.float(), "auto")
+
         # ── First upscale pass ───────────────────────────────────────────────
         upscaled, confidence = tiled_upscale(
-            images, _fn, scale=scale_int,
+            proc, _fn, scale=scale_int,
             tile_size=tile_size, overlap=overlap, blend_mode=blend_mode,
         )
 
@@ -1555,11 +1598,7 @@ class RadianceUpscaleTiler:
                 upscaled, _as_2x(_fn), scale=2,
                 tile_size=tile_size * 4, overlap=overlap * 4, blend_mode=blend_mode,
             )
-            confidence = (confidence + F.interpolate(
-                conf2.permute(0, 3, 1, 2),
-                size=confidence.shape[1:3],
-                mode="bilinear", align_corners=False,
-            ).permute(0, 2, 3, 1)) / 2.0
+            confidence = _cascade_confidence(confidence, conf2)
 
         elapsed = time.time() - t0
         oH, oW  = upscaled.shape[1], upscaled.shape[2]
@@ -1572,12 +1611,14 @@ class RadianceUpscaleTiler:
             f"  Tile     : {tile_size}px  overlap={overlap}px  blend={blend_mode}\n"
             f"  Model    : {_backend_report(_fn, model_label)}\n"
             f"  Time     : {elapsed:.2f}s\n"
+            f"  HDR      : {'preserved (Reinhard round trip)' if hdr_kept else 'none'}  in_max={hdr_max:.3f}"
+            + (f"  negatives clamped: {n_neg}" if n_neg else "") + "\n"
         )
 
         # Broadcast confidence to full 3-channel image for display compatibility
         conf_display = confidence.expand(B, oH, oW, 3)
 
-        return (upscaled.clamp(0, 1), conf_display, info)
+        return (_hdr_from_sr_domain(upscaled, hdr_kept), conf_display, info)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1838,23 +1879,18 @@ class RadianceUpscaleImage:
         # Classify content for info display
         stats = _classify_content(images[0])
 
-        # Pre-processing
-        proc = self._pre_denoise(images, denoise_pre)
-
         # ── Color encoding (linear -> display) before SR ───────────────────────
-        proc = _apply_color_transfer(proc, color_encoding, decode=False)
+        proc = _apply_color_transfer(images.float(), color_encoding, decode=False)
 
         # ── HDR range handling ─────────────────────────────────────────────────
         # SR backends are LDR-trained and clamp tiles to [0,1]. For scene-linear
         # input we tonemap (Reinhard) into [0,1) so the network sees a valid range,
         # then re-expand after upscaling so highlights above 1.0 survive.
-        _hdr_in_max   = float(proc.max()) if proc.numel() else 1.0
-        _hdr_preserve = (hdr_mode == "preserve") or (
-            hdr_mode == "auto" and _hdr_in_max > 1.0 + 1e-4
-        )
-        if _hdr_preserve:
-            _base = proc.clamp(min=0.0)
-            proc  = _base / (1.0 + _base)        # Reinhard global tonemap -> [0,1)
+        # FIX-013: the pre-denoise ran first and clamped to [0, 1], so with any
+        # denoise the highlights were clipped and "auto" never saw HDR. The
+        # denoise now runs in the SR domain, after the HDR mapping.
+        proc, _hdr_preserve, _hdr_in_max, _hdr_neg = _hdr_to_sr_domain(proc, hdr_mode)
+        proc = self._pre_denoise(proc, denoise_pre)
 
         # ── Select backend ────────────────────────────────────────────────────
         scale_int  = {"2×": 2, "4×": 4, "8× (tile cascade)": 4}[scale]
@@ -1899,11 +1935,7 @@ class RadianceUpscaleImage:
                 upscaled, _as_2x(_fn), scale=2,
                 tile_size=tile_size * 4, overlap=overlap * 4,
             )
-            confidence = (confidence + F.interpolate(
-                conf2.permute(0, 3, 1, 2),
-                size=confidence.shape[1:3],
-                mode="bilinear", align_corners=False,
-            ).permute(0, 2, 3, 1)) / 2.0
+            confidence = _cascade_confidence(confidence, conf2)
 
         # ── Post-processing ───────────────────────────────────────────────────
         # balanced = GAN upscale + light sharpening: 0.25 unsharp unless the
@@ -1933,13 +1965,11 @@ class RadianceUpscaleImage:
         )
 
         info += f"  HDR mode      : {hdr_mode}  (preserve={_hdr_preserve}, in_max={_hdr_in_max:.3f})\n"
+        if _hdr_neg:
+            info += f"  Negatives     : {_hdr_neg} value(s) clamped to 0 (SR networks are LDR)\n"
 
         conf_display = confidence.expand(B, oH, oW, 3)
-        if _hdr_preserve:
-            y   = upscaled.clamp(0.0, 1.0 - 1e-6)
-            out = y / (1.0 - y)                  # inverse Reinhard -> restores scene-linear HDR
-        else:
-            out = upscaled.clamp(0, 1)
+        out = _hdr_from_sr_domain(upscaled, _hdr_preserve)  # inverse Reinhard when preserved
         out = _apply_color_transfer(out, color_encoding, decode=True)   # display -> linear
         return (out, conf_display, info)
 
@@ -2144,14 +2174,8 @@ class RadianceUpscaleVideo:
 
         # ── Color + HDR pre-encode (whole batch) ───────────────────────────────
         # SR runs in display-referred [0,1] domain; restore at the end.
-        frames        = _apply_color_transfer(frames, color_encoding, decode=False)
-        _hdr_in_max   = float(frames.max()) if frames.numel() else 1.0
-        _hdr_preserve = (hdr_mode == "preserve") or (
-            hdr_mode == "auto" and _hdr_in_max > 1.0 + 1e-4
-        )
-        if _hdr_preserve:
-            _base  = frames.clamp(min=0.0)
-            frames = _base / (1.0 + _base)        # Reinhard global tonemap -> [0,1)
+        frames = _apply_color_transfer(frames.float(), color_encoding, decode=False)
+        frames, _hdr_preserve, _hdr_in_max, _hdr_neg = _hdr_to_sr_domain(frames, hdr_mode)
 
         # ── Load model via unified tier router ────────────────────────────────
         # For video, SeedVR2 is preferred when tier3 is selected
@@ -2169,56 +2193,57 @@ class RadianceUpscaleVideo:
         )
 
         # ── Temporal window processing ─────────────────────────────────────────
-        oH, oW    = H * scale_int, W * scale_int
-        step      = max(1, window_size - overlap_temporal)
+        # FIX-012: the accumulators were sized for the first pass (4x) while
+        # the 8x cascade returns 8x windows, so every 8x clip raised. They now
+        # use the final scale.
+        final_scale = scale_int * 2 if do_double else scale_int
+        oH, oW    = H * final_scale, W * final_scale
+        window_size = max(1, int(window_size))
+        overlap_temporal = max(0, min(int(overlap_temporal), window_size - 1))
+        step      = window_size - overlap_temporal
 
         # Pre-allocate output + weight accumulators
         out_acc   = torch.zeros(B, oH, oW, C, dtype=torch.float32)
         wgt_acc   = torch.zeros(B, 1,  1,  1,  dtype=torch.float32)
         conf_acc  = torch.zeros(B, oH, oW, 1,  dtype=torch.float32)
 
-        # Window starts — ensure last window covers final frame
-        w_starts = list(range(0, B, step))
-        if B > window_size and w_starts[-1] + window_size < B:
-            w_starts.append(B - window_size)
+        # Window plan in absolute frame numbers: consecutive windows share
+        # exactly `overlap_temporal` frames and the last one ends at B. The old
+        # plan could add windows wholly inside the previous one, and the seam
+        # blend paired the previous window's last frames with this window's
+        # first frames by position, which only lined up when the overlap was
+        # exactly overlap_temporal -- otherwise different frames were blended.
+        windows = []
+        f0 = 0
+        while True:
+            f1 = min(f0 + window_size, B)
+            windows.append((f0, f1))
+            if f1 >= B:
+                break
+            f0 += step
 
-        prev_window_end_up: Optional[torch.Tensor] = None  # last `overlap_temporal` upscaled frames
+        # Upscaled frames of the previous window, keyed by absolute frame index.
+        prev_up: Dict[int, torch.Tensor] = {}
+        prev_f1 = 0
 
-        n_windows = len(w_starts)
+        n_windows = len(windows)
         logger.info(f"[Radiance/Upscale] Video: {B} frames -> {n_windows} windows "
-                    f"(size={window_size}, overlap={overlap_temporal}, scale={scale_int}x)")
+                    f"(size={window_size}, overlap={overlap_temporal}, scale={final_scale}x)")
 
-        for wi, f0 in enumerate(w_starts):
-            f1     = min(f0 + window_size, B)
+        for wi, (f0, f1) in enumerate(windows):
             window = frames[f0:f1]      # (Fw, H, W, C)
             Fw     = f1 - f0
+            head   = max(0, prev_f1 - f0) if wi > 0 else 0              # frames shared with previous
+            tail   = max(0, f1 - windows[wi + 1][0]) if wi < n_windows - 1 else 0  # shared with next
 
-            # Build Gaussian temporal weight for this window
+            # Temporal cross-fade weights over the frames actually shared.
+            # Half-sample offset keeps every weight strictly positive (an
+            # overlap of one frame used to render that frame black).
             t_weights = torch.ones(Fw, dtype=torch.float32)
-            if Fw > 1:
-                half       = overlap_temporal
-                # Half-sample offset, so the ramp is never exactly zero.
-                #
-                # This was `sin(pi * i / (2*half))`, which is 0 at i=0. With
-                # `step = window_size - overlap_temporal`, an overlap of 1 makes
-                # consecutive windows share exactly one frame -- and that frame
-                # got the ramp-DOWN tail of the previous window (also i=0, also
-                # 0) and the ramp-UP head of this one. Both weights zero, so
-                # after normalisation the frame rendered pure black. Measured at
-                # B=100, window=16, overlap=1: frames 15, 30, 45, 60, 75 and 90
-                # were fully black. 1 is the widget minimum and the tooltip
-                # recommends it.
-                #
-                # Offsetting by half a sample keeps the smooth sine shape, makes
-                # every weight strictly positive, and leaves the two overlapping
-                # ramps summing to a sane value for the normalisation below.
-                if wi > 0:
-                    for i in range(min(half, Fw)):
-                        t_weights[i] = math.sin(math.pi * (i + 0.5) / (2 * half))
-                # Ramp down at end (skip if last window)
-                if wi < n_windows - 1:
-                    for i in range(min(half, Fw)):
-                        t_weights[Fw - 1 - i] = math.sin(math.pi * (i + 0.5) / (2 * half))
+            for i in range(min(head, Fw)):
+                t_weights[i] = math.sin(math.pi * (i + 0.5) / (2 * head))
+            for i in range(min(tail, Fw)):
+                t_weights[Fw - 1 - i] = math.sin(math.pi * (i + 0.5) / (2 * tail))
             t_weights = t_weights.view(Fw, 1, 1, 1)
 
             # ── Spatial upscale for this window ──────────────────────────────
@@ -2226,7 +2251,6 @@ class RadianceUpscaleVideo:
                 window, _fn, scale=scale_int,
                 tile_size=tile_size, overlap=overlap_spatial,
             )
-            # up_window: (Fw, oH, oW, C), conf_window: (Fw, oH, oW, 1)
 
             # ── Optional: 8× second pass ─────────────────────────────────────
             if do_double:
@@ -2234,58 +2258,49 @@ class RadianceUpscaleVideo:
                     up_window, _as_2x(_fn), scale=2,
                     tile_size=tile_size * 4, overlap=overlap_spatial * 4,
                 )
-                conf_window = (conf_window + F.interpolate(
-                    cw2.permute(0, 3, 1, 2),
-                    size=conf_window.shape[1:3],
-                    mode="bilinear", align_corners=False,
-                ).permute(0, 2, 3, 1)) / 2.0
+                conf_window = _cascade_confidence(conf_window, cw2)
+            # up_window: (Fw, oH, oW, C), conf_window: (Fw, oH, oW, 1)
 
-            # ── Temporal seam blend with previous window ──────────────────────
-            if prev_window_end_up is not None and overlap_temporal > 0:
-                n_seam = min(overlap_temporal, Fw, prev_window_end_up.shape[0])
-
-                # Flow-compensated warp of previous window tail into current frame
-                if flow_compensation and n_seam > 0:
-                    for si in range(n_seam):
-                        fi      = si           # frame index in current window
-                        prev_fr = prev_window_end_up[-(n_seam - si)]  # (oH,oW,C)
-                        curr_fr = up_window[fi]
-
-                        # Compute luma flow
-                        p_luma  = (0.2126 * prev_fr[:, :, 0] +
-                                   0.7152 * prev_fr[:, :, 1] +
-                                   0.0722 * prev_fr[:, :, 2]).unsqueeze(0)
-                        c_luma  = (0.2126 * curr_fr[:, :, 0] +
-                                   0.7152 * curr_fr[:, :, 1] +
-                                   0.0722 * curr_fr[:, :, 2]).unsqueeze(0)
-                        u, v    = self._lk_flow(p_luma, c_luma)
-
-                        # Warp prev frame to align with current
-                        warped = _warp_with_flow(
-                            prev_fr.unsqueeze(0), u.unsqueeze(0), v.unsqueeze(0),
-                        ).squeeze(0)
-
-                        # Blend ratio: 0→full prev, 1→full current
-                        alpha  = si / max(n_seam - 1, 1)
-
-                        # Laplacian pyramid blend in spatial domain
-                        mask  = torch.full((1, 1, oH, oW), alpha, device=curr_fr.device)
-                        blended = _laplacian_pyramid_blend(
-                            warped.permute(2, 0, 1).unsqueeze(0),
-                            curr_fr.permute(2, 0, 1).unsqueeze(0),
-                            mask, levels=3,
-                        ).squeeze(0).permute(1, 2, 0)
-
-                        up_window[fi] = blended.clamp(0, 1)
+            # ── Temporal seam blend with the previous window ──────────────────
+            # Both windows upscaled the same source frames here; blend the two
+            # results of the SAME absolute frame.
+            n_seam = min(head, Fw)
+            if n_seam > 0 and prev_up:
+                for si in range(n_seam):
+                    a = f0 + si
+                    prev_fr = prev_up.get(a)
+                    if prev_fr is None:
+                        continue
+                    curr_fr = up_window[si]
+                    if flow_compensation:
+                        p_luma = (0.2126 * prev_fr[:, :, 0] + 0.7152 * prev_fr[:, :, 1]
+                                  + 0.0722 * prev_fr[:, :, 2]).unsqueeze(0)
+                        c_luma = (0.2126 * curr_fr[:, :, 0] + 0.7152 * curr_fr[:, :, 1]
+                                  + 0.0722 * curr_fr[:, :, 2]).unsqueeze(0)
+                        # u, v: (1,H,W) motion prev -> current. Sample the
+                        # previous result at x - (u, v) to align it with this
+                        # frame. The flow used to be passed as (1,1,H,W), which
+                        # grid_sample rejects, so flow_compensation (the
+                        # default) raised on every clip with more than one window.
+                        u, v = self._lk_flow(p_luma, c_luma)
+                        prev_fr = _warp_with_flow(prev_fr.unsqueeze(0), -u, -v).squeeze(0)
+                    ratio = (si + 1) / (n_seam + 1)   # toward this window across the seam
+                    mask = torch.full((1, 1, oH, oW), ratio, device=curr_fr.device)
+                    blended = _laplacian_pyramid_blend(
+                        prev_fr.permute(2, 0, 1).unsqueeze(0),
+                        curr_fr.permute(2, 0, 1).unsqueeze(0),
+                        mask, levels=3,
+                    ).squeeze(0).permute(1, 2, 0)
+                    up_window[si] = blended.clamp(0, 1)
 
             # ── Accumulate into global output ─────────────────────────────────
             out_acc [f0:f1]  += up_window  * t_weights
             wgt_acc [f0:f1]  += t_weights
             conf_acc[f0:f1]  += conf_window * t_weights
 
-            # Save tail for next window seam blend
-            if overlap_temporal > 0:
-                prev_window_end_up = up_window[-overlap_temporal:].detach().clone()
+            # Keep this window's frames that the next window shares.
+            prev_up = {f1 - tail + k: up_window[Fw - tail + k].detach().clone() for k in range(tail)}
+            prev_f1 = f1
 
         # Normalise
         wgt_safe         = wgt_acc.clamp(min=1e-8)
@@ -2304,7 +2319,7 @@ class RadianceUpscaleVideo:
         info = (
             f"RadianceUpscaleVideo  v1.0\n"
             f"  Frames        : {B}  ({B}fr → {B}fr upscaled)\n"
-            f"  Resolution    : {H}×{W} → {oH}×{oW}  ({scale_int}×)\n"
+            f"  Resolution    : {H}×{W} → {oH}×{oW}  ({final_scale}×)\n"
             f"  Model         : {_backend_report(_fn, model_label)}\n"
             f"  Windows       : {n_windows}  size={window_size}  overlap={overlap_temporal}\n"
             f"  Flow warp     : {'on' if flow_compensation else 'off'}\n"
@@ -2315,9 +2330,9 @@ class RadianceUpscaleVideo:
         info += f"  HDR mode      : {hdr_mode}  (preserve={_hdr_preserve}, in_max={_hdr_in_max:.3f})\n"
         info += f"  Color encoding: {color_encoding}\n"
 
-        if _hdr_preserve:
-            y       = out_acc.clamp(0.0, 1.0 - 1e-6)
-            out_acc = y / (1.0 - y)               # inverse Reinhard -> scene-linear HDR
+        if _hdr_neg:
+            info += f"  Negatives     : {_hdr_neg} value(s) clamped to 0 (SR networks are LDR)\n"
+        out_acc = _hdr_from_sr_domain(out_acc, _hdr_preserve)   # inverse Reinhard when preserved
         out_acc = _apply_color_transfer(out_acc, color_encoding, decode=True)   # display -> linear
 
         conf_display = conf_acc.expand(B, oH, oW, 3)
