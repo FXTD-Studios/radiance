@@ -496,6 +496,13 @@ def write_exr_multipart_report(
 
         except Exception as e:
             receipt["error"] = f"OpenEXR multi-part failed: {e}"
+            # A failed write can leave a truncated file under the requested
+            # name; remove it so nothing on disk looks like a finished frame.
+            try:
+                if os.path.isfile(filepath):
+                    os.remove(filepath)
+            except OSError as _rm:
+                receipt["error"] += f"; partial file {filepath!r} could not be removed: {_rm}"
             if not allow_fallback:
                 logger.error(f"[EXR MultiPart] {receipt['error']}")
                 return receipt

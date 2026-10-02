@@ -563,7 +563,7 @@ class HDRExposureBlend:
         # the low bracket's alpha is passed through.
         _brs = [t for t in (low_exposure, high_exposure, mid_exposure) if t is not None]
         if any(t.shape[-1] == 4 for t in _brs):
-            src = next(t for t in _brs if t.shape[-1] == 4)
+            src = low_exposure if low_exposure.shape[-1] == 4 else next(t for t in _brs if t.shape[-1] == 4)
             alpha = (src if src.ndim == 4 else src.unsqueeze(0))[..., 3:4]
 
             def _rgb(t):

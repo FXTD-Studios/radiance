@@ -304,3 +304,19 @@ def test_8bit_dither_still_quantises():
     img = torch.rand(1, 8, 8, 3)
     out, _ = RadianceBitDepthConvert().convert(img, "8-bit", dithering="Ordered")
     assert torch.allclose(out * 255, (out * 255).round(), atol=1e-4)
+
+
+def test_white_balance_default_is_neutral():
+    """6500 K is D65: the default node must not tint a neutral (it used the
+    Planckian locus, whose 6500 K point is off D65: gains 1.043/0.984/1.035)."""
+    img = torch.full((1, 2, 2, 3), 0.5)
+    out, _ = RadianceWhiteBalance().apply(img, "Temperature / Tint", temperature=6500.0)
+    torch.testing.assert_close(out, img, atol=2e-3, rtol=0)
+
+
+def test_white_balance_temperature_direction():
+    img = torch.full((1, 2, 2, 3), 0.5)
+    warm, _ = RadianceWhiteBalance().apply(img, "Temperature / Tint", temperature=3200.0)
+    cool, _ = RadianceWhiteBalance().apply(img, "Temperature / Tint", temperature=9000.0)
+    assert float(warm[..., 0].mean()) > float(warm[..., 2].mean())
+    assert float(cool[..., 2].mean()) > float(cool[..., 0].mean())

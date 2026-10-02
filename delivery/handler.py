@@ -176,13 +176,23 @@ def _resolve_export_source(instance_key: str, images) -> tuple:
     return "srgb", "Linear Rec.709 (sRGB)"
 
 
-def _srgb_decode_inplace(t: "torch.Tensor") -> "torch.Tensor":
-    """sRGB EOTF on the RGB channels, sign-preserving, in place."""
-    rgb = t[..., :3]
-    a = rgb.abs()
-    lin = torch.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
-    rgb.copy_(lin * torch.sign(rgb))
-    return t
+def _srgb_decode_np(frame: "np.ndarray") -> "np.ndarray":
+    """sRGB EOTF on the RGB channels (sign-preserving); alpha untouched. Returns a copy."""
+    out = np.array(frame, dtype=np.float32, copy=True)
+    rgb = out[..., :3]
+    a = np.abs(rgb)
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    out[..., :3] = lin * np.sign(rgb)
+    return out
+
+
+def _srgb_encode_display(t: "torch.Tensor") -> "torch.Tensor":
+    """Linear -> sRGB display values in [0, 1] (for thumbnails); alpha kept."""
+    out = t.detach().float().clone()
+    rgb = out[..., :3].clamp(0.0, 1.0)
+    out[..., :3] = torch.where(rgb <= 0.0031308, rgb * 12.92,
+                               1.055 * rgb.clamp(min=1e-12) ** (1 / 2.4) - 0.055)
+    return out
 
 
 def _note(warnings: list, message: str) -> None:
@@ -550,6 +560,12 @@ async def radiance_deliver_endpoint(request):
                         "current": int(5 + 80 * i / _n_frames), "total": 100,
                         "status": "grading", "message": f"Grading frame {i + 1}/{_n_frames}"})
                 frame_np = images[i].cpu().numpy()
+                if source_encoding == "srgb":
+                    # FIX-018: the Viewer linearises a display-encoded source
+                    # BEFORE grading (radiance_webgl.js "1b. Linearize"); the
+                    # export graded the encoded values. Decode first, as the
+                    # Viewer does, so the grade and the master match it.
+                    frame_np = _srgb_decode_np(frame_np)
                 graded = apply_grading(
                     img=frame_np,
                     exposure=exposure,
@@ -800,11 +816,11 @@ async def radiance_deliver_endpoint(request):
             # output encoding -- sRGB included -- is applied exactly once.
             # This replaces the old bake branch that guessed the source from
             # the OUTPUT colour space. The thumbnail keeps the display frame.
+            # graded_tensor is linear in the source's space: a display-encoded
+            # source was decoded before grading (above). The thumbnail is a
+            # display picture, so it is sRGB-encoded from the linear grade.
             n_graded = graded_tensor.shape[0]
-            thumb_frame = graded_tensor[min(n_graded - 1, 10 if n_graded > 10 else 0)].clone()
-            if source_encoding == "srgb":
-                _srgb_decode_inplace(graded_tensor)
-                logger.info("[Deliver] Source is display-encoded sRGB: decoded to linear Rec.709 for the writer")
+            thumb_frame = _srgb_encode_display(graded_tensor[min(n_graded - 1, 10 if n_graded > 10 else 0)])
             write_working_space = source_colorspace
 
             if bake_grade_exr:

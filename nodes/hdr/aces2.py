@@ -838,7 +838,8 @@ class RadianceACES2OutputTransformFull:
             "optional": {
                 "peak_luminance": ("FLOAT", {
                     "default": 100.0, "min": 48.0, "max": 10000.0, "step": 1.0,
-                    "tooltip": "Display peak luminance in nits for the SDR and HLG outputs. Ignored for the PQ outputs (fixed by their name) and Cinema (fixed 48 nits).",
+                    "tooltip": "Display peak luminance in nits, used only by the Radiance approximation for the SDR and HLG outputs. "
+                               "The OCIO reference fixes the peak by the output's name (SDR and Cinema 100 nits, HLG 1000 nits).",
                 }),
                 "surround": (["Dark", "Dim", "Average"], {
                     "default": "Dim",
@@ -937,9 +938,14 @@ class RadianceACES2OutputTransformFull:
             ignored.append("surround")
         if gamut_compress_strength != 1.0:
             ignored.append("gamut_compress_strength")
-        if "SDR" in output_transform and peak_luminance != 100.0:
+        if ("SDR" in output_transform or "HLG" in output_transform or "Cinema" in output_transform) \
+                and peak_luminance != 100.0:
             ignored.append("peak_luminance")
         info = f"ACES 2.0 reference | {input_colorspace} → {output_transform} | {aces2_ocio.describe(output_transform)}"
+        if "Cinema" in output_transform:
+            info += " | ACES 2.0 100-nit P3-D65 rendering, gamma 2.6 (the pinned config has no 48-nit view)"
+        elif "HLG" in output_transform:
+            info += " | HLG from the 1000-nit P3-D65-limited rendering"
         if ignored:
             info += " | ignored by the reference: " + ", ".join(ignored)
         log.info("ACES2FullOT: %s", info)

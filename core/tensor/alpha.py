@@ -108,7 +108,9 @@ def alpha_passthrough(image_arg: str = "image", outputs=(0,), strip=()):
                 return out
             ui = None
             res = out
-            if isinstance(out, dict) and "result" in out:
+            if isinstance(out, dict):
+                if "result" not in out:
+                    return out   # ui-only result, nothing to re-attach
                 ui, res = out, out["result"]
             res = list(res)
             for i in outputs:
