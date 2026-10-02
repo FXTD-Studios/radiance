@@ -611,7 +611,7 @@ def _normal_from_dsine(img_bhwc, dsine_model_path, convention):
             logger.warning(
                 "[Radiance] DSINE not available (torch.hub failed and no local checkpoint). "
                 "To download manually: "
-                "https://drive.google.com/drive/folders/1t3LMJIIrSnCGwOEf53Cyg0lkSXd3M4Hm "
+                "https://huggingface.co/baegwangbin/DSINE/resolve/main/dsine.pt "
                 "→ save dsine.pt to ComfyUI/models/normal_estimation/"
             )
             return None
