@@ -6,6 +6,7 @@ from typing import Tuple, Dict, Any, List, Optional
 
 # Local imports
 from .utils import tensor_to_numpy_float32, numpy_to_tensor_float32
+from radiance.core.tensor.alpha import alpha_passthrough
 
 logger = logging.getLogger("radiance.hdr.processing")
 
@@ -557,6 +558,25 @@ class HDRExposureBlend:
 
         if blend_method not in self.BLEND_METHODS:
             raise ValueError(f"Unknown exposure blend method: {blend_method}")
+        # FIX-008: the fusion weighted and exposed every channel, so a matte
+        # came back scaled (1.02 for a 0.9 alpha). Brackets are fused on RGB;
+        # the low bracket's alpha is passed through.
+        _brs = [t for t in (low_exposure, high_exposure, mid_exposure) if t is not None]
+        if any(t.shape[-1] == 4 for t in _brs):
+            src = next(t for t in _brs if t.shape[-1] == 4)
+            alpha = (src if src.ndim == 4 else src.unsqueeze(0))[..., 3:4]
+
+            def _rgb(t):
+                return t[..., :3] if t is not None and t.shape[-1] == 4 else t
+            image, mask, report = self.blend_exposures(
+                _rgb(low_exposure), _rgb(high_exposure), blend_method, _rgb(mid_exposure),
+                shadow_weight, highlight_weight, transition_smoothness, exposure_offset_low,
+                exposure_offset_high, exposure_offset_mid, ghost_removal)
+            if alpha.shape[0] == 1 and image.shape[0] > 1:
+                alpha = alpha.expand(image.shape[0], -1, -1, -1)
+            if alpha.shape[:3] == image.shape[:3]:
+                image = torch.cat([image, alpha.to(image.dtype)], dim=-1)
+            return image, mask, report
         if low_exposure.ndim == 3:
             low_exposure = low_exposure.unsqueeze(0)
         if high_exposure.ndim == 3:
@@ -699,8 +719,8 @@ class HDRShadowHighlightRecovery:
         return {
             "required": {
                 "image": ("IMAGE", {
-                    "tooltip": "Linear HDR image (values above 1.0 allowed). Only the first frame of a "
-                    "batch is processed.",
+                    "tooltip": "Linear HDR image (values above 1.0 allowed). Every frame of a batch "
+                    "is processed; alpha passes through unchanged.",
                 }),
                 "shadow_amount": (
                     "FLOAT",
@@ -759,11 +779,32 @@ class HDRShadowHighlightRecovery:
         color_correction: float = 0.5,
         local_contrast: float = 0.0,
     ) -> Tuple[torch.Tensor]:
+        # FIX-009: only image[0] was processed and a 1-frame batch returned,
+        # so a clip lost every frame after the first. FIX-008: the gains were
+        # applied to all channels, alpha included. Every frame is processed
+        # now, on RGB only, with alpha passed through.
+        arr = tensor_to_numpy_float32(image)
+        if arr.ndim == 3:
+            arr = arr[None]
+        if arr.ndim != 4 or arr.shape[-1] < 3:
+            raise ValueError(f"HDR Shadow / Highlight Recovery needs an RGB(A) IMAGE, got {tuple(arr.shape)}")
+        frames = []
+        for f in arr:
+            rgb = self._recover_frame(np.ascontiguousarray(f[..., :3]), shadow_amount, highlight_amount,
+                                      shadow_tone, highlight_tone, color_correction, local_contrast)
+            frames.append(np.concatenate([rgb, f[..., 3:]], axis=-1) if f.shape[-1] > 3 else rgb)
+        return (numpy_to_tensor_float32(np.stack(frames).astype(np.float32)),)
 
-        img = tensor_to_numpy_float32(image)
-        if img.ndim == 4:
-            img = img[0]
-
+    @staticmethod
+    def _recover_frame(
+        img: np.ndarray,
+        shadow_amount: float,
+        highlight_amount: float,
+        shadow_tone: float,
+        highlight_tone: float,
+        color_correction: float,
+        local_contrast: float,
+    ) -> np.ndarray:
         # Calculate luminance
         lum = 0.2126 * img[..., 0] + 0.7152 * img[..., 1] + 0.0722 * img[..., 2]
         lum = np.maximum(lum, 1e-10)
@@ -834,9 +875,11 @@ class HDRShadowHighlightRecovery:
                 contrast_boost = 1.0 + local_contrast * (detail - 1.0)
                 result = result * contrast_boost[..., np.newaxis]
 
-        return (numpy_to_tensor_float32(result),)
+        return result.astype(np.float32)
 
 
+# FIX-008: exposure / gamma / lift / normalise are colour ops; alpha passes through.
+@alpha_passthrough("image")
 class GPUTensorOps:
     """
     GPU-accelerated HDR operations. Fast exposure, gamma, and normalization.

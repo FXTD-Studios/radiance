@@ -653,7 +653,7 @@ Recover shadow and highlight detail from a single HDR image for better color gra
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Linear HDR image (values above 1.0 allowed). Only the first frame of a batch is processed. |
+| `image` | IMAGE |  |  | Linear HDR image (values above 1.0 allowed). Every frame of a batch is processed; alpha passes through unchanged. |
 | `shadow_amount` | float | 0.5 | 0 to 2, step 0.05 | Shadow gain at black: pixels are multiplied by up to 1 + amount, fading out with luma (see shadow_tone). 0 = off. |
 | `highlight_amount` | float | 0.5 | 0 to 2, step 0.05 | Highlight compression above highlight_tone, never clipping. At the default, luma 1.0 is scaled by 0.8 and brighter values more. 0 = off. |
 | `shadow_tone` (optional) | float | 0.25 | 0 to 0.5, step 0.01 | Linear-luma width of the shadow lift. It decays exponentially and is down to about 5% at this luma. |
