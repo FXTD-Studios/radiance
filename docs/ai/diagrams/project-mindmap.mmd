@@ -1,0 +1,51 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+mindmap
+  root((Radiance 3.5.3<br/>ComfyUI package))
+    Entry
+      __init__.py
+      config/ env, dependencies, constants
+      core/logging
+    Registry
+      nodes/catalog NODE_GROUPS x10
+      nodes/registry + aggregate
+      nodes/branding
+      nodes/gizmo
+    Node groups, 156 keys
+      color 17
+      hdr 41
+      io 6
+      vfx 28
+      pipeline 10
+      monitor 9
+      upscale 10
+      video 13
+      ai 3
+      generate 19
+    Implementation libraries
+      color/ curves, matrices, encodings, LUT/CDL
+      hdr/ VAE engine, tonemap, ACES2, OCIO
+      io/ reader, writer
+      core/ exr, video, ffmpeg, tensor, model_fetch, consent
+      delivery/handler
+      model/ detect, cache, downloads
+      loader_utils + sampler_utils
+      pixel_sdr2hdr + temporal_rudra
+    Frontend js/
+      Viewer + WebGL/WebGPU
+      OCIO WASM
+      Dashboards: workflows, projects, assets
+      Node widget extensions
+    HTTP routes /radiance/*
+      deliver, progress
+      ocio, media, prompt
+      workflows, projects, assets, gizmos
+    Persistence
+      repo/workflows .rad + .versions
+      repo/gizmos
+      ComfyUI temp: .rhdr sidecars
+      ComfyUI output: renders
+    Validation
+      pytest 168 files + stubs
+      node --test 37 files
+      CI ci.yml / publish.yml
+      tools/ release, docs, pins

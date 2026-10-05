@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "generator": "project-mapper",
+  "generated_at_utc": "2026-10-05T07:01:28Z",
+  "scope": "full: all first-party Python packages, js/ frontend, tests, CI and release tooling of the radiance ComfyUI package; static source analysis only",
+  "revision": {
+    "commit": "7376f9e0171e96a015d379d57a8ef45f40b8be50",
+    "branch": "version-4-Beta",
+    "worktree_state": "clean at mapping time (docs/ai/ added by this map)"
+  },
+  "coverage": {
+    "inventory_count": 483,
+    "inspected_count": 68,
+    "areas": [
+      {
+        "id": "registry",
+        "status": "inspected"
+      },
+      {
+        "id": "color",
+        "status": "partial"
+      },
+      {
+        "id": "hdr-vae",
+        "status": "partial"
+      },
+      {
+        "id": "io-delivery",
+        "status": "partial"
+      },
+      {
+        "id": "generate",
+        "status": "partial"
+      },
+      {
+        "id": "frontend-routes",
+        "status": "partial"
+      },
+      {
+        "id": "validation",
+        "status": "inspected-structure"
+      },
+      {
+        "id": "vfx",
+        "status": "registration-only"
+      },
+      {
+        "id": "upscale",
+        "status": "registration-only"
+      },
+      {
+        "id": "video",
+        "status": "registration-only"
+      },
+      {
+        "id": "dcc",
+        "status": "registration-only"
+      }
+    ],
+    "excluded": [
+      "js/vendor/",
+      "ACES/config.ocio (header only)",
+      "*.png",
+      "workflows/*.json (node types grepped only)",
+      "scripts/training/ (summary only)",
+      "docs/nodes/ (generated reference)"
+    ],
+    "unresolved": [
+      "see OPEN_QUESTIONS.md"
+    ]
+  },
+  "source_files": [
+    {
+      "path": "__init__.py",
+      "sha256": "d508866a6e2ae66943fbebfa57caece4b599ef7645f4e78001a6db230a987c70"
+    },
+    {
+      "path": "config/constants.py",
+      "sha256": "92ff25e9af8da9bace1e78e64b5a5623d55a71df381c793a97d24b5cf9ed6ac4"
+    },
+    {
+      "path": "config/env.py",
+      "sha256": "cfe1f2f68f36fb7c99a99d2a25bdc20efcfd1a5c173d02fdb70fbc117f3da734"
+    },
+    {
+      "path": "config/dependencies.py",
+      "sha256": "525729ad25ce30c96fa8ce7cd77fddd241f444ffffcf9074e44d006c4f5c437b"
+    },
+    {
+      "path": "config/model_map.py",
+      "sha256": "d87fbfc0ef7253fca666ce62d792b5260026468c9b0bb69b6c26074bf622b452"
+    },
+    {
+      "path": "nodes/__init__.py",
+      "sha256": "de9fa151aefb5f1373935590a7308d68d3af2d067ce7105f37f736196daed29a"
+    },
+    {
+      "path": "nodes/catalog.py",
+      "sha256": "131eac4b1b7cd18ec1b6a4b16f0197dc5d6fa51d4e63e84ed42df2adb142a1d6"
+    },
+    {
+      "path": "nodes/registry.py",
+      "sha256": "6b460fe7ea3b5d12ece668d449d7e9605aadafcc4b9dd2d4f66fe47fcfbf3805"
+    },
+    {
+      "path": "nodes/aggregate.py",
+      "sha256": "30420209815c57c72a8a07a3fa0a222b0b5dd3f7ffb221a1edf8d73521accf75"
+    },
+    {
+      "path": "nodes/branding.py",
+      "sha256": "782024c1d4fabb3083032d5d787beecb904f27fea8c055bbeb5a8c75f4e73213"
+    },
+    {
+      "path": "nodes/gizmo.py",
+      "sha256": "e93ced4ede8f7337fb8908734395dafa0db6a01302deaf0d66619333b9ab4799"
+    },
+    {
+      "path": "nodes/color/__init__.py",
+      "sha256": "5a1d7ed64be817970bc0046d4e1a6e9167f184e4ea6a1b69d60bad97ebbc3803"
+    },
+    {
+      "path": "nodes/hdr/__init__.py",
+      "sha256": "22ed63a4c02b836fc1ea18fbf62f8477ef7d676aa59b7a17f2422fbd0f0643c2"
+    },
+    {
+      "path": "nodes/io/__init__.py",
+      "sha256": "b9f3274fa25cd31389f79bf12761e3ef272a439456111b64c3e3fefef283acc6"
+    },
+    {
+      "path": "nodes/vfx/__init__.py",
+      "sha256": "b909d48eb568a72e6e44da6f6892e6ac3c114b97ec8109dc50b3672e52aa7c80"
+    },
+    {
+      "path": "nodes/pipeline/__init__.py",
+      "sha256": "e15c5113fff35a43200b153b4bdb04adf99cf84e3c5c9bda2abf1ae3f20df421"
+    },
+    {
+      "path": "nodes/monitor/__init__.py",
+      "sha256": "04ac53bb12de285e2ed0ac1bfae63c3f1d1aa4e8718e4152a56f5234dd193b22"
+    },
+    {
+      "path": "nodes/upscale/__init__.py",
+      "sha256": "69aec26ddc0166be92fdb630281dda69ce8fee02d2d32e5780c5f416c19353f6"
+    },
+    {
+      "path": "nodes/video/__init__.py",
+      "sha256": "60e42f2d944804b08629e98e35d6e264d2b044f8673915b7ffd96c89124ffeda"
+    },
+    {
+      "path": "nodes/ai/__init__.py",
+      "sha256": "63737afdd991c288b36150bd5a8c8897489453cc8b7c71a1adc9c4b486997341"
+    },
+    {
+      "path": "nodes/generate/__init__.py",
+      "sha256": "ced28c9dbab5dd289f9de5cf89eb780abf16be99019432f69bf78973a7e12386"
+    },
+    {
+      "path": "color/ops.py",
+      "sha256": "e438600b4fc1c28febdae2121eb425d4fa78e8ebb8bd53e4322b6843c88ba0a4"
+    },
+    {
+      "path": "color/encodings.py",
+      "sha256": "c45f7878d59609ea8829768e39953be663254448cb8839565dc740189f6046bf"
+    },
+    {
+      "path": "color/pipeline.py",
+      "sha256": "3defa3ea87c6ffe2805e60eb1e5a94d7a43b732c67a7ef36a8069f403563ed88"
+    },
+    {
+      "path": "color/ocio_setup.py",
+      "sha256": "4a21b8ca652d92fdfd0091551a6e57ba2f8f23816c55b15d82b06cef685ef228"
+    },
+    {
+      "path": "color/viewer_space.py",
+      "sha256": "65cd70703e2d6bcac02827c45f972e58febee06ee9087104ba21888818323ad2"
+    },
+    {
+      "path": "radiance_ocio.py",
+      "sha256": "8d06130173f6c6f61ca649eaa6d84aa1ac27b647cf8612dcfea59ac29dee7ae7"
+    },
+    {
+      "path": "hdr/vae.py",
+      "sha256": "5c902ec9619610bbd75d4cc5c9d8d049f8c32558177a65d5eb46106ad758a9c6"
+    },
+    {
+      "path": "hdr/decode_meta.py",
+      "sha256": "2ce2ea5f6afe0128a8ab24ea6944a30ff606b8028231c57026a98f4074e98bdb"
+    },
+    {
+      "path": "hdr/ocio.py",
+      "sha256": "418829fe002f6b0298c0cbf62762804b90f88fe6feb8b517cae1b0879a619e84"
+    },
+    {
+      "path": "hdr/aces2_ocio.py",
+      "sha256": "8352a1fbb7970792fbb1323f6970c78121dbcf094fe5f6373dee0fa23d9fb056"
+    },
+    {
+      "path": "hdr/tonemap.py",
+      "sha256": "816c54deee28135d1b9174150cd2e97cc3d4a547df22b52336c10b41802e2a1f"
+    },
+    {
+      "path": "core/tensor/alpha.py",
+      "sha256": "bb8e4fd28bae1d7777b01f2fdb2d0d796d65192df7777f4cfe2285550c4e1bbe"
+    },
+    {
+      "path": "core/tensor/contract.py",
+      "sha256": "0cbeca472f7d47b80887057bb5f2c01aa2c1afdfe56cf374af768cc1cbcd0a49"
+    },
+    {
+      "path": "core/exr.py",
+      "sha256": "936f8ea42666e939a79241bdeff9edeea053d20e7d330e230d9331aa249532e7"
+    },
+    {
+      "path": "core/video.py",
+      "sha256": "e5e49351936213df58e1ffd6035a8fe5c284eb98c3fad5d1ffa1faf5fec9c018"
+    },
+    {
+      "path": "core/ffmpeg.py",
+      "sha256": "effe3b17733b56f4c1682f84bc98c6c78296b50fee3371c4b2b7770120cec352"
+    },
+    {
+      "path": "core/formats.py",
+      "sha256": "b6bf8302200b4c9e5250cacf1dac0c37dde6230c82ed0a39dbde9412ec7d231d"
+    },
+    {
+      "path": "core/consent.py",
+      "sha256": "edfb4e9c05f78a3cdd2907e7ca2990e4807fd2e5567e258ddefdc617772b0971"
+    },
+    {
+      "path": "core/model_fetch.py",
+      "sha256": "4e4da1c3cc3cd7aad0a32a76b169831a813a1f52d654f6670c05ff78bd295098"
+    },
+    {
+      "path": "core/errors.py",
+      "sha256": "f62b9f801d824d5267e95398c5f78bc20fb6dfe01a67ba3d98bc1427d35cc867"
+    },
+    {
+      "path": "core/system/path_utils.py",
+      "sha256": "08ee8af2339e342622cf58cd47fca64b70487448e9fb523c95119d04a4b5c03f"
+    },
+    {
+      "path": "io/reader.py",
+      "sha256": "769a1815b4bde9f073340c8de80c689486ba028a0482a80d91685f6a067d87e2"
+    },
+    {
+      "path": "io/writer.py",
+      "sha256": "5cf451658fa84501bf9dd53c5e798b30c178aec2e3e0b8a60c4cc0a1c96e44d3"
+    },
+    {
+      "path": "nodes/io/write.py",
+      "sha256": "74593973a5f28ae2254565fa5afaf4da7bd7e86d6e5f636d425daf1eb21182ad"
+    },
+    {
+      "path": "delivery/handler.py",
+      "sha256": "0eb106f289263de87d8401cfb199bc523b5eaf582b320d59cee22b589a0217d4"
+    },
+    {
+      "path": "cache.py",
+      "sha256": "965531357ac45b0248fdb545a9450ef26e4125c30032de59b544dde29a5ba85d"
+    },
+    {
+      "path": "loader_utils.py",
+      "sha256": "fdbea4b0a133622914415647fea9a97528471eeaa7178d3f0a8ed9ab8f687653"
+    },
+    {
+      "path": "sampler_utils.py",
+      "sha256": "c1e0d0260ba480bd07995557c4b05b54cb2551832ae53aa0a9e7b946d7f6e678"
+    },
+    {
+      "path": "model/detect.py",
+      "sha256": "f5f3e6cc5ee9bceb22a7696b54697a29b8c8ff5400ff46c16ef5344d079e6cbf"
+    },
+    {
+      "path": "model/cache.py",
+      "sha256": "409d23657a2263d01d6d120d01e8e1cc6fe8beaac12fe1dffaf5deb3d89ca7f4"
+    },
+    {
+      "path": "model/pixel_download.py",
+      "sha256": "37b9153b5ef345f9b7518ce3045fb4cd2f27cab2f20e1e23e5563680d6d0ab1f"
+    },
+    {
+      "path": "nodes/generate/sampler.py",
+      "sha256": "2f67b2166817645625b2fe811218835578a3d4f5694bde7cd987cab5dfc9ae64"
+    },
+    {
+      "path": "nodes/generate/engine.py",
+      "sha256": "d9ff5312f71a2765c8c1e7f30dd8e0824e7b4d44ceaf3f7af083d54f932e511b"
+    },
+    {
+      "path": "nodes/generate/loader.py",
+      "sha256": "ea425bbdff5c0eaab9831d4809942a5ea4804ac8e827b80e5f759826b37d7d33"
+    },
+    {
+      "path": "nodes/hdr/uplift_universal.py",
+      "sha256": "0b959761aa6d0355da281d387d9aa0f12f4528f32d7718db7071626be6ddeb91"
+    },
+    {
+      "path": "nodes/monitor/viewer.py",
+      "sha256": "70d05b0e1b30982a6b39e960ff6aa6e6e5618c69b79a5a5a1a8e3012fc8e8ebc"
+    },
+    {
+      "path": "nodes/pipeline/workspace.py",
+      "sha256": "874dfb9ab727b8f92d45f3bd5b407c6c4e905efa2e26a20109786d7b35720924"
+    },
+    {
+      "path": "js/radiance_viewer.js",
+      "sha256": "2e0ac743ba5dac51547568c14af01f1071b6f28cb04d1063cd63cb164de06ef3"
+    },
+    {
+      "path": "js/radiance_renderer.js",
+      "sha256": "8ab9670921ed55986a6a51009032d9e0ef577b523d00084e5afa90ae72b96fb6"
+    },
+    {
+      "path": "tests/conftest.py",
+      "sha256": "db191add091b5704ce5e6538b272231b3c54ec421235e613c9264a35364a3e0b"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "c1e9944d2d51b6b7c90795ed19036fecb4fec95db2ccc26c63ec8b30a156fe38"
+    },
+    {
+      "path": ".github/workflows/publish.yml",
+      "sha256": "f51ed2f8eb5a5cb2860b15d8155927ad368595db602be2b80d1543b656acae22"
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "d32e663ec053662e05655c5e46e05678792217c352d57c2360c1ca088986dd74"
+    },
+    {
+      "path": "package.json",
+      "sha256": "a8a9986b10a2392a9074ecb28426876fde6740f0f9b9621038c2c222de9dad6e"
+    },
+    {
+      "path": "README.md",
+      "sha256": "8d874870cb75093a4ddf8c08958bfd342b77fa2f6e1a9cb54547ddaf3dece0a6"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "0c20ae31eb99292cc2add39232920f4fd363a1a146c46a209c8e3f697685004a"
+    },
+    {
+      "path": "KNOWN_ISSUES.md",
+      "sha256": "4fc6f4c9993b294cc35b3b48359eede76beaa0c1430c4cb243fd278434f9d904"
+    }
+  ],
+  "artifacts": [
+    "START_HERE.md",
+    "ARCHITECTURE.md",
+    "WORKFLOWS.md",
+    "OPEN_QUESTIONS.md",
+    "diagrams/project-mindmap.mmd",
+    "diagrams/runtime-flow.mmd",
+    "subsystems/registry.md",
+    "subsystems/color-hdr.md",
+    "subsystems/hdr-vae.md",
+    "subsystems/io-delivery.md",
+    "subsystems/generate.md",
+    "subsystems/frontend-routes.md",
+    "subsystems/validation.md"
+  ],
+  "notes": [
+    "Source paths are repository-relative; artifact paths are relative to docs/ai/.",
+    "source_files lists the files whose content backs the map's claims; other files were inventoried or read by sub-agents in bounded slices and are not fingerprinted.",
+    "Some subsystem claims came from read-only sub-agent traces; items re-verified by the mapper are marked Confirmed in OPEN_QUESTIONS.md.",
+    "No tests, app code, or Mermaid renderer were executed."
+  ]
+}
