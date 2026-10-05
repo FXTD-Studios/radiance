@@ -1,7 +1,7 @@
 <!-- project-mapper:generated -->
 # Node registry and catalog
 
-ID: registry. Snapshot: `7376f9e`. Coverage: inspected (static).
+ID: registry. Snapshot: `7376f9e`. Coverage: inspected (static). Labels: see [START_HERE](../START_HERE.md#evidence-labels).
 
 ## Responsibility and boundaries
 
@@ -11,16 +11,16 @@ the nodes do.
 
 ## Implementation index
 
-| Source/symbol | Role | Status |
+| Source/symbol | Role | Label |
 | --- | --- | --- |
-| `__init__.py:_bootstrap_package_context` | Aliases `sys.modules["radiance"]` so absolute `radiance.*` imports work whatever the folder is called | observed |
-| `__init__.py:_load_comfyui_nodes` | Loads `.nodes` (`required=True`) and folds in `nodes.NODE_LOAD_FAILURES` | observed |
-| `__init__.py:report_node_load_health` | Logs ERROR if any import failed or if the count is below `EXPECTED_MIN_NODE_COUNT` | observed |
-| `nodes/catalog.py:NODE_GROUPS` | Ten groups: color, hdr, io, vfx, pipeline, monitor, upscale, video, ai, generate. None has an env flag | observed |
-| `nodes/registry.py:load_node_mappings` | Imports each spec and merges with plain `dict.update`, so a later module overrides an earlier one (logged only at DEBUG) | observed |
-| `nodes/aggregate.py:fold_in_module_nodes` | Picks up `NODE_CLASS_MAPPINGS` from leaf modules one level deep. Keys the group already lists win | observed |
-| `nodes/branding.py:apply_radiance_branding` | Uses `NODE_SECTIONS` (156 keys) to set the menu section and display name, and **overwrites each class's `CATEGORY`** | observed |
-| `nodes/gizmo.py:load_dynamic_gizmos` | Builds `RadianceGizmo_<name>` classes from `<repo>/gizmos/*.gizmo` JSON. `os.makedirs` runs at import time | observed |
+| `__init__.py:_bootstrap_package_context` | Aliases `sys.modules["radiance"]` so absolute `radiance.*` imports work whatever the folder is called | Implemented |
+| `__init__.py:_load_comfyui_nodes` | Loads `.nodes` (`required=True`) and folds in `nodes.NODE_LOAD_FAILURES` | Implemented |
+| `__init__.py:report_node_load_health` | Logs ERROR if any import failed or if the count is below `EXPECTED_MIN_NODE_COUNT` | Implemented |
+| `nodes/catalog.py:NODE_GROUPS` | Ten groups: color, hdr, io, vfx, pipeline, monitor, upscale, video, ai, generate. None has an env flag | Implemented |
+| `nodes/registry.py:load_node_mappings` | Imports each spec and merges with plain `dict.update`, so a later module overrides an earlier one (logged only at DEBUG) | Implemented |
+| `nodes/aggregate.py:fold_in_module_nodes` | Picks up `NODE_CLASS_MAPPINGS` from leaf modules one level deep. Keys the group already lists win | Implemented |
+| `nodes/branding.py:apply_radiance_branding` | Uses `NODE_SECTIONS` (156 keys) to set the menu section and display name, and **overwrites each class's `CATEGORY`** | Implemented |
+| `nodes/gizmo.py:load_dynamic_gizmos` | Builds `RadianceGizmo_<name>` classes from `<repo>/gizmos/*.gizmo` JSON. `os.makedirs` runs at import time | Implemented |
 
 ## Contracts
 

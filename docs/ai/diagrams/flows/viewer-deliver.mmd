@@ -1,0 +1,27 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflows W5 and W6. Source: nodes/monitor/viewer.py, cache.py, js/radiance_viewer.js, delivery/handler.py
+sequenceDiagram
+    participant G as ComfyUI graph
+    participant V as RadianceViewer.view
+    participant C as viewer cache, cache.py
+    participant J as JS viewer
+    participant D as POST /radiance/deliver
+    participant W as io/writer.write_frames
+    G->>V: IMAGE batch
+    V->>V: write .rhdr fp16 or fp32, EXR, PNG preview to temp
+    V->>C: store frames, 2 GiB LRU
+    V-->>J: ui output with radiance_images, encoding, fps
+    J->>J: fetch /view?type=temp, decode .rhdr in Web Worker
+    J->>J: WebGL shader grade and view transform, OCIO GLSL from WASM
+    J->>D: export request
+    D->>D: validate vocabulary 400, output dir containment 403
+    D->>C: read cached frames
+    D->>D: apply_grading, optional FX and AI 2x, QC and flicker scan
+    D->>W: write_frames
+    D->>D: sidecars thumb, CDL, AMF, meta JSON, sessions log atomic
+    loop while exporting
+        J->>D: GET /radiance/progress
+    end
+    D-->>J: 200 success or partial, or 500 with progress error

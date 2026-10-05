@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "generator": "project-mapper",
-  "generated_at_utc": "2026-10-05T07:01:28Z",
-  "scope": "full: all first-party Python packages, js/ frontend, tests, CI and release tooling of the radiance ComfyUI package; static source analysis only",
+  "generated_at_utc": "2026-10-05T07:28:49Z",
+  "scope": "full: every first-party node group and implementation package of the radiance ComfyUI package, js/ frontend, tests, CI and release tooling; static source analysis only",
   "revision": {
     "commit": "7376f9e0171e96a015d379d57a8ef45f40b8be50",
     "branch": "version-4-Beta",
-    "worktree_state": "clean at mapping time (docs/ai/ added by this map)"
+    "worktree_state": "clean; HEAD carries only docs/ai commits on top of this source revision"
   },
   "coverage": {
     "inventory_count": 483,
-    "inspected_count": 68,
+    "inspected_count": 99,
     "areas": [
       {
         "id": "registry",
@@ -33,28 +33,28 @@
         "status": "partial"
       },
       {
+        "id": "vfx",
+        "status": "partial"
+      },
+      {
+        "id": "upscale-qc-monitor",
+        "status": "partial"
+      },
+      {
+        "id": "video-temporal",
+        "status": "partial"
+      },
+      {
+        "id": "dcc-pipeline",
+        "status": "partial"
+      },
+      {
         "id": "frontend-routes",
         "status": "partial"
       },
       {
         "id": "validation",
         "status": "inspected-structure"
-      },
-      {
-        "id": "vfx",
-        "status": "registration-only"
-      },
-      {
-        "id": "upscale",
-        "status": "registration-only"
-      },
-      {
-        "id": "video",
-        "status": "registration-only"
-      },
-      {
-        "id": "dcc",
-        "status": "registration-only"
       }
     ],
     "excluded": [
@@ -341,28 +341,166 @@
     {
       "path": "KNOWN_ISSUES.md",
       "sha256": "4fc6f4c9993b294cc35b3b48359eede76beaa0c1430c4cb243fd278434f9d904"
+    },
+    {
+      "path": "nodes/vfx/depth.py",
+      "sha256": "99ccf1d4b13170507bbbad6cc00e4c00f5e46ed50a49dd6566736798296b65e0"
+    },
+    {
+      "path": "nodes/vfx/motion.py",
+      "sha256": "86c921ed0bbc31d04efa925b81f254d17f1a4cda57d55384e1bf8988ca8d6538"
+    },
+    {
+      "path": "nodes/vfx/optics.py",
+      "sha256": "79331bc5c9782958de3e3218481ccbb56c890cca7b040be3949d3ae0586ada92"
+    },
+    {
+      "path": "nodes/vfx/masking.py",
+      "sha256": "8062b49ebac42ee5353a898ea5466b22c262a69ea307e3589bbabe4441f87ad0"
+    },
+    {
+      "path": "nodes/vfx/camera.py",
+      "sha256": "fb7d3315f56d971a6c2f13fdfd3932e1d578d61f403f90a811bde4e3f6a8753b"
+    },
+    {
+      "path": "nodes/vfx/multipass/core.py",
+      "sha256": "e1a3ee9e0f6ea071171325793269ef0ec02a67c2641dd2c2fc9ce4a63e726f39"
+    },
+    {
+      "path": "nodes/vfx/multipass/estimate.py",
+      "sha256": "7237a283da27a7e98b491e7bdbd66aed1e06d4a8d9661b98ebfc4afd6bb4bfc8"
+    },
+    {
+      "path": "nodes/vfx/multipass/estimate_models.py",
+      "sha256": "178e6b09c5ca074ac8dc4a298df1c8cc2a936dd764d9e3bffed52bd4c052003b"
+    },
+    {
+      "path": "nodes/vfx/multipass/master.py",
+      "sha256": "46b168216e0fc3e0e779fb3844ec3024dc4a6aaaa4a56b587e1dedb88825834b"
+    },
+    {
+      "path": "nodes/vfx/multipass/relight_comp.py",
+      "sha256": "7105d461ff09bc6fccb10b64afd26c528282893bdead89c21d7082563f4c628e"
+    },
+    {
+      "path": "nodes/vfx/multipass/aov_reader.py",
+      "sha256": "533e9724efe5d33fde83c89a7289fee0d0798e4e5e6424a2bdb093ba182b1212"
+    },
+    {
+      "path": "film/camera.py",
+      "sha256": "9cc45f924bac4aea43882876c195d6e9e8eebdb62ff060a19eeffdf390a8b4ec"
+    },
+    {
+      "path": "nodes/upscale/upscale.py",
+      "sha256": "4767553cfe1d72519d46e36cd322bc3bfe81960c5da102d68fc1eee767700310"
+    },
+    {
+      "path": "image/upscale.py",
+      "sha256": "a71cfc51b45a4aae681e44fce3415e9a05b459d13793600064dcf2d1d515e2fe"
+    },
+    {
+      "path": "image/defects.py",
+      "sha256": "14fab1a9be58863e907517d644f697ebe920c7c3756ed3fb6f143bee7d7d3dec"
+    },
+    {
+      "path": "nodes/color/qc.py",
+      "sha256": "956831297ca160130f50b0faa52b426e29102bd4745ab46c69b5b5918cf05697"
+    },
+    {
+      "path": "nodes/monitor/realtime.py",
+      "sha256": "f5490549a924aa41b0639d7491a8787749edd3e9af639253131ca9e5dc4c0262"
+    },
+    {
+      "path": "nodes/video/t2v.py",
+      "sha256": "91e334f6f63efc48b35a23bdbc58d30fb229dbe72be0cb71a1bfcc8e5a48568e"
+    },
+    {
+      "path": "nodes/video/hdr.py",
+      "sha256": "46a05c03c6958d421025dd222fac15850e0aab9b40a777b5b1cf6321852b35a6"
+    },
+    {
+      "path": "nodes/video/dit.py",
+      "sha256": "bb36a106a86524fab0229c739a9c868967d3fca509cbf2aa4c9a825253f4f167"
+    },
+    {
+      "path": "nodes/video/character.py",
+      "sha256": "b9d0387c91ae465eff4a830b7e13ac35493cde256015c293f6cdd2f1e9ef54c0"
+    },
+    {
+      "path": "nodes/ai/scene_cut.py",
+      "sha256": "146aa8d9853a655d8a2c84d19a53b9d4ea960609bb1a59a384f020526d39ae5a"
+    },
+    {
+      "path": "nodes/pipeline/audio.py",
+      "sha256": "a951760d5107586e34d27196ed02b6fe6a9f128d6276b98908d8dc0dc3585d7a"
+    },
+    {
+      "path": "nodes/pipeline/dcc.py",
+      "sha256": "68a78048bcd215574f345715c1c62bfed2e98a131f7eab14f406e622480d6f2c"
+    },
+    {
+      "path": "nodes/pipeline/studio_integrations.py",
+      "sha256": "df651ed6683baac6a5e170f0f8ef09a630996e37db4560a4bf46897ce4b36737"
+    },
+    {
+      "path": "tools/nuke_connector.py",
+      "sha256": "48f0a60a3cceb1cca941c2de6c25f07a765bc1b3041fa5e9917ce9eb5cef4186"
+    },
+    {
+      "path": "tools/resolve_import.py",
+      "sha256": "4cb2a92390913112853d14635352769fe09ab17e8ca49ba2cd530b741bf82f67"
+    },
+    {
+      "path": "scripts/start_nuke_server.py",
+      "sha256": "233dcda4f7d82657045ea0e6676a3b95629289c08b8c85c0ab7461f8bdf46ec1"
+    },
+    {
+      "path": "core/dcc_auth.py",
+      "sha256": "3881caf14b7ed51b44bb01056db185bac57d799f3911788eb5c74c7d3ed297a6"
+    },
+    {
+      "path": "core/tiling.py",
+      "sha256": "0f002a96cbe7c501a691fccb5cf8f6ec148ed9377cb3186496ac151d21ba1008"
+    },
+    {
+      "path": "core/tensor/chunking.py",
+      "sha256": "6f23ec7144526098556d1fed20fdba643888d2656ab1cca24569fb58c1046188"
     }
   ],
   "artifacts": [
-    "START_HERE.md",
     "ARCHITECTURE.md",
-    "WORKFLOWS.md",
     "OPEN_QUESTIONS.md",
+    "START_HERE.md",
+    "WORKFLOWS.md",
+    "diagrams/flows/dcc.mmd",
+    "diagrams/flows/hdr-generation.mmd",
+    "diagrams/flows/model-download.mmd",
+    "diagrams/flows/multipass.mmd",
+    "diagrams/flows/read-write.mmd",
+    "diagrams/flows/startup.mmd",
+    "diagrams/flows/video.mmd",
+    "diagrams/flows/viewer-deliver.mmd",
     "diagrams/project-mindmap.mmd",
     "diagrams/runtime-flow.mmd",
-    "subsystems/registry.md",
     "subsystems/color-hdr.md",
+    "subsystems/dcc-pipeline.md",
+    "subsystems/frontend-routes.md",
+    "subsystems/generate.md",
     "subsystems/hdr-vae.md",
     "subsystems/io-delivery.md",
-    "subsystems/generate.md",
-    "subsystems/frontend-routes.md",
-    "subsystems/validation.md"
+    "subsystems/registry.md",
+    "subsystems/upscale-qc-monitor.md",
+    "subsystems/validation.md",
+    "subsystems/vfx-multipass.md",
+    "subsystems/video-temporal.md"
   ],
   "notes": [
     "Source paths are repository-relative; artifact paths are relative to docs/ai/.",
     "source_files lists the files whose content backs the map's claims; other files were inventoried or read by sub-agents in bounded slices and are not fingerprinted.",
     "Some subsystem claims came from read-only sub-agent traces; items re-verified by the mapper are marked Confirmed in OPEN_QUESTIONS.md.",
     "No tests, app code, or Mermaid renderer were executed.",
-    "2026-10-05 revision: applied 8 verified /code-review corrections (startup order, download contract, second .rhdr writer, D8 withdrawn, line refs, counts, de-duplication). Source fingerprints unchanged."
+    "Labels: Implemented (mapper = re-read by the map author; trace = read-only sub-agent), Inferred, Unknown, Proposed (only in OPEN_QUESTIONS.md).",
+    "2026-10-05 full-scope pass: added vfx-multipass, upscale-qc-monitor, video-temporal, dcc-pipeline notes, workflows W9-W12 and per-workflow flowcharts; earlier review corrections retained.",
+    "Mermaid files were not parsed or rendered: no renderer is installed and none was installed."
   ]
 }

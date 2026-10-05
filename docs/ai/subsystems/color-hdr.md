@@ -1,7 +1,7 @@
 <!-- project-mapper:generated -->
 # Colour and HDR library layer
 
-ID: color (plus the non-VAE parts of hdr). Snapshot: `7376f9e`. Coverage: partial (static).
+ID: color (plus the non-VAE parts of hdr). Snapshot: `7376f9e`. Coverage: partial (static). Labels: see [START_HERE](../START_HERE.md#evidence-labels).
 
 ## Responsibility and boundaries
 
@@ -11,24 +11,24 @@ node, io, or delivery layers.
 
 ## Implementation index
 
-| Source/symbol | Role | Status |
+| Source/symbol | Role | Label |
 | --- | --- | --- |
-| `color/ops.py` | The stated "single source of truth" for torch maths: `apply_matrix_3x3`, PQ/HLG constants, BT.2408/BT.2100, `soft_knee_compress` | observed |
-| `color/transfer.py` | About 58 numpy/torch curves: sRGB, 709/2020, LogC3/C4, S-Log3, V-Log, CLog3, Log3G10, ACEScct/cc, DaVinci Intermediate, PQ, HLG | observed |
-| `color/matrices.py` | Camera gamut to ACEScg, and 2020/P3 matrices | observed |
-| `color/encodings.py:ENCODINGS`, `WORKING_SPACES` | File encode/decode table. Uses OCIO when available, otherwise analytic curves plus a CAT matrix. PQ/HLG reference white is 203 nits | observed |
-| `color/pipeline.py:apply_input_transform` | Input transform. For log spaces and ACEScct it applies the curve only, with no gamut matrix | observed (agent), see OPEN_QUESTIONS |
-| `color/lut.py`, `color/luts.py`, `color/grading.py` | LUT Apply/Blend nodes, analytic looks and IDTs, numpy grade, CDL export | observed |
-| `color/ocio_setup.py:configure_ocio` | Startup config choice: valid `$OCIO`, else the built-in studio config (written to `ACES/studio-config.ocio`), else the bundled `ACES/config.ocio` | observed |
-| `radiance_ocio.py` | OCIO manager singleton, LUT bake for the viewer, `/radiance/ocio/*` routes, CPU fallback `apply_ocio_transform` | observed |
-| `hdr/ocio.py` | OCIO Transform, ACES Config Manager, List Colorspaces nodes. Has its own `_resolve_config` | observed |
-| `hdr/aces2_ocio.py` | ACES 2.0 output transform, pinned to `ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5`. Raises `ACES2ReferenceUnavailable` | observed |
-| `nodes/hdr/aces2.py` | ACES 2.0 nodes. Falls back to an analytic implementation when OCIO is unavailable | observed |
-| `hdr/tonemap.py:HDRToneMap`, `HDRExpandDynamicRange` | Operators: ACES filmic, Uncharted2, AgX, Reinhard variants, linear clamp, exposure only | observed |
-| `hdr/tonescale.py` | ACES 2.0 mid-grey and tonescale reference functions | observed |
-| `core/tensor/alpha.py` | `split_rgb_alpha`, `merge_rgb_alpha`, `@alpha_passthrough`. Raises if C is greater than 4 | observed |
-| `core/tensor/contract.py` | Latent `ensure_4d`/`ensure_5d`. Rejects NestedTensor | observed |
-| `core/tensor/chunking.py` | Per-chunk memory budget: 1 GiB on CPU or 35% of free VRAM | observed |
+| `color/ops.py` | The stated "single source of truth" for torch maths: `apply_matrix_3x3`, PQ/HLG constants, BT.2408/BT.2100, `soft_knee_compress` | Implemented |
+| `color/transfer.py` | About 58 numpy/torch curves: sRGB, 709/2020, LogC3/C4, S-Log3, V-Log, CLog3, Log3G10, ACEScct/cc, DaVinci Intermediate, PQ, HLG | Implemented |
+| `color/matrices.py` | Camera gamut to ACEScg, and 2020/P3 matrices | Implemented |
+| `color/encodings.py:ENCODINGS`, `WORKING_SPACES` | File encode/decode table. Uses OCIO when available, otherwise analytic curves plus a CAT matrix. PQ/HLG reference white is 203 nits | Implemented |
+| `color/pipeline.py:apply_input_transform` | Input transform. For log spaces and ACEScct it applies the curve only, with no gamut matrix | Implemented (trace), see OPEN_QUESTIONS |
+| `color/lut.py`, `color/luts.py`, `color/grading.py` | LUT Apply/Blend nodes, analytic looks and IDTs, numpy grade, CDL export | Implemented |
+| `color/ocio_setup.py:configure_ocio` | Startup config choice: valid `$OCIO`, else the built-in studio config (written to `ACES/studio-config.ocio`), else the bundled `ACES/config.ocio` | Implemented |
+| `radiance_ocio.py` | OCIO manager singleton, LUT bake for the viewer, `/radiance/ocio/*` routes, CPU fallback `apply_ocio_transform` | Implemented |
+| `hdr/ocio.py` | OCIO Transform, ACES Config Manager, List Colorspaces nodes. Has its own `_resolve_config` | Implemented |
+| `hdr/aces2_ocio.py` | ACES 2.0 output transform, pinned to `ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5`. Raises `ACES2ReferenceUnavailable` | Implemented |
+| `nodes/hdr/aces2.py` | ACES 2.0 nodes. Falls back to an analytic implementation when OCIO is unavailable | Implemented |
+| `hdr/tonemap.py:HDRToneMap`, `HDRExpandDynamicRange` | Operators: ACES filmic, Uncharted2, AgX, Reinhard variants, linear clamp, exposure only | Implemented |
+| `hdr/tonescale.py` | ACES 2.0 mid-grey and tonescale reference functions | Implemented |
+| `core/tensor/alpha.py` | `split_rgb_alpha`, `merge_rgb_alpha`, `@alpha_passthrough`. Raises if C is greater than 4 | Implemented |
+| `core/tensor/contract.py` | Latent `ensure_4d`/`ensure_5d`. Rejects NestedTensor | Implemented |
+| `core/tensor/chunking.py` | Per-chunk memory budget: 1 GiB on CPU or 35% of free VRAM | Implemented |
 
 ## Contracts
 

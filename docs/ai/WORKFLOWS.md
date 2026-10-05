@@ -3,8 +3,12 @@
 
 Snapshot: `7376f9e`. These are static traces from entry to output. None was executed.
 Line numbers are approximate (`~`) and should be re-checked before editing.
+Every step is **Implemented** (seen in code) unless marked *(Inferred)* or *(Unknown)*; labels are defined in
+[START_HERE](START_HERE.md#evidence-labels). Diagrams are static-analysis maps, not runtime traces.
 
 ## W1. ComfyUI startup and node registration
+
+Diagram: [diagrams/flows/startup.mmd](diagrams/flows/startup.mmd)
 
 ```
 ComfyUI imports custom_nodes/radiance/__init__.py
@@ -33,6 +37,8 @@ ComfyUI imports custom_nodes/radiance/__init__.py
 
 ## W2. Load media: Read node
 
+Diagram: [diagrams/flows/read-write.mmd](diagrams/flows/read-write.mmd)
+
 ```
 RadianceRead.read                 nodes/io/write.py:~471
  -> _resolve_browse (ComfyUI input dir)
@@ -53,6 +59,8 @@ RadianceRead.read                 nodes/io/write.py:~471
 
 ## W3. Write and export: Write node
 
+Diagram: [diagrams/flows/read-write.mmd](diagrams/flows/read-write.mmd)
+
 ```
 RadianceWrite.write              nodes/io/write.py:~855
  -> io/writer.write_frames       :1261  (resolve_output_path; _vNNNN; collision suffix)
@@ -67,6 +75,8 @@ RadianceWrite.write              nodes/io/write.py:~855
 - Errors are logged and re-raised.
 
 ## W4. HDR generation round trip (starter workflow `workflows/start.json`)
+
+Diagram: [diagrams/flows/hdr-generation.mmd](diagrams/flows/hdr-generation.mmd)
 
 ```
 UnifiedLoader (loader_utils: detect arch, comfy.sd.load_*, LRU cache, optional pinned download)
@@ -84,6 +94,8 @@ from the metadata.
 
 ## W5. Review in the Viewer
 
+Diagram: [diagrams/flows/viewer-deliver.mmd](diagrams/flows/viewer-deliver.mmd)
+
 ```
 RadianceViewer.view              nodes/monitor/viewer.py:383
  -> write temp files: .rhdr (fp16/fp32), 32-bit EXR, PNG preview (display_preview), audio
@@ -95,6 +107,8 @@ JS onExecuted (radiance_viewer.js:~21863)
 ```
 
 ## W6. Deliver from the Viewer
+
+Diagram: [diagrams/flows/viewer-deliver.mmd](diagrams/flows/viewer-deliver.mmd)
 
 ```
 JS export dialog -> POST /radiance/deliver   delivery/handler.py:337
@@ -123,6 +137,8 @@ radiance_workspace.js / workspace_dashboard.html
 
 ## W8. Model download (consent-gated)
 
+Diagram: [diagrams/flows/model-download.mmd](diagrams/flows/model-download.mmd)
+
 ```
 ensure_model_exists (loader_utils:~89) -> name in RADIANCE_MODEL_MAP?
  -> core/consent.downloads_allowed (default True)
@@ -132,4 +148,98 @@ ensure_model_exists (loader_utils:~89) -> name in RADIANCE_MODEL_MAP?
 There is no cancellation path. Interrupting ComfyUI mid-download leaves a `.part` file, which is
 resumed next time.
 
-Not traced: VFX/multipass, upscale, video T2V/I2V, DCC send (Nuke/Resolve), audio, scene cut.
+This is the `fetch` path only. Multipass (MoGe `hf_hub_download`, Marigold `snapshot_download`),
+Depth Anything (`from_pretrained`), SD-x4 (`from_pretrained`), the RUDRA `pixel_download`, and
+ACESConfigManager each use their own mechanism. See OPEN_QUESTIONS B17.
+
+## W9. Multipass estimate, relight, and pass export
+
+Diagram: [diagrams/flows/multipass.mmd](diagrams/flows/multipass.mmd). Shipped graph: `workflows/multipass_relight.json`.
+
+```
+RadianceRead -> RadianceMultipassEstimate.estimate      nodes/vfx/multipass/estimate.py:371
+   decode beauty to scene-linear
+   load_moge -> ensure_moge (hf_hub_download, size check) -> infer per frame      :507-515
+   _free_vram(4.5e9) -> load_marigold (snapshot_download) -> appearance, then lighting per frame   :575-613
+   GTAO, curvature, lighting least-squares, DIS flow                              :158-648
+   -> RADIANCE_PASSES dict + 13 IMAGE outputs + STRING
+ -> RadianceEXRPassesWriter.write_passes                  master.py:508
+      validate (beauty present, dims, no path in prefix, no lossy codec with data passes)
+      -> <prefix>.<frame:04d>.exr from 1001, up to 8 threads, data passes promoted to 32-bit
+      -> hdr/io.write_exr_openexr
+ -> RadianceMultipassRelight (individual IMAGE passes) -> Viewer
+```
+
+**Failure paths:**
+- Downloads off (widget, `RADIANCE_ALLOW_DOWNLOADS=0`, or `HF_HUB_OFFLINE=1`) raises `EstimateModelError`, naming the URL and destination.
+- A ComfyUI without `comfy.ldm.moge`, or no diffusers, raises `EstimateModelError`.
+- Validation failures raise `ValueError`. A write failure raises `RuntimeError`.
+- There is no OOM fallback in Estimate.
+- *(Inferred)* The shipped graph's Read output may be linear while Estimate's `beauty_encoding` is "sRGB (display)", which would decode the plate twice. Check RadianceRead's output for that widget value.
+
+## W10. Video generation (T2V, I2V) and export
+
+Diagram: [diagrams/flows/video.mmd](diagrams/flows/video.mmd).
+
+```
+UnifiedLoader / VideoLoader -> MODEL, CLIP, VAE
+ -> T2VPipeline or I2VPipeline                         nodes/video/t2v.py:1095 / :1402
+      _require_video_model (latent_dimensions >= 3)   :424
+      _align_spec_to_model (dit.py _MODEL_SPECS + model/VAE reality)   :447
+      noise latent [B,C,ceil(frames/tc),H,W]  (4D when a single latent frame)
+      I2V: auto -> concat_channels (Wan-style extra input) | first_frame_lock
+      _comfy_sample -> comfy.sample.sample_custom       :178
+ -> VideoBatchDecode (5D to VAE; frames (T-1)*tc+1)    :1753
+ -> optional VideoHDRDecode (PQ/HLG) | Write node (movie codecs) | VideoExport (EXR seq / GIF only)
+Alternative: SamplerPro with temporal_window > 0 -> make_temporal_window_wrapper (experimental, off by default)
+```
+
+**Failure paths:**
+- A non-video model raises.
+- A NaN latent is replaced with 0 and a warning is logged.
+- A failed preview decode returns a black placeholder, and the report says so.
+- *(Inferred)* Noise is passed as both `noise` and `latent_image` (`t2v.py:999-1001`). This is probably correct for flow models but unverified for EPS models.
+- Windowed sampling failed visual acceptance (`KNOWN_ISSUES.md`).
+
+## W11. Send to Nuke or Resolve
+
+Diagram: [diagrams/flows/dcc.mmd](diagrams/flows/dcc.mmd).
+
+```
+RadianceNukeSend.run                      nodes/pipeline/studio_integrations.py:147
+ -> input_space conversion (_for_format)
+ -> io/writer._save_exr to <nuke_folder>/<filename>[.NNNN].exr  (direct, overwrites)
+ -> write <filename>.nk Read snippet
+ -> if push_to_nuke: NukeConnector (RCMD + HMAC token) -> start_nuke_server.py inside Nuke
+       -> load_exr action sets a Read node file knob
+ -> status STRING (never raises)
+
+RadianceDaVinciSend.run                   :339
+ -> write TIFF16 / PNG8 / EXR to <resolve_folder>
+ -> if import_to_media_pool: subprocess tools/resolve_import.py (JSON stdin, 30 s)
+       -> DaVinciResolveScript -> MediaPool.ImportMedia
+ -> status STRING
+```
+
+**Failure paths:**
+- If Nuke isn't running, the status is `CONNECTION_REFUSED`, `TIMEOUT`, or `OS_ERROR`.
+- **A read timeout after a successful send is reported as success** (`tools/nuke_connector.py:176-186`).
+- For Resolve, a timeout, non-zero exit, or missing result line becomes a "not imported: …" message.
+
+## W12. Upscale image or video
+
+```
+RadianceUpscaleImage / Tiler / Video     nodes/upscale/upscale.py
+ -> _build_upscale_fn :1254  (UPSCALE_MODEL | SeedVR2/SD-x4 | spandrel | Real-ESRGAN | bicubic)
+ -> _hdr_to_sr_domain (Reinhard) -> tiled_upscale :564 (gaussian feather / linear) -> _hdr_from_sr_domain
+ -> Video: overlapping windows, LK-aligned overlap frames, Laplacian blend, CPU output accumulator
+ -> _backend_report says which tier actually ran
+```
+
+**Failure paths:**
+- A missing model or download refusal falls to the next tier, ending at bicubic, and the label says so.
+- `RadianceAIUpscale` (`image/upscale.py`) returns bicubic on **any** exception.
+
+Not traced end to end: audio cut and transcribe, scene-cut split, gizmo execution inside a
+running graph, NDI streaming, and the realtime preview server lifecycle. Their behaviour is
+summarised in the subsystem notes.
