@@ -25,19 +25,27 @@ function methodSource(src, name) {
     return rest.slice(0, rest.search(/\n    \}\n/)) + '\n    }';
 }
 
-test('a float upload checks for GL errors once per format, and keeps checking after a failure', () => {
+test('a float upload reads the GL error on the first and every 24th upload of a format', () => {
     const Renderer = new Function(`return class { ${methodSource(read('radiance_webgl.js'), '_uploadError')} }`)();
-    let calls = 0, next = 0;
+    let calls = 0, next = 0, purges = 0;
     const r = new Renderer();
     r.gl = { NO_ERROR: 0, getError() { calls++; return next; } };
+    r.clearFrameCache = () => { purges++; };
     next = 1281;                                            // GL_INVALID_VALUE on the first upload
     assert.equal(r._uploadError('f16:1920x1080x4'), 1281);
+    assert.equal(purges, 0, 'nothing went unchecked before the first upload');
     next = 0;
-    assert.equal(r._uploadError('f16:1920x1080x4'), 0, 'a failed format is checked again');
-    for (let i = 0; i < 10; i++) assert.equal(r._uploadError('f16:1920x1080x4'), 0);
-    assert.equal(calls, 2, 'once the format uploaded cleanly, getError is not called again');
+    assert.equal(r._uploadError('f16:1920x1080x4'), 0, 'a failed format is checked on its next upload');
+    for (let i = 0; i < 23; i++) r._uploadError('f16:1920x1080x4');
+    assert.equal(calls, 2, 'a clean format is not read on every upload');
+    next = 1285;                                            // GL_OUT_OF_MEMORY on the 24th upload after it
+    assert.equal(r._uploadError('f16:1920x1080x4'), 1285, 'a later failure is still caught');
+    assert.equal(purges, 1, 'frames uploaded since the last check are purged');
+    next = 0;
+    r._uploadError('f16:1920x1080x4');
+    assert.equal(calls, 4, 'after a failure the format is checked again at once');
     r._uploadError('f16:3840x2160x4');
-    assert.equal(calls, 3, 'a new format is checked');
+    assert.equal(calls, 5, 'a new format is checked');
 });
 
 test('the sequence dock does not read its height on every refresh', () => {
