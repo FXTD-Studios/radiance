@@ -9,7 +9,7 @@ Nothing was run, imported, or tested. This map is a navigation aid, not a substi
 
 | Label | Meaning |
 | --- | --- |
-| **Implemented** | Seen directly in code or config at the cited location. "(mapper)" means the map author re-read it. "(trace)" means it came from a read-only sub-agent trace and was not re-read |
+| **Implemented** | Seen directly in code or config at the cited location. "(mapper)" means the map author re-read it. "(trace)" means it came from a read-only sub-agent trace and was not re-read. "(review)" means it was re-read for [CODE_REVIEW.md](CODE_REVIEW.md) |
 | **Inferred** | Plausible but not fully traced. The note says what would verify it |
 | **Unknown** | Not enough evidence. The note says what to inspect |
 | **Proposed** | A suggestion, not current behaviour. Kept only in [OPEN_QUESTIONS § Proposed](OPEN_QUESTIONS.md#proposed-not-implemented) |
@@ -67,7 +67,7 @@ ruff check --isolated --select E9,F82,F63,F7 --exclude tests,scripts .
 ## Map navigation
 
 [Architecture and indexes](ARCHITECTURE.md) | [Workflows](WORKFLOWS.md) |
-[Open questions, drift, bugs, proposals](OPEN_QUESTIONS.md) | [Snapshot](MAP_MANIFEST.json) |
+[Open questions, drift, bugs, proposals](OPEN_QUESTIONS.md) | [Code review](CODE_REVIEW.md) | [Snapshot](MAP_MANIFEST.json) |
 [Mind map](diagrams/project-mindmap.mmd) | [Lifecycle flow](diagrams/runtime-flow.mmd)
 
 Before changing code, check freshness against `MAP_MANIFEST.json` and read the cited source.

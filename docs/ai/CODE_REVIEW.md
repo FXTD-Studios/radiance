@@ -145,9 +145,12 @@ closed in the code that was re-read.
 `color/encodings.py` (PQ/HLG/LogC3/S-Log3 maths checked against the specs; no defects), the `nodes/monitor/viewer.py` `.rhdr` writer,
 `js/radiance_viewer.js` `_parseRHDR`, `js/radiance_workspace.js` library load, `io/writer.py` (`write_frames` naming, ffmpeg failure).
 
-Re-checked and downgraded or excluded: OPEN_QUESTIONS B1 is not exploitable (the prefixes are internal), B12 is fixed (the timeout path
-removes the partial file, and a non-zero exit raises), and B20 is moot (the user already picks the folder). B25 is documented
-behaviour (see Optional improvements).
+Re-checked and downgraded or excluded: OPEN_QUESTIONS B1 is not exploitable (the prefixes are internal), B20 is moot (the user
+already picks the folder), and B25 is documented behaviour (see Optional improvements).
+
+Correction (reconciled with OPEN_QUESTIONS): this report first said B12 was fixed. It isn't. The partial file is removed after a
+timeout (`io/writer.py:1010`) or a mid-write exception (`:986`), but a non-zero ffmpeg exit only raises (`:1015`) and leaves the
+partial file in place. Severity P3: the error is reported, but a truncated master stays on disk under its final name.
 
 ## Unreviewed areas
 
