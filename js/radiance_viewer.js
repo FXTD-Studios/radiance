@@ -2433,10 +2433,11 @@ class RadianceViewer {
         host.prepend(canvas);
         const marks = { canvas, measure, geo: null };
         (this._cacheMarks ||= []).push(marks);
-        new ResizeObserver(() => {
+        marks.observer = new ResizeObserver(() => {
             marks.geo = measure();
             this._queueCacheMarks();
-        }).observe(host);
+        });
+        marks.observer.observe(host);
         return marks;
     }
 
@@ -21535,6 +21536,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         // Disconnect every ResizeObserver, not just the canvas one.
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        // ALBABIT-FIX: an observer keeps a removed viewer alive while it observes.
+        this._dockHeightObserver?.disconnect();
+        this._dockHeightObserver = null;
+        for (const m of this._cacheMarks || []) m.observer?.disconnect();
+        if (this._cacheMarksRAF) cancelAnimationFrame(this._cacheMarksRAF);
         if (this._curveResizeObs) { this._curveResizeObs.disconnect(); this._curveResizeObs = null; }
         if (this._refCurveResizeObs) { this._refCurveResizeObs.disconnect(); this._refCurveResizeObs = null; }
         // Curve editors install their own window listeners.
