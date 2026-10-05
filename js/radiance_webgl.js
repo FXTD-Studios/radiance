@@ -3799,8 +3799,8 @@ vec3 getDenoiseColor(vec2 uv) {
             data  // Float32Array
         );
 
-        // v3.0 FIX: Check for GL errors after texture upload
-        const err = gl.getError();
+        // v3.0 FIX: Check for GL errors after texture upload (ALBABIT-FIX: sampled, see _uploadError)
+        const err = this._uploadError(`f32:${width}x${height}x${channels}`);
         if (err !== gl.NO_ERROR) {
             console.error(`[Radiance] Float32 texImage2D failed (GL error ${err}). Params: ${width}x${height}, ch=${channels}, internal=${internalFormat}, fmt=${format}`);
             gl.deleteTexture(texture);
@@ -3826,6 +3826,24 @@ vec3 getDenoiseColor(vec2 uv) {
 
         console.log(`[Radiance] Loaded ${width}×${height} float32 HDR texture (linear, ${filter === gl.LINEAR ? 'LINEAR' : 'NEAREST'})`);
         return texture;
+    }
+
+    /**
+     * The GL error after a float upload. getError waits for the GPU, so it is
+     * read on a format's first and every 24th upload (about once a second of
+     * playback). An error starts the format over and purges the frame cache.
+     */
+    _uploadError(format) {
+        if (!this._uploadCounts) this._uploadCounts = new Map();
+        const count = this._uploadCounts.get(format) || 0;
+        this._uploadCounts.set(format, count + 1);
+        if (count % 24 !== 0) return this.gl.NO_ERROR;
+        const err = this.gl.getError();
+        if (err !== this.gl.NO_ERROR) {
+            this._uploadCounts.delete(format);
+            if (count > 0) this.clearFrameCache();
+        }
+        return err;
     }
 
     // Load float16 texture for HDR (WebGL2) — .rhdr format
@@ -3878,7 +3896,8 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // v3.0 FIX: Check for GL errors after texture upload.
         // Without this, a failed upload returns a "valid" texture that is empty (all zeros = black).
-        const err = gl.getError();
+        // ALBABIT-FIX: sampled (see _uploadError); on every upload it cost ~10 ms a frame.
+        const err = this._uploadError(`f16:${width}x${height}x${channels}`);
         if (err !== gl.NO_ERROR) {
             console.error(`[Radiance] Float16 texImage2D failed (GL error ${err}): ${width}×${height}×${channels}ch`);
             gl.deleteTexture(texture);
