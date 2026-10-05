@@ -1,0 +1,35 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid = observed call/data; dashed = conditional or failure path; [[ ]] = external process/service
+flowchart TD
+    A[ComfyUI imports radiance/__init__.py] -->|env + OCIO setup| B[color/ocio_setup.configure_ocio]
+    A -->|required import| C[nodes/__init__: load NODE_GROUPS]
+    C -->|ImportError| C1[group dropped, WARNING]
+    C1 -.-> H
+    C --> D[gizmos + apply_radiance_branding]
+    D --> H[report_node_load_health<br/>ERROR if below 156]
+    H --> R[NODE_CLASS_MAPPINGS + js/ served]
+
+    R --> Q{{User queues a graph}}
+    Q --> L[UnifiedLoader<br/>loader_utils + model/detect]
+    L -.->|missing + map entry + consent| DL[[core/model_fetch: HF download, sha256]]
+    L --> S[SamplerPro<br/>comfy.sample.sample_custom]
+    Q --> RD[Read node<br/>io/reader.read_frames]
+    RD -->|video| FF[[ffprobe / ffmpeg]]
+    RD --> ENC[HDRVAEEncode<br/>log-code + radiance_meta]
+    ENC --> S
+    ENC -->|no sampler| DEC
+    S --> DEC[HDRVAEDecode<br/>verify_radiance_meta]
+    DEC -.->|fingerprint failed: Direct HDR| U[[RUDRA SDR to HDR<br/>may download checkpoint]]
+    DEC --> V[Viewer node<br/>.rhdr/EXR/PNG to temp + viewer cache]
+    U --> V
+    RD --> V
+    DEC --> W[Write node<br/>io/writer.write_frames]
+    W -->|video| FF
+    W --> OUT[(output files)]
+
+    V -->|ui output + /view fetch| JS[JS viewer<br/>WebGL shader grade + OCIO WASM]
+    JS -->|POST /radiance/deliver| DLV[delivery/handler<br/>grade, QC, write, sidecars]
+    DLV -->|reads| VC[(viewer cache)]
+    DLV --> W2[io/writer.write_frames] --> OUT
+    DLV -.->|outside output dir| E403[403]
+    JS -->|/radiance/workflows etc.| WS[(repo/workflows .rad)]
