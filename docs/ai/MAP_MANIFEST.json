@@ -362,6 +362,7 @@
     "Source paths are repository-relative; artifact paths are relative to docs/ai/.",
     "source_files lists the files whose content backs the map's claims; other files were inventoried or read by sub-agents in bounded slices and are not fingerprinted.",
     "Some subsystem claims came from read-only sub-agent traces; items re-verified by the mapper are marked Confirmed in OPEN_QUESTIONS.md.",
-    "No tests, app code, or Mermaid renderer were executed."
+    "No tests, app code, or Mermaid renderer were executed.",
+    "2026-10-05 revision: applied 8 verified /code-review corrections (startup order, download contract, second .rhdr writer, D8 withdrawn, line refs, counts, de-duplication). Source fingerprints unchanged."
   ]
 }

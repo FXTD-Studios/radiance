@@ -69,6 +69,6 @@ User data lives inside the package checkout. See OPEN_QUESTIONS.
 
 ## Tests
 
-37 `js/tests/*.test.mjs` files run under `node --test`. The GPU/DOM tests use Playwright
+35 `js/tests/*.test.mjs` files run under `node --test`. The GPU/DOM tests use Playwright
 Chromium and are skipped when it's missing. `grade_wgsl_gpu` uses Deno WebGPU. On the Python
 side: `tests/test_viewer_*`, `test_workspace_api.py`, `test_gizmo_storage.py`. Not run.

@@ -49,9 +49,4 @@ Also: `python -m pytest tests/ -m slow --tb=short -q`, `python -m build --wheel`
 
 ## Drift between CONTRIBUTING and CI
 
-- `CONTRIBUTING.md:133` says CI skips GPU tests with `-m "not gpu"`. CI never passes that flag;
-  the GPU test skips itself.
-- `CONTRIBUTING.md:153` says the version comes from `importlib.metadata`. In fact
-  `config/constants.py` hard-codes `VERSION`.
-- `CONTRIBUTING.md:16` uses `--timeout=30`. CI uses 60 and 120.
-- `pyproject` package-data lists `workflows/TEMPLATES/*`, but that folder doesn't exist.
+Tracked once, in [OPEN_QUESTIONS.md](../OPEN_QUESTIONS.md#documentation-drift) (items D2 to D5, D12).
