@@ -3799,8 +3799,8 @@ vec3 getDenoiseColor(vec2 uv) {
             data  // Float32Array
         );
 
-        // v3.0 FIX: Check for GL errors after texture upload
-        const err = gl.getError();
+        // v3.0 FIX: Check for GL errors after texture upload (ALBABIT-FIX: once per format)
+        const err = this._uploadError(`f32:${width}x${height}x${channels}`);
         if (err !== gl.NO_ERROR) {
             console.error(`[Radiance] Float32 texImage2D failed (GL error ${err}). Params: ${width}x${height}, ch=${channels}, internal=${internalFormat}, fmt=${format}`);
             gl.deleteTexture(texture);
@@ -3826,6 +3826,18 @@ vec3 getDenoiseColor(vec2 uv) {
 
         console.log(`[Radiance] Loaded ${width}×${height} float32 HDR texture (linear, ${filter === gl.LINEAR ? 'LINEAR' : 'NEAREST'})`);
         return texture;
+    }
+
+    /**
+     * The GL error after a float upload, read once per format: getError waits
+     * for the GPU, and once a format has uploaded cleanly the next ones will.
+     */
+    _uploadError(format) {
+        if (!this._checkedUploads) this._checkedUploads = new Set();
+        if (this._checkedUploads.has(format)) return this.gl.NO_ERROR;
+        const err = this.gl.getError();
+        if (err === this.gl.NO_ERROR) this._checkedUploads.add(format);
+        return err;
     }
 
     // Load float16 texture for HDR (WebGL2) — .rhdr format
@@ -3878,7 +3890,8 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // v3.0 FIX: Check for GL errors after texture upload.
         // Without this, a failed upload returns a "valid" texture that is empty (all zeros = black).
-        const err = gl.getError();
+        // ALBABIT-FIX: once per format (see _uploadError); it cost ~10 ms a frame.
+        const err = this._uploadError(`f16:${width}x${height}x${channels}`);
         if (err !== gl.NO_ERROR) {
             console.error(`[Radiance] Float16 texImage2D failed (GL error ${err}): ${width}×${height}×${channels}ch`);
             gl.deleteTexture(texture);

@@ -3539,8 +3539,14 @@ class RadianceViewer {
             const pct = ((this.currentFrame || 0) / (total - 1)) * 100;
             playhead.style.left = `${pct}%`;
         }
-        if (this.sequenceDock && this.canvasWrapper) {
-            this.canvasWrapper.style.setProperty('--sequence-dock-height', this.sequenceDock.offsetHeight + 'px');
+        // ALBABIT-FIX: the dock height is followed by a ResizeObserver. Reading
+        // offsetHeight here, on every frame of playback, laid out the whole
+        // ComfyUI page each time: the larger the workflow, the slower playback.
+        if (this.sequenceDock && this.canvasWrapper && !this._dockHeightObserver) {
+            this._dockHeightObserver = new ResizeObserver(() => {
+                this.canvasWrapper.style.setProperty('--sequence-dock-height', this.sequenceDock.offsetHeight + 'px');
+            });
+            this._dockHeightObserver.observe(this.sequenceDock);
         }
     }
 
