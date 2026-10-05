@@ -1,51 +1,50 @@
 %% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Hierarchy only, not control flow. Node counts live in subsystems/registry.md.
 mindmap
-  root((Radiance 3.5.3<br/>ComfyUI package))
-    Entry
-      __init__.py
-      config/ env, dependencies, constants
-      core/logging
-    Registry
-      nodes/catalog NODE_GROUPS x10
-      nodes/registry + aggregate
-      nodes/branding
-      nodes/gizmo
-    Node groups x10, counts in subsystems/registry.md
-      color
-      hdr
-      io
-      vfx
-      pipeline
-      monitor
-      upscale
-      video
-      ai
-      generate
-    Implementation libraries
-      color/ curves, matrices, encodings, LUT/CDL
-      hdr/ VAE engine, tonemap, ACES2, OCIO
-      io/ reader, writer
-      core/ exr, video, ffmpeg, tensor, model_fetch, consent
-      delivery/handler
-      model/ detect, cache, downloads
-      loader_utils + sampler_utils
-      pixel_sdr2hdr + temporal_rudra
-    Frontend js/
-      Viewer + WebGL/WebGPU
-      OCIO WASM
-      Dashboards: workflows, projects, assets
-      Node widget extensions
-    HTTP routes /radiance/*
-      deliver, progress
-      ocio, media, prompt
-      workflows, projects, assets, gizmos
-    Persistence
-      repo/workflows .rad + .versions
-      repo/gizmos
-      ComfyUI temp: .rhdr sidecars
-      ComfyUI output: renders
+  root((Radiance 3.5.3 ComfyUI package))
+    Entry and registry
+      __init__.py startup
+      nodes/catalog 10 groups
+      nodes/registry, aggregate, branding
+      gizmos loader and executor
+    Colour and HDR
+      color/ curves, matrices, encodings
+      OCIO setup, five config resolvers
+      ACES 2.0, tonemap, tonescale
+      HDR VAE log profiles and radiance_meta
+    Media IO and delivery
+      io/reader and io/writer
+      core/exr, core/video, core/ffmpeg
+      delivery/handler export endpoint
+    Generation
+      Unified loader and model/detect
+      SamplerPro and sampler_utils
+      model cache and model_fetch downloads
+      RUDRA SDR to HDR
+    VFX
+      depth, flow, optics, matting, plate
+      multipass estimate MoGe-2 and Marigold
+      relight, composite, EXR passes
+      film camera nodes
+    Upscale, QC, review tools
+      upscale tiers and face restore
+      32-bit resize and bit depth
+      QC and PolicyGuard
+      realtime monitors and preview server
+    Video and audio
+      T2V and I2V pipelines
+      temporal windowing, experimental
+      scene cut
+      audio cut and transcribe
+    DCC and studio
+      Nuke send and Nuke server
+      Resolve import worker
+      DCC bridge and NDI
+    Frontend and storage
+      Viewer, WebGL, WebGPU, OCIO WASM
+      dashboards and /radiance routes
+      repo/workflows .rad and versions
     Validation
-      pytest 168 files + stubs
-      node --test 35 files
-      CI ci.yml / publish.yml
-      tools/ release, docs, pins
+      pytest with ComfyUI stubs
+      node --test JS suite
+      CI and publish workflows

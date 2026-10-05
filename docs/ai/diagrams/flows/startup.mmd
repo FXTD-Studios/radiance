@@ -1,0 +1,25 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W1. Source: __init__.py, nodes/__init__.py, nodes/registry.py
+flowchart TD
+    imp["ComfyUI imports radiance/__init__.py"] --> env0["set OPENCV_IO_ENABLE_OPENEXR, bootstrap package alias"]
+    env0 --> reg["line 38: import nodes.registry"]
+    reg -->|"side effect"| ninit["nodes/__init__.py runs"]
+    ninit --> grp{"for each of 10 NODE_GROUPS: import ok?"}
+    grp -->|"yes"| merge["merge mappings + fold_in_module_nodes"]
+    grp -.->|"ImportError"| drop["whole group dropped, WARNING, recorded in NODE_LOAD_FAILURES"]
+    merge --> giz["load_dynamic_gizmos from repo/gizmos"]
+    drop -.-> giz
+    giz --> brand["apply_radiance_branding: CATEGORY overwritten"]
+    brand --> routes["route modules registered aiohttp routes during import"]
+    routes --> setup["setup_radiance_logging, configure_runtime_environment, validate_runtime_dependencies"]
+    setup --> ocio["_configure_ocio: valid OCIO env, else built-in studio config, else bundled ACES/config.ocio"]
+    ocio -.->|"exception"| ocw["WARNING, continue"]
+    ocio --> load["_load_comfyui_nodes: cached .nodes, required"]
+    ocw -.-> load
+    load --> health{"failures or count below 156?"}
+    health -->|"no"| ok["INFO: loaded N nodes"]
+    health -.->|"yes"| err["ERROR banner naming failed modules"]
+    ok --> run["register_run_grouping hook"]
+    err -.-> run

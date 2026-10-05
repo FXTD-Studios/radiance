@@ -1,7 +1,7 @@
 <!-- project-mapper:generated -->
 # Media IO and delivery
 
-ID: io (plus delivery). Snapshot: `7376f9e`. Coverage: partial (static).
+ID: io (plus delivery). Snapshot: `7376f9e`. Coverage: partial (static). Labels: see [START_HERE](../START_HERE.md#evidence-labels).
 
 ## Responsibility and boundaries
 
@@ -15,21 +15,21 @@ ID: io (plus delivery). Snapshot: `7376f9e`. Coverage: partial (static).
 
 ## Implementation index
 
-| Source/symbol | Role | Status |
+| Source/symbol | Role | Label |
 | --- | --- | --- |
-| `nodes/io/write.py:RadianceRead.read` (~:471) | Resolves `browse` against the ComfyUI input dir, then calls `read_frames` | observed |
-| `io/reader.py:read_frames` (~:1124), `_read_resolved` (~:1223) | Classify the path, read, optional unpremultiply, proxy scale. Errors become `RuntimeError("RadianceRead failed ...")` unless `on_error="Black frame"` | observed |
-| `io/reader.py:_read_image` (~:342) | `.exr` uses `core/exr`; `.hdr` uses cv2; `.dpx` uses OIIO; 16-bit PNG/TIFF use cv2; float TIFF uses tifffile; everything else uses Pillow (8-bit) | observed |
-| `core/exr.py` | EXR probe order: OpenEXR 3 `File` (multipart), then legacy `InputFile`, then OIIO. Layer pick (`_pick_layer`); data window conformed to display window | observed |
-| `core/video.py:decode` (~:462), `probe` (~:295) | ffprobe JSON, then one ffmpeg rawvideo pipe at rgb48le/rgba64le. Frame-accurate `select=` filter. fps is a `Fraction` | observed |
-| `core/ffmpeg.py` | Binary lookup: `RADIANCE_FFMPEG`, then PATH, then imageio-ffmpeg. `ffmpeg_with_encoder` | observed |
-| `io/reader.py` sequence path (`_resolve_sequence_paths` ~:511) | `%0Nd`, `####`, glob, or directory. Up to 8 decode threads. **fps is hard-coded to 24.0** (~:769) | observed |
-| `nodes/io/write.py:RadianceWrite.write` (~:855) | Calls `io/writer.write_frames` | observed |
-| `io/writer.py:write_frames` (:1261), `dispatch_write` (~:1441) | Colour out (`OutputColour`), then the per-format writer. Versioning `_vNNNN` (`version` defaults to 1) | observed |
-| `io/writer.py:_save_exr` (~:597) | OpenEXR `File` write with workflow/prompt/colourspace/chromaticities metadata. The cv2 fallback drops metadata | observed |
-| `io/writer.py:_save_video_ffmpeg` (~:847) | H.264, H.265 10-bit, ProRes 422 HQ/4444, DNxHR HQ (`.mov`). Writes trc/primaries/matrix tags. **No HDR10 mastering/MaxCLL metadata** | observed |
-| `delivery/handler.py:radiance_deliver_endpoint` (:337) | `POST /radiance/deliver`: viewer cache, then grade, optional FX/upscale, QC, `write_frames`, then sidecars (thumb, CDL, AMF, `_meta.json`) | observed |
-| `core/errors.py` | `RadianceError` hierarchy and `handle_node_errors`. **Not used by production code** | observed |
+| `nodes/io/write.py:RadianceRead.read` (~:471) | Resolves `browse` against the ComfyUI input dir, then calls `read_frames` | Implemented |
+| `io/reader.py:read_frames` (~:1124), `_read_resolved` (~:1223) | Classify the path, read, optional unpremultiply, proxy scale. Errors become `RuntimeError("RadianceRead failed ...")` unless `on_error="Black frame"` | Implemented |
+| `io/reader.py:_read_image` (~:342) | `.exr` uses `core/exr`; `.hdr` uses cv2; `.dpx` uses OIIO; 16-bit PNG/TIFF use cv2; float TIFF uses tifffile; everything else uses Pillow (8-bit) | Implemented |
+| `core/exr.py` | EXR probe order: OpenEXR 3 `File` (multipart), then legacy `InputFile`, then OIIO. Layer pick (`_pick_layer`); data window conformed to display window | Implemented |
+| `core/video.py:decode` (~:462), `probe` (~:295) | ffprobe JSON, then one ffmpeg rawvideo pipe at rgb48le/rgba64le. Frame-accurate `select=` filter. fps is a `Fraction` | Implemented |
+| `core/ffmpeg.py` | Binary lookup: `RADIANCE_FFMPEG`, then PATH, then imageio-ffmpeg. `ffmpeg_with_encoder` | Implemented |
+| `io/reader.py` sequence path (`_resolve_sequence_paths` ~:511) | `%0Nd`, `####`, glob, or directory. Up to 8 decode threads. **fps is hard-coded to 24.0** (~:769) | Implemented |
+| `nodes/io/write.py:RadianceWrite.write` (~:855) | Calls `io/writer.write_frames` | Implemented |
+| `io/writer.py:write_frames` (:1261), `dispatch_write` (~:1441) | Colour out (`OutputColour`), then the per-format writer. Versioning `_vNNNN` (`version` defaults to 1) | Implemented |
+| `io/writer.py:_save_exr` (~:597) | OpenEXR `File` write with workflow/prompt/colourspace/chromaticities metadata. The cv2 fallback drops metadata | Implemented |
+| `io/writer.py:_save_video_ffmpeg` (~:847) | H.264, H.265 10-bit, ProRes 422 HQ/4444, DNxHR HQ (`.mov`). Writes trc/primaries/matrix tags. **No HDR10 mastering/MaxCLL metadata** | Implemented |
+| `delivery/handler.py:radiance_deliver_endpoint` (:337) | `POST /radiance/deliver`: viewer cache, then grade, optional FX/upscale, QC, `write_frames`, then sidecars (thumb, CDL, AMF, `_meta.json`) | Implemented |
+| `core/errors.py` | `RadianceError` hierarchy and `handle_node_errors`. **Not used by production code** | Implemented |
 
 ## Contracts
 

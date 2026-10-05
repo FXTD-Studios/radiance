@@ -1,102 +1,116 @@
 <!-- project-mapper:generated -->
-# Architecture map
+# Architecture map and indexes
 
-Snapshot: `7376f9e`, clean worktree. Status: static source analysis only, no runtime trace.
+Snapshot: `7376f9e`. Status: static source analysis, not a runtime trace. Labels are defined in
+[START_HERE](START_HERE.md#evidence-labels).
 
 ## System boundary
 
-- **Host:** ComfyUI. Radiance imports `comfy.*`, `folder_paths`, `node_helpers`,
-  `comfy_extras.*`, `comfy_api.latest`, and `server.PromptServer`. None of these is vendored.
-  The tests stub all of them (`tests/conftest.py:_make_comfy_stubs`).
-- **First-party Python:** the repo root is the `radiance` package
-  (`pyproject.toml` `package-dir {"radiance": "."}`, with 26 packages listed).
-- **First-party browser code:** `js/` (ES modules, served by ComfyUI).
-  `js/vendor/ocio/` is a vendored OpenColorIO 2.5 WASM build.
+- **Host:** ComfyUI. Radiance imports `comfy.*`, `folder_paths`, `node_helpers`, `comfy_extras.*`,
+  `comfy_api.latest`, and `server.PromptServer`. None of these is vendored. The tests stub them
+  (`tests/conftest.py:_make_comfy_stubs`). Implemented.
+- **First-party Python:** the repo root is the `radiance` package (`pyproject.toml`
+  `package-dir {"radiance": "."}`). Implemented.
+- **First-party browser code:** `js/`. `js/vendor/ocio/` is a vendored OpenColorIO 2.5 WASM build (excluded from analysis).
 - **External processes and services:**
-  - `ffmpeg`/`ffprobe` subprocesses
-  - Hugging Face and GitHub downloads
-  - a Nuke socket server (`scripts/start_nuke_server.py`, which runs inside Nuke)
-  - a DaVinci Resolve import worker (`tools/resolve_import.py`, run as a subprocess)
-  - an optional local preview `http.server` (`nodes/monitor/realtime.py`)
-  - a DCC bridge TCP socket (`nodes/pipeline/dcc.py`)
-- **Not present:** a PHP backend, a database, or a standalone UI process.
+  - `ffmpeg`/`ffprobe` subprocesses.
+  - Hugging Face, GitHub, and OpenAI (audio transcription) over the network.
+  - Nuke socket server (`scripts/start_nuke_server.py`, which runs inside Nuke).
+  - Resolve import worker (`tools/resolve_import.py`, a subprocess).
+  - Node-started sockets: preview `HTTPServer`, DCC bridge, NDI.
 
-## Layering (observed import direction)
+  All Implemented.
+- **Not present:** a PHP backend, a database, or a standalone UI process. Implemented (by absence: no `*.php`, no DB driver imports found).
+
+## Layering (Implemented, from import statements)
 
 ```
 nodes/<group>  ->  hdr/, color/, io/, image/, film/, delivery/, model/, loader_utils, sampler_utils
 hdr/, image/   ->  color/, core/tensor, gpu/
 io/            ->  core/exr, core/video, core/ffmpeg, core/formats, color/encodings
-color/         ->  (leaves: matrices, transfer, ops, luma)
+color/         ->  leaves: matrices, transfer, ops, luma
 ```
 
-No module under `color/`, `hdr/`, `core/tensor`, or `gpu/` imports `nodes/`, `io/`, or `delivery/`.
-`io/reader.py` and `io/writer.py` don't import the node layer, and tests enforce that
-(`tests/test_reader_layering.py`, `test_writer_layering.py`).
+- No module under `color/`, `hdr/`, `core/tensor`, or `gpu/` imports `nodes/`, `io/`, or `delivery/`. `io/reader.py` and `io/writer.py` don't import the node layer, and tests enforce that.
+- **Exceptions to the layering (Implemented):**
+  - `delivery/handler.py` imports `radiance.image.upscale.RadianceAIUpscale`.
+  - `nodes/pipeline/dcc.py` and `studio_integrations.py` import private helpers from `nodes/io/write.py`.
+- The root shims `color_utils.py`, `tensor_contract.py`, `gpu_utils.py`, `path_utils.py`, and `secret_utils.py` re-export the newer modules. `color_utils` warns on import but is still used.
 
-The root-level `color_utils.py`, `tensor_contract.py`, `gpu_utils.py`, `path_utils.py`, and
-`secret_utils.py` are compatibility shims that re-export `color/`, `core/tensor/contract`,
-`gpu/ops`, and `core/system/*`. `color_utils` emits a DeprecationWarning but is still
-imported by `io/reader.py`, `io/writer.py`, and `nodes/monitor/realtime.py`.
+## Subsystem index
 
-## Component index
+| ID | Responsibility | Entry/source evidence | State owner | Coverage | Note |
+| --- | --- | --- | --- | --- | --- |
+| entry, registry | Startup, group catalog, merge, fold-in, branding, gizmo loading | `__init__.py`, `nodes/catalog.py`, `nodes/registry.py`, `nodes/aggregate.py`, `nodes/branding.py` | process env, `<repo>/gizmos` | inspected | [registry](subsystems/registry.md) |
+| color | Curves, matrices, encodings, LUT/CDL, OCIO setup and routes | `color/*`, `radiance_ocio.py`, `hdr/ocio.py`, `hdr/aces2_ocio.py` | OCIO current config (process global) | partial | [color-hdr](subsystems/color-hdr.md) |
+| hdr-vae | Log-coded HDR VAE encode/decode, latent metadata | `hdr/vae.py`, `hdr/decode_meta.py`, `nodes/generate/engine.py` | `radiance_meta` in LATENT dicts | partial | [hdr-vae](subsystems/hdr-vae.md) |
+| io, delivery | Read/Write engines, EXR, video, sequences; viewer export endpoint | `io/reader.py`, `io/writer.py`, `core/exr.py`, `core/video.py`, `delivery/handler.py` | output files, `radiance_sessions.json` | partial | [io-delivery](subsystems/io-delivery.md) |
+| generate | Loader, detection, caches, sampler, LoRA, prompt, downloads, RUDRA | `loader_utils.py`, `model/*`, `nodes/generate/*`, `sampler_utils.py`, `core/model_fetch.py` | `model/cache.py` LRU singletons | partial | [generate](subsystems/generate.md) |
+| vfx | Depth, flow, optics, matting, plate, multipass, relight, film camera | `nodes/vfx/*`, `nodes/vfx/multipass/*`, `film/*` | `GPUModelCache`, HF cache, `models/geometry_estimation`, `models/radiance/marigold` | partial | [vfx-multipass](subsystems/vfx-multipass.md) |
+| upscale, qc | Upscale tiers, face restore, bit depth, QC, policy | `nodes/upscale/upscale.py`, `image/upscale.py`, `nodes/color/qc.py`, `image/defects.py` | `GPUModelCache` instances | partial | [upscale-qc-monitor](subsystems/upscale-qc-monitor.md) |
+| monitor-realtime | False colour, peaking, split, contact sheet, stamp, GIF, preview server | `nodes/monitor/realtime.py` | `_PREVIEW_BUFFER`, `_SERVERS` (in memory) | partial | [upscale-qc-monitor](subsystems/upscale-qc-monitor.md) |
+| video, ai, audio | T2V/I2V, latent specs, HDR video conditioning and decode, windowing, scene cut, audio | `nodes/video/*`, `nodes/ai/scene_cut.py`, `nodes/pipeline/audio.py` | `VideoAssembler._STORE` (in memory) | partial | [video-temporal](subsystems/video-temporal.md) |
+| dcc, gizmo-runtime | Nuke/Resolve send, DCC bridge, NDI, subgraph executor | `nodes/pipeline/{dcc,studio_integrations}.py`, `tools/*`, `scripts/start_nuke_server.py`, `nodes/gizmo.py` | `~/.radiance/dcc_token`, bridge threads | partial | [dcc-pipeline](subsystems/dcc-pipeline.md) |
+| viewer, workspace, frontend | Viewer node and cache, routes, dashboards, `.rad` storage, WebGL/WebGPU | `nodes/monitor/viewer.py`, `cache.py`, `nodes/pipeline/workspace.py`, `js/*` | viewer LRU, `<repo>/workflows` | partial | [frontend-routes](subsystems/frontend-routes.md) |
+| validation | pytest, node tests, CI, release gates | `tests/conftest.py`, `.github/workflows/*.yml`, `tools/*` | n/a | inspected (structure) | [validation](subsystems/validation.md) |
 
-| ID | Responsibility | Entry/source evidence | State owner | Detail |
-| --- | --- | --- | --- | --- |
-| entry | Env setup, OCIO config, node load, health banner | `__init__.py:_load_comfyui_nodes`, `report_node_load_health` | process env (`OCIO`, `OPENCV_IO_ENABLE_OPENEXR`) | [registry](subsystems/registry.md) |
-| registry | Group catalog, merge, fold-in, branding, gizmos | `nodes/catalog.py`, `nodes/registry.py:load_node_mappings`, `nodes/aggregate.py:fold_in_module_nodes`, `nodes/branding.py`, `nodes/gizmo.py` | `<repo>/gizmos/*.gizmo` | [registry](subsystems/registry.md) |
-| color | Transfer curves, matrices, encodings, LUT/CDL, OCIO setup | `color/ops.py`, `color/transfer.py`, `color/encodings.py`, `color/ocio_setup.py`, `radiance_ocio.py` | OCIO current config (global) | [color-hdr](subsystems/color-hdr.md) |
-| hdr | HDR VAE engine, tonemap, ACES 2.0, OCIO nodes, processing | `hdr/vae.py`, `hdr/decode_meta.py`, `hdr/tonemap.py`, `hdr/aces2_ocio.py`, `nodes/hdr/*` | `radiance_meta` on latents | [hdr-vae](subsystems/hdr-vae.md), [color-hdr](subsystems/color-hdr.md) |
-| io | Read/Write engines, EXR, video, sequences | `io/reader.py:read_frames`, `io/writer.py:write_frames`, `core/exr.py`, `core/video.py`, `core/ffmpeg.py` | files under the ComfyUI output dir or absolute paths | [io-delivery](subsystems/io-delivery.md) |
-| delivery | Viewer export endpoint: grade, QC, write, sidecars | `delivery/handler.py:radiance_deliver_endpoint` | `radiance_sessions.json` (atomic) | [io-delivery](subsystems/io-delivery.md) |
-| generate | Unified loader, model detection, sampler, prompt, LoRA, model downloads | `loader_utils.py`, `model/detect.py`, `nodes/generate/sampler.py`, `sampler_utils.py`, `config/model_map.py`, `core/model_fetch.py` | `model/cache.py` LRU singletons | [generate](subsystems/generate.md) |
-| sdr2hdr | Learned SDR to HDR (RUDRA) plus heuristics | `nodes/hdr/uplift_universal.py`, `pixel_sdr2hdr.py`, `temporal_rudra.py`, `model/pixel_download.py` | per-module GPU caches | [generate](subsystems/generate.md) |
-| vfx | Depth, flow, optics, masking, multipass, inpaint | `nodes/vfx/*`, `nodes/vfx/multipass/*`, `film/camera.py` | `model/cache.py` | (not detailed; see OPEN_QUESTIONS) |
-| upscale | Tiled and AI upscalers | `nodes/upscale/upscale.py`, `image/upscale.py` | `GPUModelCache` instances | (not detailed) |
-| video | Video model helpers, T2V/I2V pipelines, HDR video | `nodes/video/t2v.py`, `nodes/video/hdr.py` | none found | (not detailed) |
-| viewer | Viewer node, frame cache, `.rhdr` sidecars, progress | `nodes/monitor/viewer.py:RadianceViewer.view`, `cache.py` | `cache.py` viewer LRU (2 GiB default) | [frontend-routes](subsystems/frontend-routes.md) |
-| workspace | Workflow library, projects, assets (REST) | `nodes/pipeline/workspace.py` | `<repo>/workflows/`, `.versions/`, `_assets_bins.json` | [frontend-routes](subsystems/frontend-routes.md) |
-| dcc | Nuke, Resolve, DCC bridge | `nodes/pipeline/dcc.py`, `nodes/pipeline/studio_integrations.py`, `tools/nuke_connector.py`, `core/dcc_auth.py` | `~/.radiance/dcc_token` | (not detailed) |
-| frontend | Viewer UI, WebGL/WebGPU renderers, widgets, dashboards | `js/radiance_viewer.js`, `js/radiance_webgl.js`, `js/radiance_workspace.js` | browser localStorage | [frontend-routes](subsystems/frontend-routes.md) |
-| validation | pytest, node tests, CI, release gates | `tests/conftest.py`, `.github/workflows/ci.yml`, `tools/check_release_ready.py` | n/a | [validation](subsystems/validation.md) |
+## Workflow index
+
+| ID | Workflow | Detail | Diagram |
+| --- | --- | --- | --- |
+| W1 | ComfyUI startup and node registration | [WORKFLOWS](WORKFLOWS.md#w1-comfyui-startup-and-node-registration) | [startup](diagrams/flows/startup.mmd) |
+| W2, W3 | Read media; Write and export | [W2](WORKFLOWS.md#w2-load-media-read-node), [W3](WORKFLOWS.md#w3-write-and-export-write-node) | [read-write](diagrams/flows/read-write.mmd) |
+| W4 | HDR generation round trip | [W4](WORKFLOWS.md#w4-hdr-generation-round-trip-starter-workflow-workflowsstartjson) | [hdr-generation](diagrams/flows/hdr-generation.mmd) |
+| W5, W6 | Review in the Viewer; Deliver | [W5](WORKFLOWS.md#w5-review-in-the-viewer), [W6](WORKFLOWS.md#w6-deliver-from-the-viewer) | [viewer-deliver](diagrams/flows/viewer-deliver.mmd) |
+| W7 | Workspace save and restore | [W7](WORKFLOWS.md#w7-workspace-save-and-restore-a-workflow) | in text only |
+| W8 | Model download | [W8](WORKFLOWS.md#w8-model-download-consent-gated) | [model-download](diagrams/flows/model-download.mmd) |
+| W9 | Multipass estimate, relight, and pass export | [W9](WORKFLOWS.md#w9-multipass-estimate-relight-and-pass-export) | [multipass](diagrams/flows/multipass.mmd) |
+| W10 | Video generation | [W10](WORKFLOWS.md#w10-video-generation-t2v-i2v-and-export) | [video](diagrams/flows/video.mmd) |
+| W11 | Send to Nuke or Resolve | [W11](WORKFLOWS.md#w11-send-to-nuke-or-resolve) | [dcc](diagrams/flows/dcc.mmd) |
+| W12 | Upscale | [W12](WORKFLOWS.md#w12-upscale-image-or-video) | in text only |
+
+Overview diagrams: [mind map](diagrams/project-mindmap.mmd) and [lifecycle flow](diagrams/runtime-flow.mmd).
 
 ## Relationships
 
-| From | Type | To | Contract | Evidence/status |
+| From | Type | To | Contract | Label |
 | --- | --- | --- | --- | --- |
-| entry | import | registry | First load happens as a side effect of `from .nodes.registry import ...` (`__init__.py:38`). `_load_comfyui_nodes` re-imports the cached `.nodes` (`required=True`) and folds group failures into the health check | `__init__.py:38, 44-71`, observed |
-| entry | call | color | `configure_ocio()` runs **after** the groups have already been imported (via `__init__.py:38`). Never fatal | `__init__.py:_configure_ocio`, observed |
-| registry | import | all `nodes/<group>` | Any ImportError drops the whole group (WARNING) | `nodes/registry.py:131-138`, observed |
-| nodes/generate | call | hdr | HDR VAE nodes wrap `RadianceVAE4KEncode/Decode` | `nodes/generate/engine.py:133,186`, observed |
-| nodes/io | call | io | `RadianceRead.read` to `read_frames`; `RadianceWrite.write` to `write_frames` | `nodes/io/write.py:471,855`, observed |
-| viewer | data | frontend | ComfyUI `ui` output plus `/view?type=temp` file fetch (`.rhdr`/EXR/PNG). No `send_sync` | `viewer.py:~703-884`, observed |
-| frontend | http | delivery | `POST /radiance/deliver`, polls `GET /radiance/progress` | `js/radiance_viewer.js:4645`, observed |
-| delivery | data | viewer | Reads frames from the viewer cache (`cache._viewer_cache_get`) | `delivery/handler.py`, observed |
-| delivery | call | io | `write_frames(...)` | `delivery/handler.py:876`, observed |
-| frontend | http | workspace | `/radiance/workflows/*`, `/projects/*`, `/assets*` | dashboards in `js/*.html/.mjs`, observed |
-| generate | call | network | `core/model_fetch.fetch`, gated by `core/consent.downloads_allowed` | `loader_utils.ensure_model_exists`, observed |
-| sdr2hdr | call | network | `model/pixel_download` is consent-gated but does not use `fetch()` | report, inferred (not re-read) |
-| hdr (ACESConfigManager) | call | network | Fetches the OCIO config from GitHub and sets `$OCIO` | `hdr/ocio.py:597,719`, observed; consent gating unknown |
+| entry | import side effect | registry | `from .nodes.registry import ...` (`__init__.py:38`) runs `nodes/__init__.py`, which loads every group before any env, logging, or OCIO setup | Implemented (mapper) |
+| entry | call | color | `configure_ocio()` after the groups are loaded. Never fatal | Implemented |
+| registry | import | `nodes/<group>` | One ImportError drops the whole group (WARNING). The health check then logs an ERROR | Implemented |
+| nodes/generate | call | hdr-vae | HDR VAE nodes wrap `RadianceVAE4KEncode/Decode` (`engine.py:133, 186`) | Implemented (mapper) |
+| nodes/io | call | io | `RadianceRead.read` calls `read_frames`; `RadianceWrite.write` calls `write_frames` | Implemented |
+| viewer | data | frontend | `ui` output plus a `/view?type=temp` fetch of `.rhdr`/EXR/PNG. No `send_sync` | Implemented |
+| frontend | http | delivery | `POST /radiance/deliver`; JS polls `/radiance/progress` | Implemented |
+| delivery | data | viewer | Frames come from the viewer cache | Implemented |
+| delivery | call | io, upscale | `write_frames`; optional `RadianceAIUpscale` for 2x | Implemented (mapper) |
+| vfx | call | hdr (io) | `EXRPassesWriter` writes through `hdr/io.write_exr_openexr`, not `io/writer` | Implemented (trace) |
+| video | call | hdr (io) | `VideoExport` writes EXR through `hdr/io.write_exr_robust` and GIF through PIL | Implemented (trace) |
+| dcc | call | io | `NukeSend` and `DaVinciSend` use `io/writer._save_exr` / PIL directly, not `write_frames` | Implemented (mapper) |
+| dcc | socket | Nuke | HMAC-framed TCP to `start_nuke_server.py` | Implemented (trace) |
+| dcc | subprocess | Resolve | `tools/resolve_import.py`, JSON on stdin, 30 s timeout | Implemented (trace) |
+| gizmo-runtime | call | ComfyUI node classes | Calls node classes directly, bypassing the ComfyUI executor | Implemented (trace) |
+| generate, vfx, upscale | network | HF/GitHub | Several download mechanisms with different integrity guarantees (see OPEN_QUESTIONS B17) | Implemented |
+| audio | network | OpenAI | `AudioTranscribe` uploads audio when the API backend is chosen. No consent gate | Implemented (trace) |
 
-## Views
+## Coverage
 
-[Mind map](diagrams/project-mindmap.mmd) |
-[Runtime flow](diagrams/runtime-flow.mmd) | [Workflows](WORKFLOWS.md)
-
-## Coverage and uncertainty
-
-| Area | Status | Inspected evidence | Missing/excluded |
+| Area | Status | Evidence | Missing or excluded |
 | --- | --- | --- | --- |
-| Entry, registry, catalog | inspected | `__init__.py`, `nodes/__init__.py`, `registry.py`, `catalog.py`, all group `__init__` | gizmo runtime behaviour |
-| color/, hdr/, OCIO | partial | module headers, key symbols, `vae.py` targeted reads | `hdr/color.py`, `processing.py`, `panorama.py` bodies |
-| io/, core/, delivery | partial | read/write dispatch, EXR, video, delivery endpoint | DPX and OIIO edge paths; `core/logging.py` internals |
-| generate, model, sampler | partial | loader, detect, cache, sampler main path | `prompt.py`, `regional.py`, `resolution.py`, `denoise.py`, `energy.py` internals |
-| vfx, upscale, video, ai, pipeline/audio, studio | uninspected beyond registration | node keys and imports only | behaviour, models, contracts |
-| JS frontend | partial | extension registry, renderer selection, data flow | most of the 23k-line `radiance_viewer.js` |
-| tests, CI, release | inspected (structure) | conftest, CI YAML, pyproject, tools | test bodies; no tests executed |
-| Excluded | excluded | none | `js/vendor/`, `ACES/config.ocio` (only the header was read), `*.png`, `workflows/*.json` (only node types were grepped), `scripts/training/*` (summary only) |
+| Entry, registry, catalog | inspected | all group `__init__` files, registry, catalog, branding | gizmo class generation details |
+| color, hdr, OCIO | partial | module headers and key symbols; targeted reads of `vae.py` | `hdr/color.py`, `processing.py`, `panorama.py` bodies |
+| io, core, delivery | partial | read/write dispatch, EXR, video, delivery endpoint | DPX/OIIO edge paths; `core/logging.py` internals |
+| generate, model, sampler | partial | loader, detect, cache, main sampler path | `prompt.py`, `regional.py`, `resolution.py`, `denoise.py`, `energy.py` internals |
+| vfx, multipass, film | partial | every node class, models, `RADIANCE_PASSES`, writer | shipped workflow not executed; RollingShutter body |
+| upscale, qc, realtime | partial | backend chain, HDR wrap, caches, QC rules, preview server | spandrel dtype defaults; SeedVR2/facexlib download internals |
+| video, ai, audio | partial | every node, latent specs, windowing code, scene cut, audio backends | ComfyUI noise-scaling semantics per family |
+| dcc, gizmo runtime | partial | Nuke/Resolve/bridge/NDI protocols, executor | NDI SDK behaviour; Resolve API behaviour |
+| JS frontend | partial | extension registry, renderer selection, data flow | most of the 23k-line `radiance_viewer.js` body |
+| tests, CI, release | inspected (structure) | conftest, CI YAML, pyproject, tools | test bodies; **no tests run** |
+| Excluded | excluded | none | `js/vendor/`, `ACES/config.ocio` beyond its header, images, `workflows/*.json` beyond their node types, `scripts/training/*` beyond a summary, generated `docs/nodes/` |
 
-## Confirmed documentation drift
+"Partial" means the main entry points, contracts, and failure paths were traced, but not every function body.
 
-See [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md#documentation-drift). Each item there is a
-contradiction between a doc or comment and the source.
+## Documentation drift
+
+Kept once, in [OPEN_QUESTIONS § Documentation drift](OPEN_QUESTIONS.md#documentation-drift).

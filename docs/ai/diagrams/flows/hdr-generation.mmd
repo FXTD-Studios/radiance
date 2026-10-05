@@ -1,0 +1,23 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W4. Source: loader_utils.py, nodes/generate/sampler.py, nodes/generate/engine.py, hdr/vae.py
+flowchart TD
+    ld["UnifiedLoader: detect arch from safetensors header"] --> cache{"in model/cache LRU?"}
+    cache -->|"yes"| m["MODEL CLIP VAE"]
+    cache -->|"no"| exist{"file present?"}
+    exist -->|"yes"| m
+    exist -.->|"no, in model map, consent"| dl[["core/model_fetch.fetch, see model-download.mmd"]]
+    dl -.-> m
+    m --> pe["CinematicPromptEncoder V3 node"]
+    pe --> sp["SamplerPro.sample: clone and patch model, comfy.sample.sample_custom"]
+    plate["HDR plate IMAGE"] --> enc["HDRVAEEncode: log-code, stamp radiance_meta with fingerprint"]
+    enc -->|"latent"| sp
+    enc -->|"no sampler"| dec
+    sp --> dec{"HDRVAEDecode: verify_radiance_meta"}
+    dec -->|"fingerprint matches"| hdr["reconstruct scene-linear HDR from log curve"]
+    dec -.->|"fingerprint fails after sampling"| sdr["SDR-safe decode, HDR keys dropped"]
+    sdr -.->|"Direct HDR mode"| rudra[["RadianceSDRToHDRUniversal, may download RUDRA checkpoint"]]
+    hdr --> out["IMAGE to Viewer or Write"]
+    sdr --> out
+    rudra -.-> out

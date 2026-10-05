@@ -1,0 +1,22 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W8 plus other download mechanisms. Source: loader_utils.py, core/model_fetch.py, core/consent.py,
+%% nodes/vfx/depth.py, nodes/vfx/multipass/estimate_models.py, model/pixel_download.py, hdr/ocio.py, nodes/pipeline/audio.py
+flowchart TD
+    need["node needs a model file"] --> mech{"which mechanism?"}
+    mech -->|"Loader, built-in upscale tiers"| f0["core/model_fetch.fetch"]
+    f0 --> f1{"sha256 pinned?"}
+    f1 -.->|"no"| frefuse["refuse"]
+    f1 -->|"yes"| f2{"consent: downloads_allowed, default true"}
+    f2 -.->|"off"| frefuse2["ModelFetchError / refusal"]
+    f2 -->|"on"| f3[["HTTP Range download to .part"]]
+    f3 --> f4{"sha256 matches?"}
+    f4 -->|"yes"| f5["os.replace into place"]
+    f4 -.->|"no"| frefuse3["delete, raise"]
+    mech -->|"Depth Anything, SD-x4, character CLIP"| hf1[["from_pretrained at pinned revision, local_files_only when consent off"]]
+    mech -->|"MoGe-2"| hf2[["hf_hub_download pinned revision, size check only"]]
+    mech -->|"Marigold IID"| hf3[["snapshot_download pinned revision, file presence only"]]
+    mech -->|"RUDRA sdr2hdr"| pd[["model/pixel_download: consent gated, own .part + sha256 check"]]
+    mech -->|"ACESConfigManager"| oc[["GitHub config download, sets OCIO env, no consent check"]]
+    mech -->|"SeedVR2, facexlib, whisper"| ext[["third-party package downloads, outside Radiance consent gate: inferred"]]

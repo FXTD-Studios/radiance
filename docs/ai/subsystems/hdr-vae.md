@@ -1,7 +1,7 @@
 <!-- project-mapper:generated -->
 # HDR VAE engine and log profiles
 
-ID: hdr-vae. Snapshot: `7376f9e`. Coverage: partial (targeted reads of `hdr/vae.py`, 3,597 lines).
+ID: hdr-vae. Snapshot: `7376f9e`. Coverage: partial (targeted reads of `hdr/vae.py`, 3,597 lines). Labels: see [START_HERE](../START_HERE.md#evidence-labels).
 
 ## Responsibility and boundaries
 
@@ -11,18 +11,18 @@ decodes back with metadata-driven reconstruction. Does not own model loading
 
 ## Implementation index
 
-| Source/symbol | Role | Status |
+| Source/symbol | Role | Label |
 | --- | --- | --- |
-| `hdr/vae.py:EXTENDED_LOG_SPACES` (~:200) | Six log profiles: LogC3, LogC4, S-Log3, V-Log, DaVinci Intermediate, Log3G10 | observed |
-| `hdr/vae.py:LOG_PROFILE_HDR_PARAMS` (~:236), `DECODE_NOISE_SCALE_PER_PROFILE` (~:335) | Per-profile shoulder, denoise, and noise parameters | observed |
-| `hdr/vae.py:LATENT_FORMAT_MAP` (:153) | Latent channel count to format label | observed; disagrees with `model/detect.py` |
-| `hdr/vae.py:detect_vae_factor`, `detect_latent_format` | Spatial factor and latent format from the VAE object | observed |
-| `hdr/vae.py:RadianceVAE4KEncode._prepare_for_vae` (~:1255) | Linearise, expose, clamp the floor, log-encode (the source's own curve, or LogC4) | observed |
-| `hdr/vae.py:TileEngine` (~:869) | Tiled encode/decode with cosine blend | observed |
-| `hdr/vae.py:RadianceVAE4KDecode.decode` (~:2733), `_vae_output_to_target` (~:2283) | Shoulder, highlight denoise, inverse curve, optional display tonemap, target space | observed |
-| `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar | observed; its `safe_join` import is dead |
-| `hdr/decode_meta.py:verify_radiance_meta` (~:116), `LOG_SPACE_GAMUT` | Latent metadata contract and fingerprint | observed |
-| `nodes/generate/engine.py` (:133, :186, `apply` ~:331) | `RadianceHDRVAEEncode` / `RadianceHDRVAEDecode` node wrappers. Auto routing and the "Direct HDR" path | observed |
+| `hdr/vae.py:EXTENDED_LOG_SPACES` (~:200) | Six log profiles: LogC3, LogC4, S-Log3, V-Log, DaVinci Intermediate, Log3G10 | Implemented |
+| `hdr/vae.py:LOG_PROFILE_HDR_PARAMS` (~:236), `DECODE_NOISE_SCALE_PER_PROFILE` (~:335) | Per-profile shoulder, denoise, and noise parameters | Implemented |
+| `hdr/vae.py:LATENT_FORMAT_MAP` (:153) | Latent channel count to format label | Implemented; disagrees with `model/detect.py` |
+| `hdr/vae.py:detect_vae_factor`, `detect_latent_format` | Spatial factor and latent format from the VAE object | Implemented |
+| `hdr/vae.py:RadianceVAE4KEncode._prepare_for_vae` (~:1255) | Linearise, expose, clamp the floor, log-encode (the source's own curve, or LogC4) | Implemented |
+| `hdr/vae.py:TileEngine` (~:869) | Tiled encode/decode with cosine blend | Implemented |
+| `hdr/vae.py:RadianceVAE4KDecode.decode` (~:2733), `_vae_output_to_target` (~:2283) | Shoulder, highlight denoise, inverse curve, optional display tonemap, target space | Implemented |
+| `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar | Implemented; its `safe_join` import is dead |
+| `hdr/decode_meta.py:verify_radiance_meta` (~:116), `LOG_SPACE_GAMUT` | Latent metadata contract and fingerprint | Implemented |
+| `nodes/generate/engine.py` (:133, :186, `apply` ~:331) | `RadianceHDRVAEEncode` / `RadianceHDRVAEDecode` node wrappers. Auto routing and the "Direct HDR" path | Implemented |
 
 ## Contracts
 

@@ -1,0 +1,25 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W11. Source: nodes/pipeline/studio_integrations.py, tools/nuke_connector.py, scripts/start_nuke_server.py, tools/resolve_import.py
+flowchart TD
+    ns["RadianceNukeSend.run"] --> cs["input_space conversion"]
+    cs --> wx["_save_exr direct to nuke_folder, overwrites"]
+    wx --> nk["write filename.nk Read snippet"]
+    nk --> push{"push_to_nuke?"}
+    push -->|"no"| st["status STRING"]
+    push -->|"yes"| conn["NukeConnector: RCMD frame, HMAC token from dcc_auth"]
+    conn --> srv[["start_nuke_server.py inside Nuke: verify HMAC, load_exr sets Read file knob"]]
+    conn -.->|"refused, timeout, OS error"| fail["FAILED status, never raises"]
+    conn -.->|"read timeout after send"| fsucc["reported as success with partial reply"]
+    srv --> st
+    fail -.-> st
+    fsucc -.-> st
+    ds["RadianceDaVinciSend.run"] --> dw["write TIFF16, PNG8 or EXR to resolve_folder"]
+    dw --> imp{"import_to_media_pool?"}
+    imp -->|"no"| st2["status STRING"]
+    imp -->|"yes"| sub[["subprocess tools/resolve_import.py, JSON stdin, 30 s timeout"]]
+    sub --> rsv[["DaVinciResolveScript: MediaPool.ImportMedia"]]
+    sub -.->|"timeout, non-zero exit, no result line"| nimp["not imported message"]
+    rsv --> st2
+    nimp -.-> st2

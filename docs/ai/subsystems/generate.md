@@ -1,7 +1,7 @@
 <!-- project-mapper:generated -->
 # Generation, model management, and downloads
 
-ID: generate (plus sdr2hdr model side). Snapshot: `7376f9e`. Coverage: partial (static).
+ID: generate (plus sdr2hdr model side). Snapshot: `7376f9e`. Coverage: partial (static). Labels: see [START_HERE](../START_HERE.md#evidence-labels).
 
 ## Responsibility and boundaries
 
@@ -11,19 +11,19 @@ Device placement and memory are delegated to ComfyUI's `comfy.model_management`.
 
 ## Implementation index
 
-| Source/symbol | Role | Status |
+| Source/symbol | Role | Label |
 | --- | --- | --- |
-| `nodes/generate/loader.py:RadianceUnifiedLoader` and `VideoLoader` | Widgets from `folder_paths.get_filename_list`. Finds the WAN 2.2 MoE companion file (`_find_wan_moe_companion`) | observed |
-| `loader_utils.py` | `comfy.sd.load_diffusion_model`, `load_clip`, `VAE`, `load_lora_for_models`. Cache keys; `ensure_model_exists`; `setup_offload_mode` | observed |
-| `model/detect.py:detect_model_type` (~:528) | Reads safetensors header keys and shapes only. Ordered heuristics, then ComfyUI `model_config_from_unet`. The Loader's fallback is `"sdxl"` | observed |
-| `model/detect.py` tables | `LATENT_CHANNELS`, `VAE_SPATIAL_FACTOR`, `CLIP_SLOT_ORDER`, `CLIP_SLOTS_REQUIRED` | observed |
-| `model/cache.py` | `LRUCache` (size from `RADIANCE_CACHE_SIZE`, default 2) and `GPUModelCache` (eviction moves to CPU and calls `empty_cache`) | observed |
-| `nodes/generate/sampler.py:RadianceSamplerPro.sample` (~:1533) | Presets, then model defaults, then 4D/5D latent, noise, sigmas, then clone and patch, then `comfy.sample.sample_custom` | observed |
-| `sampler_utils.py:RadianceModelRegistry` (`detect_by_config` ~:584) | Model-type detection on the MODEL object, used when `model_meta` isn't connected | observed; Flux2 bug |
-| `config/model_map.py:RADIANCE_MODEL_MAP` | 72 entries: filename to {pinned HF url, sha256, size, folder type, gated} | observed (agent) |
-| `core/model_fetch.py:fetch` | Requires a sha256 pin. Re-checks consent. `.part` file with Range resume. HF bearer token. `os.replace` after the digest matches | observed |
-| `core/consent.py:downloads_allowed` | **Default allow.** Off with `RADIANCE_ALLOW_DOWNLOADS=0`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, or the legacy flags | observed |
-| `nodes/hdr/uplift_universal.py`, `pixel_sdr2hdr.py`, `temporal_rudra.py`, `model/pixel_download.py` | RUDRA SDR to HDR. The checkpoint is downloaded on first use (gated by consent) | observed (agent) |
+| `nodes/generate/loader.py:RadianceUnifiedLoader` and `VideoLoader` | Widgets from `folder_paths.get_filename_list`. Finds the WAN 2.2 MoE companion file (`_find_wan_moe_companion`) | Implemented |
+| `loader_utils.py` | `comfy.sd.load_diffusion_model`, `load_clip`, `VAE`, `load_lora_for_models`. Cache keys; `ensure_model_exists`; `setup_offload_mode` | Implemented |
+| `model/detect.py:detect_model_type` (~:528) | Reads safetensors header keys and shapes only. Ordered heuristics, then ComfyUI `model_config_from_unet`. The Loader's fallback is `"sdxl"` | Implemented |
+| `model/detect.py` tables | `LATENT_CHANNELS`, `VAE_SPATIAL_FACTOR`, `CLIP_SLOT_ORDER`, `CLIP_SLOTS_REQUIRED` | Implemented |
+| `model/cache.py` | `LRUCache` (size from `RADIANCE_CACHE_SIZE`, default 2) and `GPUModelCache` (eviction moves to CPU and calls `empty_cache`) | Implemented |
+| `nodes/generate/sampler.py:RadianceSamplerPro.sample` (~:1533) | Presets, then model defaults, then 4D/5D latent, noise, sigmas, then clone and patch, then `comfy.sample.sample_custom` | Implemented |
+| `sampler_utils.py:RadianceModelRegistry` (`detect_by_config` ~:584) | Model-type detection on the MODEL object, used when `model_meta` isn't connected | Implemented; Flux2 bug |
+| `config/model_map.py:RADIANCE_MODEL_MAP` | 72 entries: filename to {pinned HF url, sha256, size, folder type, gated} | Implemented (trace) |
+| `core/model_fetch.py:fetch` | Requires a sha256 pin. Re-checks consent. `.part` file with Range resume. HF bearer token. `os.replace` after the digest matches | Implemented |
+| `core/consent.py:downloads_allowed` | **Default allow.** Off with `RADIANCE_ALLOW_DOWNLOADS=0`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, or the legacy flags | Implemented |
+| `nodes/hdr/uplift_universal.py`, `pixel_sdr2hdr.py`, `temporal_rudra.py`, `model/pixel_download.py` | RUDRA SDR to HDR. The checkpoint is downloaded on first use (gated by consent) | Implemented (trace) |
 
 ## Contracts
 
