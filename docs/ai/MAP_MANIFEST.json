@@ -469,6 +469,7 @@
   ],
   "artifacts": [
     "ARCHITECTURE.md",
+    "CODE_REVIEW.md",
     "OPEN_QUESTIONS.md",
     "START_HERE.md",
     "WORKFLOWS.md",
@@ -501,6 +502,7 @@
     "No tests, app code, or Mermaid renderer were executed.",
     "Labels: Implemented (mapper = re-read by the map author; trace = read-only sub-agent), Inferred, Unknown, Proposed (only in OPEN_QUESTIONS.md).",
     "2026-10-05 full-scope pass: added vfx-multipass, upscale-qc-monitor, video-temporal, dcc-pipeline notes, workflows W9-W12 and per-workflow flowcharts; earlier review corrections retained.",
-    "Mermaid files were not parsed or rendered: no renderer is installed and none was installed."
+    "Mermaid files were not parsed or rendered: no renderer is installed and none was installed.",
+    "2026-10-05: OPEN_QUESTIONS reconciled with CODE_REVIEW.md (review IDs cross-referenced; B20 withdrawn, B25 reclassified, B27b/B30-B32 added; CODE_REVIEW B12 verdict corrected)."
   ]
 }
