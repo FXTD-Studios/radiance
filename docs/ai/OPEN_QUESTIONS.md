@@ -13,12 +13,12 @@ These items are not a security audit or a test result.
 | --- | --- | --- | --- |
 | D1 | README: "147 visible nodes" | 156 registry keys (`config/constants.py:EXPECTED_MIN_NODE_COUNT`, `nodes/branding.py:NODE_SECTIONS`) | Confirmed mismatch; the intended meaning of "visible" is unknown |
 | D2 | `CONTRIBUTING.md:133`: CI skips GPU tests with `-m "not gpu"` | `ci.yml` never passes that flag | Confirmed |
-| D3 | `CONTRIBUTING.md:153`: version is read from pyproject via `importlib.metadata` | `config/constants.py:5` hard-codes `VERSION` | Confirmed |
+| D3 | `CONTRIBUTING.md:154`: version is read from pyproject via `importlib.metadata` | `config/constants.py:5` hard-codes `VERSION` | Confirmed |
 | D4 | `CONTRIBUTING.md:16`: `--timeout=30` | CI uses 60 and 120 | Confirmed |
 | D5 | `pyproject.toml:179-180` package-data `workflows/TEMPLATES/*` | The folder doesn't exist | Confirmed |
 | D6 | Write UI note: "DNxHR is written into an MXF container" (`nodes/io/write.py:~1576`) | Writer uses `.mov` (`io/writer.py:~907`) | Confirmed |
 | D7 | `hdr/vae.py:~158`: "same names as model/detect.py's latent formats" | Labels differ (for example `sd3_8ch` vs `sd3_16ch`; 128ch is `ltx_128ch` for Flux.2) | Confirmed |
-| D8 | `color/ocio_setup.py:17`: "Nothing is downloaded" | `hdr/ocio.py` ACESConfigManager fetches from GitHub (:597) and sets `$OCIO` (:719) | Confirmed; whether it is consent-gated is unknown |
+| D8 | (withdrawn) `color/ocio_setup.py:17` "Nothing is downloaded" is accurate for `configure_ocio()`. The separate ACESConfigManager node does download; see B17 | `hdr/ocio.py:597, 715, 719` | Not drift |
 | D9 | `core/exr.py` docstring promises an OpenCV fallback for EXR reads | No such fallback in the probe order | Reported |
 | D10 | Viewer comment ~L3713: "WebGPU-preferred" | WebGPU is opt-in through localStorage | Reported |
 | D11 | `tools/gpu_acceptance.py:110-115` lists `RADIANCE_GRADE_INFO`, `RADIANCE_CDL`, … | Those types aren't used in `nodes/` | Reported |
@@ -43,6 +43,7 @@ These items are not a security audit or a test result.
 | B13 | `image/upscale._download_model` doesn't pass `legacy_offline_env`, so `RADIANCE_UPSCALE_OFFLINE` is ignored there | `image/upscale.py:~1916` | Reported |
 | B14 | `model/pixel_download.py` bypasses `fetch()`. It is unclear whether the hash is checked after the write | `model/pixel_download.py:~83` | Reported / unknown |
 | B15 | `validate_runtime_dependencies` return value is ignored | `__init__.py:132` | Confirmed |
+| B17 | Downloads outside `core/model_fetch.fetch` (no enforced SHA-256 pin): multipass `hf_hub_download`/`urlretrieve`, a `torch.hub.load` of DSINE that executes remote code, `estimate_models.hf_hub_download`, RUDRA `pixel_download`, ACESConfigManager. Consent gating per path not verified | `nodes/vfx/multipass/core.py:290, 321, 556`; `estimate_models.py:200`; `model/pixel_download.py:83`; `hdr/ocio.py:715` | Confirmed call sites; gating unknown |
 | B16 | `color/pipeline.apply_input_transform` applies only the curve for log spaces (no camera gamut matrix). It's used for nit estimation | `color/pipeline.py:~55`, `nodes/generate/engine.py:~705` | Reported |
 
 ## Design and ownership questions

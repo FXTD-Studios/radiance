@@ -1,12 +1,12 @@
 %% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
 %% Legend: solid = observed call/data; dashed = conditional or failure path; [[ ]] = external process/service
 flowchart TD
-    A[ComfyUI imports radiance/__init__.py] -->|env + OCIO setup| B[color/ocio_setup.configure_ocio]
-    A -->|required import| C[nodes/__init__: load NODE_GROUPS]
+    A[ComfyUI imports radiance/__init__.py] -->|"line 38: import nodes.registry (side effect)"| C[nodes/__init__: load NODE_GROUPS]
     C -->|ImportError| C1[group dropped, WARNING]
-    C1 -.-> H
     C --> D[gizmos + apply_radiance_branding]
-    D --> H[report_node_load_health<br/>ERROR if below 156]
+    D -->|then, back in __init__| B[logging, env, dependency check,<br/>color/ocio_setup.configure_ocio]
+    C1 -.-> H
+    B --> H[report_node_load_health<br/>ERROR if below 156]
     H --> R[NODE_CLASS_MAPPINGS + js/ served]
 
     R --> Q{{User queues a graph}}

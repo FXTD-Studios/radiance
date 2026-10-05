@@ -20,7 +20,7 @@ Device placement and memory are delegated to ComfyUI's `comfy.model_management`.
 | `model/cache.py` | `LRUCache` (size from `RADIANCE_CACHE_SIZE`, default 2) and `GPUModelCache` (eviction moves to CPU and calls `empty_cache`) | observed |
 | `nodes/generate/sampler.py:RadianceSamplerPro.sample` (~:1533) | Presets, then model defaults, then 4D/5D latent, noise, sigmas, then clone and patch, then `comfy.sample.sample_custom` | observed |
 | `sampler_utils.py:RadianceModelRegistry` (`detect_by_config` ~:584) | Model-type detection on the MODEL object, used when `model_meta` isn't connected | observed; Flux2 bug |
-| `config/model_map.py:RADIANCE_MODEL_MAP` | 71 entries: filename to {pinned HF url, sha256, size, folder type, gated} | observed (agent) |
+| `config/model_map.py:RADIANCE_MODEL_MAP` | 72 entries: filename to {pinned HF url, sha256, size, folder type, gated} | observed (agent) |
 | `core/model_fetch.py:fetch` | Requires a sha256 pin. Re-checks consent. `.part` file with Range resume. HF bearer token. `os.replace` after the digest matches | observed |
 | `core/consent.py:downloads_allowed` | **Default allow.** Off with `RADIANCE_ALLOW_DOWNLOADS=0`, `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, or the legacy flags | observed |
 | `nodes/hdr/uplift_universal.py`, `pixel_sdr2hdr.py`, `temporal_rudra.py`, `model/pixel_download.py` | RUDRA SDR to HDR. The checkpoint is downloaded on first use (gated by consent) | observed (agent) |

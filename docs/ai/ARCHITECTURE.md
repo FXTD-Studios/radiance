@@ -64,10 +64,10 @@ imported by `io/reader.py`, `io/writer.py`, and `nodes/monitor/realtime.py`.
 
 | From | Type | To | Contract | Evidence/status |
 | --- | --- | --- | --- | --- |
-| entry | import | registry | `.nodes` is `required=True`. Group failures are folded into the health check | `__init__.py:44-71`, observed |
-| entry | call | color | `configure_ocio()` before nodes load. Never fatal | `__init__.py:_configure_ocio`, observed |
+| entry | import | registry | First load happens as a side effect of `from .nodes.registry import ...` (`__init__.py:38`). `_load_comfyui_nodes` re-imports the cached `.nodes` (`required=True`) and folds group failures into the health check | `__init__.py:38, 44-71`, observed |
+| entry | call | color | `configure_ocio()` runs **after** the groups have already been imported (via `__init__.py:38`). Never fatal | `__init__.py:_configure_ocio`, observed |
 | registry | import | all `nodes/<group>` | Any ImportError drops the whole group (WARNING) | `nodes/registry.py:131-138`, observed |
-| nodes/generate | call | hdr | HDR VAE nodes wrap `RadianceVAE4KEncode/Decode` | `nodes/generate/engine.py:133,190`, observed |
+| nodes/generate | call | hdr | HDR VAE nodes wrap `RadianceVAE4KEncode/Decode` | `nodes/generate/engine.py:133,186`, observed |
 | nodes/io | call | io | `RadianceRead.read` to `read_frames`; `RadianceWrite.write` to `write_frames` | `nodes/io/write.py:471,855`, observed |
 | viewer | data | frontend | ComfyUI `ui` output plus `/view?type=temp` file fetch (`.rhdr`/EXR/PNG). No `send_sync` | `viewer.py:~703-884`, observed |
 | frontend | http | delivery | `POST /radiance/deliver`, polls `GET /radiance/progress` | `js/radiance_viewer.js:4645`, observed |
