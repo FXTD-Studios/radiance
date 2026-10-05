@@ -48,6 +48,14 @@ test('a float upload reads the GL error on the first and every 24th upload of a 
     assert.equal(calls, 5, 'a new format is checked');
 });
 
+test('destroying the viewer disconnects its resize observers', () => {
+    // An observer that still observes keeps a removed viewer alive (review on #62).
+    const body = methodSource(read('radiance_viewer.js'), 'destroy');
+    assert.match(body, /this\._dockHeightObserver\?\.disconnect\(\)/, 'the dock height observer is left observing');
+    assert.match(body, /for \(const m of this\._cacheMarks \|\| \[\]\) m\.observer\?\.disconnect\(\)/,
+        'the cache marks observers are left observing');
+});
+
 test('the sequence dock does not read its height on every refresh', () => {
     const body = methodSource(read('radiance_viewer.js'), '_refreshSequenceDock')
         .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
