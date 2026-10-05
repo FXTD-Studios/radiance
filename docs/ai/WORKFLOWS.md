@@ -9,24 +9,27 @@ Line numbers are approximate (`~`) and should be re-checked before editing.
 ```
 ComfyUI imports custom_nodes/radiance/__init__.py
  -> os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"; _bootstrap_package_context()
+ -> imports config/constants, config/dependencies, config/env, core/logging
+ -> from .nodes.registry import ...   (__init__.py:38)  runs nodes/__init__.py FIRST:
+      for each NODE_GROUPS -> import nodes/<group>/__init__
+           explicit imports + dict + fold_in_module_nodes
+      + load_dynamic_gizmos()  (<repo>/gizmos/*.gizmo)
+      + apply_radiance_branding (CATEGORY overwrite)
+      Route modules register aiohttp routes here, at import time.
  -> setup_radiance_logging()                      core/logging.py (propagate=False)
  -> configure_runtime_environment()               config/env.py
  -> validate_runtime_dependencies(logger)         config/dependencies.py (return value ignored)
  -> _configure_ocio() -> color/ocio_setup.configure_ocio   (sets $OCIO if unset; never fatal)
- -> load_node_mappings([.nodes required])          nodes/registry.py
-      nodes/__init__: for each NODE_GROUPS -> import nodes/<group>/__init__
-           explicit imports + dict + fold_in_module_nodes
-      + load_dynamic_gizmos()  (<repo>/gizmos/*.gizmo)
-      + apply_radiance_branding (CATEGORY overwrite)
+ -> _load_comfyui_nodes(): load_node_mappings([.nodes required])   (cached module, no re-run)
  -> report_node_load_health()  ERROR if failures or < 156
  -> register_run_grouping()    PromptServer on_prompt hook
- Route modules register aiohttp routes at import time, guarded against double registration.
 ```
 
 **Failure paths:**
 - A group ImportError drops the whole group, logs a WARNING, and the health check logs an ERROR.
 - An OCIO setup exception logs a WARNING.
 - A failure to import `.nodes` itself is raised (it is `required`).
+- Group-import WARNINGs fire before `setup_radiance_logging()` has configured the `radiance` logger, so their formatting and visibility depend on ComfyUI's defaults (inferred).
 
 ## W2. Load media: Read node
 

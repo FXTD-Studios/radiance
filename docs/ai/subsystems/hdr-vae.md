@@ -22,7 +22,7 @@ decodes back with metadata-driven reconstruction. Does not own model loading
 | `hdr/vae.py:RadianceVAE4KDecode.decode` (~:2733), `_vae_output_to_target` (~:2283) | Shoulder, highlight denoise, inverse curve, optional display tonemap, target space | observed |
 | `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar | observed; its `safe_join` import is dead |
 | `hdr/decode_meta.py:verify_radiance_meta` (~:116), `LOG_SPACE_GAMUT` | Latent metadata contract and fingerprint | observed |
-| `nodes/generate/engine.py` (:133, :190, `apply` ~:331) | `RadianceHDRVAEEncode` / `RadianceHDRVAEDecode` node wrappers. Auto routing and the "Direct HDR" path | observed |
+| `nodes/generate/engine.py` (:133, :186, `apply` ~:331) | `RadianceHDRVAEEncode` / `RadianceHDRVAEDecode` node wrappers. Auto routing and the "Direct HDR" path | observed |
 
 ## Contracts
 
