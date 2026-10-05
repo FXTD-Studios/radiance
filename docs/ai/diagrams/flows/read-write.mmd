@@ -1,0 +1,35 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflows W2 and W3. Source: nodes/io/write.py, io/reader.py, io/writer.py, core/exr.py, core/video.py
+flowchart TD
+    subgraph READ["W2 Read"]
+        r0["RadianceRead.read"] --> r1["_resolve_browse: ComfyUI input dir"]
+        r1 --> r2{"core/formats.classify"}
+        r2 -->|"image"| ri["_read_image: EXR core/exr, DPX OIIO, 16-bit cv2, float TIFF tifffile, else Pillow 8-bit"]
+        r2 -->|"video"| rv["core/video.probe via ffprobe, then ffmpeg rgb48le pipe"]
+        r2 -->|"sequence"| rs["_resolve_sequence_paths, 8 threads, fps fixed 24.0"]
+        rv --> ff[["ffprobe / ffmpeg"]]
+        rv -.->|"no ffprobe"| rverr["every video read fails"]
+        ri --> rc["_apply_input_colorspace: OCIO or color/encodings into working space"]
+        rv --> rc
+        rs --> rc
+        rc --> ro["IMAGE, MASK, info JSON"]
+        r2 -.->|"error"| rerr["RuntimeError, or 8x8 black when on_error=Black frame"]
+    end
+    subgraph WRITE["W3 Write"]
+        w0["RadianceWrite.write"] --> w1["io/writer.write_frames: resolve_output_path, _vNNNN, collision suffix"]
+        w1 --> w2["transform_stream: OutputColour encode"]
+        w2 --> w3{"dispatch_write by format"}
+        w3 -->|"EXR"| we["OpenEXR File write with metadata, cv2 fallback drops metadata"]
+        w3 -->|"DPX"| wd["OIIO 10-bit"]
+        w3 -->|"PNG TIFF JPEG WEBP"| wi["cv2 / tifffile / Pillow"]
+        w3 -->|"video"| wv["ffmpeg stdin pipe, trc and primaries tags, no HDR10 metadata"]
+        wv --> ff
+        we --> wo[("files on disk, written directly, not atomic")]
+        wd --> wo
+        wi --> wo
+        wv --> wo
+        wv -.->|"ffmpeg non-zero exit"| wpart["partial file left"]
+        wo --> wr["receipt: ui radiance_files and manifest, result path and count"]
+    end

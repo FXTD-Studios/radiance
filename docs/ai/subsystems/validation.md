@@ -43,7 +43,7 @@ ID: validation. Snapshot: `7376f9e`. Coverage: structure inspected. No tests wer
 
 ## Commands
 
-See [START_HERE](../START_HERE.md#validation-from-ci-and-contributing-none-of-these-were-run-during-mapping).
+See [START_HERE](../START_HERE.md#validation-from-ci-and-contributing-not-run-during-mapping).
 Also: `python -m pytest tests/ -m slow --tb=short -q`, `python -m build --wheel`,
 `python tools/check_release_ready.py`, `python tools/check_mojibake.py`.
 

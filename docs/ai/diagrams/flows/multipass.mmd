@@ -1,0 +1,22 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W9. Source: nodes/vfx/multipass/estimate.py, estimate_models.py, master.py, relight_comp.py
+flowchart TD
+    rd["RadianceRead"] -->|"beauty IMAGE"| est["MultipassEstimate.estimate"]
+    est --> lin["decode beauty to scene-linear per beauty_encoding"]
+    rd -.->|"inferred: linear Read plus sRGB beauty_encoding may double-decode"| lin
+    lin --> moge{"MoGe-2 available or downloadable?"}
+    moge -.->|"no ComfyUI moge or downloads off"| e1["EstimateModelError"]
+    moge -->|"yes"| geo["depth metric far=larger, world_position OpenGL, normal +Z to camera"]
+    geo --> free["_free_vram 4.5 GB"]
+    free --> mari{"Marigold IID available?"}
+    mari -.->|"no diffusers or downloads off"| e1
+    mari -->|"yes"| mat["albedo, roughness, metallic, diffuse and specular lighting"]
+    mat --> cls["GTAO, curvature, lighting least-squares, DIS flow motion +y up"]
+    cls --> passes["RADIANCE_PASSES dict + 13 IMAGE outputs"]
+    passes --> wr["EXRPassesWriter: validate, prefix.frame.exr from 1001, data passes 32-bit"]
+    wr -.->|"path in prefix, lossy codec with data passes"| e2["ValueError"]
+    wr --> files[("EXR files via hdr/io.write_exr_openexr")]
+    passes -->|"individual IMAGE passes"| rl["MultipassRelight: Lambert + GGX"]
+    rl --> vw["Viewer"]
