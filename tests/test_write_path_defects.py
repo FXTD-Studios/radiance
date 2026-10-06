@@ -333,3 +333,57 @@ def test_a_list_that_cannot_be_read_reports_why_each_element_failed():
     message = str(exc.value)
     assert "VAE Decode" in message, message
     assert "/no/such/plate.exr" in message, message
+
+
+def _decode(path, *args):
+    from radiance.core.ffmpeg import ffmpeg_exe
+    return subprocess.run([ffmpeg_exe(), "-v", "error", "-i", str(path), *args, "pipe:1"],
+                          capture_output=True, check=True).stdout
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 9  ProRes was forced to a fixed quantiser below Apple's own rates
+# ═══════════════════════════════════════════════════════════════════════════
+
+@needs_ffmpeg
+@pytest.mark.parametrize("fmt,floor_db", [
+    ("MOV (ProRes 4444)", 55.0),     # was 46.8 dB with -qscale:v 9
+    ("MOV (ProRes 422 HQ)", 50.0),   # was 45.6 dB
+])
+def test_a_prores_master_keeps_the_detail_of_a_soft_frame(tmp_path, fmt, floor_db):
+    """"-qscale:v 9" pinned the quantiser: a 1080p24 4444 master of a soft
+    generated shot came out at 28 Mb/s, below ProRes 422 Proxy, with skin
+    texture smoothed away. A soft frame is where it showed most."""
+    y, x = np.mgrid[0:144, 0:256].astype(np.float32)
+    base = 0.45 + 0.25 * np.sin(x / 6) * np.cos(y / 7.8) + 0.1 * np.sin((x + y) / 4.2)
+    img = np.clip(np.stack([base, base * 0.8 + 0.1, 1 - base * 0.9], -1), 0, 1).astype(np.float32)
+
+    out = W._save_video_ffmpeg(iter([img] * 2), str(tmp_path / "master"), fmt, 24.0, 18, "")
+    raw = _decode(out, "-frames:v", "1", "-vf",
+                  "scale=in_color_matrix=bt709:in_range=tv:out_range=pc:flags=accurate_rnd+full_chroma_int",
+                  "-pix_fmt", "rgb48le", "-f", "rawvideo")
+    decoded = np.frombuffer(raw, "<u2").reshape(144, 256, 3) / 65535
+    psnr = 10 * np.log10(1 / np.mean((decoded - img) ** 2))
+    assert psnr > floor_db, f"{fmt}: {psnr:.1f} dB"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 10  "-shortest" cut the picture to the length of the audio
+# ═══════════════════════════════════════════════════════════════════════════
+
+@needs_ffmpeg
+@pytest.mark.parametrize("audio_seconds", [0.5, 1.03, 2.0])
+def test_a_video_keeps_every_frame_whatever_the_audio_length(tmp_path, audio_seconds):
+    """An LTX shot of 241 frames came with 10.01 s of audio for 10.04 s of
+    picture: the .mov had 240 frames. A 5 s track on a 10 s shot lost half of
+    it. The audio now follows the picture: padded with silence, or trimmed."""
+    n, fps, rate = 25, 24.0, 48000
+    audio = {"waveform": torch.zeros(1, 2, int(rate * audio_seconds)), "sample_rate": rate}
+
+    saved, _ = W.write_frames(image=torch.full((n, 16, 16, 3), 0.5), output_path=str(tmp_path / "shot"),
+                              format="VID │ MP4 (H.264)", fps=fps, audio=audio)
+
+    picture = _decode(saved, "-map", "0:v", "-pix_fmt", "rgb24", "-f", "rawvideo")
+    assert len(picture) // (16 * 16 * 3) == n
+    sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
+    assert abs(len(sound) / 2 / rate - n / fps) < 0.03
