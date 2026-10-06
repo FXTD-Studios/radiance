@@ -2542,7 +2542,12 @@ class RadianceSamplerPro:
                         # sequence and let the old ones sit until the GC got to
                         # them. sample_custom only reads the noise tensor, so one
                         # zero buffer serves every stage that needs one.
-                        if zero_noise is None:
+                        # ALBABIT-FIX: torch.zeros_like rejects the LTX-AV
+                        # NestedTensor, so every pass that adds no noise (add_noise
+                        # off, or a second stage) crashed on it.
+                        if zero_noise is None and _HAS_NESTED_TENSOR and isinstance(current_latent, _NestedTensor):
+                            zero_noise = _NestedTensor(tuple(torch.zeros_like(t) for t in current_latent.tensors))
+                        elif zero_noise is None:
                             zero_noise = torch.zeros_like(noise)
                         stage_noise = zero_noise
                         if is_first_stage:
@@ -2581,7 +2586,7 @@ class RadianceSamplerPro:
                                             sub_t, seed, noise_type, frames=frames
                                         )
                                 else:
-                                    sub_noise = torch.zeros_like(sub_t)
+                                    sub_noise = zero_noise.tensors[idx]
                                 new_noises.append(sub_noise)
                             stage_noise = _NestedTensor(tuple(new_noises))
                         except Exception as _ne:
