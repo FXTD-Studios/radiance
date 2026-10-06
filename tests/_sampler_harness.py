@@ -44,11 +44,17 @@ class _FakeNestedTensor:
     def unbind(self):
         return self.tensors
 
+    def to(self, *args, **kwargs):
+        return type(self)(t.to(*args, **kwargs) for t in self.tensors)
+
 
 def _prepare_noise_like_comfy(latent_image, seed, noise_inds=None):
     """Same contract as comfy.sample.prepare_noise: seeded noise, latent shape."""
     generator = torch.Generator(device="cpu")
     generator.manual_seed(int(seed) & 0xFFFFFFFFFFFFFFFF)
+    if getattr(latent_image, "is_nested", False):
+        return _FakeNestedTensor(
+            torch.randn(t.shape, generator=generator, dtype=t.dtype) for t in latent_image.unbind())
     return torch.randn(
         latent_image.shape, generator=generator, device="cpu",
         dtype=latent_image.dtype, layout=latent_image.layout,
