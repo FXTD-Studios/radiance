@@ -856,6 +856,7 @@ def _save_video_ffmpeg(
     on_frame: Optional[Callable[[int], None]] = None,
     colour: Optional["OutputColour"] = None,
     has_alpha: bool = False,
+    frame_count: Optional[int] = None,
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
 
@@ -957,7 +958,16 @@ def _save_video_ffmpeg(
         "-i", "pipe:0",
     ]
     if audio_source and os.path.isfile(audio_source):
-        cmd += ["-i", audio_source, "-c:a", "aac", "-shortest"]
+        cmd += ["-i", audio_source, "-c:a", "aac"]
+        if frame_count:
+            # ALBABIT-FIX: "-shortest" cut the picture to the audio: a track
+            # 30 ms short lost the last frame, a 5 s track on a 10 s shot lost
+            # half of it. The audio is padded with silence or trimmed to the
+            # picture's length instead.
+            end = frame_count / fps
+            cmd += ["-af", f"apad=whole_dur={end},atrim=end={end}"]
+        else:
+            cmd += ["-shortest"]
     cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(out_path)]
 
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
@@ -1544,6 +1554,7 @@ def dispatch_write(
             on_frame=_count,
             colour=colour,
             has_alpha=has_alpha,
+            frame_count=n,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:

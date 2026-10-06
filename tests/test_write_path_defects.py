@@ -365,3 +365,25 @@ def test_a_prores_master_keeps_the_detail_of_a_soft_frame(tmp_path, fmt, floor_d
     decoded = np.frombuffer(raw, "<u2").reshape(144, 256, 3) / 65535
     psnr = 10 * np.log10(1 / np.mean((decoded - img) ** 2))
     assert psnr > floor_db, f"{fmt}: {psnr:.1f} dB"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 10  "-shortest" cut the picture to the length of the audio
+# ═══════════════════════════════════════════════════════════════════════════
+
+@needs_ffmpeg
+@pytest.mark.parametrize("audio_seconds", [0.5, 1.03, 2.0])
+def test_a_video_keeps_every_frame_whatever_the_audio_length(tmp_path, audio_seconds):
+    """An LTX shot of 241 frames came with 10.01 s of audio for 10.04 s of
+    picture: the .mov had 240 frames. A 5 s track on a 10 s shot lost half of
+    it. The audio now follows the picture: padded with silence, or trimmed."""
+    n, fps, rate = 25, 24.0, 48000
+    audio = {"waveform": torch.zeros(1, 2, int(rate * audio_seconds)), "sample_rate": rate}
+
+    saved, _ = W.write_frames(image=torch.full((n, 16, 16, 3), 0.5), output_path=str(tmp_path / "shot"),
+                              format="VID │ MP4 (H.264)", fps=fps, audio=audio)
+
+    picture = _decode(saved, "-map", "0:v", "-pix_fmt", "rgb24", "-f", "rawvideo")
+    assert len(picture) // (16 * 16 * 3) == n
+    sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
+    assert abs(len(sound) / 2 / rate - n / fps) < 0.03
