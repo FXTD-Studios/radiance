@@ -896,13 +896,17 @@ def _save_video_ffmpeg(
         raise RuntimeError("ffmpeg not found.")
 
     # (codec, src_pix_fmt, dst_pix_fmt, ext, extra ffmpeg args)
+    # ALBABIT-FIX: ProRes was forced to "-qscale:v 9", a fixed quantiser far
+    # coarser than Apple's: a 1080p24 4444 master came out at 28 Mb/s, below
+    # ProRes 422 Proxy, with visibly smoothed texture. prores_ks's own rate
+    # control follows each profile's target, as Apple's encoder does.
     fmt_map = {
         "MP4 (H.264)":        ("libx264",  "rgb48le", "yuv420p",     ".mp4", ["-crf", str(crf), "-preset", "medium"]),
         "MP4 (H.265 10-bit)": ("libx265",  "rgb48le", "yuv420p10le", ".mp4", ["-crf", str(crf), "-preset", "medium", "-tag:v", "hvc1"]),
-        "MOV (ProRes 422 HQ)":("prores_ks","rgb48le", "yuv422p10le", ".mov", ["-profile:v", "3", "-qscale:v", "9", "-vendor", "apl0"]),
+        "MOV (ProRes 422 HQ)":("prores_ks","rgb48le", "yuv422p10le", ".mov", ["-profile:v", "3", "-vendor", "apl0"]),
         "MOV (ProRes 4444)":  ("prores_ks","rgba64le" if has_alpha else "rgb48le",
                                "yuva444p10le" if has_alpha else "yuv444p10le", ".mov",
-                               ["-profile:v", "4", "-qscale:v", "9", "-vendor", "apl0"]
+                               ["-profile:v", "4", "-vendor", "apl0"]
                                + (["-alpha_bits", "16"] if has_alpha else [])),
         "MOV (DNxHR HQ)":     ("dnxhd",    "rgb48le", "yuv422p",     ".mov", ["-profile:v", "dnxhr_hq"]),
     }

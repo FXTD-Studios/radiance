@@ -333,3 +333,35 @@ def test_a_list_that_cannot_be_read_reports_why_each_element_failed():
     message = str(exc.value)
     assert "VAE Decode" in message, message
     assert "/no/such/plate.exr" in message, message
+
+
+def _decode(path, *args):
+    from radiance.core.ffmpeg import ffmpeg_exe
+    return subprocess.run([ffmpeg_exe(), "-v", "error", "-i", str(path), *args, "pipe:1"],
+                          capture_output=True, check=True).stdout
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  § 9  ProRes was forced to a fixed quantiser below Apple's own rates
+# ═══════════════════════════════════════════════════════════════════════════
+
+@needs_ffmpeg
+@pytest.mark.parametrize("fmt,floor_db", [
+    ("MOV (ProRes 4444)", 55.0),     # was 46.8 dB with -qscale:v 9
+    ("MOV (ProRes 422 HQ)", 50.0),   # was 45.6 dB
+])
+def test_a_prores_master_keeps_the_detail_of_a_soft_frame(tmp_path, fmt, floor_db):
+    """"-qscale:v 9" pinned the quantiser: a 1080p24 4444 master of a soft
+    generated shot came out at 28 Mb/s, below ProRes 422 Proxy, with skin
+    texture smoothed away. A soft frame is where it showed most."""
+    y, x = np.mgrid[0:144, 0:256].astype(np.float32)
+    base = 0.45 + 0.25 * np.sin(x / 6) * np.cos(y / 7.8) + 0.1 * np.sin((x + y) / 4.2)
+    img = np.clip(np.stack([base, base * 0.8 + 0.1, 1 - base * 0.9], -1), 0, 1).astype(np.float32)
+
+    out = W._save_video_ffmpeg(iter([img] * 2), str(tmp_path / "master"), fmt, 24.0, 18, "")
+    raw = _decode(out, "-frames:v", "1", "-vf",
+                  "scale=in_color_matrix=bt709:in_range=tv:out_range=pc:flags=accurate_rnd+full_chroma_int",
+                  "-pix_fmt", "rgb48le", "-f", "rawvideo")
+    decoded = np.frombuffer(raw, "<u2").reshape(144, 256, 3) / 65535
+    psnr = 10 * np.log10(1 / np.mean((decoded - img) ** 2))
+    assert psnr > floor_db, f"{fmt}: {psnr:.1f} dB"
