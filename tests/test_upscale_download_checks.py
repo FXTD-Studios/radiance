@@ -272,3 +272,47 @@ class TestAIUpscaleHonoursTheLegacyOptOut:
         # Consent given, so the fetch is attempted (and fails offline).
         assert node._download_model("RealESRGAN_x4plus", str(tmp_path / "x.pth")) is False
         assert "download failed" in (node._last_download_error or "")
+
+
+# ── review fixes ────────────────────────────────────────────────────────────
+
+class TestReviewFixes:
+
+    def test_a_same_size_swap_that_keeps_the_mtime_is_checked_again(self, monkeypatch, server, tmp_path):
+        # The record was keyed on size and mtime only, so `cp -p`, `rsync -a`
+        # or a tar extract of different bytes kept the old pass.
+        dest = tmp_path / "w.pth"
+        dest.write_bytes(PAYLOAD)
+        MF.fetch(URL, str(dest), sha256=DIGEST, size=len(PAYLOAD))
+        MF._VERIFIED.clear()
+        st = os.stat(dest)
+        swapped = tmp_path / "swapped.pth"
+        swapped.write_bytes(b"\1" * len(PAYLOAD))
+        os.utime(swapped, ns=(st.st_atime_ns, st.st_mtime_ns))
+        os.replace(swapped, dest)                     # new inode, same size and mtime
+        assert os.stat(dest).st_mtime_ns == st.st_mtime_ns
+        MF.fetch(URL, str(dest), sha256=DIGEST, size=len(PAYLOAD))
+        assert dest.read_bytes() == PAYLOAD and len(server) == 1
+
+    def test_a_mismatching_file_is_kept_aside_before_the_download_replaces_it(self, server, tmp_path):
+        # It was overwritten in place: a user's own variant saved under the
+        # registry's name was destroyed with only a log line.
+        dest = tmp_path / "w.pth"
+        mine = b"my fine-tune" * 100
+        dest.write_bytes(mine)
+        MF.fetch(URL, str(dest), sha256=DIGEST, size=None)
+        assert dest.read_bytes() == PAYLOAD
+        kept = tmp_path / ("w.pth" + MF.MISMATCH_SUFFIX)
+        assert kept.read_bytes() == mine
+
+    def test_the_record_does_not_follow_a_planted_symlink(self, monkeypatch, no_network, tmp_path):
+        target = tmp_path / "precious.txt"
+        target.write_text("keep me")
+        dest = tmp_path / "w.pth"
+        dest.write_bytes(PAYLOAD)
+        try:
+            os.symlink(target, str(dest) + MF._RECORD_SUFFIX)
+        except (OSError, NotImplementedError):
+            pytest.skip("no symlinks here")
+        MF.fetch(URL, str(dest), sha256=DIGEST, size=len(PAYLOAD))
+        assert target.read_text() == "keep me"

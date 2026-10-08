@@ -69,21 +69,33 @@ def _sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
-# Files that passed the digest check in this process, keyed on
-# (path, size, mtime_ns) -> sha256. The sidecar below carries the same record
-# across restarts; this covers a models folder the process cannot write to.
+# Files that passed the digest check in this process, keyed on their stamp
+# -> sha256. The sidecar below carries the same record across restarts; this
+# covers a models folder the process cannot write to.
 _VERIFIED: dict = {}
 _RECORD_SUFFIX = ".radiance-sha256"
+#: A file at the destination that does not match its pin is moved here, not
+#: overwritten: it may be a user's own model saved under the registry's name.
+MISMATCH_SUFFIX = ".radiance-mismatch"
 
 
 def _stamp(path: str) -> tuple:
+    """Path, size, mtime, inode, device and ctime. Size and mtime alone let a
+    same-size swap that keeps the mtime (cp -p, rsync -a, tar) keep an old
+    pass; ctime cannot be set back by the copier, and a false miss only costs
+    a re-hash."""
     st = os.stat(path)
-    return (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+    return (os.path.abspath(path), st.st_size, st.st_mtime_ns, st.st_ino, st.st_dev, st.st_ctime_ns)
 
 
 def _write_record(path: str, sha256: str, stamp: tuple) -> None:
-    with open(path + _RECORD_SUFFIX, "w", encoding="ascii") as fh:
-        fh.write(f"{sha256} {stamp[1]} {stamp[2]}\n")
+    # Written beside and renamed over, so a symlink planted at the record's
+    # name is replaced, never followed into the file it points at.
+    record = path + _RECORD_SUFFIX
+    tmp = f"{record}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="ascii") as fh:
+        fh.write(" ".join([sha256, *(str(v) for v in stamp[1:])]) + "\n")
+    os.replace(tmp, record)
 
 
 def _remember(path: str, sha256: str) -> None:
@@ -103,10 +115,11 @@ def _recorded_pass(path: str, sha256: str) -> bool:
         return True
     try:
         with open(path + _RECORD_SUFFIX, encoding="ascii") as fh:
-            digest, size, mtime_ns = fh.read().split()
+            digest, *rest = fh.read().split()
+        recorded = tuple(int(v) for v in rest)
     except (OSError, ValueError):
-        return False
-    if digest == sha256 and int(size) == stamp[1] and int(mtime_ns) == stamp[2]:
+        return False          # none, unreadable, or a 4.0 beta record: hash again
+    if digest == sha256 and recorded == stamp[1:]:
         _VERIFIED[stamp] = sha256
         return True
     return False
@@ -276,6 +289,11 @@ def fetch(
         raise ModelFetchError(
             f"[Radiance] {label}: CHECKSUM MISMATCH (expected {expected}, got {actual}). "
             "The download was deleted; nothing was installed.")
+    if mismatch and os.path.isfile(dest):
+        aside = dest + MISMATCH_SUFFIX
+        os.replace(dest, aside)
+        logger.warning("[Radiance] %s: the file that did not match its pin was kept as %s; "
+                       "delete it if it is not yours.", label, aside)
     os.replace(part, dest)
     _remember(dest, expected)
     logger.info("[Radiance] %s verified (sha256 %s…) and installed at %s", label, expected[:12], dest)
