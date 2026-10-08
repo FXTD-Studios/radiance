@@ -568,7 +568,7 @@ class RadianceBitDepthDegrade:
             "optional": {
                 "delta_gain": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 100.0, "step": 0.5, "tooltip": "Multiplier on the absolute error |original - quantised| for the delta_amplified output, clipped to 1."}),
                 "banding_threshold": ("FLOAT", {"default": 0.004, "min": 0.0005, "max": 0.05, "step": 0.0005, "tooltip": "Per-pixel error (0..1 units, largest channel) above which banding_mask is white. 0.004 is about one 8-bit code value. This flags quantisation error, not detected bands."}),
-                "restore_from_quantized": ("BOOLEAN", {"default": False, "tooltip": "Currently has no effect: the node ignores this setting."}),
+                "restore_from_quantized": ("BOOLEAN", {"default": False, "tooltip": "Dequantise the result: smooth it in 8 passes, each clamped back to the values the pixel could have come from (half a step around its code value; a step and a half with dither). Removes banding on smooth gradients; the other outputs and the metrics then measure the restored image."}),
             },
         }
 
@@ -637,6 +637,21 @@ class RadianceBitDepthDegrade:
         return torch.from_numpy(np.ascontiguousarray(out)).to(img.device)
 
     @staticmethod
+    def _dequantize(q: torch.Tensor, half_width: float, passes: int = 8) -> torch.Tensor:
+        """Smooth `q` (B, H, W, C) in `passes` 3x3 box passes, each clamped to
+        ``q +- half_width``: the code values constrain the result, the blur fills
+        in between them. Edge pixels repeat for the blur."""
+        import torch.nn.functional as F
+        x = q.permute(0, 3, 1, 2)
+        lo = (x - half_width).clamp(0.0, 1.0)
+        hi = (x + half_width).clamp(0.0, 1.0)
+        y = x
+        for _ in range(passes):
+            y = F.avg_pool2d(F.pad(y, (1, 1, 1, 1), mode="replicate"), 3, stride=1)
+            y = torch.minimum(torch.maximum(y, lo), hi)
+        return y.permute(0, 2, 3, 1).contiguous()
+
+    @staticmethod
     def _psnr(original: torch.Tensor, quantized: torch.Tensor) -> float:
         mse = ((original - quantized) ** 2).mean().item()
         if mse == 0.0:
@@ -659,6 +674,11 @@ class RadianceBitDepthDegrade:
 
         quantized = (dithered / step).round() * step
         quantized = quantized.clamp(0.0, 1.0)
+        if restore_from_quantized:
+            # Rounding moves a value by up to half a step; dither adds up to
+            # one more step before it.
+            half_width = step * (0.5 if dither_mode == "none" else 1.5)
+            quantized = self._dequantize(quantized, half_width)
 
         delta = (img - quantized).abs()
         delta_amp = (delta * delta_gain).clamp(0.0, 1.0)
@@ -668,11 +688,14 @@ class RadianceBitDepthDegrade:
         max_err = delta.max().item()
         dr_loss_stops = math.log2(max(levels, 1) / (2 ** 16 - 1) + 1e-9)
 
-        metrics = json.dumps({
+        report = {
             "bit_depth": bit_depth, "levels": levels, "dither_mode": dither_mode,
             "psnr_dB": round(psnr_val, 2), "max_error": round(max_err, 6),
             "dynamic_range_loss_stops": round(abs(dr_loss_stops), 2),
-        }, indent=2)
+        }
+        if restore_from_quantized:
+            report["restored"] = True
+        metrics = json.dumps(report, indent=2)
 
         def _reattach(out3c):
             if image.shape[-1] == 4:
