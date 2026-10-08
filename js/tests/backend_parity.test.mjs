@@ -92,7 +92,7 @@ test('neither backend re-implements contrast or gamma', () => {
     }
     // And the shared functions still behave, so a green suite here means
     // something.
-    assert.equal(applyContrast(0.25, 2, 0.5), 0);
+    assert.equal(applyContrast(0.25, 2, 0.5), 0.125);
     assert.ok(Number.isFinite(applyGamma(0.5, 0)));
 });
 

@@ -249,15 +249,6 @@ fn source_luma(uv: vec2f) -> f32 {
     return dot(c / (vec3f(1.0) + abs(c)), vec3f(0.2126, 0.7152, 0.0722));
 }
 
-fn kelvin_to_rgb(temp: f32, tint: f32) -> vec3f {
-    var t = clamp(temp, -1.0, 1.0);
-    let r = 1.0 + 0.3 * max(t, 0.0);
-    let b = 1.0 - 0.3 * min(t, 0.0);
-    let g = 1.0 - 0.15 * abs(t);
-    let tint_factor = 1.0 + 0.1 * tint;
-    return vec3f(r, g * tint_factor, b);
-}
-
 fn apply_log_wheels(col: vec3f, shadow: vec3f, mid: vec3f, highlight: vec3f) -> vec3f {
     let luma = dot(col, vec3f(0.2126, 0.7152, 0.0722));
     let shadow_w = 1.0 - smoothstep(0.0, 0.3, luma);
@@ -405,14 +396,12 @@ fn fs_main(@location(0) texcoord: vec2f) -> @location(0) vec4f {
     } else if (u.input_lut_mode == 31) {
         color = slog3_to_linear(color);
     }
-    let pre_grade = color;
 
     // Exposure
     color *= exp2(u.exposure);
 
-    // White balance
-    let wb = kelvin_to_rgb(u.temperature, u.tint);
-    color *= wb;
+    // White balance: the shared gains, the same as WebGL.
+    color = radWhiteBalance(color, u.temperature, u.tint);
 
     // Saturation (linear-space)
     let luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));
@@ -426,12 +415,22 @@ fn fs_main(@location(0) texcoord: vec2f) -> @location(0) vec4f {
     // Was: flat additive lift, unguarded gamma, unclamped contrast -- three
     // separate disagreements with the WebGL backend, on a path the viewer
     // *prefers* whenever navigator.gpu exists. Now the shared definition.
-    color = radGradeOrder(color, gOffset, gLift, gGain, gGradeGamma);
+    if (u.color_science == 1) {
+        // ACEScct grade space. This backend has no source gamut, so it
+        // takes linear Rec.709, the default.
+        var cct = radLinToACEScct(radToAP1(color, 0));
+        cct = radGradeOrder(cct, gOffset, gLift, gGain, gGradeGamma);
+        color = radFromAP1(radACEScctToLin(cct), 0);
+    } else {
+        color = radGradeOrder(color, gOffset, gLift, gGain, gGradeGamma);
+    }
 
     // Contrast
     if (u.contrast != 1.0) {
         color = radContrast(color, u.contrast, u.pivot);
     }
+    // Luma Mix holds the luminance the primaries produced.
+    let primary_luma = radLuma(color);
 
     // Resolve-style controls
     if (u.color_boost > 0.0) {
@@ -448,12 +447,7 @@ fn fs_main(@location(0) texcoord: vec2f) -> @location(0) vec4f {
         let mw = exp(-4.0 * (s_luma - 0.5) * (s_luma - 0.5));
         color += vec3f(u.shadows * sw + u.highlights * hw + u.mid_detail * mw);
     }
-    if (u.luma_mix != 1.0) {
-        let current_luma = dot(color, vec3f(0.2126, 0.7152, 0.0722));
-        let original_luma = dot(pre_grade, vec3f(0.2126, 0.7152, 0.0722));
-        let color_with_original_luma = color * (original_luma / max(current_luma, 0.0001));
-        color = mix(color_with_original_luma, color, clamp(u.luma_mix, 0.0, 1.0));
-    }
+    color = radLumaMix(color, primary_luma, u.luma_mix);
 
     // Log Wheels
     let logShadow = vec3f(u.log_shadow_r, u.log_shadow_g, u.log_shadow_b);
@@ -487,17 +481,17 @@ fn fs_main(@location(0) texcoord: vec2f) -> @location(0) vec4f {
 
     // Curve LUT
     if (u.curve_mix > 0.0) {
-        let curve_r = textureSampleLevel(u_curve_lut, u_sampler, color.r * 0.996 + 0.002, 0.0).r;
-        let curve_g = textureSampleLevel(u_curve_lut, u_sampler, color.g * 0.996 + 0.002, 0.0).r;
-        let curve_b = textureSampleLevel(u_curve_lut, u_sampler, color.b * 0.996 + 0.002, 0.0).r;
+        let curve_r = textureSampleLevel(u_curve_lut, u_sampler, (clamp(color.r, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
+        let curve_g = textureSampleLevel(u_curve_lut, u_sampler, (clamp(color.g, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
+        let curve_b = textureSampleLevel(u_curve_lut, u_sampler, (clamp(color.b, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
         color = mix(color, vec3f(curve_r, curve_g, curve_b), u.curve_mix);
     }
 
     // Secondary Curve LUT (binding 8 — applied after primary, pre-output-transform)
     if (u.secondary_curve_mix > 0.0) {
-        let sc_r = textureSampleLevel(u_secondary_curve_lut, u_sampler, color.r * 0.996 + 0.002, 0.0).r;
-        let sc_g = textureSampleLevel(u_secondary_curve_lut, u_sampler, color.g * 0.996 + 0.002, 0.0).r;
-        let sc_b = textureSampleLevel(u_secondary_curve_lut, u_sampler, color.b * 0.996 + 0.002, 0.0).r;
+        let sc_r = textureSampleLevel(u_secondary_curve_lut, u_sampler, (clamp(color.r, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
+        let sc_g = textureSampleLevel(u_secondary_curve_lut, u_sampler, (clamp(color.g, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
+        let sc_b = textureSampleLevel(u_secondary_curve_lut, u_sampler, (clamp(color.b, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.0).r;
         color = mix(color, vec3f(sc_r, sc_g, sc_b), u.secondary_curve_mix);
     }
 
