@@ -91,7 +91,6 @@ NODE_SECTIONS = {
     "RadianceControlNetApply": "Generate",
     "RadianceDenoise": "Generate",
     "RadianceEnergyMask": "Generate",
-    "RadianceHDRLatentEncoder": "Generate",
     "RadianceHDRVAEDecode": "Generate",
     "RadianceHDRVAEEncode": "Generate",
     "RadianceLoraStack": "Generate",
@@ -168,8 +167,6 @@ NODE_SECTIONS = {
     "RadianceMultipassRelight": "VFX",
     "RadianceOpticalFlow": "VFX",
     "RadianceRelightEngine": "VFX",
-    "RadianceSAMGenerator": "VFX",
-    "RadianceSAMModelLoader": "VFX",
     "RadianceSceneCutDetect": "VFX",
     "RadianceSceneCutSplit": "VFX",
     "RadianceSubpixelStabilizer": "VFX",
@@ -201,7 +198,6 @@ NODE_SECTIONS = {
     "RadianceHDRBlendValidator": "HDR",
     "RadianceHDRPerChannelDenorm": "HDR",
     "RadianceHDRPerChannelNorm": "HDR",
-    "RadianceHDRTurboEncoder": "HDR",
     "RadianceLuminanceGuidance": "HDR",
     "RadianceAudioCut": "Pipeline",
     "RadianceAudioTranscribe": "Pipeline",
@@ -326,8 +322,6 @@ TERM_OVERRIDES = {
     "RadianceMultipassEstimate": "Multipass Estimate",
     "RadianceMultipassComposite": "Multipass Composite",
     "RadianceMultipassRelight": "Multipass Relight",
-    "RadianceSAMGenerator": "Keyer (SAM, not shipped)",
-    "RadianceSAMModelLoader": "SAM Loader (not shipped)",
     "RadianceLinearMatting": "Matte",
     # ── Load & Save ───────────────────────────────────────────────────────
     "RadianceImageLoader": "Read Image",
@@ -349,8 +343,6 @@ TERM_OVERRIDES = {
     "RadianceHDRVAEDecode": "VAE Decode (HDR)",
     "RadianceHDRVAEEncode": "VAE Encode (HDR)",
     # Its decoder was retired in 3.5.0; kept registered for saved workflows.
-    "RadianceHDRLatentEncoder": "HDR Latent Encoder (Legacy)",
-    "RadianceHDRTurboEncoder": "HDR Turbo Encoder (Legacy)",
     "RadianceControlNetApply": "ControlNet",
     "RadianceControlApply": "Control",
 }

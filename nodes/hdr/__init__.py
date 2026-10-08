@@ -15,9 +15,6 @@ from radiance.nodes.hdr.delivery import (
     RadianceHDREncode,
     RadianceHDRMonitor,
 )
-from radiance.nodes.hdr.encoder import (
-    RadianceHDRLatentEncoder,
-)
 from radiance.nodes.hdr.smart import (
     RadianceHDRAutoLogSelect,
     RadianceHDRDiagnostics,
@@ -92,7 +89,6 @@ NODE_CLASS_MAPPINGS = {
     "RadianceHDRToneMap": HDRToneMap,
     "RadianceHDRSynthesisEngine": RadianceHDRSynthesisEngine,
     "RadianceRelightEngine": RadianceRelightEngine,
-    "RadianceHDRLatentEncoder": RadianceHDRLatentEncoder,
     # ── from radiance.hdr (never reachable before 2026-09-18) ──────────────
     # RadianceHDRExpandDynamicRange and RadianceHDRToneMap are deliberately
     # absent from this block: hdr/__init__.py declares them too, and they are
@@ -145,7 +141,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RadianceHDRToneMap": "◎ HDR Tone Map",
     "RadianceHDRSynthesisEngine": "◎ HDR Synthesis Engine",
     "RadianceRelightEngine": "◎ Relight Engine",
-    "RadianceHDRLatentEncoder": "◎ HDR Latent Encoder",
     "RadianceFloat32Convert": "◎ Float32 Convert",
     "RadianceFloat32ColorCorrect": "◎ Float32 Color Correct",
     "RadianceHDRColorConvert": "◎ HDR Color Convert",
