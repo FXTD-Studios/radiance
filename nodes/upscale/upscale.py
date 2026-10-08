@@ -199,53 +199,6 @@ def _get_models_dir(subdir: str) -> str:
     return fb
 
 
-def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
-    """Return the hex SHA-256 digest of a file."""
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
-
-
-def _verify_or_report_sha256(dest: str, info: Dict[str, Any], key: str) -> bool:
-    """Verify a downloaded file against the registry SHA-256.
-
-    Returns True if the file is trusted (hash matches, or no hash is pinned).
-    On mismatch the file is deleted and False is returned. When no hash is
-    pinned the computed digest is logged so operators can pin it for
-    reproducible, tamper-evident shot work.
-    """
-    expected = (info.get("sha256") or "").strip().lower()
-    try:
-        actual = _sha256_file(dest)
-    except OSError as exc:
-        logger.warning(f"[Radiance/Upscale] could not hash {dest}: {exc}")
-        return True  # don't block on an unreadable hash; download already succeeded
-    if not expected:
-        logger.info(
-            f"[Radiance/Upscale] {key}: sha256={actual}  "
-            f"(pin this in _UPSCALE_MODEL_REGISTRY['{key}']['sha256'] for integrity checks)"
-        )
-        return True
-    if actual.lower() != expected:
-        logger.error(
-            f"[Radiance/Upscale] CHECKSUM MISMATCH for {key}: expected {expected}, got {actual}. "
-            f"Deleting {dest}; possible corruption or tampering."
-        )
-        try:
-            os.remove(dest)
-        except OSError as _exc:
-            logger.debug(
-                "[Radiance] _verify_or_report_sha256(): ignoring %s from `os.remove(dest)`: %s",
-                type(_exc).__name__, _exc,
-            )
-        return False
-    logger.info(f"[Radiance/Upscale] sha256 verified for {key}")
-    return True
-
-
 def _offline_mode() -> bool:
     """True when auto-download is disabled (airgapped / studio offline).
 
@@ -295,6 +248,10 @@ def _download_upscale_model(key: str, force: bool = False) -> Optional[str]:
     the legacy RADIANCE_UPSCALE_OFFLINE=1 stop it. A model with no pinned
     download (HAT-L) must be installed by hand; the log says where from.
     Returns None when the model is not available.
+
+    A file already installed goes through the same fetch, which checks it
+    against the pinned SHA-256 once and records the pass. Until 4.0 any file
+    with the right name was used unchecked.
     """
     if key not in _UPSCALE_MODEL_REGISTRY:
         logger.error(f"[Radiance/Upscale] Unknown model key '{key}'")
@@ -304,7 +261,8 @@ def _download_upscale_model(key: str, force: bool = False) -> Optional[str]:
     save_dir = _get_models_dir(info["subdir"])
     dest     = os.path.join(save_dir, info["filename"])
 
-    if os.path.isfile(dest) and not force:
+    if os.path.isfile(dest) and not force and not info.get("sha256"):
+        # Hand-installed with nothing pinned to check it against (HAT-L).
         logger.debug(f"[Radiance/Upscale] Already present: {dest}")
         return dest
 

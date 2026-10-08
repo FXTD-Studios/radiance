@@ -19,6 +19,11 @@ What `fetch()` guarantees:
 * Consent is checked here too (see `radiance.core.consent`): downloads are on
   by default and ``RADIANCE_ALLOW_DOWNLOADS=0`` or the Hugging Face offline
   flags turn them off.
+* A file already at `dest` is checked against the pinned digest once; the
+  pass is recorded beside it (``<file>.radiance-sha256``, keyed on size and
+  mtime) so a large file is not hashed again on every run. A file that does
+  not match is downloaded again, or reported when downloads are off; it is
+  never used silently.
 """
 from __future__ import annotations
 
@@ -64,6 +69,67 @@ def _sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
+# Files that passed the digest check in this process, keyed on
+# (path, size, mtime_ns) -> sha256. The sidecar below carries the same record
+# across restarts; this covers a models folder the process cannot write to.
+_VERIFIED: dict = {}
+_RECORD_SUFFIX = ".radiance-sha256"
+
+
+def _stamp(path: str) -> tuple:
+    st = os.stat(path)
+    return (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+
+
+def _write_record(path: str, sha256: str, stamp: tuple) -> None:
+    with open(path + _RECORD_SUFFIX, "w", encoding="ascii") as fh:
+        fh.write(f"{sha256} {stamp[1]} {stamp[2]}\n")
+
+
+def _remember(path: str, sha256: str) -> None:
+    """Record that `path`, as it is now, has digest `sha256`."""
+    stamp = _stamp(path)
+    _VERIFIED[stamp] = sha256
+    try:
+        _write_record(path, sha256, stamp)
+    except OSError as e:  # read-only models folder: the in-process record still holds
+        logger.debug("[Radiance] could not record the checksum pass for %s: %s", path, e)
+
+
+def _recorded_pass(path: str, sha256: str) -> bool:
+    """True when `path` passed against `sha256` and has not changed since."""
+    stamp = _stamp(path)
+    if _VERIFIED.get(stamp) == sha256:
+        return True
+    try:
+        with open(path + _RECORD_SUFFIX, encoding="ascii") as fh:
+            digest, size, mtime_ns = fh.read().split()
+    except (OSError, ValueError):
+        return False
+    if digest == sha256 and int(size) == stamp[1] and int(mtime_ns) == stamp[2]:
+        _VERIFIED[stamp] = sha256
+        return True
+    return False
+
+
+def _existing_matches(dest: str, expected: str, label: str) -> bool:
+    """Check a file already on disk against its pinned digest, hashing it at
+    most once while it stays unchanged."""
+    if _recorded_pass(dest, expected):
+        return True
+    logger.info("[Radiance] %s: checking %s against its pinned SHA-256 (once per file).", label, dest)
+    try:
+        actual = _sha256_of(dest)
+    except OSError as e:
+        raise ModelFetchError(f"[Radiance] {label}: could not read {dest} to check it ({e}).") from e
+    if actual != expected:
+        logger.warning("[Radiance] %s: %s does not match its pinned SHA-256 (expected %s, got %s).",
+                       label, dest, expected, actual)
+        return False
+    _remember(dest, expected)
+    return True
+
+
 def _drop_empty(part: str) -> bool:
     """Remove a zero-byte .part file; True if there was nothing worth keeping."""
     try:
@@ -106,23 +172,37 @@ def fetch(
 ) -> str:
     """Make sure `dest` holds the file at `url` with digest `sha256`; return `dest`.
 
-    An existing `dest` is trusted when its size matches `size` (hashing a
-    40 GB file on every load would cost minutes); without `size` it is
-    trusted as is, as a hand-installed model always has been.
+    An existing `dest` is checked against `sha256` the first time it is
+    seen and the pass is recorded beside it, so later runs only stat it.
+    Until 4.0 an existing file was trusted when its size matched, so a
+    corrupt or swapped file of the right size loaded silently. A mismatching
+    file is downloaded again, or reported when downloads are off.
     """
     label = label or os.path.basename(dest)
     expected = (sha256 or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise ModelFetchError(f"[Radiance] {label}: no SHA-256 is pinned for {url}; refusing to download it.")
 
+    mismatch = False
     if os.path.isfile(dest):
-        if size is None or os.path.getsize(dest) == int(size):
+        if size is not None and os.path.getsize(dest) != int(size):
+            logger.warning("[Radiance] %s: %s is %d bytes, expected %d; downloading it again.",
+                           label, dest, os.path.getsize(dest), int(size))
+            mismatch = True
+        elif _existing_matches(dest, expected, label):
             return dest
-        logger.warning("[Radiance] %s: %s is %d bytes, expected %d; downloading it again.",
-                       label, dest, os.path.getsize(dest), int(size))
+        else:
+            mismatch = True
 
-    from radiance.core.consent import downloads_allowed, refusal_message
+    from radiance.core.consent import ALLOW_ENV, downloads_allowed, refusal_message
     if not downloads_allowed(legacy_offline_env=legacy_offline_env):
+        if mismatch:
+            raise ModelFetchError(
+                f"[Radiance] {label}: {dest} does not match its pinned SHA-256 ({expected}),\n"
+                f"           so it was not loaded, and automatic downloads are off "
+                f"({ALLOW_ENV}=0, an offline flag or a legacy *_OFFLINE=1 is set).\n"
+                f"           Replace it with the file from {url}, or unset that setting to let "
+                f"Radiance download it again.")
         raise ModelFetchError(refusal_message(
             label, size_mb=round(size / 1e6) if size else None, dest=dest, url=url))
 
@@ -197,5 +277,6 @@ def fetch(
             f"[Radiance] {label}: CHECKSUM MISMATCH (expected {expected}, got {actual}). "
             "The download was deleted; nothing was installed.")
     os.replace(part, dest)
+    _remember(dest, expected)
     logger.info("[Radiance] %s verified (sha256 %s…) and installed at %s", label, expected[:12], dest)
     return dest

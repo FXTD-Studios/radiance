@@ -283,11 +283,19 @@ class TestDownloadModel:
         errs = [m for m in msgs(loader_logs) if "CHECKSUM MISMATCH" in m]
         assert errs and bad in errs[0] and GOOD in errs[0]
 
-    def test_a_preexisting_file_of_the_right_size_is_kept(self, dl_env, tmp_path):
+    def test_a_preexisting_file_that_matches_its_pin_is_kept(self, dl_env, tmp_path):
         target = tmp_path / "m.bin"
         target.write_bytes(b"GOOD-OLD-MODEL")
-        assert L._download_model("http://host/u", str(target), "vae", "0" * 64, size=len(b"GOOD-OLD-MODEL")) is True
+        digest = hashlib.sha256(b"GOOD-OLD-MODEL").hexdigest()
+        assert L._download_model("http://host/u", str(target), "vae", digest, size=len(b"GOOD-OLD-MODEL")) is True
         assert target.read_bytes() == b"GOOD-OLD-MODEL" and dl_env.urls == []
+
+    def test_a_preexisting_file_of_the_right_size_but_wrong_digest_is_replaced(self, dl_env, tmp_path):
+        # Until 4.0 a right-sized file was trusted without its digest.
+        target = tmp_path / "m.bin"
+        target.write_bytes(b"X" * len(b"MODELDATA"))
+        assert L._download_model("http://host/u", str(target), "vae", GOOD, size=len(b"MODELDATA")) is True
+        assert target.read_bytes() == b"MODELDATA" and dl_env.urls == ["http://host/u"]
 
     def test_transport_failure_keeps_the_part_file_and_the_next_run_resumes(self, dl_env, tmp_path, loader_logs):
         target = tmp_path / "m.bin"
