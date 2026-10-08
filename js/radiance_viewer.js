@@ -13411,21 +13411,39 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-field select:focus { border-color: var(--radiance-accent); }
                 .radiance-ref-slider { display:grid; grid-template-columns:92px minmax(0,1fr) 52px; gap:8px; align-items:center; margin:6px 0; font-size:var(--radiance-fs-body); }
                 .radiance-ref-slider label { color:var(--radiance-text-dim); }
-                .radiance-ref-slider input[type="range"] {
+                /* M15: sliders are 24 px (wheel channels 28 px) to grab; the
+                   track drawn inside is 4 px. */
+                .radiance-ref-slider input[type="range"],
+                .radiance-ref-wheel-channel input[type="range"] {
                     -webkit-appearance: none;
                     appearance: none;
                     width: 100%;
+                    height: 24px;
+                    margin: 0;
+                    background: transparent;
+                    cursor: pointer;
+                }
+                .radiance-ref-wheel-channel input[type="range"] { height: 28px; }
+                .radiance-ref-slider input[type="range"]::-webkit-slider-runnable-track,
+                .radiance-ref-wheel-channel input[type="range"]::-webkit-slider-runnable-track {
                     height: 4px;
                     border-radius: 2px;
-                    background: rgba(255, 255, 255, 0.12);
-                    outline: none;
+                    background: var(--radiance-border-strong);
                 }
+                .radiance-ref-slider input[type="range"]::-moz-range-track,
+                .radiance-ref-wheel-channel input[type="range"]::-moz-range-track {
+                    height: 4px;
+                    border-radius: 2px;
+                    background: var(--radiance-border-strong);
+                }
+                .radiance-ref-slider input[type="range"]:disabled { cursor: not-allowed; opacity: .45; }
                 .radiance-ref-slider input[type="range"]::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
+                    margin-top: -5px;
                     border-radius: 50%;
-                    background: #f5f5f7;
+                    background: var(--radiance-text);
                     cursor: pointer;
                     border: 1px solid rgba(0,0,0,0.5);
                     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
@@ -13452,21 +13470,13 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-mini { display:grid; grid-template-columns:48px 1fr; gap:5px 8px; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); margin-top:6px; }
                 .radiance-ref-wheel-controls { display:grid; gap:5px; margin-top:8px; }
                 .radiance-ref-wheel-channel { display:grid; grid-template-columns:14px minmax(0,1fr) 40px; gap:5px; align-items:center; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); }
-                .radiance-ref-wheel-channel input[type="range"] {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 100%;
-                    height: 2px;
-                    border-radius: 1px;
-                    background: rgba(255, 255, 255, 0.08);
-                    outline: none;
-                }
                 .radiance-ref-wheel-channel input[type="range"]::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 8px;
-                    height: 8px;
+                    width: 12px;
+                    height: 12px;
+                    margin-top: -4px;
                     border-radius: 50%;
-                    background: #f5f5f7;
+                    background: var(--radiance-text);
                     cursor: pointer;
                 }
                 .radiance-ref-wheel-channel output { text-align:right; font-family:var(--radiance-font-mono, monospace); color:var(--radiance-text); }
@@ -13792,6 +13802,23 @@ self.onmessage = async ({ data: { id, url } }) => {
                 row.append(n, t);
                 row.title = rowData.available ? `View ${rowData.name}` : 'Metadata-only channel; no renderer binding available';
                 row.onclick = () => this._selectReferenceChannel(rowData);
+                // M15: a row is a button a keyboard can reach and press.
+                row.setAttribute('role', 'button');
+                row.setAttribute('aria-pressed', String(!!rowData.active));
+                row.dataset.channelName = rowData.name;
+                if (rowData.available) row.tabIndex = 0;
+                else row.setAttribute('aria-disabled', 'true');
+                row.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    // Not the viewer's shortcuts too: Space would start playback.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!rowData.available) return;
+                    this._selectReferenceChannel(rowData);
+                    // The panel was redrawn; keep the keyboard on this row.
+                    [...(this.controlsPanel?.querySelectorAll('.radiance-ref-channel') || [])]
+                        .find((r) => r.dataset.channelName === rowData.name)?.focus();
+                });
                 list.appendChild(row);
             });
         };
@@ -14394,6 +14421,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         l.textContent = label;
         const input = document.createElement('input');
         input.type = 'range';
+        // M15: the label names its slider (a click on it focuses the slider).
+        input.id = `radiance-${this.node?.id ?? 'x'}-${param}-${(this._controlSeq = (this._controlSeq || 0) + 1)}`;
+        l.htmlFor = input.id;
         input.dataset.radianceParam = param;
         input.min = min;
         input.max = max;
