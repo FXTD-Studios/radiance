@@ -863,18 +863,33 @@ def _load_spandrel(ckpt_path: str, device: torch.device) -> Any:
         )
 
 
+def _with_resized_alpha(tile_bhwc: torch.Tensor, y_bchw: torch.Tensor) -> torch.Tensor:
+    """Append the tile's alpha, resized to the model output, to an RGB result.
+
+    SR models see only RGB. Until 4.0 the Tier 2 paths returned three
+    channels for an RGBA tile and the four-channel tile accumulator raised.
+    Returns (B,H',W',C) with C matching the tile.
+    """
+    if tile_bhwc.shape[-1] == 4:
+        alpha = tile_bhwc[..., 3:4].permute(0, 3, 1, 2).to(y_bchw.device, y_bchw.dtype)
+        alpha = F.interpolate(alpha, size=y_bchw.shape[-2:], mode="bilinear",
+                              align_corners=False).clamp(0, 1)
+        y_bchw = torch.cat([y_bchw, alpha], dim=1)
+    return y_bchw.permute(0, 2, 3, 1)
+
+
 def _spandrel_infer(model: Any, tile_bhwc: torch.Tensor,
                     device: torch.device) -> torch.Tensor:
     """
     Run one tile through a spandrel-loaded model.
-    Returns (B,H',W',C) float32 [0,1].
+    Returns (B,H',W',C) float32 [0,1]; alpha is resized, not inferred.
     """
     x = tile_bhwc[:, :, :, :3].permute(0, 3, 1, 2).to(device)
     with torch.no_grad():
         # spandrel wraps the raw nn.Module in a ModelDescriptor; call .model for it
         inner = getattr(model, "model", model)
         y     = inner(x).clamp(0, 1)
-    return y.permute(0, 2, 3, 1)
+    return _with_resized_alpha(tile_bhwc, y)
 
 
 def _load_tier2(model_key: str, scale: int, device: torch.device) -> Any:
@@ -1317,7 +1332,7 @@ def _build_upscale_fn(
                 x = tile[:, :, :, :3].permute(0, 3, 1, 2).to(device)
                 with torch.no_grad():
                     y = _m(x).clamp(0, 1)
-                return y.permute(0, 2, 3, 1)
+                return _with_resized_alpha(tile, y)
 
             return _fn_t2, label2
         except RuntimeError as e:
@@ -2695,13 +2710,16 @@ def _composite_face(
     peak = mask.max().clamp(min=1e-8)
     mask = (mask / peak).unsqueeze(-1)                     # (h, w, 1)
 
-    # Ensure face_hwc matches (h, w, C)
-    face_c = face_hwc[:, :, :C] if face_hwc.shape[2] >= C else \
-             face_hwc.repeat(1, 1, C // face_hwc.shape[2] + 1)[:, :, :C]
+    # Only colour is composited; an alpha channel keeps its original values.
+    # Until 4.0 a 3-channel restored face was repeated to fill 4 channels, so
+    # the face's red channel was written into the alpha.
+    nc     = min(C, 3)
+    face_c = face_hwc[:, :, :nc] if face_hwc.shape[2] >= nc else \
+             face_hwc.repeat(1, 1, nc // face_hwc.shape[2] + 1)[:, :, :nc]
 
-    region  = result[y1:y2, x1:x2, :]
+    region  = result[y1:y2, x1:x2, :nc]
     blended = face_c * mask + region * (1.0 - mask)
-    result[y1:y2, x1:x2, :] = blended.clamp(0, 1)
+    result[y1:y2, x1:x2, :nc] = blended.clamp(0, 1)
     return result
 
 
