@@ -20,7 +20,7 @@ decodes back with metadata-driven reconstruction. Does not own model loading
 | `hdr/vae.py:RadianceVAE4KEncode._prepare_for_vae` (~:1255) | Linearise, expose, clamp the floor, log-encode (the source's own curve, or LogC4) | Implemented |
 | `hdr/vae.py:TileEngine` (~:869) | Tiled encode/decode with cosine blend | Implemented |
 | `hdr/vae.py:RadianceVAE4KDecode.decode` (~:2733), `_vae_output_to_target` (~:2283) | Shoulder, highlight denoise, inverse curve, optional display tonemap, target space | Implemented |
-| `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar | Implemented; its `safe_join` import is dead |
+| `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar, written through `core/rhdr.py` (zlib level 6) | Implemented; `safe_join` guard restored and fp16 clamped in the fix pass |
 | `hdr/decode_meta.py:verify_radiance_meta` (~:116), `LOG_SPACE_GAMUT` | Latent metadata contract and fingerprint | Implemented |
 | `nodes/generate/engine.py` (:133, :186, `apply` ~:331) | `RadianceHDRVAEEncode` / `RadianceHDRVAEDecode` node wrappers. Auto routing and the "Direct HDR" path | Implemented |
 
