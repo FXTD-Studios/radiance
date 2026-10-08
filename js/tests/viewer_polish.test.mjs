@@ -364,3 +364,50 @@ test('rail Exposure opens the Grade tab on Exposure; Pixel Grid is not Grid', { 
     assert.equal(out.pixel.atFit, 0, 'the pixel grid draws at Fit too');
     assert.equal(out.pixel.offPressed, 'false');
 });
+
+test('the gear opens real settings; hiding the panel is its own labelled button', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        const gear = v.proToolbar.querySelector('.radiance-pro-settings-btn');
+        const panelBtn = v.proToolbar.querySelector('.radiance-pro-panel-btn');
+        const r = { gear: gear && { label: gear.getAttribute('aria-label'), popup: gear.getAttribute('aria-haspopup') } };
+        gear.click();
+        await __sleep(50);
+        const pop = document.querySelector('.radiance-settings-popover');
+        r.pop = pop && { role: pop.getAttribute('role'), text: pop.textContent,
+            expanded: gear.getAttribute('aria-expanded'),
+            panelStill: getComputedStyle(v.rightControlPanel).display !== 'none',
+            controls: [...pop.querySelectorAll('[data-setting]')].map((e) => e.dataset.setting) };
+        const hc = pop?.querySelector('[data-setting="high-contrast"]');
+        hc?.click();
+        r.hc = { stored: localStorage.getItem('radiance_high_contrast'), cls: v.container.classList.contains('radiance-high-contrast'),
+            pressed: hc?.getAttribute('aria-checked') || hc?.getAttribute('aria-pressed') };
+        hc?.click();
+        pop?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await __sleep(30);
+        r.closed = !document.querySelector('.radiance-settings-popover');
+        r.panelBtn = panelBtn && { text: panelBtn.textContent.trim(), expanded: panelBtn.getAttribute('aria-expanded') };
+        panelBtn?.click();
+        await __sleep(50);
+        r.afterHide = { shown: getComputedStyle(v.rightControlPanel).display !== 'none', text: panelBtn?.textContent.trim(),
+            expanded: panelBtn?.getAttribute('aria-expanded') };
+        panelBtn?.click();
+        r.afterShow = getComputedStyle(v.rightControlPanel).display !== 'none';
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(out.gear, { label: 'Settings', popup: 'dialog' });
+    assert.ok(out.pop, 'the gear did not open a settings popover');
+    assert.equal(out.pop.role, 'dialog');
+    assert.equal(out.pop.expanded, 'true');
+    assert.equal(out.pop.panelStill, true, 'the gear still hides the panel');
+    for (const s of ['backend', 'precision', 'magnify', 'high-contrast']) {
+        assert.ok(out.pop.controls.includes(s), `settings has no ${s} control (has ${out.pop.controls})`);
+    }
+    assert.deepEqual(out.hc, { stored: '1', cls: true, pressed: 'true' });
+    assert.ok(out.closed, 'Escape does not close the settings');
+    assert.match(out.panelBtn.text, /hide panel/i);
+    assert.equal(out.panelBtn.expanded, 'true');
+    assert.deepEqual(out.afterHide, { shown: false, text: 'Show Panel', expanded: 'false' });
+    assert.equal(out.afterShow, true);
+});
