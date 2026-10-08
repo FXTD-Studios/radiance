@@ -63,6 +63,16 @@ def _to_batch_numpy(t: torch.Tensor) -> np.ndarray:
     return arr if arr.ndim == 4 else arr[np.newaxis]
 
 
+def _display_rgb(frame: np.ndarray) -> np.ndarray:
+    """The colour channels of a frame for an 8-bit preview (GIF or JPEG).
+
+    Neither format can show alpha, so it is dropped on purpose. Until 4.0 an
+    RGBA frame reached Pillow as is: the JPEG writer raised and the GIF writer
+    read the four-channel bytes as RGB, scrambling the colours.
+    """
+    return frame[..., :3] if frame.shape[-1] > 3 else frame
+
+
 def _sobel_mag(gray: np.ndarray) -> np.ndarray:
     """Approximate Sobel magnitude via finite differences. (H,W) → (H,W)."""
     gx = np.abs(np.diff(gray, axis=1, prepend=gray[:, :1]))
@@ -597,7 +607,8 @@ class RadianceFlipbookGIF:
             log.error("FlipbookGIF: Pillow not installed — cannot write GIF")
             return (images, "ERROR: Pillow not installed")
 
-        frames = _to_batch_numpy(images)  # (B, H, W, 3)
+        # Alpha is dropped: GIF has no partial transparency to carry it.
+        frames = _display_rgb(_to_batch_numpy(images))  # (B, H, W, 3)
         B, H, W, _ = frames.shape
 
         # Compute resize dimensions
@@ -1003,10 +1014,10 @@ def _shutdown_servers(keep_port: Optional[int] = None) -> int:
 
 
 def _frame_to_jpeg(arr: np.ndarray, quality: int = 85) -> bytes:
-    """Convert (H,W,3) float32 [0,1] to JPEG bytes."""
+    """Convert (H,W,3) float32 [0,1] to JPEG bytes; alpha, if any, is dropped."""
     if not HAS_PIL:
         return b""
-    u8  = (np.clip(arr, 0, 1) * 255).astype(np.uint8)
+    u8  = (np.clip(_display_rgb(arr), 0, 1) * 255).astype(np.uint8)
     pil = _PilImage.fromarray(u8)
     buf = io.BytesIO()
     pil.save(buf, format="JPEG", quality=quality)
@@ -1093,8 +1104,9 @@ class RadiancePreviewServer:
             return (images, f"ERROR: PreviewServer not started, {bind_error}")
 
         frames = _to_batch_numpy(images)
-        # Serve only the last frame of the batch (most recently processed)
-        frame = frames[-1]
+        # Serve only the last frame of the batch (most recently processed).
+        # A JPEG cannot carry alpha, so it is dropped here.
+        frame = _display_rgb(frames[-1])
 
         # Optional resize
         if resize_width > 0 and frame.shape[1] != resize_width:
