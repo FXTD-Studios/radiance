@@ -2,6 +2,107 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [4.0.0] - Unreleased (beta, branch version-4-Beta)
+
+A major release because saved graphs and studio scripts can see it: four
+hidden placeholder nodes are gone, delivered file names change, a remote DCC
+bridge needs a token, and three controls that did nothing now work. Everything
+else is fixes. Read the upgrade notes before moving a production setup.
+
+### Upgrade notes
+
+- **Removed nodes.** SAM Loader, SAM Mask Generator, HDR Latent Encoder and
+  HDR Turbo Encoder were hidden placeholders that raised when run. A saved
+  graph that still holds one loads with that node missing; delete it. Use
+  ComfyUI's SAM nodes and the HDR VAE Encode node instead. ACES 2.0 Output
+  Transform (Legacy) stays, hidden.
+- **Delivery file names** carry one version suffix: `Shot_v0002.mov`, where
+  3.x wrote `Shot_v02_v0001.mov`. The counter continues from 3.x names in the
+  same folder. Smart versioning off writes `Shot_v0001`. The reported version
+  is four digits too (`v0002`).
+- **DCC bridge on a network address** (`RADIANCE_ALLOW_REMOTE_BRIDGE=1`):
+  `queue` must carry `"token"`, the shared DCC token from
+  `RADIANCE_DCC_AUTH_TOKEN` or `~/.radiance/dcc_token` (the one the Nuke
+  listener already uses). Loopback, `ping` and `status` are unchanged.
+- **Controls that now act:** Bit Depth Degrade `restore_from_quantized`,
+  Sampler CFG++ (Perpendicular), and Denoise `motion_compensation` (only with
+  `temporal_blend` above 0, which is not the default). A saved graph that set
+  them gets a different result from 3.x, which ignored or under-did them.
+- **One default OCIO config.** The Write/Read colour options, the HDR OCIO
+  nodes and the OCIO manager now all use `$OCIO` when it loads, else the ACES
+  studio config Radiance sets up. Before, two of them fell back to the bundled
+  CG config, whose colour space names differ.
+- **Downloads.** The ACES config manager's download needs download consent
+  (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
+  SHA-256. Whisper model downloads ask for consent too.
+
+### Removed
+
+- SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
+  above). The node count is 152.
+
+### Changed
+
+- **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
+  orthogonal to the conditional prediction, per batch item (projected
+  guidance). It used to be only a cosine cfg schedule per stage, which stays.
+  A cfg function another patch set (LTX-AV `audio_cfg`) is left in place.
+- **Bit Depth Degrade `restore_from_quantized`** dequantises: eight 3x3
+  smoothing passes, each clamped to the values the pixel could have come
+  from. The other outputs and the metrics then measure the restored image.
+- **Denoise `motion_compensation`** is hierarchical block matching (8x8
+  blocks, about ±30 px per frame) with an edge-repeating warp, instead of the
+  best of nine 1-pixel offsets with wrap-around.
+- **Relabelled, by design:** ACES Compliance `peak_nits` and the Legacy
+  output transform's `creative_white_scale` say exactly what they do. Sampler
+  `conditioning_clip_target`, Color Space Info `scene_referred` and
+  `peak_nits` were already labelled truthfully. KNOWN_ISSUES lists all seven
+  as resolved.
+- **`hdr/vae.py` split, first slice:** `TileEngine` moved to
+  `hdr/vae_tiling.py` unchanged; `hdr/vae.py` re-exports it.
+- **`.rhdr` sidecars** are written by one encoder, `core/rhdr.py`, shared by
+  the Viewer (fp16, fp32, depth) and the HDR VAE export.
+
+### Fixed
+
+- **SDR reference conditioning** crashed with every real VAE (it expected a
+  dict from `vae.encode`). It takes a tensor or a dict, encodes RGB only, and
+  warns when a video VAE drops reference frames.
+- **Delivery** reports status "partial" with a warning when its 2x AI upscale
+  fell back to bicubic.
+- **Flux.2** is detected as `flux2` when `model_meta` is not connected
+  (longest config pattern first).
+- **Project Manager** saves graphs the library can reopen and parse; shot and
+  version names split on any non-alphanumeric boundary.
+- **Asset upload** keeps an existing file (the new one becomes `name_1.ext`)
+  and removes its partial file when aborted.
+- **`/radiance/media/*`** answers the same for a missing file and one outside
+  the allowed roots, so it no longer reveals which files exist.
+- **Shot status** cannot be written outside the workflow library.
+- **Video encodes** go to a hidden sibling file that replaces the output only
+  on success, so a failed, timed-out or cancelled encode leaves any previous
+  master intact; masters keep normal file permissions and overwrite off never
+  clobbers.
+- **A video written from a stream of unknown length** kept only as many
+  frames as its audio was long; the audio is now padded instead.
+- **fp16 `.rhdr` writes** clamp to ±65504 everywhere (the VAE export and the
+  depth sidecar wrote inf), and the VAE export's path guard works again.
+- **MoGe-2** is checked against its pinned SHA-256 after download, and each
+  **Marigold** file against the Hub's hash at the pinned commit; a mismatch
+  deletes the file.
+- **OCIO:** a broken `$OCIO` falls back the same way everywhere, a config set
+  after the first use reaches the writer, and the OCIO manager accepts an
+  `ocio://` URI (used when the package folder is read-only).
+
+### Known limits
+
+- Sequential offload still switches ComfyUI to LOW_VRAM for the rest of the
+  session (P2-4); nothing Radiance can hook is scoped to one prompt.
+- The multipass model registry (Depth Anything V2, DSINE) downloads from
+  `main` without a pinned hash; it is consent-gated and logs the digest.
+- GPU timings and DCC round trips need hardware and were not run for this
+  beta.
+
 ## [3.5.4] - 2026-10-02
 
 Registry release. 3.5.0, 3.5.2 and 3.5.3 were published but held as

@@ -25,7 +25,7 @@ ID: io (plus delivery). Snapshot: `7376f9e`. Coverage: partial (static). Labels:
 | `core/ffmpeg.py` | Binary lookup: `RADIANCE_FFMPEG`, then PATH, then imageio-ffmpeg. `ffmpeg_with_encoder` | Implemented |
 | `io/reader.py` sequence path (`_resolve_sequence_paths` ~:511) | `%0Nd`, `####`, glob, or directory. Up to 8 decode threads. **fps is hard-coded to 24.0** (~:769) | Implemented |
 | `nodes/io/write.py:RadianceWrite.write` (~:855) | Calls `io/writer.write_frames` | Implemented |
-| `io/writer.py:write_frames` (:1261), `dispatch_write` (~:1441) | Colour out (`OutputColour`), then the per-format writer. Versioning `_vNNNN` (`version` defaults to 1) | Implemented |
+| `io/writer.py:write_frames` (:1261), `dispatch_write` (~:1441) | Colour out (`OutputColour`), then the per-format writer. Versioning `_vNNNN` (`version` defaults to 1; Delivery passes its counter since 4.0, one suffix). A stream of unknown length pads short audio (`apad` + `-shortest`) | Implemented |
 | `io/writer.py:_save_exr` (~:597) | OpenEXR `File` write with workflow/prompt/colourspace/chromaticities metadata. The cv2 fallback drops metadata | Implemented |
 | `io/writer.py:_save_video_ffmpeg` (~:847) | H.264, H.265 10-bit, ProRes 422 HQ/4444, DNxHR HQ (`.mov`). Writes trc/primaries/matrix tags. **No HDR10 mastering/MaxCLL metadata** | Implemented |
 | `delivery/handler.py:radiance_deliver_endpoint` (:337) | `POST /radiance/deliver`: viewer cache, then grade, optional FX/upscale, QC, `write_frames`, then sidecars (thumb, CDL, AMF, `_meta.json`) | Implemented |
@@ -53,5 +53,5 @@ needs ffmpeg. Not run.
 
 ## Open questions
 
-See OPEN_QUESTIONS: DNxHR extension mismatch, doubled versioning in delivery, sequence fps,
+See OPEN_QUESTIONS: DNxHR extension mismatch, sequence fps,
 missing ffprobe, `raw=True` on video, OIIO-only extensions, and fps written as a float.
