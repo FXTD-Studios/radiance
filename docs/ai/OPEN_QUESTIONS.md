@@ -10,6 +10,11 @@ security audit, and nothing was reproduced at runtime.
 Severity and fix suggestions live in [CODE_REVIEW.md](CODE_REVIEW.md). Where an item has a review
 finding, its ID is given in brackets, for example [P1-1]. Items without one were not re-reviewed.
 
+**Fix pass (version-4-Beta, after `b645400`):** items marked **Fixed** were fixed with a regression
+test that failed on the old code; the commit is named in the row. See
+[CODE_REVIEW § Fix status](CODE_REVIEW.md#fix-status). Line numbers in fixed rows describe the code
+before the fix.
+
 ## Documentation drift
 
 These are confirmed contradictions between a document or comment and the code.
@@ -43,18 +48,18 @@ These are backed by code evidence but not reproduced. The consequence is Inferre
 
 | # | Concern | Evidence | Label |
 | --- | --- | --- | --- |
-| B1 | The `.rhdr` export path-traversal guard is dead. It imports `safe_join` from a `hdr/path_utils` that doesn't exist, so it always uses `os.path.join`. **Not exploitable today:** both callers pass internal prefixes | `hdr/vae.py:~2698`; callers `:3038`, `:3387` | Implemented (mapper) [P3-4] |
-| B2 | Flux.2 is detected as `"flux"`: the substring test checks `"Flux"` before `"Flux2"` | `sampler_utils.py:~597, 605` | Implemented (mapper). Hidden when `model_meta` is connected [P2-1] |
-| B3 | `_encode_sdr_reference` indexes `["samples"]` on what `comfy.sd.VAE.encode` returns, which is a plain tensor. The test double `_FakeVAE` returns a dict, so tests miss it | `nodes/generate/sampler.py:~1504`; `tests/test_sdr_conditioning.py:354-367` | Code Implemented (mapper). Runtime failure Inferred [P1-1] |
+| B1 | **Fixed in `2af342b`.** The `.rhdr` export path-traversal guard is dead. It imports `safe_join` from a `hdr/path_utils` that doesn't exist, so it always uses `os.path.join`. **Not exploitable today:** both callers pass internal prefixes | `hdr/vae.py:~2698`; callers `:3038`, `:3387` | Implemented (mapper) [P3-4] |
+| B2 | **Fixed in `1766a81`.** Flux.2 is detected as `"flux"`: the substring test checks `"Flux"` before `"Flux2"` | `sampler_utils.py:~597, 605` | Implemented (mapper). Hidden when `model_meta` is connected [P2-1] |
+| B3 | **Fixed in `3314513`.** `_encode_sdr_reference` indexes `["samples"]` on what `comfy.sd.VAE.encode` returns, which is a plain tensor. The test double `_FakeVAE` returns a dict, so tests miss it | `nodes/generate/sampler.py:~1504`; `tests/test_sdr_conditioning.py:354-367` | Code Implemented (mapper). Runtime failure Inferred [P1-1] |
 | B4 | Delivery adds two version suffixes (`_v02`, then `_v0001`) | `delivery/handler.py:~470, 876`; `io/writer.py:1266, 1323` | Implemented (mapper) [P3-1] |
 | B5 | Image sequences always report fps 24.0 | `io/reader.py:~769` | Implemented (mapper) |
 | B6 | No HDR10 mastering/MaxCLL metadata on PQ/HLG video. PQ can go into 8-bit H.264 | grep finds no such code outside tests | Implemented (mapper, by absence) |
-| B7 | Offload `sequential` permanently sets global `vram_state = LOW_VRAM` | `loader_utils.py:~240` | Implemented (mapper) [P2-4] |
+| B7 | **Fixed in `6b5bd9c`.** Offload `sequential` permanently sets global `vram_state = LOW_VRAM` | `loader_utils.py:~240` | Implemented (mapper) [P2-4] |
 | B8 | `core/errors.py` is unused by production code | grep | Implemented (mapper) |
 | B9 | Without ffprobe every video read fails | `core/video.py:~656-675` | Implemented (trace) |
 | B10 | `raw=True` on video still decodes using the colour tags | `io/reader.py:~1274, 829` | Implemented (trace) |
 | B11 | OIIO-only extensions other than `.dpx` fall through to Pillow | `io/reader.py:_read_image` | Implemented (trace) |
-| B12 | A non-zero ffmpeg exit leaves a partial video file. The file is removed after a timeout (`:1010`) or a mid-write exception such as a cancel (`:986`), but the non-zero-exit branch only raises (`:1015`). CODE_REVIEW.md had marked this fixed; that was wrong and has been corrected there | `io/writer.py:986, 1010, 1015` | Implemented (mapper) |
+| B12 | **Fixed in `e4f084c`.** A non-zero ffmpeg exit leaves a partial video file. The file is removed after a timeout (`:1010`) or a mid-write exception such as a cancel (`:986`), but the non-zero-exit branch only raises (`:1015`). CODE_REVIEW.md had marked this fixed; that was wrong and has been corrected there | `io/writer.py:986, 1010, 1015` | Implemented (mapper) |
 | B13 | `RadianceAIUpscale._download_model` ignores `RADIANCE_UPSCALE_OFFLINE` | `image/upscale.py:~1916` | Implemented (trace) |
 | B15 | The `validate_runtime_dependencies` result is ignored | `__init__.py:132` | Implemented (mapper) |
 | B16 | `color/pipeline.apply_input_transform` applies only the log curve, with no gamut matrix | `color/pipeline.py:~55` | Implemented (trace) |
@@ -63,18 +68,18 @@ These are backed by code evidence but not reproduced. The consequence is Inferre
 | B19 | `NukeConnector` treats a read timeout after a successful send as success | `tools/nuke_connector.py:176-186` | Implemented (mapper). Not re-reviewed |
 | B20 | (withdrawn) `NukeSend` and `DaVinciSend` don't reject path separators in `filename`, but `nuke_folder` / `resolve_folder` are user widgets too, so a separator gives no reach the user doesn't already have | `studio_integrations.py:95-100, 298-303` | Not a defect |
 | B21 | The DCC bridge has no authentication when `RADIANCE_ALLOW_REMOTE_BRIDGE` is set, so anyone who can reach the port can queue any workflow. Its threads are uncapped and `stop_server` is never called | `nodes/pipeline/dcc.py:86-101, 117-149` | Implemented (review) [P3-5] |
-| B22 | Delivery's 2x upscale can silently ship bicubic, because `RadianceAIUpscale` returns bicubic on any exception | `delivery/handler.py:691-715`; `image/upscale.py:2241, 2377-2379, 2393, 2536-2545` | Implemented (review): the delivery warning only fires on an exception, which `upscale` never lets escape [P1-2] |
+| B22 | **Fixed in `b242fdf`.** Delivery's 2x upscale can silently ship bicubic, because `RadianceAIUpscale` returns bicubic on any exception | `delivery/handler.py:691-715`; `image/upscale.py:2241, 2377-2379, 2393, 2536-2545` | Implemented (review): the delivery warning only fires on an exception, which `upscale` never lets escape [P1-2] |
 | B23 | RGBA is broken on more review and upscale paths than KNOWN_ISSUES lists: FlipbookGIF, PreviewServer, spandrel Tier 2, FaceRestore alpha | `realtime.py`, `nodes/upscale/upscale.py:~908, 2710` | Inferred (trace) |
 | B24 | Motion and depth conventions differ between VFX nodes: Estimate motion is +y up while OpticalFlow and MaskPropagator use +y down; Relight and Composite expect near = white | `estimate.py:652`; `motion.py:107`; `relight_comp.py` | Implemented (trace). The effect on chained nodes is Inferred |
 | B25 | (reclassified) `T2V` and `VideoSampler` pass the noise tensor as the start latent too. This is documented in the `latent_noise` tooltip (`t2v.py:883-884`), so it is intended behaviour, not a defect. Effect on EPS models is still Unknown | `nodes/video/t2v.py:883-884, 999-1001` | Documented behaviour. See CODE_REVIEW §3 |
 | B26 | `AudioTranscribe` keeps the original segment start on every split chunk | `nodes/pipeline/audio.py:transcribe` | Implemented (trace) |
-| B27 | `ProjectManager` packs the API-format `PROMPT`, which has no `nodes` key, so saved metadata is empty and reopening from the library probably fails | `nodes/pipeline/workspace.py:155-157, 279-281`; `js/radiance_workspace.js:855` | Code Implemented (review). Reopen failure Inferred [P2-2] |
-| B27b | The shot and version regexes start with `\b`, and `_` is a word character, so the node's own names (`sh010_v002`, `comp_artist_v0003`) match neither, giving shot `GENERAL` and version `v001` | `nodes/pipeline/workspace.py:662-675`, name built at `:146` | Implemented (mapper: both patterns tested with Python `re`) [P2-3] |
-| B28 | `.shot_status.json` path is built from file metadata `project.name` without a containment check | `workspace.py:745-753, 797-798, 815-821` | Implemented (review) [P3-3] |
+| B27 | **Fixed in `16afaf6`.** `ProjectManager` packs the API-format `PROMPT`, which has no `nodes` key, so saved metadata is empty and reopening from the library probably fails | `nodes/pipeline/workspace.py:155-157, 279-281`; `js/radiance_workspace.js:855` | Code Implemented (review). Reopen failure Inferred [P2-2] |
+| B27b | **Fixed in `16afaf6`.** The shot and version regexes start with `\b`, and `_` is a word character, so the node's own names (`sh010_v002`, `comp_artist_v0003`) match neither, giving shot `GENERAL` and version `v001` | `nodes/pipeline/workspace.py:662-675`, name built at `:146` | Implemented (mapper: both patterns tested with Python `re`) [P2-3] |
+| B28 | **Fixed in `945458a`.** `.shot_status.json` path is built from file metadata `project.name` without a containment check | `workspace.py:745-753, 797-798, 815-821` | Implemented (review) [P3-3] |
 | B29 | `_verify_or_report_sha256` is defined but never called; files already on disk are trusted when their size matches | `nodes/upscale/upscale.py:212`; `core/model_fetch.fetch` | Implemented (mapper) |
-| B30 | `.rhdr` fp16 export overflows: `hdr/vae.py` casts to float16 without the ±65504 clamp `viewer.py` applies, so values above 65504 become `inf` | `hdr/vae.py:2709`; compare `nodes/monitor/viewer.py:870` | Implemented (mapper) [P3-4] |
-| B31 | `/radiance/media/*` is a file-existence oracle: `os.path.isfile` runs before the allowed-root check, so a missing path returns 404 (path echoed) and an existing one 403 | `nodes/io/write.py:1414-1422` | Implemented (mapper) [P3-2] |
-| B32 | `/radiance/assets/upload` overwrites an existing file of the same name, non-atomically | `nodes/pipeline/workspace.py:1866-1890` | Implemented (review) [P2-5] |
+| B30 | **Fixed in `2af342b`.** `.rhdr` fp16 export overflows: `hdr/vae.py` casts to float16 without the ±65504 clamp `viewer.py` applies, so values above 65504 become `inf` | `hdr/vae.py:2709`; compare `nodes/monitor/viewer.py:870` | Implemented (mapper) [P3-4] |
+| B31 | **Fixed in `c4492a8`.** `/radiance/media/*` is a file-existence oracle: `os.path.isfile` runs before the allowed-root check, so a missing path returns 404 (path echoed) and an existing one 403 | `nodes/io/write.py:1414-1422` | Implemented (mapper) [P3-2] |
+| B32 | **Fixed in `fb88615`.** `/radiance/assets/upload` overwrites an existing file of the same name, non-atomically | `nodes/pipeline/workspace.py:1866-1890` | Implemented (review) [P2-5] |
 
 The B14 question from the previous revision is resolved and folded into B17: `pixel_download` does verify SHA-256.
 
