@@ -11,7 +11,7 @@ import os
 import pytest
 
 OCIO = pytest.importorskip("PyOpenColorIO")
-if not hasattr(OCIO, "Config"):
+if not getattr(OCIO, "__file__", None) or not hasattr(OCIO, "GetCurrentConfig"):
     pytest.skip("PyOpenColorIO is a stub in this lane", allow_module_level=True)
 
 import radiance.color.ocio_setup as setup  # noqa: E402
