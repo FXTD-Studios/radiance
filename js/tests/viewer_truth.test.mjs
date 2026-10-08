@@ -547,6 +547,34 @@ if (!skip) {
             });
         });
 
+        // M8: the chromaticity scope plots linear source xy.
+        await guard('m8', async () => {
+            await load(msg(entry('c_1_0.5_0.rhdr', SRGB)), { view: 'srgb' });
+            return ev(() => {
+                const v = window.__lastViewer;
+                // The Scopes tab, as a user opens it, with the plotted points
+                // recorded off its canvas.
+                const proto = CanvasRenderingContext2D.prototype;
+                const orig = proto.fillRect;
+                proto.fillRect = function (x, y, w, h) {
+                    if (w <= 2 && h <= 2) (this.canvas.__pts ||= []).push([x, y]);
+                    return orig.call(this, x, y, w, h);
+                };
+                v.scopeMode = 'chromaticity';
+                const host = document.createElement('div'); document.body.appendChild(host);
+                try { v.renderScopesTab(host); } finally { proto.fillRect = orig; }
+                const c = host.querySelector('canvas');
+                const pts = c?.__pts || [];
+                const W = c?.width || 1000, H = c?.height || 1000;
+                host.remove();
+                // Back from canvas to xy with the panel's own mapping.
+                const pad = 60, sW = W - pad * 2, sH = H - pad * 2;
+                const xy = pts.map(([x, y]) => [((x - pad) / sW) * 0.8, ((H - pad - y) / sH) * 0.9]);
+                const mean = xy.reduce((a, p) => [a[0] + p[0] / xy.length, a[1] + p[1] / xy.length], [0, 0]);
+                return { n: pts.length, xy: mean };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -800,6 +828,12 @@ test('M7: the HUD counts NaN and Inf for the frame', { skip: skip || ok(R.m7) },
 });
 
 // ── M8 ──────────────────────────────────────────────────────────────────────
+
+test('M8: the chromaticity scope plots sRGB orange (1, 0.5, 0) at its true xy, from light', { skip: skip || ok(R.m8) }, () => {
+    assert.ok(R.m8.n > 0, 'nothing plotted');
+    near(R.m8.xy[0], 0.544, 0.01, 'x');
+    near(R.m8.xy[1], 0.407, 0.01, 'y');
+});
 
 // ── M19 ─────────────────────────────────────────────────────────────────────
 
