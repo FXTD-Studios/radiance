@@ -1496,6 +1496,16 @@ def test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_librar
     assert ws.m._load_shot_status(project) == {}
 
 
+def test_a_long_project_name_keeps_its_shot_status(ws):
+    """Only leaving the library is refused; _resolve_safe_path's filename rules
+    (length, control characters) are not the point here."""
+    name = "S" * 190
+    (ws.root / "x.rad").write_text('{"nodes": []}')
+    (ws.root / "x.rad.json").write_text(json.dumps({"project": name}))
+    project, _ = ws.m._find_project(ws.m._project_slug(name))
+    assert ws.m._shot_status_path(project) == ws.root / name / ".shot_status.json"
+
+
 def test_shot_status_loader_ignores_corrupt_and_non_dict_files(populated):
     project, _ = populated.m._find_project("show-a")
     path = populated.m._shot_status_path(project)
