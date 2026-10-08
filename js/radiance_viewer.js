@@ -1202,8 +1202,8 @@ class RadianceViewer {
         this.setupKeyboardShortcuts();
         requestAnimationFrame(() => this.resize());
 
-        // Continuous grain ticker — only fires when grain is active
-        this._startGrainTicker();
+        // The grain ticker starts from render() when animated grain is on
+        // (_syncGrainTicker); it no longer runs at 60 fps with grain off.
 
         // Wire ComfyUI events → terminal
         this._termWireEvents();
@@ -1229,15 +1229,16 @@ class RadianceViewer {
     // Drives a ~24fps RAF loop that re-renders only when grain is active,
     // so the noise pattern animates even when the user isn't touching any control.
     _startGrainTicker() {
+        if (this._grainRAF) return;
         let lastT = 0;
         const FPS = 24;
         const INTERVAL = 1000 / FPS;
 
         const tick = (t) => {
+            // Only while grain is on AND animate mode is enabled: the loop
+            // ends itself otherwise, and render() starts it again.
+            if ((this.grain || 0) <= 0.0 || !this.grainAnimate) { this._grainRAF = null; return; }
             this._grainRAF = requestAnimationFrame(tick);
-            // Only animate if grain is on AND animate mode is enabled
-            if ((this.grain || 0) <= 0.0) return;
-            if (!this.grainAnimate) return;
             if (t - lastT < INTERVAL) return;
             lastT = t;
             if (!this.renderer || !this.renderer.textures.image) return;
@@ -1249,6 +1250,11 @@ class RadianceViewer {
 
     _stopGrainTicker() {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
+    }
+
+    /** Start the grain ticker when animated grain is on. Called from render(). */
+    _syncGrainTicker() {
+        if (!this._grainRAF && (this.grain || 0) > 0 && this.grainAnimate && !this._destroyed) this._startGrainTicker();
     }
 
     // ── v3.4: Eyedropper White Balance ───────────────────────────────────────
@@ -11535,6 +11541,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     render() {
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
+        this._syncGrainTicker();
 
         // ═══════════════════════════════════════════════════════════════
         // GPU-ACCELERATED WEBGL RENDERING PATH (Primary - Always On)
@@ -21993,6 +22000,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     destroy() {
+        this._destroyed = true;
         // Every window/document listener this viewer added, in one go.
         this._globalListeners?.abort();
         this._globalListeners = null;
