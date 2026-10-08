@@ -232,3 +232,135 @@ test('colours and sizes come from the theme tokens, and high contrast changes th
     assert.equal(out.off.textDim, out.vars.textDim);
     assert.equal(out.off.stored, '0');
 });
+
+test('the rail scrolls when it does not fit, with a hint that more is below', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        const s = v.proSidebar;
+        const cs = getComputedStyle(s);
+        const r = { overflowY: cs.overflowY, scrollable: s.scrollHeight > s.clientHeight + 4,
+            hintTop: s.classList.contains('has-more-below') };
+        s.scrollTop = s.scrollHeight;
+        s.dispatchEvent(new Event('scroll'));
+        await __sleep(50);
+        r.hintBottom = s.classList.contains('has-more-below');
+        r.mask = getComputedStyle(s).webkitMaskImage || getComputedStyle(s).maskImage;
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(['auto', 'scroll'].includes(out.overflowY));
+    assert.ok(out.scrollable, 'the test host should be short enough for the rail to scroll');
+    assert.equal(out.hintTop, true, 'no hint that the rail continues below');
+    assert.equal(out.hintBottom, false, 'the hint stays after scrolling to the end');
+});
+
+test('the rail highlight follows the real state, and toggles say on or off', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        const st = (id) => {
+            const b = __rail(v, id);
+            return b ? { active: b.classList.contains('is-active'), pressed: b.getAttribute('aria-pressed') } : null;
+        };
+        const r = {};
+        v.fitToView();
+        r.fit = { fit: st('fit'), z100: st('zoom-100') };
+        v.setZoom(1);
+        r.z100 = { fit: st('fit'), z100: st('zoom-100'), z200: st('zoom-200') };
+        __rail(v, 'channel-r').click();
+        r.chanR = { r: st('channel-r'), rgb: st('channel-rgb'), channel: v.channel };
+        // A change made anywhere else (here: the state itself) shows on the rail.
+        v.channel = 'b'; v.render();
+        await __sleep(30);
+        r.chanB = { b: st('channel-b'), r: st('channel-r') };
+        r.fcOff = st('false-color');
+        __rail(v, 'false-color').click();
+        r.fcOn = { st: st('false-color'), state: v.falseColor };
+        __rail(v, 'false-color').click();
+        r.fcOff2 = st('false-color');
+        v.zebra = true; v.render();
+        await __sleep(30);
+        r.zebra = st('zebra');
+        __rail(v, 'safe-areas').click();
+        r.safe = { st: st('safe-areas'), mode: v.safeAreaMode, label: __rail(v, 'safe-areas').textContent };
+        __rail(v, 'center-cross').click();
+        r.cross = st('center-cross');
+        // Every toggle declares itself one.
+        r.toggles = ['false-color', 'zebra', 'hdr-heatmap', 'safe-areas', 'grid', 'pixel-grid', 'center-cross', 'depth']
+            .map((id) => [id, __rail(v, id)?.hasAttribute('aria-pressed')]);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(out.fit, { fit: { active: true, pressed: 'true' }, z100: { active: false, pressed: 'false' } });
+    assert.equal(out.z100.fit.active, false, 'Fit stays highlighted at 100%');
+    assert.equal(out.z100.z100.active, true, '100% is not highlighted at 100%');
+    assert.equal(out.z100.z200.active, false);
+    assert.equal(out.chanR.channel, 'r');
+    assert.equal(out.chanR.r.active, true);
+    assert.equal(out.chanR.rgb.active, false, 'RGB stays highlighted after picking R');
+    assert.equal(out.chanB.b.active, true, 'the rail does not follow a channel change made elsewhere');
+    assert.equal(out.chanB.r.active, false);
+    assert.equal(out.fcOff.pressed, 'false');
+    assert.deepEqual(out.fcOn, { st: { active: true, pressed: 'true' }, state: true });
+    assert.equal(out.fcOff2.pressed, 'false');
+    assert.equal(out.zebra.pressed, 'true', 'Zebra turned on elsewhere is not shown on the rail');
+    assert.equal(out.safe.mode, 'action');
+    assert.equal(out.safe.st.pressed, 'true');
+    assert.match(out.safe.label, /action/i, 'the rail does not say which safe area is showing');
+    assert.equal(out.cross.pressed, 'false', 'Center Cross starts on, so one click turns it off');
+    for (const [id, has] of out.toggles) assert.ok(has, `${id} has no aria-pressed`);
+});
+
+test('rail Exposure opens the Grade tab on Exposure; Pixel Grid is not Grid', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced(64, 48);
+        const r = {};
+        __rail(v, 'exposure').click();
+        await __sleep(100);
+        const a = document.activeElement;
+        r.exposure = { tab: v._referenceRightTab, focused: a?.dataset?.radianceParam || a?.tagName,
+            panelShown: getComputedStyle(v.rightControlPanel).display !== 'none' };
+
+        const grid0 = v.gridMode;
+        __rail(v, 'pixel-grid').click();
+        r.pixel = { on: v.pixelGrid, gridModeUnchanged: v.gridMode === grid0, pressed: __rail(v, 'pixel-grid').getAttribute('aria-pressed') };
+        const inked = () => {
+            v.renderOverlay();
+            // One marked pixel after the redraw: Chromium can hand back the
+            // previous read of a canvas that was only cleared since.
+            v.overlayCtx.fillStyle = '#f00';
+            v.overlayCtx.fillRect(0, 0, 1, 1);
+            const d = v.overlayCtx.getImageData(0, 0, v.overlayCanvas.width, v.overlayCanvas.height).data;
+            let n = -1;
+            for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+            return n;
+        };
+        // What the pixel grid adds, over whatever else the overlay draws.
+        const added = () => {
+            const on = inked();
+            v.pixelGrid = false;
+            const off = inked();
+            v.pixelGrid = true;
+            return on - off;
+        };
+        // From a fitted view, so 1600% is centred on the picture.
+        v.fitToView();
+        v.setZoom(16);
+        r.pixel.view = { zoom: v.zoom, panX: Math.round(v.panX), panY: Math.round(v.panY), w: v.overlayCanvas.width, h: v.overlayCanvas.height };
+        r.pixel.atZoom16 = added();
+        v.fitToView();
+        r.pixel.atFit = added();
+        __rail(v, 'pixel-grid').click();
+        r.pixel.offPressed = __rail(v, 'pixel-grid').getAttribute('aria-pressed');
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.exposure.tab, 'grade');
+    assert.equal(out.exposure.focused, 'exposure', 'Exposure on the rail does not land on the Exposure slider');
+    assert.equal(out.exposure.panelShown, true, 'Exposure on the rail hid the panel');
+    assert.equal(out.pixel.on, true);
+    assert.equal(out.pixel.gridModeUnchanged, true, 'Pixel Grid changed the composition grid');
+    assert.equal(out.pixel.pressed, 'true');
+    assert.ok(out.pixel.atZoom16 > 1000, `no pixel grid drawn at 1600% (${out.pixel.atZoom16} px inked, view ${JSON.stringify(out.pixel.view)})`);
+    assert.equal(out.pixel.atFit, 0, 'the pixel grid draws at Fit too');
+    assert.equal(out.pixel.offPressed, 'false');
+});
