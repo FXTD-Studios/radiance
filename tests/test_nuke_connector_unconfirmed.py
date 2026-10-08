@@ -103,3 +103,24 @@ def test_push_status_says_unconfirmed_not_ok_or_failed(where, monkeypatch):
         status = si.RadianceNukeSend._push_to_nuke("/r/a.exr", "Read1", 1, 1, "127.0.0.1", 1)
     assert status.startswith("UNCONFIRMED ("), status
     assert "OK" not in status and "FAILED" not in status
+
+
+@pytest.mark.parametrize("reply", [b"ERROR: Timeout\n__RADIANCE_END__\n",
+                                   b"PENDING: Nuke is busy\n__RADIANCE_END__\n"])
+def test_a_busy_nuke_is_unconfirmed_not_failed(reply):
+    # The listener waits 10 s for Nuke's main thread and then answers
+    # "ERROR: Timeout" (4.0 listeners: "PENDING: ..."), well inside the
+    # client's 15 s. The command is still queued in Nuke and usually runs,
+    # so FAILED was wrong.
+    port, _release, t = _listener(reply=reply, hold_s=0)
+    ok, msg = NukeConnector(port=port).send_command('{"action": "ping"}', timeout=2.0)
+    t.join(2)
+    assert ok is False and msg.startswith("UNCONFIRMED:"), msg
+    assert "busy" in msg
+
+
+def test_the_listener_says_pending_not_error_when_nuke_is_busy():
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "start_nuke_server.py").read_text()
+    assert '"ERROR: Timeout"' not in src
+    assert "PENDING:" in src
