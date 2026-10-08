@@ -21,8 +21,9 @@ Layout (little-endian)
 The parser rejects a file whose decompressed size is not
 width * height * channels * bytes-per-sample.
 
-fp16 samples are always clamped to +-65504 first: an unclamped cast turns a
-bright specular into inf, which poisons tonemapping and scopes downstream.
+Finite fp16 samples are clamped to +-65504 first: an unclamped cast turns a
+bright specular into inf, which poisons tonemapping and scopes downstream. A
+sample that is already inf or NaN stays one, so the Viewer can flag it.
 ``level`` is the zlib level each writer chose; the Viewer stores (0).
 
 numpy only: no torch, so it imports in the light test lane.

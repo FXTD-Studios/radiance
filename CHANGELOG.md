@@ -60,6 +60,20 @@ else is fixes. Read the upgrade notes before moving a production setup.
   (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
   SHA-256. Whisper model downloads ask for consent too (weights already in
   whisper's cache, including `large` as `large-v3.pt`, need none).
+- **Viewer grade controls mean something different.** Contrast is a power
+  curve about 18% grey (pivot default 0.18, was 0.5 linear), Temperature and
+  Tint are white-balance gains in stops (were added colour), and printer
+  lights are 12 points to the stop (were 50). The same grade now looks
+  different from 3.x; re-check any grade you rely on. Deliver masters and the
+  Grade Apply node use the same maths, so they still match the screen.
+- **Viewer exports.** Grade `.cube` files are 65-point LUTs with ACEScct (AP1)
+  in and out, so HDR survives (about 7 MB); the domain and input transform are
+  in the title, comments and file name. CDLs fold in exposure, white balance,
+  contrast and printer lights, use Power = 1/gamma, and list what they could
+  not hold. Save PNG names end in `_sRGB` or `_DisplayP3`.
+- **Viewer temp files** are named `<prefix>_<token>_<frame>` and no `.rpick`
+  is written. Saved workflows keep a small reference to the result instead of
+  every frame entry; workflows saved by 3.x still load.
 
 ### Removed
 
@@ -90,6 +104,64 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **`.rhdr` sidecars** are written by one encoder, `core/rhdr.py`, shared by
   the Viewer (fp16, fp32, depth) and the HDR VAE export.
 
+### Viewer
+
+The viewer was reviewed end to end (controls, colour, performance) and these
+are the results.
+
+- **Scopes** plot code values from every pixel, in float, with footroom and
+  headroom: sRGB white reaches the 100% line (it stopped at 58% under nit
+  labels), a single clipped pixel shows, and nits are offered only for a PQ or
+  HLG display. The histogram bins code values with a real log mode, the
+  sidebar vectorscope draws its targets, and the chromaticity scope plots
+  linear light in a known gamut.
+- **Readouts:** the probe and status bar decode sRGB-encoded floats (a 0.5
+  pixel read EV +1.47 and 101.5 nits; it is +0.25 and 43.5), "Disp" reads the
+  rendered value, colour-space labels follow the source (every source said
+  ACEScg), File Info names the frame and its size, and EV Range is right on
+  frames with pure black.
+- **Picture:** Fit averages fine detail in linear light (1-px stripes showed
+  1.3 stops dark), the built-in filmic view sits within 3 code values of ACES
+  2.0 (it was 1.3 stops brighter), NaN and Inf show cyan and orange with a
+  count, the gamut warning and luma use the source and display gamuts, and the
+  Display P3 tag follows what the shader writes.
+- **Grading:** colour wheels no longer pull the level down while dragging,
+  ACEScct mode is the identity at neutral (exact AP1 matrices), Luma Mix keeps
+  the luminance after the primaries, and the eyedropper neutralises the picked
+  pixel exactly (it overcorrected, and picked the wrong pixel on HiDPI).
+- **One CDL and one .cube exporter** that reproduce the screen; the three old
+  copies disagreed with it and with each other.
+- **Undo, reset, presets:** one undo step per drag covers the whole grade
+  (sliders were never undoable and saturation 0 came back as 1), Reset and
+  Reset All differ, each section has its own reset, double-click resets a
+  slider, readouts are editable, the grade is saved with the workflow, and
+  grade presets are in the Grade tab. The two LUT selects stay in step.
+- **Curve editor:** the histogram is the float frame on the curve's own axis,
+  Alt+drag only pans, curve texels are read at their centres, and negatives
+  pass through.
+- **Several viewers:** each has its own control panel (a second viewer took
+  over the first one's), budgets for frame and GPU memory are shared, and a
+  deleted viewer is freed (it kept its frame, up to about 230 MB at 4K).
+- **Video files** step, scrub and play by frame at the file's own rate; the
+  scrubber moved the counter but not the picture.
+- **Sequences:** the frame window is sized by bytes (4K fetched about 13
+  frames per step), float frames keep only their half floats, per-frame work
+  moved off the main thread, scopes update from one place, and the right
+  panel no longer rebuilds under a slider drag.
+- **Compare** uses B's float frame through the same grade and view, placed
+  1:1 or fitted, instead of the 8-bit preview stretched over A.
+- **Errors are visible:** missing files after a restart, an unplayable video,
+  a bad sidecar and a lost GPU context each show a message, and the picture
+  comes back when the context is restored.
+- **Server:** running one workflow no longer deletes another workflow's
+  viewer frames, the purge runs after the new frames are written, and a run
+  that may not fit on the temp disk warns.
+- **Save PNG (Result)** leaves out the viewer f-stop, gamma and overlays.
+- **Smaller:** V-Log decode slope 5.6, input auto-detect matches whole words,
+  the BT.1886 view says it is for an external display, half-float frames
+  filter linearly on WebGL2, the grain loop runs only when grain is animated,
+  and the renderer initialises once.
+
 ### Fixed
 
 - **SDR reference conditioning** crashed with every real VAE (it expected a
@@ -112,8 +184,10 @@ else is fixes. Read the upgrade notes before moving a production setup.
   clobbers.
 - **A video written from a stream of unknown length** kept only as many
   frames as its audio was long; the audio is now padded instead.
-- **fp16 `.rhdr` writes** clamp to ±65504 everywhere (the VAE export and the
-  depth sidecar wrote inf), and the VAE export's path guard works again.
+- **fp16 `.rhdr` writes** clamp finite overflow to ±65504 everywhere (the VAE
+  export and the depth sidecar wrote inf for large finite values) while a true
+  Inf or NaN stays one, so the viewer can flag it; the VAE export's path guard
+  works again.
 - **MoGe-2** is checked against its pinned SHA-256 after download, and each
   **Marigold** file against the Hub's hash at the pinned commit; a mismatch
   deletes the file. A Marigold download whose check could not run (rate
