@@ -244,7 +244,7 @@
     },
     {
       "path": "io/writer.py",
-      "sha256": "b1b4de59c545403f3e605b7d957a55fa0da013ae6a329641089117f08a9192a2"
+      "sha256": "760dc1de2c3363b3e278f7f159337df6f61c1b3482940a9fdec4ce5f5142139a"
     },
     {
       "path": "nodes/io/write.py",

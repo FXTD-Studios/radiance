@@ -16,8 +16,8 @@ import pytest
 
 from radiance.core import rhdr
 
-ZLIB_STORED = b"\x78\x01"   # zlib header written by level 0
-ZLIB_DEFAULT = b"\x78\x9c"  # zlib header written by levels 2-6
+ZLIB_STORED = b"\x78\x01"   # zlib header written by levels 0 and 1
+ZLIB_DEFAULT = b"\x78\x9c"  # zlib header written by level 6 (2-5 write 78 5e)
 
 
 def _ramp(h=3, w=2, c=4):
@@ -127,7 +127,11 @@ def test_fp32_is_never_clamped():
 
 def test_level_0_stores_and_is_the_default():
     pixels = _ramp()
-    assert rhdr.encode(pixels)[12:14] == ZLIB_STORED
+    data = rhdr.encode(pixels)
+    assert data[12:14] == ZLIB_STORED
+    # Stored, not merely tagged as level 0: 2 header bytes, 5 block-header
+    # bytes and a 4-byte checksum around the raw samples.
+    assert len(data) - 12 == pixels.astype(np.float16).nbytes + 11
     assert rhdr.encode(pixels, level=6)[12:14] == ZLIB_DEFAULT
 
 
