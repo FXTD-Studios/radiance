@@ -7065,7 +7065,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         // _parseRHDR returns null with no DecompressionStream
                         // and on a payload-size integrity mismatch.
                         payload.fallbackReason =
-                            'RHDR decode returned no data (missing DecompressionStream, or integrity mismatch)';
+                            'the RHDR sidecar could not be decoded (corrupt or truncated, or no DecompressionStream)';
                         return null;
                     }
                     npy.height = npy.shape[0];
@@ -10428,6 +10428,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     togglePlayback() {
         if (this.videoMode && this.videoEl) {
             // Video element mode — delegate to native play/pause
+            if (this._videoProbing) {                 // the rate is being read: play after
+                this._videoPlayAfterProbe = !this._videoPlayAfterProbe;
+                return;
+            }
             if (this._videoReversing) { this._videoReverse(false); return; }
             if (this.videoEl.paused) {
                 this.videoEl.play();
@@ -10979,8 +10983,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.setPlaybackFps(fps);                 // sets _videoNativeFps too
         }
         this._setVideoFrameCount();
-        this.currentFrame = -1;                       // so setFrame(0) is not a no-op
-        this.setFrame(0);
+        // Where the user went (and whether they pressed Play) while the rate
+        // was being read, applied now with the rate known.
+        const target = Math.max(0, Math.min((this.totalFrames || 1) - 1, this._videoPendingFrame ?? 0));
+        const play = this._videoPlayAfterProbe;
+        this._videoPendingFrame = null;
+        this._videoPlayAfterProbe = false;
+        this.currentFrame = -1;                       // so setFrame is not a no-op
+        this.setFrame(target);
+        if (play) this.togglePlayback();
         return fps;
     }
 
@@ -11205,7 +11216,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         // A video loaded straight into the viewer: the frame is a time in it.
         // The picture arrives with 'seeked', the counter follows the video.
         if (this.videoMode && this.videoEl) {
-            this._seekVideoToFrame(idx);
+            // While the rate is being read the frame is kept for afterwards.
+            if (this._videoProbing) this._videoPendingFrame = idx;
+            else this._seekVideoToFrame(idx);
             this.updateFrameDisplay();
             return;
         }
