@@ -68,7 +68,7 @@ function crc32(buf) {
     return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** An RGB PNG; the top quarter is light, so B placement can be measured. */
+/** A flat RGB PNG at `value`. */
 export function makePNG(W, H, value = 128) {
     const raw = Buffer.alloc((W * 3 + 1) * H);
     for (let y = 0; y < H; y++) {
@@ -94,16 +94,20 @@ export function makePNG(W, H, value = 128) {
 /**
  * An fp16 RGBA RHDR frame. Every pixel is `base`, except pixel 0, whose red
  * channel carries `mark` so a test can tell which frame is on screen.
- * `black` makes the first `black` fraction of pixels pure 0, and `peak` puts
- * one bright value in the last pixel.
+ * `black` makes the first `black` fraction of pixels pure 0, `ramp: [lo, hi]`
+ * makes the rest run evenly in stops from lo to hi, and `peak` puts one
+ * bright value in the last pixel.
  */
-export function makeRHDR(W, H, { base = 0.18, mark = 0, black = 0, peak = 0, level = 1 } = {}) {
+export function makeRHDR(W, H, { base = 0.18, mark = 0, black = 0, ramp = null, peak = 0, level = 1 } = {}) {
     const n = W * H;
     const arr = new Uint16Array(n * 4);
     const hb = toHalf(base), one = toHalf(1);
     const blackPixels = Math.floor(n * black);
+    const lit = n - blackPixels;
     for (let i = 0; i < n; i++) {
-        const v = i < blackPixels ? 0 : hb;
+        let v = hb;
+        if (i < blackPixels) v = 0;
+        else if (ramp) v = toHalf(ramp[0] * Math.pow(ramp[1] / ramp[0], (i - blackPixels) / Math.max(1, lit - 1)));
         arr[i * 4] = v; arr[i * 4 + 1] = v; arr[i * 4 + 2] = v; arr[i * 4 + 3] = one;
     }
     arr[0] = toHalf(mark);
@@ -119,7 +123,8 @@ export function makeRHDR(W, H, { base = 0.18, mark = 0, black = 0, peak = 0, lev
  * Synthetic /view files, by name:
  *   f_<W>x<H>_<i>.png | .rhdr     frame i (the RHDR's pixel 0 red is i)
  *   b_<W>x<H>_<v>.png | .rhdr     a flat compare frame at value v (PNG 0-255, RHDR v/100)
- *   black_<W>x<H>_<i>.rhdr        half the frame pure black, one 41.6 peak
+ *   g_<W>x<H>_<i>.rhdr            frame i, every pixel at 0.05 * (i + 1)
+ *   black_<W>x<H>_<i>.rhdr        half the frame pure black, the rest 0.01 to 41.6
  *   bad.rhdr, trunc.rhdr          corrupt payloads
  *   clip24.webm                   js/tests/fixtures/clip24.webm
  * Anything else is a 404, as a deleted ComfyUI temp file is.
@@ -135,13 +140,15 @@ async function viewFile(name) {
         const [W, H, v] = [+m[1], +m[2], +m[3]];
         return m[4] === 'png' ? makePNG(W, H, v) : makeRHDR(W, H, { base: v / 100, mark: v / 100 });
     }
+    m = name.match(/^g_(\d+)x(\d+)_(\d+)\.rhdr$/);
+    if (m) return makeRHDR(+m[1], +m[2], { base: 0.05 * (+m[3] + 1), mark: +m[3] });
     m = name.match(/^black_(\d+)x(\d+)_(\d+)\.rhdr$/);
-    if (m) return makeRHDR(+m[1], +m[2], { base: 0.18, black: 0.5, peak: 41.6 });
+    if (m) return makeRHDR(+m[1], +m[2], { black: 0.5, ramp: [0.01, 41.6] });
     if (name === 'bad.rhdr') {
         const h = Buffer.alloc(12); h.write('RHDR', 0); h.writeUInt16LE(64, 4); h.writeUInt16LE(48, 6); h.writeUInt16LE(4, 8);
         return Buffer.concat([h, Buffer.from('this is not zlib data at all, just garbage bytes'.repeat(20))]);
     }
-    if (name === 'trunc.rhdr') return makeRHDR(64, 48).subarray(0, 200);
+    if (name === 'trunc.rhdr') return makeRHDR(256, 256, { ramp: [0.01, 10] }).subarray(0, 2000);
     if (name === 'clip24.webm') return readFile(join(HERE, 'fixtures', 'clip24.webm'));
     return null;
 }

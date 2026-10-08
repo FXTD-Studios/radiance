@@ -286,7 +286,8 @@ def test_the_badge_cannot_claim_fp32_over_the_proxy():
         "the fallback branch still labels the 8-bit proxy FP32"
 
     # FP32 may only be set where a float source is actually loaded.
-    float_branch = badge[badge.index("if (hdr && hdr.data)"):badge.index("} else if (this.image")]
+    # (fp16data first: 'data' on an fp16 frame decodes it on read.)
+    float_branch = badge[badge.index("if (hdr && (hdr.fp16data || hdr.data))"):badge.index("} else if (this.image")]
     assert badge.count("inputLabel = 'FP32'") == float_branch.count("inputLabel = 'FP32'"), \
         "FP32 is set outside the float-source branch"
 

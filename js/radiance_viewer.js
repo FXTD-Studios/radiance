@@ -1432,7 +1432,8 @@ class RadianceViewer {
         let isProxy = false;
         const hdr = this.hdrData;
 
-        if (hdr && hdr.data) {
+        // fp16data first: 'data' on an fp16 frame decodes it (_lazyHalfFloats).
+        if (hdr && (hdr.fp16data || hdr.data)) {
             if (hdr.format === 'rhdr') {
                 inputLabel = 'FP16';
                 inputDetail = 'RHDR half-float sidecar';
@@ -1497,55 +1498,29 @@ class RadianceViewer {
         this._hdrZoneStats = null;
 
         const hdr = this.hdrData;
-        if (!hdr || !hdr.data || hdr.data.length === 0) return;
+        if (!hdr) return;
 
-        const data = hdr.data; // Float32Array
-        const ch   = hdr.channels || 3;
-        const n    = Math.floor(data.length / ch);
-
-        // Sub-sample for performance (target ≤ 500k samples)
-        const step = Math.max(1, Math.ceil(n / 500_000));
-        const sampleCount = Math.ceil(n / step);
-        const luma = new Float32Array(sampleCount);
-
-        let clipped = 0, negative = 0, written = 0;
-        let clippedR = 0, clippedG = 0, clippedB = 0;
-        for (let i = 0; i < n; i += step) {
-            const base = i * ch;
-            const r = data[base]     || 0;
-            const g = ch > 1 ? (data[base + 1] || 0) : r;
-            const b = ch > 2 ? (data[base + 2] || 0) : r;
-            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            luma[written++] = y;
-            if (y > 1.0) clipped++;
-            if (y < 0.0) negative++;
-            if (r > 1.0) clippedR++;
-            if (g > 1.0) clippedG++;
-            if (b > 1.0) clippedB++;
+        // Once per frame, and normally already done in the decode worker. It
+        // was a sort of up to 500,000 samples on the main thread for every
+        // frame shown (about 100 ms), during playback too.
+        let raw = hdr.zoneStats;
+        if (!raw) {
+            // fp16data first: reading 'data' on an fp16 frame decodes it.
+            const values = hdr.fp16data || hdr.data;
+            if (!values || values.length === 0) return;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            raw = this._zoneStatsFromFloats(values, hdr.channels || hdr.shape?.[2] || 3, table, 500_000);
+            if (!raw) return;
+            hdr.zoneStats = raw;
         }
 
-        // Sort a copy for percentile computation
-        const sorted = luma.slice(0, written).sort();
-        const total  = sorted.length;
-
-        const pct = (p) => {
-            const idx = Math.min(total - 1, Math.max(0, Math.floor(p * 0.01 * (total - 1))));
-            return sorted[idx];
-        };
-
-        const p1   = pct(1),  p10  = pct(10), p50 = pct(50);
-        const p90  = pct(90), p99  = pct(99), p999 = pct(99.9);
-
-        let sum = 0;
-        for (let i = 0; i < written; i++) sum += sorted[i];
-        const meanLuma = sum / written;
-
-        const clippedPct  = (clipped  / written) * 100;
-        const negativePct = (negative / written) * 100;
-        const clippedRPct = (clippedR / written) * 100;
-        const clippedGPct = (clippedG / written) * 100;
-        const clippedBPct = (clippedB / written) * 100;
-        const evRange     = p1 > 1e-6 ? Math.log2(Math.max(p99, 1e-6) / p1) : 0;
+        const { p1, p10, p50, p90, p99, p999, meanLuma, clippedPct, negativePct,
+            clippedRPct, clippedGPct, clippedBPct } = raw;
+        // From the lowest NON-ZERO percentile. A frame whose darkest 1% is
+        // true black has p1 = 0, and the old formula then gave up and said
+        // 0.0 EV for a frame running from black to 41.6.
+        const low = raw.p1NonZero;
+        const evRange = low > 0 && p99 > 0 ? Math.max(0, Math.log2(p99 / low)) : 0;
 
         // Nit estimate: decode through IDT log curve if one is active,
         // then apply ITU-R BT.2408 SDR reference (203 cd/m²)
@@ -1553,8 +1528,8 @@ class RadianceViewer {
         const decodedPeak = this._decodeLogForNit(rawPeak);
         const nitPeak = decodedPeak * 203;
 
-        const shadowCeiling = pct(30);
-        const midCeiling    = pct(70);
+        const shadowCeiling = raw.p30;
+        const midCeiling    = raw.p70;
 
         this._hdrZoneStats = {
             p1, p10, p50, p90, p99, p999,
@@ -1568,6 +1543,75 @@ class RadianceViewer {
         };
 
         this._updateHDRPeakBadge();
+    }
+
+    /**
+     * Scene-linear luminance statistics of one frame, from a histogram.
+     *
+     * `values` is the frame's samples: a Float32Array, or the fp16 halves with
+     * `table` (_halfFloatTable) to read them. Positive luminance is binned by
+     * the top 16 bits of its float32 pattern, the exponent and 7 mantissa
+     * bits, so each bin is 1/128 of a stop wide: no sort and no log per
+     * sample. Self-contained, because the decode worker runs it too.
+     */
+    _zoneStatsFromFloats(values, channels, table = null, maxSamples = 0) {
+        const ch = channels || 3;
+        const n = Math.floor(values.length / ch);
+        if (n === 0) return null;
+        const step = maxSamples > 0 ? Math.max(1, Math.ceil(n / maxSamples)) : 1;
+        const hist = new Uint32Array(32768);
+        const f = new Float32Array(1);
+        const u = new Uint32Array(f.buffer);
+        let samples = 0, nonPositive = 0, negative = 0, sum = 0;
+        let clipped = 0, clippedR = 0, clippedG = 0, clippedB = 0;
+        for (let i = 0; i < n; i += step) {
+            const base = i * ch;
+            const r = (table ? table[values[base]] : values[base]) || 0;
+            const g = ch > 1 ? ((table ? table[values[base + 1]] : values[base + 1]) || 0) : r;
+            const b = ch > 2 ? ((table ? table[values[base + 2]] : values[base + 2]) || 0) : r;
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            samples++;
+            sum += y;
+            if (y > 1.0) clipped++;
+            if (r > 1.0) clippedR++;
+            if (g > 1.0) clippedG++;
+            if (b > 1.0) clippedB++;
+            if (y > 0) {
+                f[0] = y;
+                hist[u[0] >>> 16]++;
+            } else {
+                nonPositive++;
+                if (y < 0) negative++;
+            }
+        }
+        const binValue = (bin) => { u[0] = (bin << 16) | 0x8000; return f[0]; };
+        // The p-th percentile of the positive samples, skipping 'skip' of them
+        // that sort first (the non-positive ones, which read as 0).
+        const percentile = (p, total, skip) => {
+            if (total <= 0) return 0;
+            const target = Math.floor(p * 0.01 * (total - 1));
+            if (target < skip) return 0;
+            let acc = skip;
+            for (let bin = 0; bin < 32768; bin++) {
+                acc += hist[bin];
+                if (acc > target) return binValue(bin);
+            }
+            return binValue(32767);
+        };
+        const pct = (p) => percentile(p, samples, nonPositive);
+        const positives = samples - nonPositive;
+        return {
+            p1: pct(1), p10: pct(10), p30: pct(30), p50: pct(50), p70: pct(70),
+            p90: pct(90), p99: pct(99), p999: pct(99.9),
+            p1NonZero: percentile(1, positives, 0),
+            meanLuma: sum / samples,
+            clippedPct: (clipped / samples) * 100,
+            negativePct: (negative / samples) * 100,
+            clippedRPct: (clippedR / samples) * 100,
+            clippedGPct: (clippedG / samples) * 100,
+            clippedBPct: (clippedB / samples) * 100,
+            samples,
+        };
     }
 
     // Decode a scene-linear-encoded peak value through the active IDT log curve
@@ -1668,17 +1712,21 @@ class RadianceViewer {
 
         const BINS = 16;
         const computeFromHDR = (hdr) => {
-            if (!hdr || !hdr.data) return null;
-            const data = hdr.data;
+            // The half floats through the table: reading 'data' on an fp16
+            // frame decodes the whole frame, for 8,000 samples.
+            const data = hdr && (hdr.fp16data || hdr.data);
+            if (!data) return null;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            const at = (i) => (table ? table[data[i]] : data[i]) || 0;
             const ch = hdr.channels || 3;
             const n = Math.floor(data.length / ch);
             const step = Math.max(1, Math.ceil(n / 8000)); // ≤8k samples
             const hist = new Uint16Array(BINS);
             for (let i = 0; i < n; i += step) {
                 const base = i * ch;
-                const r = data[base] || 0;
-                const g = ch > 1 ? (data[base + 1] || 0) : r;
-                const b = ch > 2 ? (data[base + 2] || 0) : r;
+                const r = at(base);
+                const g = ch > 1 ? at(base + 1) : r;
+                const b = ch > 2 ? at(base + 2) : r;
                 const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                 // Reinhard to map HDR to [0,1] display range, then bin
                 const yn = y / (y + 1);
@@ -6694,7 +6742,7 @@ else:
                 }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
-                    this._renderReferenceRightHUD?.();
+                    this._syncReferenceReadouts('analysis');
                 }
                 if (this._allFramesReady()) this.updateFrameDisplay();
                 this._queueCacheMarks();
@@ -6703,6 +6751,7 @@ else:
                 // The whole point of the window: drop the decoded pixels for a
                 // frame that has scrolled out of reach. Leaving these set was
                 // the 330 GB defect.
+                if (this.frameHDRData[idx] !== this.hdrData) RadianceViewer._releaseHalfFloats(this.frameHDRData[idx]?.fp16data);
                 this.frameImages[idx] = null;
                 this.frameHDRData[idx] = null;
                 this.frameBracketImages.low[idx] = null;
@@ -6741,19 +6790,36 @@ else:
         RadianceViewer._sidecarPool = null;
         try {
             const p = RadianceViewer.prototype;
-            const src = `const RadianceViewer = {};
-class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} }
+            const src = `const RadianceViewer = { _lazyHalfFloats: (parsed) => parsed };
+class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} ${p._zoneStatsFromFloats} }
 const decoder = new Decoder();
+let halfTable = null;
 self.onmessage = async ({ data: { id, url } }) => {
     try {
-        const buffer = await (await fetch(url)).arrayBuffer();
+        const response = await fetch(url);
+        if (!response.ok) {
+            // A 404 is a deleted temp file (ComfyUI restarted, or another run
+            // purged it), not a decode failure, and must be reported as one.
+            self.postMessage({ id, missing: response.status === 404, error: 'HTTP ' + response.status + ' fetching the float sidecar' });
+            return;
+        }
+        const buffer = await response.arrayBuffer();
         if (buffer.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buffer, 0, 4)) !== 'RHDR') {
             self.postMessage({ id, buffer }, [buffer]);
             return;
         }
         const parsed = await decoder._parseRHDR(buffer);
-        const transfer = parsed ? new Set([parsed.data.buffer, parsed.fp16data?.buffer].filter(Boolean)) : [];
-        self.postMessage({ id, parsed }, [...transfer]);
+        if (parsed) {
+            // The frame's luminance statistics, here rather than on the main thread.
+            if (parsed.fp16data && !halfTable) {
+                halfTable = new Float32Array(65536);
+                for (let h = 0; h < 65536; h++) halfTable[h] = decoder._halfToFloat(h);
+            }
+            parsed.zoneStats = decoder._zoneStatsFromFloats(parsed.fp16data || parsed.data,
+                parsed.shape[2] || 1, parsed.fp16data ? halfTable : null, 2000000);
+        }
+        const transfer = parsed ? [parsed.fp16data ? parsed.fp16data.buffer : parsed.data.buffer] : [];
+        self.postMessage({ id, parsed }, transfer);
     } catch (e) {
         self.postMessage({ id, error: String(e?.message || e) });
     }
@@ -6795,13 +6861,23 @@ self.onmessage = async ({ data: { id, url } }) => {
         const pool = RadianceViewer._sidecarWorkers();
         if (pool) {
             const reply = await pool.decode(new URL(url, location.href).href);
-            if (reply.error) throw new Error(reply.error);
+            if (reply.error) {
+                const err = new Error(reply.error);
+                err.missing = !!reply.missing;
+                throw err;
+            }
             if (reply.buffer) return this._parseHDRBuffer(reply.buffer);       // not RHDR
-            if (!reply.workerFailed) return reply.parsed;
+            if (!reply.workerFailed) return RadianceViewer._lazyHalfFloats(reply.parsed);
             console.warn('[Radiance] Sidecar worker failed, decoding frames on the main thread:', reply.workerFailed);
             RadianceViewer._sidecarPool = null;
         }
-        return this._parseHDRBuffer(await (await fetch(url)).arrayBuffer());
+        const response = await fetch(url);
+        if (!response.ok) {
+            const err = new Error(`HTTP ${response.status} fetching the float sidecar`);
+            err.missing = response.status === 404;
+            throw err;
+        }
+        return this._parseHDRBuffer(await response.arrayBuffer());
     }
 
     _loadSequenceFrame(imgData, idx, generation) {
@@ -6926,8 +7002,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     /**
-     * Put a paged-in frame on screen. Split out of the old inline onload/then
-     * handlers so the scrub path and the arrival path agree.
+     * Put a frame on screen: the one display routine, for a frame landing
+     * from the paging window and for setFrame (scrub, step, playback), so
+     * the two paths cannot drift apart again.
      */
     _displaySequenceFrame(idx) {
         const img = this.frameImages[idx] || null;
@@ -6959,20 +7036,24 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.hdrData = hdr;
             this.imageWidth = hdr.width;
             this.imageHeight = hdr.height;
-            // Replaces this.image with a sized canvas for the 2D paths, as the
-            // HDR arrival handler always did. The PNG stays in frameImages[idx]
-            // for the filmstrip and for the fallback below.
+            // Replaces this.image with a sized stand-in for the 2D paths, as
+            // the HDR arrival handler always did. The PNG stays in
+            // frameImages[idx] for the filmstrip and for the fallback below.
             this.createPlaceholderImage(hdr.width, hdr.height);
-        } else {
+        } else if (img) {
             this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            if (!img) return;
             this.image = img;
             this.imageWidth = img.width;
             this.imageHeight = img.height;
             if (this.renderer) this.renderer.loadImageTexture(img);
+        } else {
+            // Not paged in yet: the last picture stays until it lands, the
+            // frame counter moves now.
+            this.updateFrameDisplay();
+            return;
         }
+
+        this._updateCompareForFrame(idx);
 
         const depth = this.frameZdepthImages && this.frameZdepthImages[idx];
         this.zdepthImage = depth || null;
@@ -6990,8 +7071,16 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.render();
         this.updateInfo();
-        this.updateScopes();
+        this.updateFrameDisplay();
+        // Statistics and the nit badge belong to the frame on screen. They
+        // are computed once per frame, normally in the decode worker.
         if (hdr) this._computeHDRZoneStats();
+        else { this._hdrZoneStats = null; this._updateHDRPeakBadge?.(); }
+        // v4.3: Repaint sparkline current-frame marker on every frame change
+        if (this._frameSparklines) this._drawSparklines();
+        this.updateScopes();
+        this._refreshReferenceReadouts();
+        if (this.activeTab === 'scopes') this.renderScopesTab(this.tabContentContainer);
     }
 
     /** Record why a frame has no float data, for the status-bar badge. */
@@ -8468,18 +8557,33 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.showHistogram) this.updateHistogram();
             if (this.showWaveform) this.updateWaveform();
             if (this.showVectorscope) this.updateVectorscope();
-            this._updateReferenceScopes?.();
+            this._scheduleReferenceScopeUpdate();
             if (this.scopeOverlay) this.renderOverlay();
         }, this.scopeDebounceMs);
     }
 
+    /**
+     * The one place the SCOPES tab is redrawn from. Each redraw is four
+     * 512x512 read-backs, and a frame change used to ask for two (one from
+     * render(), one from setFrame). Now at most one is pending, and during
+     * playback they come at most about six times a second.
+     */
     _scheduleReferenceScopeUpdate() {
         if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
-        if (this._referenceScopeRAF) cancelAnimationFrame(this._referenceScopeRAF);
-        this._referenceScopeRAF = requestAnimationFrame(() => {
-            this._referenceScopeRAF = null;
-            this._updateReferenceScopes?.();
-        });
+        if (this._referenceScopeRAF || this._referenceScopeTimer) return;   // one is already coming
+        const draw = () => {
+            this._referenceScopeRAF = requestAnimationFrame(() => {
+                this._referenceScopeRAF = null;
+                this._referenceScopeAt = performance.now();
+                this._updateReferenceScopes?.();
+            });
+        };
+        const wait = this.isPlaying ? 160 - (performance.now() - (this._referenceScopeAt || 0)) : 0;
+        if (wait > 0) {
+            this._referenceScopeTimer = setTimeout(() => { this._referenceScopeTimer = null; draw(); }, wait);
+        } else {
+            draw();
+        }
     }
 
     updateHistogram() {
@@ -10010,22 +10114,24 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     createPlaceholderImage(width, height) {
-        // Create a small placeholder for 2D canvas operations
-        const placeholder = document.createElement('canvas');
-        placeholder.width = width;
-        placeholder.height = height;
-        const ctx = placeholder.getContext('2d');
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('WebGL2 HDR Mode', width / 2, height / 2);
-
-        this.image = placeholder;
-        // v3.0 FIX: Store .data (Uint8ClampedArray), not ImageData object.
-        // The rest of the code indexes this.imageData[i] for pixel values.
-        this.imageData = ctx.getImageData(0, 0, width, height).data;
+        // A sized stand-in for this.image while a float frame is on screen:
+        // the 2D paths and readouts need its size, a truthy image and an
+        // indexable this.imageData. It was a full-size canvas, filled,
+        // lettered and read back with getImageData for every frame (0.1 to
+        // 0.7 s at 1080p, up to 2 s at 8K) only to serve as that flag. One
+        // stand-in per size is kept instead: a canvas with no context holds
+        // no pixels, and a zeroed buffer is only paged in where it is read.
+        let stub = this._placeholder;
+        if (!stub || stub.width !== width || stub.height !== height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            // v3.0 FIX: .data (Uint8ClampedArray), not ImageData. The rest of
+            // the code indexes this.imageData[i] for pixel values.
+            stub = this._placeholder = { canvas, width, height, data: new Uint8ClampedArray(width * height * 4) };
+        }
+        this.image = stub.canvas;
+        this.imageData = stub.data;
         this._probeInvalidate();   // the probe measures this frame, not the last one
     }
 
@@ -10097,7 +10203,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._seqRAF = null;
             }
             // ALBABIT-FIX: the panel shows the frame playback stopped on.
-            if (this._hudDrawnAt) this._renderReferenceRightHUD?.();
+            if (this._hudDrawnAt) this._refreshReferenceReadouts();
         }
     }
 
@@ -10670,63 +10776,109 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
         }
 
-        // Update Display
-        if (this.frameHDRData[idx]) {
-            // We have HDR data for this frame
-            const npy = this.frameHDRData[idx];
-            this.hdrData = npy;
-            this.imageWidth = npy.width;
-            this.imageHeight = npy.height;
+        // The same routine that shows a frame as it lands, so the stats, the
+        // nit badge and the panel follow every path to a frame. setFrame had
+        // its own copy, and on it the badge went on showing an older frame.
+        this._displaySequenceFrame(idx);
+    }
 
-            if (this.renderer) {
-                // 3.5.0: the cached loaders, like _displaySequenceFrame. The
-                // uncached ones re-uploaded the whole frame on every step.
-                const frameId = `${this.generationID}:${idx}`;
-                if (npy.fp16data) {
-                    this.renderer.loadFloat16TextureCached(frameId, npy.fp16data, npy.width, npy.height, npy.channels);
-                } else {
-                    this.renderer.loadFloat32TextureCached(frameId, npy.data, npy.width, npy.height, npy.channels);
-                }
-            }
-        } else if (this.frameImages[idx]) {
-            // Fallback to PNG
-            this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            this.image = this.frameImages[idx];
-            if (this.renderer) this.renderer.loadImageTexture(this.image);
-        }
-
-        this._updateCompareForFrame(idx);
-
-        // Update Z-Depth for the new frame
-        if (this.frameZdepthImages && this.frameZdepthImages[idx]) {
-            this.zdepthImage = this.frameZdepthImages[idx];
-            if (this.renderer) this.renderer.loadDepthTexture(this.zdepthImage);
-        } else {
-            this.zdepthImage = null;
-        }
-
-        this.render();
-        this.updateInfo();
-        this.updateFrameDisplay();
-        // v4.3: Repaint sparkline current-frame marker on every frame change
-        if (this._frameSparklines) this._drawSparklines();
-        if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
+    /**
+     * The right panel after a frame change: readouts only, never a rebuild
+     * under the user's hands.
+     *
+     * Every frame change used to rebuild the whole panel (every 250 ms during
+     * playback, every frame while scrubbing), which removed a slider being
+     * dragged from the page and wiped the channel search text. GRADE and
+     * SCOPES have nothing that follows the frame (the scopes have their own
+     * schedule); the rest have their readouts rewritten in place.
+     */
+    _refreshReferenceReadouts() {
+        const tab = this._referenceRightTab || 'inspector';
+        if (tab === 'grade' || tab === 'scopes') return;
         // ALBABIT-FIX: at most four times a second during playback. EFFECTS
         // (opened by "Depth") redraws the depth map, ~55 ms: 18 frames/s.
-        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
-            && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
-            this._hudDrawnAt = performance.now();
-            this._renderReferenceRightHUD?.();
-        }
+        if (this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250) return;
+        this._hudDrawnAt = performance.now();
+        this._syncReferenceReadouts(tab);
+    }
 
-        // Update Scopes
-        // Note: Real-time scopes update from displayed texture, so just calling updateScopes() is enough
-        // assuming updateScopes pulls from renderer's texture.
-        if (this.activeTab === 'scopes') {
-            this.renderScopesTab(this.tabContentContainer);
+    _syncReferenceReadouts(tab) {
+        const col = this.controlsPanel?.querySelector('.radiance-ref-col');
+        if (!col) return;
+        if (tab === 'effects') {
+            const preview = col.querySelector('.radiance-ref-depth-preview');
+            if (preview) this._renderReferenceDepthPreview(preview);
+            return;
         }
+        if (tab !== 'inspector' && tab !== 'analysis') return;
+        const fresh = document.createElement('div');
+        if (tab === 'analysis') this._renderReferenceAnalysis(fresh);
+        else this._renderReferenceInspector(fresh);
+        if (this._copyReadouts(fresh, col)) return;
+        // The layout itself changed (a frame with other channels): rebuild,
+        // which waits while a control in the panel is held or focused.
+        this._renderReferenceRightHUD();
+    }
+
+    /**
+     * Copy the readout text of freshly rendered sections onto the live ones
+     * with the same titles. False when the two do not have the same layout.
+     */
+    _copyReadouts(fresh, live) {
+        const titleOf = (sec) => sec.querySelector('.radiance-ref-title')?.textContent;
+        const liveSections = new Map([...live.querySelectorAll('.radiance-ref-section')].map((sec) => [titleOf(sec), sec]));
+        const READOUTS = '.radiance-ref-kv > div, .radiance-ref-status-tile > div';
+        for (const sec of fresh.querySelectorAll('.radiance-ref-section')) {
+            const target = liveSections.get(titleOf(sec));
+            if (!target) return false;
+            const from = sec.querySelectorAll(READOUTS);
+            const to = target.querySelectorAll(READOUTS);
+            if (from.length !== to.length) return false;
+            for (let i = 0; i < from.length; i++) {
+                if (from[i].className !== to[i].className) return false;
+                if (to[i].classList.contains('k') || to[i].classList.contains('label')) {
+                    if (from[i].textContent !== to[i].textContent) return false;
+                } else if (to[i].textContent !== from[i].textContent) {
+                    to[i].textContent = from[i].textContent;
+                }
+            }
+            // The channel list: with the same rows only their state differs,
+            // and a filtered list is the user's, so it is left as it is.
+            const rowsFrom = sec.querySelectorAll('.radiance-ref-channel');
+            const rowsTo = target.querySelectorAll('.radiance-ref-channel');
+            const search = target.querySelector('.radiance-ref-search');
+            if (rowsFrom.length && !(search && search.value)) {
+                if (rowsFrom.length !== rowsTo.length) return false;
+                for (let i = 0; i < rowsFrom.length; i++) {
+                    if (rowsFrom[i].textContent !== rowsTo[i].textContent) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True when a rebuild must wait: one asked for from outside the panel
+     * while a control in it is held or focused. It runs when the control is
+     * let go (see createHUD).
+     */
+    _referenceRebuildDeferred() {
+        if (this._inPanelEvent || !this._referencePanelBusy()) {
+            this._referencePanelStale = false;
+            return false;
+        }
+        this._referencePanelStale = true;
+        return true;
+    }
+
+    /** True while a control in the right panel is held or has focus. */
+    _referencePanelBusy() {
+        const panel = this.controlsPanel;
+        if (!panel) return false;
+        if (this._referencePointerDown) return true;
+        const el = document.activeElement;
+        return !!(el && el !== document.body && panel.contains(el)
+            && el.matches('input, select, textarea, [contenteditable="true"]'));
     }
 
     updateFrameDisplay() {
@@ -12166,6 +12318,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     _renderReferenceRightHUD() {
         const panel = this.controlsPanel;
         if (!panel) return;
+        if (this._referenceRebuildDeferred()) return;
 
         panel.innerHTML = '';
         panel.classList.add('radiance-panel-embedded');
@@ -12337,6 +12490,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         let activeTab = this._referenceRightTab || 'inspector';
         const render = () => {
+            if (this._referenceRebuildDeferred()) return;
             col.innerHTML = '';
             [...tabs.children].forEach(btn => btn.classList.toggle('is-active', btn.dataset.tabId === activeTab));
             if (activeTab === 'grade') {
@@ -13506,6 +13660,31 @@ self.onmessage = async ({ data: { id, url } }) => {
         const t = this.theme;
         this.controlsPanel = document.createElement('div');
         this.controlsPanel.className = 'radiance-glass-dock radiance-panel-embedded';
+
+        // A frame change only rewrites readouts, and nothing outside the
+        // panel (a frame change, OCIO finishing loading) rebuilds it while
+        // one of its controls is held or focused (_referencePanelBusy). A
+        // rebuild that had to wait runs once the control is let go. The
+        // panel's own controls may still redraw it from their handlers.
+        const catchUp = () => {
+            if (this._referencePanelStale && !this._referencePanelBusy()) this._renderReferenceRightHUD();
+        };
+        const inPanelEvent = () => {
+            this._inPanelEvent = true;
+            queueMicrotask(() => { this._inPanelEvent = false; });
+        };
+        for (const type of ['input', 'change', 'click', 'keydown', 'pointerdown', 'pointerup']) {
+            this.controlsPanel.addEventListener(type, inPanelEvent, true);
+        }
+        this.controlsPanel.addEventListener('pointerdown', () => { this._referencePointerDown = true; }, true);
+        const release = () => {
+            if (!this._referencePointerDown) return;
+            this._referencePointerDown = false;
+            catchUp();
+        };
+        window.addEventListener('pointerup', release, { capture: true, signal: this._listenerSignal });
+        window.addEventListener('pointercancel', release, { capture: true, signal: this._listenerSignal });
+        this.controlsPanel.addEventListener('focusout', () => setTimeout(catchUp, 0));
 
         // v3.0 #15: High Contrast Mode Initialization
         // Restores accessibility preference from localStorage and applies the CSS hook.
@@ -20823,30 +21002,72 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Legacy fp16 path (flags=0)
-        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload)
+        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload). Only this
+        // is kept: every frame used to carry a Float32Array copy as well, so a
+        // 1080p frame cost 50 MB instead of 17. 'data' decodes on first use
+        // (see _lazyHalfFloats), which only the probe and CPU readouts need.
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
-        // Also create Float32Array for CPU-side reads (probe, scopes)
-        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
-        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
-        if (!RadianceViewer._halfTable) {
-            RadianceViewer._halfTable = new Float32Array(65536);
-            for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
-        }
-        const table = RadianceViewer._halfTable;
-        const fp32 = new Float32Array(fp16Raw.length);
-        for (let i = 0; i < fp16Raw.length; i++) {
-            fp32[i] = table[fp16Raw[i]];
-        }
-
-        return {
-            data: fp32,      // Float32Array for CPU reads
+        return RadianceViewer._lazyHalfFloats({
             fp16data: fp16Raw,   // Uint16Array for GPU HALF_FLOAT upload
             shape: [height, width, channels],
             format: 'rhdr',
             channel_names: channelNames,
             metadata
-        };
+        });
+    }
+
+    /**
+     * Give an fp16 frame a `data` that decodes to floats when it is read.
+     *
+     * Not enumerable, so a worker's postMessage leaves it behind and a frame
+     * crosses to the main thread as its half floats only. The decoded arrays
+     * live in a small cache for the whole page (_halfFloats), so reading
+     * `hdr.data` on the frame on screen costs one decode, not one per read,
+     * and a window of 16 frames never holds 16 float copies.
+     */
+    static _lazyHalfFloats(parsed) {
+        if (!parsed || !parsed.fp16data) return parsed;
+        Object.defineProperty(parsed, 'data', {
+            configurable: true,
+            enumerable: false,
+            get() { return RadianceViewer._halfFloats(this.fp16data); },
+        });
+        return parsed;
+    }
+
+    /** All 65536 half values as floats, built once. */
+    static _halfFloatTable() {
+        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
+        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
+        if (!RadianceViewer._halfTable) {
+            const table = new Float32Array(65536);
+            for (let h = 0; h < 65536; h++) table[h] = RadianceViewer.prototype._halfToFloat(h);
+            RadianceViewer._halfTable = table;
+        }
+        return RadianceViewer._halfTable;
+    }
+
+    /** Floats for an fp16 array, from the page-wide cache of the last two decoded. */
+    static _halfFloats(fp16) {
+        const cache = RadianceViewer._halfDecoded || (RadianceViewer._halfDecoded = new Map());
+        let f32 = cache.get(fp16);
+        if (f32) {
+            cache.delete(fp16);
+            cache.set(fp16, f32);
+            return f32;
+        }
+        const table = RadianceViewer._halfFloatTable();
+        f32 = new Float32Array(fp16.length);
+        for (let i = 0; i < fp16.length; i++) f32[i] = table[fp16[i]];
+        cache.set(fp16, f32);
+        while (cache.size > 2) cache.delete(cache.keys().next().value);
+        return f32;
+    }
+
+    /** Drop the decoded floats for these fp16 arrays (a deleted viewer's frames). */
+    static _releaseHalfFloats(fp16) {
+        if (fp16 && RadianceViewer._halfDecoded) RadianceViewer._halfDecoded.delete(fp16);
     }
 
     // Legacy .npy parser (backward compatibility)
@@ -21516,6 +21737,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
         if (this._seqRAF) { cancelAnimationFrame(this._seqRAF); this._seqRAF = null; }
         if (this._referenceScopeRAF) { cancelAnimationFrame(this._referenceScopeRAF); this._referenceScopeRAF = null; }
+        if (this._referenceScopeTimer) { clearTimeout(this._referenceScopeTimer); this._referenceScopeTimer = null; }
         if (this._videoRAF) { cancelAnimationFrame(this._videoRAF); this._videoRAF = null; }
         if (this.scopeUpdateTimer) { clearTimeout(this.scopeUpdateTimer); this.scopeUpdateTimer = null; }
         if (this._scopeUpdateTimer) { clearTimeout(this._scopeUpdateTimer); this._scopeUpdateTimer = null; }
@@ -21548,6 +21770,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Release the big buffers explicitly rather than waiting for the
         // instance itself to become unreachable.
         if (this._frameWindow) { this._frameWindow.clear(); this._frameWindow = null; }
+        RadianceViewer._releaseHalfFloats(this.hdrData?.fp16data);
         this._hdrFallbackReasons = null;
         this.frameHDRData = null;
         this.frameImages = null;

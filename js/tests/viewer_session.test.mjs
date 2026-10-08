@@ -156,3 +156,181 @@ test('a deleted viewer removes every page listener and can be collected', { skip
         await page.close();
     }
 });
+
+// ── H7: a frame change does not rebuild the panel under the user ───────────
+
+test('a slider being dragged survives scrubbing, and so does the channel search', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(12, 96, 54));
+        await __until(() => v.hdrData && v._frameWindow?.isWindowReady(), 30000);
+        const r = {};
+        const panel = v.controlsPanel;
+        const row = (label) => [...panel.querySelectorAll('.radiance-ref-slider')]
+            .find((el) => el.querySelector('label')?.textContent.trim() === label);
+
+        // GRADE: hold Exposure, scrub, keep dragging.
+        panel.querySelector('[data-tab-id="grade"]').click();
+        const input = row('Exposure').querySelector('input[type="range"]');
+        input.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        for (const f of [1, 2, 3, 4, 5]) { v.setFrame(f); await __sleep(30); }
+        // Anything else that redraws the panel waits too: OCIO finishing
+        // loading in the background did it mid-drag.
+        v._ocioSetStatus?.('info', 'OCIO ready');
+        v._lastRenderContent?.();
+        r.gradeSliderStillThere = input.isConnected;
+        input.value = '1.5';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        r.exposureAfterDrag = v.exposure;
+        window.dispatchEvent(new PointerEvent('pointerup'));
+        input.blur();
+        await __sleep(20);
+        r.redrawnAfterRelease = !input.isConnected;
+
+        // EFFECTS: the same with Amount.
+        panel.querySelector('[data-tab-id="effects"]').click();
+        const amount = row('Amount').querySelector('input[type="range"]');
+        amount.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        for (const f of [6, 7, 8]) { v.setFrame(f); await __sleep(30); }
+        r.effectsSliderStillThere = amount.isConnected;
+        window.dispatchEvent(new PointerEvent('pointerup'));
+
+        // INSPECTOR: type a search, scrub; the text stays and the readouts follow.
+        panel.querySelector('[data-tab-id="inspector"]').click();
+        const search = panel.querySelector('.radiance-ref-search');
+        search.focus();
+        search.value = 'Gr';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        for (const f of [9, 10, 11]) { v.setFrame(f); await __sleep(30); }
+        r.searchStillThere = search.isConnected;
+        r.searchValue = search.value;
+        r.searchFocused = document.activeElement === search;
+        const kv = [...panel.querySelectorAll('.radiance-ref-kv .k')].find((k) => k.textContent === 'Frame');
+        r.frameReadout = kv?.nextElementSibling?.textContent;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.gradeSliderStillThere, true, 'scrubbing rebuilt the GRADE panel under a held slider');
+    assert.equal(out.exposureAfterDrag, 1.5, 'the held slider no longer drives the grade');
+    assert.equal(out.redrawnAfterRelease, true, 'the redraw that waited never ran');
+    assert.equal(out.effectsSliderStillThere, true, 'scrubbing rebuilt the EFFECTS panel under a held slider');
+    assert.equal(out.searchStillThere, true, 'scrubbing rebuilt the Inspector under the search box');
+    assert.equal(out.searchValue, 'Gr', 'the channel search text was wiped');
+    assert.equal(out.searchFocused, true, 'the search box lost focus');
+    assert.equal(out.frameReadout, '12', 'the Inspector readouts did not follow the frame');
+});
+
+// ── H13: playback does one frame's work per frame ───────────────────────────
+
+test('showing a float frame neither builds a full-size placeholder nor decodes floats', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        // Full-frame read-backs only (thumbnails and sparklines read tiny ones).
+        let readBacks = 0, statsOnMain = 0;
+        const gid = CanvasRenderingContext2D.prototype.getImageData;
+        CanvasRenderingContext2D.prototype.getImageData = function (...a) {
+            if (a[2] * a[3] >= 320 * 180) readBacks++;
+            return gid.apply(this, a);
+        };
+        const n = __make(); const v = n.radianceViewer;
+        const zs = v._zoneStatsFromFloats;
+        v._zoneStatsFromFloats = function (...a) { statsOnMain++; return zs.apply(this, a); };
+        n.onExecuted(__frames(8, 320, 180));
+        await __until(() => v.hdrData && v._frameWindow?.isWindowReady());
+        await __sleep(200);
+        for (let f = 1; f < 8; f++) v.setFrame(f);
+        const r = {
+            readBacks, statsOnMain,
+            image: !!v.image, imageW: v.image?.width, imageData: !!v.imageData,
+            ownKeys: Object.keys(v.hdrData),
+            hasHalves: v.hdrData.fp16data instanceof Uint16Array,
+            // fp16 RGBA 320x180 plus the 8-bit PNG proxy, per frame
+            bytesPerFrame: v._frameWindow.retainedBytes / v._frameWindow.residentCount,
+        };
+        CanvasRenderingContext2D.prototype.getImageData = gid;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.readBacks, 0, `${out.readBacks} full-frame canvas read-backs to load and step through 8 float frames`);
+    assert.equal(out.statsOnMain, 0, 'zone statistics were computed on the main thread');
+    assert.ok(out.image && out.imageData && out.imageW === 320, 'the stand-in image lost its size or truthiness');
+    assert.ok(!out.ownKeys.includes('data') && out.hasHalves, 'a frame still carries a float copy');
+    assert.equal(out.bytesPerFrame, 320 * 180 * 4 * 2 + 320 * 180 * 4);
+});
+
+test('the zone statistics and nit badge follow the frame on screen', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(6, 64, 48, {}, 'g'));
+        await __until(() => v.hdrData && v._frameWindow?.isWindowReady());
+        const r = [];
+        for (const f of [3, 1, 5]) {
+            v.setFrame(f);
+            r.push({ f, p50: +v._hdrZoneStats.p50.toFixed(3), badge: v.hdrPeakInfo?.textContent });
+        }
+        // Playback reaches frames through setFrame too.
+        v.setFrame(0);
+        v.togglePlayback();
+        await __sleep(150);
+        v.togglePlayback();
+        r.push({ f: v.currentFrame, p50: +v._hdrZoneStats.p50.toFixed(3), badge: v.hdrPeakInfo?.textContent });
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    for (const { f, p50 } of out) {
+        assert.ok(Math.abs(p50 - 0.05 * (f + 1)) < 0.002, `frame ${f}: p50 ${p50}, the frame is ${0.05 * (f + 1)}`);
+    }
+    assert.notEqual(out[0].badge, out[1].badge, 'the nit badge did not change with the frame');
+});
+
+test('during playback the scopes update a few times a second, not twice a frame', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(48, 64, 48));
+        await __until(() => v.hdrData && v._frameWindow?.isWindowReady());
+        v._setReferenceTab('scopes');
+        await __sleep(200);
+        // Counted, not drawn: four software-GL read-backs take long enough
+        // here to slow playback below the rate the limit is about.
+        let scopes = 0, frames = 0;
+        v._updateReferenceScopes = () => { scopes++; };
+        const sf = v.setFrame.bind(v);
+        v.setFrame = (i) => { frames++; sf(i); };
+        // Until 24 frames have played, however long a loaded machine takes.
+        const t0 = performance.now();
+        v.togglePlayback();
+        await __until(() => frames >= 24, 20000);
+        const seconds = (performance.now() - t0) / 1000;
+        v.togglePlayback();
+        __remove(n);
+        return { scopes, frames, seconds };
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.frames >= 24, `playback only advanced ${out.frames} frames`);
+    // Two a frame before: one from render(), one from setFrame. Now one at
+    // most, and no more than about six a second.
+    assert.ok(out.scopes <= out.frames + 1, `${out.scopes} scope redraws for ${out.frames} frames`);
+    assert.ok(out.scopes <= out.seconds * 6.5 + 2,
+        `${out.scopes} scope redraws in ${out.seconds.toFixed(1)} s of playback (${out.frames} frames)`);
+});
+
+// ── M16: EV range from the lowest non-zero percentile ───────────────────────
+
+test('a frame with true black still reports its EV range', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(1, 128, 64, {}, 'black'));
+        await __until(() => v._hdrZoneStats);
+        const r = { ev: v._hdrZoneStats.evRange, p1: v._hdrZoneStats.p1, badge: v.hdrPeakInfo.textContent };
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.p1, 0, 'test premise: the darkest 1% is black');
+    // Half black, the rest 0.01 to 41.6 evenly in stops: p99 of the frame
+    // over p1 of what is lit is about 11.7 stops.
+    assert.ok(out.ev > 11 && out.ev < 12.5, `EV range ${out.ev}`);
+    assert.match(out.badge, new RegExp(`${out.ev.toFixed(1)} EV`));
+});
