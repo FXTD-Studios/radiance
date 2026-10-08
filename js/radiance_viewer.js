@@ -990,6 +990,7 @@ class RadianceViewer {
         this.lutIntensity = 1.0;
 
         this.falseColor = false;
+        this.pixelGrid = false;    // pixel outlines at 800% and up (rail Pixel Grid)
         this.hdrHeatmap = false;   // absolute cd/m2, anchored to BT.2408 (203 nits)
         this.zebra = false;
         this.gamutWarning = false;
@@ -2523,7 +2524,10 @@ class RadianceViewer {
     _setReferenceTab(tabId) {
         this._referenceRightTab = tabId;
         if (this.rightControlPanel) this.rightControlPanel.style.display = 'flex';
+        this.showControls = true;
+        this._syncPanelButton?.();
         this._renderReferenceRightHUD?.();
+        this._syncRail?.();
         if (tabId === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
     }
 
@@ -3034,67 +3038,201 @@ class RadianceViewer {
     createProSidebar() {
         const sidebar = document.createElement('aside');
         sidebar.className = 'radiance-pro-sidebar';
+        sidebar.setAttribute('aria-label', 'Viewer tools');
 
+        // M18, L6: each item says what it is. 'state' items (a choice in a
+        // group, or a toggle) carry aria-pressed and a highlight that follows
+        // the viewer's real state, wherever it was changed (_syncRail, run
+        // from render()); the highlight used to be fixed on Fit and RGB.
+        // Items without 'state' are actions.
+        this._railItems = [];
         const addSection = (title, items) => {
             const section = document.createElement('div');
             section.className = 'radiance-pro-sidebar-section';
+            section.setAttribute('role', 'group');
             const heading = document.createElement('div');
             heading.className = 'radiance-pro-sidebar-title';
             heading.textContent = title;
+            heading.id = `radiance-rail-${this.node?.id ?? 'x'}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            section.setAttribute('aria-labelledby', heading.id);
             section.appendChild(heading);
             items.forEach(item => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.innerHTML = `<span>${RadianceViewer.escapeHtml(item.label)}</span><span class="shortcut">${RadianceViewer.escapeHtml(item.shortcut || '')}</span>`;
-                if (item.active) btn.classList.add('is-active');
-                btn.onclick = item.action;
+                btn.dataset.railId = item.id;
+                const label = document.createElement('span');
+                label.textContent = item.label;
+                const right = document.createElement('span');
+                right.className = 'shortcut';
+                right.textContent = item.shortcut || '';
+                btn.append(label, right);
+                if (item.title) btn.title = item.title;
+                btn.onclick = () => { item.action(); this._syncRail(); };
                 section.appendChild(btn);
+                this._railItems.push({ ...item, btn, right });
             });
             sidebar.appendChild(section);
         };
 
+        const fitted = () => !!this.image && this._viewIsFit !== false;
+        const atZoom = (z) => !fitted() && Math.abs((this.zoom || 0) - z) < z * 0.005;
+        const channel = (c) => () => ({ on: !this.showZdepth && (this.channel || 'rgb') === c });
+        const setChannel = (c) => () => { this.showZdepth = false; this.channel = c; this.render(); };
+        const scopeOn = (test) => () => ({ on: this._referenceRightTab === 'scopes' && test() });
+        const openScope = (mode, parade) => () => {
+            this.scopeMode = mode;
+            this.waveformParadeMode = parade;
+            this._setReferenceTab('scopes');
+            this.updateScopes();
+        };
+        const GRID = ['', 'Thirds', 'Safe', 'Center', 'All'];
+        const SAFE = { action: 'Action', title: 'Title', both: 'Both' };
+
         addSection('Viewer', [
-            { label: 'Fit', shortcut: 'F', action: () => this.fitToView(), active: true },
-            { label: '100%', shortcut: '1', action: () => this.setZoom(1.0) },
-            { label: '200%', shortcut: '2', action: () => this.setZoom(2.0) },
-            { label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen() },
+            { id: 'fit', label: 'Fit', shortcut: 'F', action: () => this.fitToView(), state: () => ({ on: fitted() }) },
+            { id: 'zoom-100', label: '100%', shortcut: '1', action: () => this.setZoom(1.0), state: () => ({ on: atZoom(1) }) },
+            { id: 'zoom-200', label: '200%', shortcut: '2', action: () => this.setZoom(2.0), state: () => ({ on: atZoom(2) }) },
+            { id: 'fullscreen', toggle: true, label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen(), state: () => ({ on: !!this.isFullscreen }) },
         ]);
-        addSection('Channels', [
-            { label: 'RGB', action: () => { this.showZdepth = false; this.channel = 'rgb'; this.render(); }, active: true },
-            { label: 'R', action: () => { this.showZdepth = false; this.channel = 'r'; this.render(); } },
-            { label: 'G', action: () => { this.showZdepth = false; this.channel = 'g'; this.render(); } },
-            { label: 'B', action: () => { this.showZdepth = false; this.channel = 'b'; this.render(); } },
-            { label: 'A', action: () => { this.showZdepth = false; this.channel = 'a'; this.render(); } },
-        ]);
+        addSection('Channels', ['rgb', 'r', 'g', 'b', 'a'].map((c) => (
+            { id: `channel-${c}`, label: c.toUpperCase(), action: setChannel(c), state: channel(c) })));
         addSection('EXR Inspector', [
-            { label: 'Channels', action: () => this._setReferenceTab('inspector') },
-            { label: 'Depth', action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); this._setReferenceTab('effects'); } },
-            { label: 'Metadata', action: () => this._setReferenceTab('inspector') },
+            { id: 'channels', label: 'Channels', title: 'The frame\'s channels, in the Inspector',
+                action: () => this._showInspectorSection('EXR CHANNELS') },
+            { id: 'depth', toggle: true, label: 'Depth', title: 'Show the depth channel',
+                action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); this._setReferenceTab('effects'); },
+                state: () => ({ on: !!this.showZdepth }) },
+            { id: 'metadata', label: 'Metadata', title: 'The frame\'s metadata, in the Inspector',
+                action: () => this._showInspectorSection('METADATA') },
         ]);
         addSection('Overlays', [
-            { label: 'Safe Areas', action: () => this.cycleSafeAreas() },
-            { label: 'Grid', action: () => this.cycleGridMode() },
-            { label: 'Center Cross', action: () => { this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none'; } },
-            { label: 'Pixel Grid', action: () => this.cycleGridMode() },
+            { id: 'safe-areas', toggle: true, label: 'Safe Areas', title: 'Cycle the safe areas: action, title, both, off',
+                action: () => this.cycleSafeAreas(),
+                state: () => ({ on: (this.safeAreaMode || 'none') !== 'none', label: SAFE[this.safeAreaMode] }) },
+            { id: 'grid', toggle: true, label: 'Grid', title: 'Cycle the composition grid: thirds, safe, center, all, off',
+                action: () => this.cycleGridMode(),
+                state: () => ({ on: (this.gridMode || 0) > 0, label: GRID[this.gridMode || 0] }) },
+            { id: 'center-cross', toggle: true, label: 'Center Cross',
+                action: () => { this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none'; },
+                state: () => ({ on: this.viewerCross?.style.display !== 'none' }) },
+            // Was a second Grid button. A pixel grid outlines each image
+            // pixel, and only draws once a pixel is 8 screen pixels wide.
+            { id: 'pixel-grid', toggle: true, label: 'Pixel Grid', title: 'Outline each pixel when zoomed in to 800% or more',
+                action: () => this.togglePixelGrid(), state: () => ({ on: !!this.pixelGrid }) },
         ]);
         addSection('HDR & QC', [
-            { label: 'Exposure', action: () => this.toggleControls() },
-            { label: 'False Color', action: () => { this.falseColor = !this.falseColor; this.render(); } },
-            { label: 'Zebra', action: () => { this.zebra = !this.zebra; this.render(); } },
+            // Was a second "hide the panel" button. It now lands on Exposure.
+            { id: 'exposure', label: 'Exposure', title: 'The Exposure control, on the Grade tab',
+                action: () => this._focusGradeControl('exposure') },
+            { id: 'false-color', toggle: true, label: 'False Color',
+                action: () => { this.falseColor = !this.falseColor; this.render(); }, state: () => ({ on: !!this.falseColor }) },
+            { id: 'zebra', toggle: true, label: 'Zebra',
+                action: () => { this.zebra = !this.zebra; this.render(); }, state: () => ({ on: !!this.zebra }) },
             // Was a second switch on 'falseColor' -- the same feature under two
             // names, and neither reported nits. False Color is an *exposure*
             // tool on display luma; this one reads scene luminance and maps
             // absolute cd/m2 against BT.2408's 203-nit HDR Reference White.
-            { label: 'HDR Heatmap', action: () => { this.toggleHDRHeatmap(); } },
+            { id: 'hdr-heatmap', toggle: true, label: 'HDR Heatmap',
+                action: () => { this.toggleHDRHeatmap(); }, state: () => ({ on: !!this.hdrHeatmap }) },
         ]);
         addSection('Analysis', [
-            { label: 'Histogram', action: () => { this.scopeMode = 'histogram'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Waveform', action: () => { this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Vectorscope', action: () => { this.scopeMode = 'vectorscope'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Parade', action: () => { this.waveformParadeMode = true; this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
+            { id: 'histogram', label: 'Histogram', action: openScope('histogram', false), state: scopeOn(() => this.scopeMode === 'histogram') },
+            { id: 'waveform', label: 'Waveform', action: openScope('waveform', false),
+                state: scopeOn(() => this.scopeMode === 'waveform' && !this.waveformParadeMode) },
+            { id: 'vectorscope', label: 'Vectorscope', action: openScope('vectorscope', false), state: scopeOn(() => this.scopeMode === 'vectorscope') },
+            { id: 'parade', label: 'Parade', action: openScope('waveform', true),
+                state: scopeOn(() => this.scopeMode === 'waveform' && !!this.waveformParadeMode) },
         ]);
 
+        // M18: a rail taller than the viewer scrolls, and fades at the
+        // bottom while there is more below.
+        const hint = () => {
+            sidebar.classList.toggle('has-more-below',
+                sidebar.scrollHeight - sidebar.clientHeight - sidebar.scrollTop > 2);
+        };
+        sidebar.addEventListener('scroll', hint, { passive: true });
+        if (typeof ResizeObserver !== 'undefined') {
+            this._railResizeObserver = new ResizeObserver(hint);
+            this._railResizeObserver.observe(sidebar);
+        }
+        this._railHint = hint;
         return sidebar;
+    }
+
+    /**
+     * M18, L6: the rail's highlight and aria-pressed, from the viewer's
+     * state. Cheap enough to run on every render(); the DOM is touched only
+     * when something changed.
+     */
+    _syncRail() {
+        const items = this._railItems;
+        if (!items) return;
+        const states = items.map((it) => (it.state ? it.state() : null));
+        const sig = states.map((st) => (st ? `${st.on ? 1 : 0}${st.label || ''}` : '-')).join('|');
+        if (sig === this._railSig) return;
+        this._railSig = sig;
+        items.forEach((it, i) => {
+            const st = states[i];
+            if (!st) return;
+            it.btn.classList.toggle('is-active', st.on);
+            it.btn.setAttribute('aria-pressed', String(st.on));
+            // A toggle that is on says so, and which mode when it has one.
+            it.right.textContent = st.on && (st.label || it.toggle) ? (st.label || 'On') : (it.shortcut || '');
+        });
+    }
+
+    /** M18: the rail's Exposure: the Grade tab, with that control focused. */
+    _focusGradeControl(param) {
+        if (!this.showControls) this.toggleControls();
+        this._setReferenceTab('grade');
+        const input = this.controlsPanel?.querySelector(`input[type="range"][data-radiance-param="${param}"]`);
+        if (!input) return;
+        input.scrollIntoView?.({ block: 'center' });
+        input.focus();
+    }
+
+    /** The Inspector, scrolled to one of its sections (rail Channels, Metadata). */
+    _showInspectorSection(title) {
+        if (!this.showControls) this.toggleControls();
+        this._setReferenceTab('inspector');
+        const head = [...(this.controlsPanel?.querySelectorAll('.radiance-ref-title') || [])]
+            .find((el) => el.textContent.trim().toUpperCase().startsWith(title));
+        head?.scrollIntoView?.({ block: 'start' });
+    }
+
+    /** M18: the pixel grid, separate from the composition grid (Grid). */
+    togglePixelGrid() {
+        this.pixelGrid = !this.pixelGrid;
+        this.renderOverlay();
+    }
+
+    /**
+     * Pixel boundaries over the picture, once each image pixel covers 8 or
+     * more canvas pixels; below that the lines would be the picture.
+     */
+    _drawPixelGrid(ctx) {
+        const z = this.zoom || 0;
+        if (z < 8 || !this.imageWidth) return;
+        const w = this.overlayCanvas.width, h = this.overlayCanvas.height;
+        const x0 = Math.max(0, Math.floor(-this.panX / z)), x1 = Math.min(this.imageWidth, Math.ceil((w - this.panX) / z));
+        const y0 = Math.max(0, Math.floor(-this.panY / z)), y1 = Math.min(this.imageHeight, Math.ceil((h - this.panY) / z));
+        if (x1 <= x0 || y1 <= y0) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(128, 128, 128, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const top = this.panY + y0 * z, bottom = this.panY + y1 * z;
+        const left = this.panX + x0 * z, right = this.panX + x1 * z;
+        for (let x = x0; x <= x1; x++) {
+            const px = Math.round(this.panX + x * z) + 0.5;
+            ctx.moveTo(px, top); ctx.lineTo(px, bottom);
+        }
+        for (let y = y0; y <= y1; y++) {
+            const py = Math.round(this.panY + y * z) + 0.5;
+            ctx.moveTo(left, py); ctx.lineTo(right, py);
+        }
+        ctx.stroke();
+        ctx.restore();
     }
 
     createViewerBar() {
@@ -9049,6 +9187,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Grid
         if (this.showGrid) this.drawGrid(ctx, w, h);
+        if (this.pixelGrid) this._drawPixelGrid(ctx);
 
         // Scope overlay
         if (this.scopeOverlay && this.histogramData) this.drawHistogramOverlay(ctx, w, h);
@@ -9752,6 +9891,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     resize() {
         this._lastCanvasRect = null; // Invalidate cache
         this._applyResponsiveLayout?.();
+        this._railHint?.();
         if (this.sequenceDock && this.canvasWrapper) {
             this.canvasWrapper.style.setProperty('--sequence-dock-height', this.sequenceDock.offsetHeight + 'px');
         }
@@ -11873,6 +12013,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     render() {
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
         this._syncGrainTicker();
+        this._syncRail();
 
         // ═══════════════════════════════════════════════════════════════
         // GPU-ACCELERATED WEBGL RENDERING PATH (Primary - Always On)
@@ -13195,6 +13336,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 activeTab = id;
                 this._referenceRightTab = id;
                 render();
+                this._syncRail();
             };
             btn.addEventListener('click', activate);
             tabs.appendChild(btn);
@@ -22864,6 +23006,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         // Disconnect every ResizeObserver, not just the canvas one.
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        this._railResizeObserver?.disconnect();
         // ALBABIT-FIX: an observer keeps a removed viewer alive while it observes.
         this._dockHeightObserver?.disconnect();
         this._dockHeightObserver = null;
