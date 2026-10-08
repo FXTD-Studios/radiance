@@ -69,6 +69,7 @@ const skip = playwright ? false
     : 'Playwright is not installed — GPU verification skipped. Install it, or set RADIANCE_TEST_CHROMIUM.';
 
 let report = null;
+let opsReport = null;
 if (!skip) {
     const server = await serveRepo();
     const chromiumPath = await findChromium();
@@ -82,6 +83,7 @@ if (!skip) {
         page.on('pageerror', (e) => errors.push(String(e.message)));
         await page.goto(`http://127.0.0.1:${server.address().port}/js/tests/gradeharness.html`);
         report = await page.evaluate(() => window.__run());
+        opsReport = await page.evaluate(() => window.__runOps());
         report.pageErrors = errors;
     } finally {
         await browser.close();
@@ -92,6 +94,14 @@ if (!skip) {
 // fp32 in the shader against fp64 in JS. Anything looser than this would let a
 // real formula difference through; anything tighter is float noise.
 const TOLERANCE = 2e-6;
+
+// Contrast is a power curve, and a float32 pow() is exp2(k * log2(x)): its
+// relative error grows with the size of that exponent, about one part in 2^23
+// per unit of log2 of the result. Up to 2^16 the flat tolerance covers it; past
+// that (contrast 5 on a value far above the pivot lands near 2^39) the bound
+// grows in proportion, which is the format's precision and not a difference
+// in the formula.
+const tolerance = (cpu) => TOLERANCE * Math.max(1, ...cpu.map((v) => Math.abs(Math.log2(Math.abs(v) || 1)) / 16));
 
 test('the emitted GLSL compiles', { skip }, () => {
     assert.ok(report, 'no report came back from the browser');
@@ -110,7 +120,7 @@ test('the emitted GLSL computes what the JS computes', { skip }, () => {
     for (const c of comparable) {
         assert.ok(c.gpu.every(Number.isFinite),
             `${JSON.stringify(c.grade)} at ${JSON.stringify(c.in)} → ${JSON.stringify(c.gpu)}`);
-        assert.ok(c.delta <= TOLERANCE,
+        assert.ok(c.delta <= tolerance(c.cpu),
             `${JSON.stringify(c.grade)} at ${JSON.stringify(c.in)}: `
             + `GPU ${JSON.stringify(c.gpu)} vs JS ${JSON.stringify(c.cpu)} (Δ ${c.delta})`);
     }
@@ -149,3 +159,39 @@ test('no grade setting produces a non-finite pixel on the GPU', { skip }, () => 
 // Chromium has no navigator.gpu under any flag combination. It is now a real
 // test in grade_wgsl_gpu.test.mjs, run under Deno on a software Vulkan
 // adapter, over this same case matrix.
+
+// ── the helpers added for white balance, luma mix and ACEScct ───────────────
+
+test('the shared GLSL also compiles as GLSL ES 1.00', { skip }, () => {
+    // The fallback shader splices the block without "#version 300 es" on a
+    // WebGL1 context, where mix() has no bvec form.
+    assert.ok(opsReport, 'no ops report came back from the browser');
+    assert.equal(opsReport.es100, true, String(opsReport.es100));
+});
+
+test('white balance, luma mix, the ACEScct curve and the AP1 matrices match JS on the GPU', { skip }, () => {
+    assert.ok(opsReport.ok, opsReport.error);
+    assert.ok(opsReport.cases.length > 100, `only ${opsReport.cases.length} cases`);
+    for (const c of opsReport.cases.filter((x) => x.op !== 'roundTrip')) {
+        const d = Math.max(...c.gpu.map((v, i) => Math.abs(v - c.cpu[i]) / Math.max(1, Math.abs(c.cpu[i]))));
+        assert.ok(d <= tolerance(c.cpu), `${c.op} ${JSON.stringify(c.p ?? c.gamut ?? '')} at ${JSON.stringify(c.in)}: `
+            + `GPU ${JSON.stringify(c.gpu)} vs JS ${JSON.stringify(c.cpu)} (Δ ${d})`);
+    }
+});
+
+test('the ACEScct round trip is the identity on the GPU, for every source gamut', { skip }, () => {
+    // ACEScct mode with nothing graded changed (0.5, 0.2, 0.1) to (0.474, 0.206,
+    // 0.117): the matrices were not inverses. Now within float32 noise.
+    //
+    // In range the bound is 1e-5. Above 1.0 it is 1e-4 relative: a log curve
+    // in float32 multiplies the code value's rounding by 17.52 ln 2 on the way
+    // back, so at 4.0 one float32 step of ACEScct is already 7e-7 of the value
+    // and the transcendental functions add their own few steps.
+    const trips = opsReport.cases.filter((c) => c.op === 'roundTrip');
+    assert.equal(trips.length, 30);
+    for (const c of trips) {
+        const d = Math.max(...c.gpu.map((v, i) => Math.abs(v - c.cpu[i]) / Math.max(1, Math.abs(c.cpu[i]))));
+        const bound = c.in.every((v) => Math.abs(v) <= 1) ? 1e-5 : 1e-4;
+        assert.ok(d <= bound, `gamut ${c.gamut} at ${JSON.stringify(c.in)} came back ${JSON.stringify(c.gpu)} (Δ ${d})`);
+    }
+});
