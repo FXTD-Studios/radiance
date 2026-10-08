@@ -12316,9 +12316,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         // kept filling a 50-deep stack from live code the whole time.
         if (this._undoKeyHandler) return;
         this._undoKeyHandler = (e) => {
-            if (!this._ownsKeyboard(e)) return;
             const t = e.target;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            // A grade slider keeps focus after a drag, and Ctrl+Z there has to
+            // undo the drag. Text fields keep their own undo.
+            const onSlider = t?.tagName === 'INPUT' && t.type === 'range'
+                && !!(this.container?.contains(t) || this.controlsPanel?.contains(t));
+            if (!onSlider) {
+                if (!this._ownsKeyboard(e)) return;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            }
             if (!(e.ctrlKey || e.metaKey)) return;
             const active = this;
             const k = (e.key || '').toLowerCase();
