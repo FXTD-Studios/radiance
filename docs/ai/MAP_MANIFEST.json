@@ -160,7 +160,7 @@
     },
     {
       "path": "color/encodings.py",
-      "sha256": "cdfcc8b2eca3c967e9532bd6e2e0022992448a1a19aaf0940f5aea02cb26de0e"
+      "sha256": "6052a7f5c1097188f6dca352779f73a3650a8c27ec8080956a92236d1d68e710"
     },
     {
       "path": "color/pipeline.py",
@@ -188,7 +188,7 @@
     },
     {
       "path": "hdr/ocio.py",
-      "sha256": "3d8ac9a2d0973a809afcbc094fc9cc481a1bd2b89bde562ea3a8e628b35e480a"
+      "sha256": "25e677de999282701e5998c33719e8b7feb5eda63529cccd4709e737235bb1e1"
     },
     {
       "path": "hdr/aces2_ocio.py",
@@ -280,7 +280,7 @@
     },
     {
       "path": "nodes/generate/sampler.py",
-      "sha256": "089bb186749d36bc4ad0a6b412cbc271e8c03428c434b0b55f1071c92d4fb4fe"
+      "sha256": "d858c277f22448fc4a89b476f9b4d49e63318e8166d5b23fa7ad1254c2e79fbd"
     },
     {
       "path": "nodes/generate/engine.py",
@@ -372,7 +372,7 @@
     },
     {
       "path": "nodes/vfx/multipass/estimate_models.py",
-      "sha256": "0e2b42b5bd6d5323b530dc689febbcf3c7f0d811c98295e2f393033d9802722f"
+      "sha256": "48444f3714f853f2a5066fa9d85b2c83cf7dfc31cb6d20dbe71a7acdff370a9f"
     },
     {
       "path": "nodes/vfx/multipass/master.py",
@@ -432,11 +432,11 @@
     },
     {
       "path": "nodes/pipeline/audio.py",
-      "sha256": "6a6c4919ea8b8b9c3c66c9fb0ca560d95f539f6e647e1679f35181ee6054ccbe"
+      "sha256": "94c52f3c3331deef7e926608d5fbbf29cac6a04955fe7275106caa9563873c7b"
     },
     {
       "path": "nodes/pipeline/dcc.py",
-      "sha256": "b42a4e20b6a3b34505dfbb223db6ab856f20b689bdfe4ee6ad35355ba1f58059"
+      "sha256": "f90136ee4a33f640f43e1f8b9c32c29e77d44a57577d8ec919ff76c1d0a8c951"
     },
     {
       "path": "nodes/pipeline/studio_integrations.py",
@@ -456,7 +456,7 @@
     },
     {
       "path": "core/dcc_auth.py",
-      "sha256": "3881caf14b7ed51b44bb01056db185bac57d799f3911788eb5c74c7d3ed297a6"
+      "sha256": "e59ef070dbe12ee8ae80744672d939c153a28610808804d7234f1371c601df2a"
     },
     {
       "path": "core/tiling.py",
