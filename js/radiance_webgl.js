@@ -1293,12 +1293,16 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             if (this._destroyed) return;
             e.preventDefault(); // Required to allow restoration
             console.error('[Radiance] WebGL context lost — renderer paused. Waiting for recovery...');
+            // The viewer shows that the picture is gone, rather than a black frame.
+            try { this.onContextLost?.(); } catch (err) { console.warn('[Radiance] onContextLost failed:', err); }
         }, false);
 
         this.canvas.addEventListener('webglcontextrestored', () => {
+            if (this._destroyed) return;
             console.log('[Radiance] WebGL context restored — reinitializing...');
             this._contextLost = false;
-            // Clear all caches that hold stale GL object references
+            // Clear all caches that hold stale GL object references. Every
+            // handle from the lost context is dead; none may be deleted or bound.
             this._uniformCache.clear();
             this._attribCache.clear();
             this._uniformValueCache.clear();
@@ -1307,6 +1311,16 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             this.programs = {};
             this.textures = {};
             this.framebuffers = {};
+            this.scopeFBO = null; this.scopeTex = null;
+            this.curveLutTexture = null; this.secondaryCurveLutTexture = null;
+            this._compareTex = null;
+            this._bilateralFBO = null;
+            this._bloomFBOs = null; this._bloomSrcW = 0; this._bloomSrcH = 0;
+            this._exportFBO = null;
+            this.referenceShelf = [];
+            const ocio = this._ocioInfo;
+            this._ocio = null;
+            this.ocioEnabled = false;
 
             // Re-acquire extensions
             if (this.isWebGL2 && this.gl.getExtension) {
@@ -1316,14 +1330,20 @@ class RadianceWebGLRenderer extends RadianceRenderer {
                 this.extColorHalfFloatLinear = this.gl.getExtension('OES_texture_half_float_linear');
                 this.extColorBufferFloat = this.gl.getExtension('EXT_color_buffer_float');
             }
+            this._ocioFloatLinear = undefined;
 
             // Recreate GPU resources
             this._nextProgId = 0;
             this.createPrograms();
             this.createQuad();
             this.createScopeBuffers();
+            // What the renderer itself was given: the 3D LUT and the OCIO view.
+            if (this._lutSource) this.loadLUT(this._lutSource.lutData, this._lutSource.size);
+            if (ocio) this.setOCIODisplay(ocio);
 
-            console.log('[Radiance] WebGL context recovery complete. Reload image to resume.');
+            console.log('[Radiance] WebGL context recovery complete.');
+            // The frame, compare and depth textures come from the viewer.
+            try { this.onContextRestored?.(); } catch (err) { console.warn('[Radiance] onContextRestored failed:', err); }
         }, false);
 
         console.log("[Radiance] Renderer initialized");
@@ -4103,6 +4123,8 @@ vec3 getDenoiseColor(vec2 uv) {
     // Load 3D LUT from .cube file data (WebGL2: float32, WebGL1: fallback)
     loadLUT(lutData, size = 33) {
         const gl = this.gl;
+        // Kept so a restored context can upload it again (webglcontextrestored).
+        this._lutSource = { lutData, size };
 
         if (this.textures.lut) {
             gl.deleteTexture(this.textures.lut);
@@ -4661,6 +4683,8 @@ vec3 getDenoiseColor(vec2 uv) {
 
     setOCIODisplay(info) {
         const gl = this.gl;
+        // Kept so a restored context can rebuild the view (webglcontextrestored).
+        this._ocioInfo = info && info.shaderText ? info : null;
         this._releaseOCIOTextures();
 
         if (!info || !info.shaderText) {

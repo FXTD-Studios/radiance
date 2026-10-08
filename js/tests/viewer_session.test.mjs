@@ -389,3 +389,101 @@ test('stepping, scrubbing and the arrow keys move a video picture frame by frame
     assert.equal(out.afterPlay.scrub, out.afterPlay.frame, 'the scrubber did not follow playback');
     assert.equal(out.afterPlay.picture, out.afterPlay.frame, 'after playback the counter and the picture disagree');
 });
+
+// ── H14: failures say so ────────────────────────────────────────────────────
+
+test('frames that are gone from the server show a message, not a blank viewer', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        // A saved result after a ComfyUI restart: every temp file 404s.
+        n.onExecuted({ radiance_images: [{ filename: 'gone_0.png', subfolder: '', type: 'temp',
+            hdr_sidecar: 'gone_0.rhdr', has_hdr: true, hdr_primary: true }], fps: [24] });
+        await __until(() => v.container.querySelector('.radiance-viewer-message'), 8000);
+        const msg = v.container.querySelector('.radiance-viewer-message[data-kind="frames"]');
+        const r = { text: msg?.textContent || '', visible: !!msg && msg.getBoundingClientRect().width > 0 };
+        // The next run's frames clear it.
+        n.onExecuted(__frames(2));
+        await __until(() => v.hdrData);
+        r.clearedByNewFrames = !v.container.querySelector('.radiance-viewer-message[data-kind="frames"]');
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.visible, 'no message is shown');
+    assert.match(out.text, /no longer on the server/);
+    assert.ok(out.clearedByNewFrames, 'the message stayed over a frame that loaded');
+});
+
+test('a missing or corrupt float sidecar is reported for what it is, with no uncaught errors', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const run = async (sidecar) => {
+            window.__unhandled.length = 0;
+            const n = __make(); const v = n.radianceViewer;
+            n.onExecuted({ radiance_images: [{ filename: 'f_64x48_0.png', subfolder: '', type: 'temp',
+                hdr_sidecar: sidecar, has_hdr: true, hdr_primary: true }], fps: [24] });
+            await __until(() => v.image && v.bitDepthInfo.textContent.includes('PROXY'), 8000);
+            await __sleep(300);
+            const r = { reason: v._currentFallbackReason(), badge: v.bitDepthInfo.textContent, unhandled: [...window.__unhandled] };
+            __remove(n);
+            return r;
+        };
+        return { missing: await run('gone_0.rhdr'), corrupt: await run('bad.rhdr'), truncated: await run('trunc.rhdr') };
+    });
+    assert.deepEqual(errors, []);
+    assert.match(out.missing.reason, /no longer on the server/, out.missing.reason);
+    assert.doesNotMatch(out.missing.reason, /DecompressionStream/);
+    for (const k of ['missing', 'corrupt', 'truncated']) {
+        assert.deepEqual(out[k].unhandled, [], `${k}: uncaught promise errors`);
+        assert.match(out[k].badge, /PROXY 8-BIT/, `${k}: ${out[k].badge}`);
+    }
+});
+
+test('a video that cannot be played says so', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        await v.loadVideo('/view?filename=gone.webm&type=temp');
+        await __until(() => /no longer on the server/.test(v.container.querySelector('.radiance-viewer-message[data-kind="video"]')?.textContent || ''), 8000);
+        const r = { text: v.container.querySelector('.radiance-viewer-message[data-kind="video"]')?.textContent || '' };
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.match(out.text, /no longer on the server/);
+});
+
+test('a lost GPU context is shown, and on restore the frame, LUT and curves come back', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(2, 64, 48));
+        await __until(() => v.hdrData);
+        await __sleep(200);
+        v.renderer.loadLUT(new Float32Array(2 * 2 * 2 * 3).fill(0.5), 2);
+        const gl = v.renderer.gl;
+        const ext = gl.getExtension('WEBGL_lose_context');
+        ext.loseContext();
+        await __until(() => v.renderer._contextLost);
+        await __sleep(100);
+        const msg = v.container.querySelector('.radiance-viewer-message[data-kind="context"]');
+        const r = { lostMessage: msg?.textContent || '' };
+        ext.restoreContext();
+        await __until(() => !v.renderer._contextLost, 5000);
+        await __sleep(200);
+        r.messageGone = !v.container.querySelector('.radiance-viewer-message[data-kind="context"]');
+        r.image = !!v.renderer.textures.image;
+        r.lut = !!v.renderer.textures.lut;
+        r.curves = !!v.renderer.curveLutTexture;
+        v.render();
+        const px = new Uint8Array(4);
+        gl.readPixels(v.glCanvas.width >> 1, v.glCanvas.height >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        r.centre = [...px];
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.match(out.lostMessage, /GPU context was lost/);
+    assert.ok(out.messageGone, 'the message stayed after the context came back');
+    assert.ok(out.image, 'the frame was not uploaded again');
+    assert.ok(out.lut, 'the display LUT was not uploaded again');
+    assert.ok(out.curves, 'the curve table was not uploaded again');
+    assert.ok(out.centre[0] > 20, `the restored picture is black: ${out.centre}`);
+});
