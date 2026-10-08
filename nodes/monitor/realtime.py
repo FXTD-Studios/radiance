@@ -278,7 +278,8 @@ class RadianceFocusPeaking:
             "required": {
                 "image": ("IMAGE", {
                     "tooltip": "Image to check, returned unchanged on passthrough. Edges are measured on "
-                               "BT.709 luma, normalised to the strongest edge in each frame."}),
+                               "BT.709 luma, normalised to the strongest edge in each frame. Alpha is kept on "
+                               "focus_peak."}),
                 "threshold": ("FLOAT", {
                     "default": 0.20, "min": 0.01, "max": 1.0, "step": 0.01,
                     "tooltip": "Normalised Sobel magnitude above which a pixel is considered in-focus.",
@@ -307,8 +308,12 @@ class RadianceFocusPeaking:
         pk_frames = np.zeros_like(frames)
         color = self._COLORS.get(peak_color, (1.0, 0.0, 0.0))
 
+        # Peaking paints the colour channels; an alpha channel rides along
+        # unchanged. Until 4.0 RGBA input raised (TEN-007).
         for b in range(frames.shape[0]):
-            pk_frames[b] = _focus_peak(frames[b], threshold, color, strength)
+            pk_frames[b, ..., :3] = _focus_peak(frames[b, ..., :3], threshold, color, strength)
+        if frames.shape[-1] > 3:
+            pk_frames[..., 3:] = frames[..., 3:]
 
         log.debug("FocusPeaking: %d frame(s), thr=%.2f, color=%s", frames.shape[0], threshold, peak_color)
         return (image, _to_tensor(pk_frames))
@@ -398,8 +403,9 @@ class RadianceSplitView:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image_a": ("IMAGE", {"tooltip": "Original / reference image."}),
-                "image_b": ("IMAGE", {"tooltip": "Processed / graded image."}),
+                "image_a": ("IMAGE", {"tooltip": "Original / reference image. Alpha is ignored; the "
+                                                 "comparison is RGB."}),
+                "image_b": ("IMAGE", {"tooltip": "Processed / graded image. Alpha is ignored."}),
                 "mode": (["wipe_h", "wipe_v", "side_by_side", "diff"], {
                     "default": "wipe_h",
                     "tooltip": "wipe_h: A left, B right of a vertical line. wipe_v: A above, B below. "
@@ -415,8 +421,10 @@ class RadianceSplitView:
         }
 
     def compare(self, image_a: torch.Tensor, image_b: torch.Tensor, mode: str, position: float):
-        batch_a = _to_batch_numpy(image_a)
-        batch_b = _to_batch_numpy(image_b)
+        # The comparison is of colour: alpha is dropped from both sides, so
+        # RGBA and mixed RGB / RGBA pairs work. Until 4.0 they raised (TEN-007).
+        batch_a = _display_rgb(_to_batch_numpy(image_a))
+        batch_b = _display_rgb(_to_batch_numpy(image_b))
         n = max(batch_a.shape[0], batch_b.shape[0])
 
         out = np.zeros((n, *batch_a.shape[1:]), dtype=np.float32)
@@ -454,7 +462,8 @@ class RadianceContactSheet:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frame batch to lay out, left to right then top to bottom. Clamped to "
-                               "[0, 1] and resized through 8-bit, so display-encoded input is expected."}),
+                               "[0, 1] and resized through 8-bit, so display-encoded input is expected. Alpha "
+                               "is not shown."}),
                 "thumb_width": ("INT", {
                     "default": 160, "min": 32, "max": 512, "step": 8,
                     "tooltip": "Width of each thumbnail in pixels.",
@@ -484,7 +493,8 @@ class RadianceContactSheet:
         label_frames: bool = True,
         background: str = "Black",
     ):
-        frames = _to_batch_numpy(images)          # (B, H, W, 3)
+        # Thumbnails show colour only; until 4.0 RGBA input raised (TEN-007).
+        frames = _display_rgb(_to_batch_numpy(images))          # (B, H, W, 3)
         B, H, W, _ = frames.shape
 
         aspect = H / max(W, 1)

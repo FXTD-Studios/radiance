@@ -55,7 +55,7 @@ Render a contact sheet grid of multiple images for review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frame batch to lay out, left to right then top to bottom. Clamped to [0, 1] and resized through 8-bit, so display-encoded input is expected. |
+| `images` | IMAGE |  |  | Frame batch to lay out, left to right then top to bottom. Clamped to [0, 1] and resized through 8-bit, so display-encoded input is expected. Alpha is not shown. |
 | `thumb_width` | int | 160 | 32 to 512, step 8 | Width of each thumbnail in pixels. |
 | `max_cols` | int | 8 | 1 to 32 | Maximum number of columns. Rows are computed automatically. |
 | `label_frames` (optional) | boolean | on |  | Print the frame index below each thumbnail. |
@@ -125,7 +125,7 @@ Overlay focus-peaking highlights on edges for sharpness assessment.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to check, returned unchanged on passthrough. Edges are measured on BT.709 luma, normalised to the strongest edge in each frame. |
+| `image` | IMAGE |  |  | Image to check, returned unchanged on passthrough. Edges are measured on BT.709 luma, normalised to the strongest edge in each frame. Alpha is kept on focus_peak. |
 | `threshold` | float | 0.2 | 0.01 to 1, step 0.01 | Normalised Sobel magnitude above which a pixel is considered in-focus. |
 | `peak_color` | choice | `Red` | `Red`, `Green`, `White`, `Yellow`, `Cyan` | Overlay colour painted on pixels above threshold. |
 | `strength` | float | 0.85 | 0 to 1, step 0.05 | Blend factor for the peaking overlay. |
@@ -268,8 +268,8 @@ Side-by-side or wipe comparison between two images or versions.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image_a` | IMAGE |  |  | Original / reference image. |
-| `image_b` | IMAGE |  |  | Processed / graded image. |
+| `image_a` | IMAGE |  |  | Original / reference image. Alpha is ignored; the comparison is RGB. |
+| `image_b` | IMAGE |  |  | Processed / graded image. Alpha is ignored. |
 | `mode` | choice | `wipe_h` | `wipe_h`, `wipe_v`, `side_by_side`, `diff` | wipe_h: A left, B right of a vertical line. wipe_v: A above, B below. side_by_side: left half of A beside right half of B (fixed 50% split). diff: \|A - B\| x 4, clipped to [0, 1]. |
 | `position` | float | 0.5 | 0 to 1, step 0.01 | Wipe line position as a fraction of width (wipe_h) or height (wipe_v): 0 = all B, 1 = all A. Unused in side_by_side and diff. |
 
