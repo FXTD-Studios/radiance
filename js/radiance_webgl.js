@@ -4,6 +4,22 @@ import { RadianceRenderer } from "./radiance_renderer.js";
 // paths. See js/radiance_grade.js for what used to be four implementations.
 import { GLSL as GRADE_GLSL } from "./radiance_grade.js";
 
+/**
+ * The GPU frame-texture budget, for the whole page.
+ *
+ * It was per renderer, so every viewer got up to 3 GB of cached frame
+ * textures on a 16 GB machine, and three viewers playing at once asked the
+ * GPU for about 8 GB. The limits are now the page's, scaled to (an
+ * approximation of) machine size, and each live renderer gets an equal share.
+ */
+const _DEVICE_MEMORY_GB = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
+export const _SHARED_FRAME_CACHE = {
+    maxFrames: _DEVICE_MEMORY_GB >= 16 ? 24 : _DEVICE_MEMORY_GB >= 8 ? 16 : _DEVICE_MEMORY_GB >= 4 ? 8 : 4,
+    maxBytes: (_DEVICE_MEMORY_GB >= 16 ? 3.0 : _DEVICE_MEMORY_GB >= 8 ? 2.0 : _DEVICE_MEMORY_GB >= 4 ? 1.0 : 0.5)
+        * 1024 * 1024 * 1024,
+    renderers: new Set(),
+};
+
 class RadianceWebGLRenderer extends RadianceRenderer {
     constructor(canvas) {
         super(canvas);
@@ -47,18 +63,25 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this._bilateralProgram = null;
 
         this._frameCache = new Map();
-        const _devMem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
-        this._frameCacheMaxSize = _devMem >= 16 ? 24 : _devMem >= 8 ? 16 : _devMem >= 4 ? 8 : 4;
         // AUDIT-FIX (2026-08): count-based eviction alone is resolution-blind.
         // 24 cached frames is 400 MB at 1080p fp16 but 6.8 GB at 8K fp16 --
-        // OOM long before the count limit is reached. Evict by BYTES as well,
-        // budget scaled to (an approximation of) machine size. Both limits
-        // apply; whichever is hit first evicts.
+        // OOM long before the count limit is reached. Evict by BYTES as well.
+        // Both limits apply; whichever is hit first evicts. The limits are the
+        // page's, shared by every renderer (see _SHARED_FRAME_CACHE).
         this._frameCacheBytes = 0;
-        this._frameCacheByteBudget =
-            (_devMem >= 16 ? 3.0 : _devMem >= 8 ? 2.0 : _devMem >= 4 ? 1.0 : 0.5) * 1024 * 1024 * 1024;
+        _SHARED_FRAME_CACHE.renderers.add(this);
 
         this.init();
+    }
+
+    /** This renderer's share of the page-wide frame texture count. */
+    get _frameCacheMaxSize() {
+        return Math.max(2, Math.floor(_SHARED_FRAME_CACHE.maxFrames / _SHARED_FRAME_CACHE.renderers.size));
+    }
+
+    /** This renderer's share of the page-wide frame texture bytes. */
+    get _frameCacheByteBudget() {
+        return Math.floor(_SHARED_FRAME_CACHE.maxBytes / Math.max(1, _SHARED_FRAME_CACHE.renderers.size));
     }
 
 
@@ -1157,6 +1180,18 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     }
 
     init() {
+        // Once per renderer. The constructor runs it and the viewer called it
+        // again, which compiled every shader twice (104 of 199 ms of building
+        // a viewer), leaked the first set of programs and registered the
+        // context-loss handlers twice.
+        if (this._initResult !== undefined) return this._initResult;
+        this._initResult = this._init();
+        // A renderer without a context caches nothing, so it takes no share.
+        if (!this._initResult) _SHARED_FRAME_CACHE.renderers.delete(this);
+        return this._initResult;
+    }
+
+    _init() {
         // B-7 FIX: Use Display-P3 colorSpace if detected by initDisplayP3()
         const colorSpace = this.canvas._radianceColorSpace || 'srgb';
         const ctxAttrs = {
@@ -4843,6 +4878,11 @@ vec3 getDenoiseColor(vec2 uv) {
         // only reclaimed on GC, which browsers do lazily; ~16 add/delete cycles
         // hit Chrome's context limit and it starts killing the OLDEST context,
         // which may be the live viewer or ComfyUI's own canvas.
+        _SHARED_FRAME_CACHE.renderers.delete(this);
+        this.onContextLost = null;
+        this.onContextRestored = null;
+        this._lutSource = null;
+        this._ocioInfo = null;
         this._destroyed = true;
         try { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (e) { /* best effort */ }
 
