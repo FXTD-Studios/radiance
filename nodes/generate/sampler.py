@@ -1501,8 +1501,18 @@ class RadianceSamplerPro:
 # unguarded forward still builds and retains an autograd graph.
     @torch.no_grad()
     def _encode_sdr_reference(self, ref, vae, work):
+        # comfy.sd.VAE.encode returns the latent tensor; only the VAEEncode node
+        # wraps it in {"samples": ...}. Indexing the tensor with "samples" made
+        # every real VAE crash the sample. Accept both, and pass RGB the way
+        # VAEEncode does: a VAE given an alpha channel fails.
+        if ref.shape[-1] > 3:
+            ref = ref[..., :3]
         res = vae.encode(ref)
-        ref_latent = res["samples"]
+        ref_latent = res["samples"] if isinstance(res, dict) else res
+        if ref_latent.ndim == 5:
+            # A video VAE encodes the still as a (B, C, T, h, w) clip; its
+            # first latent frame is the image.
+            ref_latent = ref_latent[:, :, 0]
         B = work.shape[0]
         if ref_latent.shape[0] == 1 and B > 1:
             ref_latent = ref_latent.expand(B, -1, -1, -1)

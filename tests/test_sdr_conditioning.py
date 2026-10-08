@@ -352,25 +352,36 @@ def _np_sigmas(*vals):
 
 # ── Fake VAE (works with both real torch and the NpTensor stub) ───────────────
 class _FakeVAE:
-    def __init__(self, out_channels=4, scale_factor=8):
+    """Shaped like comfy.sd.VAE.encode: it returns the latent TENSOR.
+
+    Only the VAEEncode node wraps it in {"samples": ...}. This fake used to
+    return the dict, the shape the bug assumed, so the suite passed while every
+    real VAE crashed the sampler (code review P1-1). ``wrapped`` returns the
+    dict anyway, for wrappers that do; ``video`` returns a (B, C, 1, h, w) clip
+    the way a video VAE encodes a still.
+    """
+
+    def __init__(self, out_channels=4, scale_factor=8, wrapped=False, video=False):
         self._c = out_channels
         self._sf = scale_factor
+        self._wrapped = wrapped
+        self._video = video
+        self.last_input_channels = None
 
     def encode(self, pixels):
+        self.last_input_channels = int(pixels.shape[-1])
         if _HAS_REAL_TORCH:
             import torch as _rt
-            B = pixels.shape[0] if hasattr(pixels.shape, '__getitem__') else 1
-            H = pixels.shape[1]
-            W = pixels.shape[2]
-            lh = max(1, H // self._sf)
-            lw = max(1, W // self._sf)
-            return {"samples": _rt.zeros(B, self._c, lh, lw)}
+            B, H, W = pixels.shape[0], pixels.shape[1], pixels.shape[2]
+            shape = (B, self._c, 1, max(1, H // self._sf), max(1, W // self._sf))
+            latent = _rt.zeros(*shape) if self._video else _rt.zeros(*shape[:2], *shape[3:])
         else:
             d = _data(pixels) if isinstance(pixels, _NpTensor) else np.asarray(pixels)
             B, H, W, C = d.shape
             lh = max(1, H // self._sf)
             lw = max(1, W // self._sf)
-            return {"samples": _NpTensor(np.zeros((B, self._c, lh, lw), dtype=np.float32))}
+            latent = _NpTensor(np.zeros((B, self._c, lh, lw), dtype=np.float32))
+        return {"samples": latent} if self._wrapped else latent
 
 
 # ── Tensor constructor helper (works in both environments) ────────────────────
@@ -498,6 +509,39 @@ class TestEncodeSDRReference(unittest.TestCase):
         vae  = _FakeVAE(out_channels=4, scale_factor=8)
         out  = self._node()._encode_sdr_reference(ref, vae, work)
         self.assertEqual(out.shape[1], 16)
+
+    def test_a_wrapped_latent_dict_is_still_accepted(self):
+        import torch as _rt
+        work = _rt.zeros(1, 4, 16, 24)
+        ref  = _rt.rand(1, 128, 192, 3)
+        vae  = _FakeVAE(out_channels=4, scale_factor=8, wrapped=True)
+        out  = self._node()._encode_sdr_reference(ref, vae, work)
+        self.assertEqual(tuple(out.shape), tuple(work.shape))
+
+    def test_a_video_vae_still_conditions_an_image_latent(self):
+        import torch as _rt
+        work = _rt.zeros(2, 4, 16, 24)
+        ref  = _rt.rand(1, 128, 192, 3)
+        vae  = _FakeVAE(out_channels=4, scale_factor=8, video=True)
+        out  = self._node()._encode_sdr_reference(ref, vae, work)
+        self.assertEqual(tuple(out.shape), tuple(work.shape))
+
+    def test_a_video_vae_still_conditions_a_video_latent(self):
+        import torch as _rt
+        work = _rt.zeros(1, 4, 5, 16, 24)
+        ref  = _rt.rand(1, 128, 192, 3)
+        vae  = _FakeVAE(out_channels=4, scale_factor=8, video=True)
+        out  = self._node()._encode_sdr_reference(ref, vae, work)
+        self.assertEqual(tuple(out.shape), tuple(work.shape))
+
+    def test_an_rgba_reference_is_encoded_as_rgb(self):
+        # The VAEEncode node passes pixels[..., :3]; a VAE given 4 channels fails.
+        import torch as _rt
+        work = _rt.zeros(1, 4, 16, 24)
+        ref  = _rt.rand(1, 128, 192, 4)
+        vae  = _FakeVAE(out_channels=4, scale_factor=8)
+        self._node()._encode_sdr_reference(ref, vae, work)
+        self.assertEqual(vae.last_input_channels, 3)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
