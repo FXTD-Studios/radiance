@@ -39,6 +39,11 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 #: for its 15 s read timeout; until 4.0 there was no limit, so a client could
 #: pile up threads by opening connections. Extra ones get a JSON error.
 _MAX_CONNECTIONS = 16
+#: Most connections one peer address may hold, and how long one request line
+#: may take from its first byte to its newline. The read timeout is per byte,
+#: so without these one peer trickling bytes on 16 sockets held every slot.
+_MAX_PER_ADDRESS = 8
+_LINE_DEADLINE_S = 30.0
 _ATEXIT_REGISTERED = False
 
 #: An HTTP request line. A web page can fetch() to a loopback port; the bridge
@@ -101,9 +106,18 @@ def _handle(conn, addr=None):
     try:
         conn.settimeout(15.0)
         buf = b""
+        line_started = None
         while True:
             c = conn.recv(1)
             if not c:
+                return
+            if line_started is None:
+                line_started = time.monotonic()
+            elif time.monotonic() - line_started > _LINE_DEADLINE_S:
+                conn.sendall((json.dumps({
+                    "ok": False,
+                    "error": f"request too slow: no newline within {_LINE_DEADLINE_S:g} s",
+                }) + "\n").encode())
                 return
             if len(buf) > _MAX_LINE:
                 conn.sendall((json.dumps({"ok": False, "error": "request too large"}) + "\n").encode())
@@ -120,6 +134,7 @@ def _handle(conn, addr=None):
             if c == b"\n":
                 line = buf.decode("utf-8", errors="replace").strip()
                 buf = b""
+                line_started = None
                 if not line:
                     continue
                 if _HTTP_REQUEST_LINE.match(line):
@@ -191,16 +206,18 @@ def _handle(conn, addr=None):
         conn.close()
 
 
-def _refuse_busy(conn, addr=None) -> None:
-    """Answer a connection over the cap with a JSON error and close it."""
-    logger.warning("DCC Bridge: refusing %s, %d connections already open", addr, _MAX_CONNECTIONS)
+def _refuse_busy(conn, addr=None, per_address: bool = False) -> None:
+    """Answer a connection over a cap with a JSON error and close it."""
+    if per_address:
+        error = (f"DCC Bridge busy: {_MAX_PER_ADDRESS} connections already open from "
+                 "this address; close one and retry.")
+    else:
+        error = (f"DCC Bridge busy: {_MAX_CONNECTIONS} connections already open; "
+                 "close one and retry.")
+    logger.warning("DCC Bridge: refusing %s: %s", addr, error)
     try:
         conn.settimeout(1.0)
-        conn.sendall((json.dumps({
-            "ok": False,
-            "error": f"DCC Bridge busy: {_MAX_CONNECTIONS} connections already open; "
-                     "close one and retry.",
-        }) + "\n").encode())
+        conn.sendall((json.dumps({"ok": False, "error": error}) + "\n").encode())
     except OSError as _exc:
         logger.debug("[Radiance] _refuse_busy(): %s: %s", type(_exc).__name__, _exc)
     finally:
@@ -221,12 +238,21 @@ def start_server(port: int = None, host: str = None) -> str:
         atexit.register(stop_server)
         _ATEXIT_REGISTERED = True
     slots = threading.BoundedSemaphore(_MAX_CONNECTIONS)
+    per_peer: dict = {}
+    per_peer_lock = threading.Lock()
+
+    def _release(peer):
+        with per_peer_lock:
+            per_peer[peer] -= 1
+            if not per_peer[peer]:
+                del per_peer[peer]
+        slots.release()
 
     def _serve(conn, addr):
         try:
             _handle(conn, addr)
         finally:
-            slots.release()
+            _release(addr[0] if addr else "")
 
     def _run():
         global _SERVER, _BOUND_LOOPBACK
@@ -251,13 +277,21 @@ def start_server(port: int = None, host: str = None) -> str:
                 try:
                     conn, addr = _SERVER.accept()
                     logger.debug(f"DCC Bridge connection from {addr}")
+                    peer = addr[0] if addr else ""
+                    with per_peer_lock:
+                        crowded = per_peer.get(peer, 0) >= _MAX_PER_ADDRESS
+                    if crowded:
+                        _refuse_busy(conn, addr, per_address=True)
+                        continue
                     if not slots.acquire(blocking=False):
                         _refuse_busy(conn, addr)
                         continue
+                    with per_peer_lock:
+                        per_peer[peer] = per_peer.get(peer, 0) + 1
                     try:
                         threading.Thread(target=_serve, args=(conn, addr), daemon=True).start()
                     except Exception:
-                        slots.release()
+                        _release(peer)
                         conn.close()
                         raise
                 except socket.timeout:
