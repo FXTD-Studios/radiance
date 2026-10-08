@@ -1092,15 +1092,22 @@ def _seedvr2_infer(
     eff_prompt = prompt or "high quality, temporally consistent, sharp details"
     B, H, W, C = frames_bhwc.shape
 
+    # SeedVR2 sees RGB; alpha is resized, not inferred, as on Tier 2 and
+    # SD x4. Until 4.0 it got all channels natively and returned three on
+    # the generic path, which the four-channel accumulator rejected.
+    def _with_alpha(rgb_bhwc: torch.Tensor) -> torch.Tensor:
+        rgb = rgb_bhwc.clamp(0, 1).permute(0, 3, 1, 2)
+        return _with_resized_alpha(frames_bhwc, rgb)
+
     # SeedVR2 native API (numz package)
     if hasattr(pipe, "upscale_batch"):
         with torch.inference_mode():
             result = pipe.upscale_batch(
-                frames_bhwc.to(pipe.device),
+                frames_bhwc[..., :3].to(pipe.device),
                 prompt=eff_prompt,
                 num_inference_steps=steps,
             )
-        return result.clamp(0, 1)
+        return _with_alpha(result)
 
     # diffusers DiffusionPipeline generic path
     results = []
@@ -1116,7 +1123,7 @@ def _seedvr2_infer(
             np.array(out).astype("float32")
         ) / 255.0)
 
-    return torch.stack(results, dim=0).clamp(0, 1)
+    return _with_alpha(torch.stack(results, dim=0))
 
 
 def _diffusion_upscale_infer(
@@ -2715,9 +2722,16 @@ def _composite_face(
     # Only colour is composited; an alpha channel keeps its original values.
     # Until 4.0 a 3-channel restored face was repeated to fill 4 channels, so
     # the face's red channel was written into the alpha.
-    nc     = min(C, 3)
-    face_c = face_hwc[:, :, :nc] if face_hwc.shape[2] >= nc else \
-             face_hwc.repeat(1, 1, nc // face_hwc.shape[2] + 1)[:, :, :nc]
+    # Grey (+ alpha) images take the face's BT.709 luma; min(C, 3) made a
+    # grey + alpha image's alpha the face's green.
+    nc     = 3 if C >= 3 else 1
+    if nc == 1 and face_hwc.shape[2] >= 3:
+        face_c = (0.2126 * face_hwc[:, :, 0:1] + 0.7152 * face_hwc[:, :, 1:2]
+                  + 0.0722 * face_hwc[:, :, 2:3])
+    elif face_hwc.shape[2] >= nc:
+        face_c = face_hwc[:, :, :nc]
+    else:
+        face_c = face_hwc.repeat(1, 1, nc // face_hwc.shape[2] + 1)[:, :, :nc]
 
     region  = result[y1:y2, x1:x2, :nc]
     blended = face_c * mask + region * (1.0 - mask)
