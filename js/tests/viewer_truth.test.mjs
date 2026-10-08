@@ -523,6 +523,30 @@ if (!skip) {
             });
         });
 
+        // M7: NaN and Inf are flagged and counted.
+        await guard('m7', async () => {
+            await load(msg(entry('naninf.rhdr', LIN)), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                await window.__waitFor(() => v.hdrData?.data, 5000);
+                v.render(); await window.__sleep(100);
+                const nan = window.__sampleImg(v, 12 / 64, 24 / 48);
+                const inf = window.__sampleImg(v, 44 / 64, 24 / 48);
+                const grey = window.__sampleImg(v, 30 / 64, 10 / 48);
+                v.updateBottomBar?.();
+                const hud = (v.container.textContent || '').replace(/\s+/g, ' ');
+                const m = /(\d+)\s*NaN/.exec(hud), n = /(\d+)\s*Inf/.exec(hud);
+                // Below 100 % the footprint path must flag them too.
+                v.setZoom(0.5); await window.__sleep(100); v.render();
+                const px1 = (u, w) => Array.from(v.canvas.getContext('2d').getImageData(
+                    Math.floor(v.panX + u * v.imageWidth * v.zoom), Math.floor(v.panY + w * v.imageHeight * v.zoom), 1, 1).data.slice(0, 3));
+                const fitNan = px1(12 / 64, 24 / 48);
+                const fitInf = px1(44 / 64, 24 / 48);
+                return { nan, inf, grey, fitNan, fitInf, nanCount: m ? Number(m[1]) : null, infCount: n ? Number(n[1]) : null,
+                    rawInf: v.hdrData?.data ? v.hdrData.data[(24 * 64 + 44) * 4] : null };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -759,6 +783,21 @@ test('M6: false colour uses the source gamut luminance row', { skip: skip || ok(
 });
 
 // ── M7 ──────────────────────────────────────────────────────────────────────
+
+test('M7: NaN and Inf pixels have their own colour, not black', { skip: skip || ok(R.m7) }, () => {
+    const { nan, inf, grey } = R.m7;
+    const differs = (a, b) => a.some((c, i) => Math.abs(c - b[i]) > 40);
+    assert.ok(differs(nan, [0, 0, 0]) && differs(nan, grey), `NaN shows as ${nan}`);
+    assert.ok(differs(inf, grey), `Inf shows as ${inf}`);
+    assert.ok(differs(inf, nan), `Inf and NaN share a colour: ${inf}`);
+    assert.ok(!differs(R.m7.fitNan, nan), `NaN at 50 %: ${R.m7.fitNan}, at 100 % ${nan}`);
+    assert.ok(!differs(R.m7.fitInf, inf), `Inf at 50 %: ${R.m7.fitInf}, at 100 % ${inf}`);
+});
+
+test('M7: the HUD counts NaN and Inf for the frame', { skip: skip || ok(R.m7) }, () => {
+    assert.equal(R.m7.nanCount, 64);
+    assert.equal(R.m7.infCount, 64);
+});
 
 // ── M8 ──────────────────────────────────────────────────────────────────────
 

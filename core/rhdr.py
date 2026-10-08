@@ -82,7 +82,11 @@ def _encode_parts(pixels, fp32: bool, level: int) -> Tuple[bytes, bytes]:
         samples = pixels.astype(np.float32)
         flags = FLAG_FP32
     else:
-        samples = np.clip(pixels, -FP16_MAX, FP16_MAX).astype(np.float16)
+        # Finite values past the fp16 range clamp to +-65504; a value that
+        # is already +-inf stays inf, so the Viewer can flag it. Clamping it
+        # made an Inf in the source indistinguishable from a bright pixel.
+        # NaN passes through np.clip unchanged.
+        samples = np.where(np.isinf(pixels), pixels, np.clip(pixels, -FP16_MAX, FP16_MAX)).astype(np.float16)
         flags = FLAG_FP16
     return HEADER.pack(MAGIC, w, h, c, flags), zlib.compress(samples.tobytes(), level=level)
 
@@ -91,7 +95,8 @@ def encode(pixels, *, fp32: bool = False, level: int = 0) -> bytes:
     """The complete .rhdr file for an (H, W) or (H, W, C) float array.
 
     fp32 writes the samples as float32 (flags 1). Otherwise they are written as
-    float16 (flags 0), clamped to +-65504 first.
+    float16 (flags 0), finite values clamped to +-65504 first; +-inf and NaN
+    are written as themselves.
     ``level`` is the zlib level; 0 stores, which is what the Viewer writes
     because compressing cost far more time than it saved.
 
