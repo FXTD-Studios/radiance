@@ -265,10 +265,9 @@ fn apply_log_wheels(col: vec3f, shadow: vec3f, mid: vec3f, highlight: vec3f) -> 
 }
 
 fn apply_printer_lights(col: vec3f) -> vec3f {
-    let r = f32(u.printer_r) * 0.01;
-    let g = f32(u.printer_g) * 0.01;
-    let b = f32(u.printer_b) * 0.01;
-    return col * (1.0 + vec3f(r, g, b));
+    // 12 printer points make a stop, as in the WebGL shader.
+    let pts = vec3f(f32(u.printer_r), f32(u.printer_g), f32(u.printer_b));
+    return col * exp2(pts / 12.0);
 }
 
 fn hue_rotate(col: vec3f, angle: f32) -> vec3f {

@@ -68,7 +68,7 @@ const FULL = {
     exposure: 0.5, temperature: 0.3, tint: -0.1, contrast: 1.25, pivot: 0.18, saturation: 1.15,
     lift: [0.02, 0, -0.01], gamma: [1.1, 1, 0.95], gain: [1.05, 1, 0.97], offset: [0.01, 0, 0],
     shadows: 0.2, highlights: -0.2, colorBoost: 0.15, lumaMix: 0.6, hueShift: 8,
-    printerR: 4, printerG: 0, printerB: -3,
+    printerR: 1, printerG: 0, printerB: -1,   // about 0.08 stop at 12 points to the stop
     logShadow: [0.05, 0, 0], logMidtone: [0, 0.03, 0], logHighlight: [0, 0, -0.05],
     curveTable: curve, curveMix: 1,
 };

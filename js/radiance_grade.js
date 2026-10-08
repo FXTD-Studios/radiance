@@ -336,9 +336,13 @@ export function applyLogWheels(rgb, shadow, midtone, highlight) {
     return rgb.map((v, i) => v * (1 + s3[i] * sw + m3[i] * mw + h3[i] * hw));
 }
 
+/** Printer points per stop: one point is 0.025 log exposure, so 12 make a stop. */
+export const PRINTER_POINTS_PER_STOP = 12;
+
 export function applyPrinterLights(rgb, r, g, b) {
     if (!r && !g && !b) return rgb;
-    return [rgb[0] * Math.pow(2, (r || 0) / 50), rgb[1] * Math.pow(2, (g || 0) / 50), rgb[2] * Math.pow(2, (b || 0) / 50)];
+    const k = PRINTER_POINTS_PER_STOP;
+    return [rgb[0] * Math.pow(2, (r || 0) / k), rgb[1] * Math.pow(2, (g || 0) / k), rgb[2] * Math.pow(2, (b || 0) / k)];
 }
 
 export function applyShadowsHighlights(rgb, shadows, highlights) {

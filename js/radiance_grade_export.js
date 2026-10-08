@@ -18,6 +18,7 @@ import {
     gradePixelFull, whiteBalanceGains, linToACEScct, acescctToLin, toAP1, fromAP1,
     isIdentityCurveTable, isIdentitySecondaryTable,
     PIVOT_DEFAULT, PIVOT_FLOOR, GAMMA_FLOOR, CONTRAST_MIN, CONTRAST_MAX, EXPOSURE_MIN, EXPOSURE_MAX,
+    PRINTER_POINTS_PER_STOP,
 } from './radiance_grade.js';
 
 const v3 = (v, d) => (Array.isArray(v) && v.length >= 3 ? v.map(Number) : [d, d, d]);
@@ -106,7 +107,7 @@ export function cdlFromGrade(state = {}) {
                 dropped.push('Contrast 0 (flattens to the pivot)');
             }
         }
-        const pl = [s.printerR, s.printerG, s.printerB].map((x) => Math.pow(2, (Number(x) || 0) / 50));
+        const pl = [s.printerR, s.printerG, s.printerB].map((x) => Math.pow(2, (Number(x) || 0) / PRINTER_POINTS_PER_STOP));
         if (pl.some((x) => x !== 1)) {
             slope = slope.map((v, i) => v * Math.pow(pl[i], 1 / power[i]));
             offset = offset.map((v, i) => v * Math.pow(pl[i], 1 / power[i]));
