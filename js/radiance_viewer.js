@@ -11157,10 +11157,19 @@ self.onmessage = async ({ data: { id, url } }) => {
             // Ensure WebGL canvas is backend-only (hidden)
             this.glCanvas.style.visibility = 'hidden';
 
-            // 1. Resize/Init WebGL Canvas to Image Size (Texture size)
-            if (this.glCanvas.width !== this.imageWidth || this.glCanvas.height !== this.imageHeight) {
-                this.glCanvas.width = this.imageWidth;
-                this.glCanvas.height = this.imageHeight;
+            // 1. Size the WebGL canvas. H10: below 100 % it is the size it is
+            // shown at, and the shader averages each pixel's footprint in
+            // linear light before the view transform (u_minify). It was
+            // always the image size and the 2D blit below shrank the finished
+            // display image, which averages code values: one-pixel black and
+            // white stripes showed 128 at Fit instead of 188, so fine detail
+            // read about 1.3 stops dark.
+            const shown = Math.min(1, this.zoom || 1);
+            const glW = Math.max(1, Math.round(this.imageWidth * shown));
+            const glH = Math.max(1, Math.round(this.imageHeight * shown));
+            if (this.glCanvas.width !== glW || this.glCanvas.height !== glH) {
+                this.glCanvas.width = glW;
+                this.glCanvas.height = glH;
             }
 
             // 2. Update renderer state from UI controls (GPU parameters)
@@ -11357,8 +11366,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ctx.imageSmoothingEnabled = this.pixelFilter !== 'nearest';
             }
 
-            // Draw the GPU-rendered image
-            ctx.drawImage(this.glCanvas, 0, 0);
+            // Draw the GPU-rendered image (smaller than the frame below 100 %)
+            ctx.drawImage(this.glCanvas, 0, 0, this.imageWidth, this.imageHeight);
 
             ctx.restore();
 

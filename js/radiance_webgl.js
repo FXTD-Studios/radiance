@@ -1268,11 +1268,26 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     grabReferenceStill() {
         const gl = this.gl;
 
-        // Read current framebuffer pixels
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        // The picture as shown, at full size. H10: the canvas is the size it
+        // is displayed at below 100 %, so the still is rendered off-screen at
+        // the frame's own size rather than read from the canvas.
+        const w = this.imageWidth || this.canvas.width;
+        const h = this.imageHeight || this.canvas.height;
         const pixels = new Uint8Array(w * h * 4);
+        const stillTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, stillTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        const stillFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, stillFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stillTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this._exportFBO = { fbo: stillFbo, width: w, height: h };
+        try { this.render(this._lastLutStrength ?? 1.0); } finally { this._exportFBO = null; }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, stillFbo);
         gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(stillFbo);
+        gl.deleteTexture(stillTex);
 
         // Release previous texture at this slot
         const slot = this.activeShelfIndex;
@@ -1995,6 +2010,7 @@ ${GRADE_GLSL}
             uniform int u_displayLutMode;
             uniform int u_inputLutMode;
             uniform int u_sourceGamut;
+            uniform float u_minify;            // H10: source pixels per output pixel (>= 1)
             uniform float u_displayLutStrength;
 
             // v2.2 Pro Comparison
@@ -2559,6 +2575,26 @@ const float GOLDEN_ANGLE = 2.39996323;
                 vec3 higher = pow((srgb + vec3(0.055)) / vec3(1.055), vec3(2.4));
                 vec3 lower = srgb / vec3(12.92);
                 return mix(higher, lower, vec3(cutoff));
+            }
+
+            // H10: an output pixel smaller than a source pixel's footprint
+            // averages the footprint in linear light, before the view
+            // transform: a box of up to 8 x 8 taps, each decoded first. At
+            // 1/2 and 1/4 the taps land on texel centres, so the box is exact.
+            vec3 sampleFootprintLinear(vec2 uv) {
+                float n = clamp(ceil(u_minify - 1e-3), 1.0, 8.0);
+                vec2 span = u_minify / u_texSize;
+                vec3 acc = vec3(0.0);
+                for (int j = 0; j < 8; j++) {
+                    if (float(j) >= n) break;
+                    for (int i = 0; i < 8; i++) {
+                        if (float(i) >= n) break;
+                        vec2 o = (vec2(float(i), float(j)) + 0.5) / n - 0.5;
+                        vec3 s = texture(u_image, uv + o * span).rgb;
+                        acc += u_isLinear ? s : sRGBToLinear(s);
+                    }
+                }
+                return acc / (n * n);
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -3206,19 +3242,24 @@ vec3 getDenoiseColor(vec2 uv) {
             // But we can call it with radius 0.0 to get CA
             if (u_lensFringe > 0.0) {
                 color = getBokehColor(uv, 0.0);
+            } else if (u_minify > 1.0) {
+                color = sampleFootprintLinear(uv);     // H10: already linear
             } else {
                 color = texture(u_image, uv).rgb;
             }
         }
+        bool preLinear = !u_dofEnabled && u_lensFringe <= 0.0 && u_minify > 1.0;
+
 
         // 1a. Denoise
         if (u_denoise > 0.0) {
             vec3 smoothColor = getDenoiseColor(uv);
+            if (preLinear && !u_isLinear) smoothColor = sRGBToLinear(smoothColor);
             color = mix(color, smoothColor, u_denoise);
         }
 
         // 1b. Linearize
-        if (!u_isLinear) {
+        if (!u_isLinear && !preLinear) {
             color = sRGBToLinear(color);
         }
 
@@ -4560,6 +4601,8 @@ vec3 getDenoiseColor(vec2 uv) {
         // I-10: Skip rendering when WebGL context is lost
         if (this._contextLost || !program || !this.textures.image) return;
 
+        this._lastLutStrength = lutStrength;
+
         // ── v4.0: Run multi-pass bloom chain before composite ────────────────
         // This renders to offscreen FBOs and does NOT touch the display framebuffer.
         const bloomTex = this._renderBloomChain();
@@ -4676,6 +4719,11 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_maskShowOverlay', this.maskShowOverlay ? 1 : 0);
 
         this._uf2(program, 'u_texSize', this.imageWidth, this.imageHeight);
+        // H10: how many source pixels each output pixel covers, from the
+        // target's own width (the canvas shrinks below 100 %; exports and the
+        // scopes render at full size and get 1).
+        const outW = exportTarget ? (exportTarget.fullW || exportTarget.width) : this.canvas.width;
+        this._uf1(program, 'u_minify', Math.max(1, (this.imageWidth || outW) / Math.max(1, outW)));
 
         // Bind Image (Unit 0)
         gl.activeTexture(gl.TEXTURE0);
