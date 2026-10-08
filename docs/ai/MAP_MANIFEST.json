@@ -72,7 +72,7 @@
   "source_files": [
     {
       "path": "__init__.py",
-      "sha256": "23de2f396ca258492cc2f9f4bda14bf3c24d48bf441024f3f554ce702f71ed9e"
+      "sha256": "876823a9aa79ce4ea1699ec3df409f74fc9c1bc89d0974614ea7fbf04f7c1d5e"
     },
     {
       "path": "config/constants.py",
@@ -84,7 +84,7 @@
     },
     {
       "path": "config/dependencies.py",
-      "sha256": "525729ad25ce30c96fa8ce7cd77fddd241f444ffffcf9074e44d006c4f5c437b"
+      "sha256": "90a684866735aeec1dfbe42f9748116a11bf85d17ab7ab9ed0194f5aacd155f6"
     },
     {
       "path": "config/model_map.py",
@@ -164,7 +164,7 @@
     },
     {
       "path": "color/pipeline.py",
-      "sha256": "3defa3ea87c6ffe2805e60eb1e5a94d7a43b732c67a7ef36a8069f403563ed88"
+      "sha256": "f6fcf78bdcf152fa425456156c4893fb00bb8f8dd334308e07ea51767d79f43c"
     },
     {
       "path": "color/ocio_setup.py",
@@ -212,7 +212,7 @@
     },
     {
       "path": "core/video.py",
-      "sha256": "e5e49351936213df58e1ffd6035a8fe5c284eb98c3fad5d1ffa1faf5fec9c018"
+      "sha256": "c583a00d89a96a44b517a3a604459961a9493661cfc17acde01ba46a4a5bbf09"
     },
     {
       "path": "core/ffmpeg.py",
@@ -228,7 +228,7 @@
     },
     {
       "path": "core/model_fetch.py",
-      "sha256": "4e4da1c3cc3cd7aad0a32a76b169831a813a1f52d654f6670c05ff78bd295098"
+      "sha256": "b35ee3e35031c9a16faac9dfe360a126bf5d5d36fb9a6da71f59bf21ef927ea5"
     },
     {
       "path": "core/errors.py",
@@ -240,15 +240,15 @@
     },
     {
       "path": "io/reader.py",
-      "sha256": "769a1815b4bde9f073340c8de80c689486ba028a0482a80d91685f6a067d87e2"
+      "sha256": "5b9da3b96abf0f0ab1453fc70235bc99970faaebffb26d45f051fb7eaf7f8dad"
     },
     {
       "path": "io/writer.py",
-      "sha256": "dfee8ac6656be79fb70f9e57d7296a6418b9287371db930138766ec79d4232d6"
+      "sha256": "5384e7ae425ba748bad8058743ca0b2420f014b9d572f94f5a5ef8e8beeddafb"
     },
     {
       "path": "nodes/io/write.py",
-      "sha256": "72b39af380197b64b18da0f5d8edc4c51b57398840fbb24fdfb3a439e4f92066"
+      "sha256": "ad28296d6eb5559b56eeed2090bf13ad40dea6dee104bcee4a8e5ebe81d5855f"
     },
     {
       "path": "delivery/handler.py",
@@ -392,11 +392,11 @@
     },
     {
       "path": "nodes/upscale/upscale.py",
-      "sha256": "1b8b3f5016ea7bba11cda77a5042bb6decd6000274ae8c324da7178d614975ca"
+      "sha256": "7ae874288f969f43b951e9af991ab83400ef9bca50b21c33433fc21b2cc2819f"
     },
     {
       "path": "image/upscale.py",
-      "sha256": "8dd81bbe5780988f5800004792bb8844dd1b34c127e2d21f406fb3888c8ef028"
+      "sha256": "9f26c765797b8099ee001e985ea202d7257cb1fade6bccc7571f2b4005dd8edc"
     },
     {
       "path": "image/defects.py",
@@ -408,7 +408,7 @@
     },
     {
       "path": "nodes/monitor/realtime.py",
-      "sha256": "f5490549a924aa41b0639d7491a8787749edd3e9af639253131ca9e5dc4c0262"
+      "sha256": "9ed81fab558c3f4d7864887d4581298a88babd2196efb939fedd80b9d412866c"
     },
     {
       "path": "nodes/video/t2v.py",
@@ -432,19 +432,19 @@
     },
     {
       "path": "nodes/pipeline/audio.py",
-      "sha256": "94c52f3c3331deef7e926608d5fbbf29cac6a04955fe7275106caa9563873c7b"
+      "sha256": "7a86f15e05b998ad51a016d5ed020119d878087cd7956a9a5eba4d652e693691"
     },
     {
       "path": "nodes/pipeline/dcc.py",
-      "sha256": "f90136ee4a33f640f43e1f8b9c32c29e77d44a57577d8ec919ff76c1d0a8c951"
+      "sha256": "783b0845a0bc6d325d71b9f9d23da996aa860b8061b0ada3220039cb51167fed"
     },
     {
       "path": "nodes/pipeline/studio_integrations.py",
-      "sha256": "b3206e83865b0ce33a864c8f9cf9cfb93ca2512112061c7cd5d46a4b49ca42c5"
+      "sha256": "436c196b7d0ce379a09978e63bf5fdea859c1f6673dc02f5c8aee290e83ccb7d"
     },
     {
       "path": "tools/nuke_connector.py",
-      "sha256": "7950b193d09142b8ec56e8dba4a18e21439d40801a5d88aab8ad8ad02c1cda05"
+      "sha256": "f71904005d7ae14d4284438934e7bcefa51292ddd5873fdbc8c22255a63e2000"
     },
     {
       "path": "tools/resolve_import.py",

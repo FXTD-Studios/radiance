@@ -55,4 +55,4 @@ About 21 colour, ACES, OCIO, CDL, and LUT test files (`tests/test_aces2*`, `test
 ## Open questions
 
 See OPEN_QUESTIONS: the bundled config's version against the fallback, the ACESConfigManager
-download, duplicated curves, and the input transform that applies no gamut matrix.
+download and duplicated curves. Since 4.0 the input transform applies the camera-gamut matrix (B16).
