@@ -25,7 +25,7 @@ ComfyUI imports custom_nodes/radiance/__init__.py
  -> validate_runtime_dependencies(logger)         config/dependencies.py (return value ignored)
  -> _configure_ocio() -> color/ocio_setup.configure_ocio   (sets $OCIO if unset; never fatal)
  -> _load_comfyui_nodes(): load_node_mappings([.nodes required])   (cached module, no re-run)
- -> report_node_load_health()  ERROR if failures or < 156
+ -> report_node_load_health()  ERROR if failures or < 152
  -> register_run_grouping()    PromptServer on_prompt hook
 ```
 
@@ -148,9 +148,10 @@ ensure_model_exists (loader_utils:~89) -> name in RADIANCE_MODEL_MAP?
 There is no cancellation path. Interrupting ComfyUI mid-download leaves a `.part` file, which is
 resumed next time.
 
-This is the `fetch` path only. Multipass (MoGe `hf_hub_download`, Marigold `snapshot_download`),
-Depth Anything (`from_pretrained`), SD-x4 (`from_pretrained`), the RUDRA `pixel_download`, and
-ACESConfigManager each use their own mechanism. See OPEN_QUESTIONS B17.
+This is the `fetch` path. ACESConfigManager uses it since 4.0. Multipass (MoGe `hf_hub_download`,
+checked against `MOGE_SHA256`; Marigold `snapshot_download`, checked against the Hub's hashes at the
+pinned commit), Depth Anything (`from_pretrained`), SD-x4 (`from_pretrained`) and the RUDRA
+`pixel_download` use their own mechanism. See OPEN_QUESTIONS B17.
 
 ## W9. Multipass estimate, relight, and pass export
 

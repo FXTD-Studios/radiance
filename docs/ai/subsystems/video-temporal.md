@@ -33,7 +33,7 @@ Model loading belongs to [generate](generate.md). Video file decode and encode b
 - **Frame count:** the noise latent has `ceil(frames/tc)` frames, and decode expects `(T-1)·tc+1`. A request that isn't `k·tc+1` comes back shorter (Inferred; for example 24 frames returns 21). `Resolution` validates `stride·k+1` (`resolution.py:1235-1255`).
 - **fps** is a `Fraction` in `core/video.VideoInfo`, a float at the Read node output (exact value in `metadata_json.fps_exact`), and a FLOAT widget wherever a node needs it. **No video node carries fps between nodes.** Implemented.
 - **Long-video windowing is experimental and off by default.** `KNOWN_ISSUES.md` (line 4 and the 2026-09-26 section) records failed visual acceptance: join ghosting and doubled objects. Implemented (doc quote) and code location identified.
-- **AudioTranscribe** gets its key from `resolve_secret`, where the env var named by `openai_api_key_env` takes precedence over the widget. It has **no consent gate** for the upload or the whisper weights. Errors are returned as transcript text. Implemented.
+- **AudioTranscribe** gets its key from `resolve_secret`, where the env var named by `openai_api_key_env` takes precedence over the widget. The whisper weight download (package and CLI) asks for download consent since 4.0; the OpenAI upload happens only when that backend is chosen, or on Auto with a key and no local whisper. Errors are returned as transcript text. Implemented.
 
 ## Important paths
 

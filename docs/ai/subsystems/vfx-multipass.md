@@ -19,7 +19,7 @@ generic EXR IO (see io). `EXRPassesWriter` writes through `hdr/io.py`, not `io/w
 | `RadianceOpticalFlow` (`motion.py:13`) | OpenCV DIS, or pure-torch Lucas-Kanade when cv2 is missing | Implemented |
 | `RadianceMotionBlur`, `LensDistortion`, `ChromaticAberration`, `AnamorphicStreaks`, `FilmGrain`, `Vignette` | Classical `grid_sample` or convolution | Implemented |
 | `RadianceLinearMatting` (`masking.py:127`) | Guided filter plus trimap band. No learned matting | Implemented |
-| `RadianceSAMModelLoader`, `RadianceSAMGenerator` | `DEPRECATED=True`. Both raise `_SAM_NOT_SHIPPED`. **No SAM model ships** | Implemented |
+| (removed in 4.0) `RadianceSAMModelLoader`, `RadianceSAMGenerator` | Were hidden placeholders that raised; no SAM model ships | Removed |
 | `RadianceHDRCrop` / `HDRStitch` / `TemporalStitchStabilizer` (`inpaint.py`) | Union bbox crop, then a feathered or Laplacian stitch, then a temporal Gaussian | Implemented |
 | `RadianceHDRGrainMatcher`, `SubpixelStabilizer` (`plate.py`) | log2 high-pass grain transfer. FFT phase correlation, translation only | Implemented |
 | `RadianceVideoMaskPropagator` (`mask_propagate.py:15`) | Warps keyframe masks along the flow. Fills empty frames only | Implemented |
@@ -53,8 +53,8 @@ generic EXR IO (see io). `EXRPassesWriter` writes through `hdr/io.py`, not `io/w
 | Model | Mechanism | Gate | Integrity | Label |
 | --- | --- | --- | --- | --- |
 | Depth Anything V2 | `from_pretrained` at a pinned commit, stored in the HF cache | `local_files_only = not downloads_allowed()` | HF revision pin | Implemented |
-| MoGe-2 | `hf_hub_download` at a pinned revision into `models/geometry_estimation/` | widget AND `downloads_allowed()` | **Size check only.** `MOGE_SHA256` is read only by a test and `tools/pin_models.py` | Implemented |
-| Marigold IID | `snapshot_download` at a pinned revision into `models/radiance/marigold/` | same | File-presence check, no hash | Implemented |
+| MoGe-2 | `hf_hub_download` at a pinned revision into `models/geometry_estimation/` | widget AND `downloads_allowed()` | Size and SHA-256 (`MOGE_SHA256`, since 4.0); a mismatch deletes the download | Implemented |
+| Marigold IID | `snapshot_download` at a pinned revision into `models/radiance/marigold/` | same | Each file checked against the Hub's LFS sha256 or git blob id at the pinned commit (4.0); a mismatch deletes it | Implemented |
 | DSINE (legacy) | `torch.hub.load(..., trust_repo=True)` and `_download_model` | Partial | Unpinned | Implemented code. **Unreachable in production**: only `_legacy_extract` calls it, and only a test calls that (mapper) |
 
 **Memory:** Depth Anything is cached in VRAM as fp16 on CUDA, which contradicts its docstring

@@ -16,8 +16,8 @@ Nothing was run, imported, or tested. This map is a navigation aid, not a substi
 
 ## Purpose and execution
 
-Radiance (v3.5.4) is a ComfyUI custom-node package for HDR, colour management, VFX, review,
-and delivery. It publishes 156 nodes and ships a browser viewer and dashboards. ComfyUI imports
+Radiance (v4.0.0) is a ComfyUI custom-node package for HDR, colour management, VFX, review,
+and delivery. It publishes 152 nodes and ships a browser viewer and dashboards. ComfyUI imports
 the repo root as the `radiance` package (Implemented, mapper):
 
 - `__init__.py:38` imports `.nodes.registry`, which runs `nodes/__init__.py` **first**. That loads all 10 groups in `nodes/catalog.py:NODE_GROUPS`, plus gizmos and branding.
@@ -47,7 +47,7 @@ ComfyUI's `PromptServer`. Three optional sockets start only when their node runs
 ## Contracts that must not change accidentally
 
 - **IMAGE** is float32 `(B,H,W,C)` with C in {1,3,4}. Alpha is straight. MASK is `(B,H,W)`. The working space defaults to scene-linear Rec.709 and is unbounded (`core/tensor/alpha.py`, `color/encodings.py:WORKING_SPACES`). Implemented.
-- **Node keys** in `NODE_CLASS_MAPPINGS` are the saved-workflow API. The floor is `config/constants.py:EXPECTED_MIN_NODE_COUNT = 156`, checked against `tests/node_keys_snapshot.json`. Implemented.
+- **Node keys** in `NODE_CLASS_MAPPINGS` are the saved-workflow API. The floor is `config/constants.py:EXPECTED_MIN_NODE_COUNT = 152`, checked against `tests/node_keys_snapshot.json`. Implemented.
 - **`radiance_meta` on HDR latents** carries a fingerprint. The decoder drops the HDR keys once a sampler changes the latent (`hdr/decode_meta.py:verify_radiance_meta`). Implemented.
 - **`.rhdr` sidecar**: `RHDR`, then w/h/c/flags as uint16, then zlib data. Flag 0 means fp16 (always clamped to ±65504), 1 means fp32. One encoder, `core/rhdr.py`, used by `nodes/monitor/viewer.py` (frames and zdepth) and `hdr/vae.py:_save_rhdr`. One reader, `js/radiance_viewer.js`. Change the two together; `tests/test_rhdr_writers.py` pins what each writer produces. Implemented (fix pass).
 - **`RADIANCE_PASSES`**: depth is metric with far = larger, normals are +Z toward the camera, motion is +y up. Other VFX nodes use different conventions; see [vfx-multipass](subsystems/vfx-multipass.md#contracts). Implemented.
