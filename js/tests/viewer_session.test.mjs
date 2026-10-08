@@ -31,6 +31,48 @@ async function inPage(fn, arg) {
     }
 }
 
+// ── C5: one panel per viewer ────────────────────────────────────────────────
+
+test('two viewers each keep a full control panel of their own', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const count = (v) => v.rightControlPanel?.querySelectorAll('*').length || 0;
+        const a = __make(); await __sleep(300);
+        const A = a.radianceViewer;
+        const alone = count(A);
+        const b = __make(); await __sleep(300);
+        const B = b.radianceViewer;
+        const r = { alone, aWithB: count(A), b: count(B),
+            aPanelInA: A.rightControlPanel.contains(A.controlsPanel),
+            bPanelInB: B.rightControlPanel.contains(B.controlsPanel),
+            distinct: A.controlsPanel !== B.controlsPanel };
+
+        // Exposure on B's GRADE tab changes B, and only B.
+        const gradeTab = B.controlsPanel.querySelector('[data-tab-id="grade"]');
+        gradeTab.click();
+        const row = [...B.controlsPanel.querySelectorAll('.radiance-ref-slider')]
+            .find((el) => el.querySelector('label')?.textContent.trim() === 'Exposure');
+        const input = row.querySelector('input[type="range"]');
+        input.value = '2';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        r.exposure = { A: A.exposure || 0, B: B.exposure || 0 };
+
+        // Deleting B leaves A whole.
+        __remove(b); await __sleep(200);
+        r.aAfterRemoveB = count(A);
+        r.aPanelStillInA = A.rightControlPanel.contains(A.controlsPanel);
+        __remove(a);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.alone > 50, `a lone viewer's panel has ${out.alone} elements`);
+    assert.ok(out.aWithB > 50, `viewer A's panel dropped to ${out.aWithB} elements when B was added`);
+    assert.ok(out.b > 50);
+    assert.ok(out.distinct && out.aPanelInA && out.bPanelInB, JSON.stringify(out));
+    assert.deepEqual(out.exposure, { A: 0, B: 2 }, 'moving Exposure in B did not change B alone');
+    assert.ok(out.aAfterRemoveB > 50, `deleting B left A with ${out.aAfterRemoveB} panel elements`);
+    assert.ok(out.aPanelStillInA);
+});
+
 // ── M11, M12: the renderer starts once, the GPU budget is the page's ───────
 
 test('the renderer compiles its shaders once per viewer', { skip }, async () => {
