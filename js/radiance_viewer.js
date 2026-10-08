@@ -9752,13 +9752,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.updateScopes();
         this._updateProMetadata();
 
-        // Update Curve Editor Histogram
-        if (this.curveEditor && this.image) {
-            this.curveEditor.updateHistogram(this.image);
-        }
-        if (this.refCurveEditor && this.image) {
-            this.refCurveEditor.updateHistogram(this.image);
-        }
+        // Update Curve Editor Histogram (from the float frame when there is one)
+        this._curveHistSource = null;
+        this._updateCurveHistograms();
 
         // v4.1: Refresh pipeline precision badge whenever a new image is loaded
         this._updateBitDepthBadge();
@@ -12614,6 +12610,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         selectorRow.appendChild(btnGroup);
 
         this._ensureCurveEditor();
+        this._updateCurveHistograms();
 
         const channelMap = [
             { ch: 'RGB', label: 'Y', color: '#e0e0e0', bg: 'rgba(255,255,255,0.12)' },
@@ -12762,9 +12759,30 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.refCurveEditor.softClipEnabled = !!c.softClipEnabled;
             if (c.softClipParams) this.refCurveEditor.softClipParams = c.softClipParams;
         }
-        if (this.image) this.refCurveEditor.updateHistogram(this.image);
+        this._curveHistSource = null;
+        this._updateCurveHistograms();
         this.refCurveEditor.notifyChange();
         return this.refCurveEditor;
+    }
+
+    /**
+     * The curve editors' histogram, on the axis the curve acts on: scene-linear
+     * 0 to 1, from the float frame. For a float source the old histogram was
+     * built from the 8-bit placeholder canvas, which is black.
+     */
+    _updateCurveHistograms() {
+        const editors = [this.refCurveEditor, this.curveEditor].filter(Boolean);
+        if (!editors.length) return;
+        const hdr = this.hdrData || this.frameHDRData?.[this.currentFrame];
+        const src = hdr?.data ? hdr : null;
+        const key = src || this.image;
+        if (!key || key === this._curveHistSource) return;
+        this._curveHistSource = key;
+        const encoded = this.renderer?.isLinearTexture === false;
+        for (const ed of editors) {
+            if (src) ed.updateHistogramFromFloat?.(src.data, src.width, src.height, src.channels || 3, encoded);
+            else ed.updateHistogram(this.image, { linearize: true });
+        }
     }
 
     _renderReferenceGrade(parent) {
@@ -15499,7 +15517,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
             };
 
-            if (this.image) this.curveEditor.updateHistogram(this.image);
+            this._curveHistSource = null;
+            this._updateCurveHistograms();
             this.curveEditor.notifyChange();
         }
 
@@ -22344,30 +22363,49 @@ class RadianceCurveEditor {
     }
 
     // ─── Histogram ─────────────────────────────────────────────
-    updateHistogram(img) {
+    // Binned on the axis the curve acts on: scene-linear 0 to 1, values above 1
+    // in the last bin. An 8-bit picture is sRGB-encoded and is decoded first;
+    // binning its code values put mid grey at the middle of an axis on which
+    // the curve puts it at 0.18.
+    updateHistogram(img, { linearize = true } = {}) {
         if (!img) return;
         const scale = Math.min(1.0, 256 / Math.max(img.width, img.height));
-        const w = Math.floor(img.width * scale);
-        const h = Math.floor(img.height * scale);
+        const w = Math.max(1, Math.floor(img.width * scale));
+        const h = Math.max(1, Math.floor(img.height * scale));
 
         const temp = document.createElement('canvas');
         temp.width = w; temp.height = h;
         const tctx = temp.getContext('2d');
         tctx.drawImage(img, 0, 0, w, h);
         const data = tctx.getImageData(0, 0, w, h).data;
+        const f = new Float32Array(w * h * 3);
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        for (let i = 0, o = 0; i < data.length; i += 4, o += 3) {
+            for (let c = 0; c < 3; c++) f[o + c] = linearize ? decode(data[i + c] / 255) : data[i + c] / 255;
+        }
+        this.updateHistogramFromFloat(f, w, h, 3, false);
+    }
 
+    /** The histogram from float pixels (sampled to about 256 x 256), in scene-linear. */
+    updateHistogramFromFloat(data, width, height, channels = 3, srgbEncoded = false) {
+        if (!data || !width || !height) return;
         const buckets = 256;
         const R = new Uint32Array(buckets), G = new Uint32Array(buckets);
         const B = new Uint32Array(buckets), L = new Uint32Array(buckets);
-
-        for (let i = 0; i < data.length; i += 4) {
-            R[data[i]]++;
-            G[data[i + 1]]++;
-            B[data[i + 2]]++;
-            const luma = Math.min(255, Math.floor(
-                data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722
-            ));
-            L[luma]++;
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        const bin = (v) => (v > 0 ? Math.min(buckets - 1, Math.floor(v * (buckets - 1) + 0.5)) : 0);
+        const step = Math.max(1, Math.ceil(Math.max(width, height) / 256));
+        for (let y = 0; y < height; y += step) {
+            for (let x = 0; x < width; x += step) {
+                const i = (y * width + x) * channels;
+                let r = data[i], g = channels > 1 ? data[i + 1] : r, b = channels > 2 ? data[i + 2] : r;
+                if (!(Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b))) continue;
+                if (srgbEncoded) { r = decode(r); g = decode(g); b = decode(b); }
+                R[bin(r)]++;
+                G[bin(g)]++;
+                B[bin(b)]++;
+                L[bin(r * 0.2126 + g * 0.7152 + b * 0.0722)]++;
+            }
         }
 
         let max = 0;
@@ -22525,10 +22563,12 @@ class RadianceCurveEditor {
         };
 
         cvs.onmousedown = (e) => {
-            if (e.button !== 0) return;
+            // Alt+drag pans the view (handled below); it must not also add a point.
+            if (e.button !== 0 || e.altKey) return;
             const { norm, best, px, py } = hitTest(e);
 
             if (best) {
+                this.onEditStart?.();
                 if (!this.selectedPoints.includes(best)) {
                     this.selectedPoints = [best];
                 }
@@ -22536,6 +22576,7 @@ class RadianceCurveEditor {
                 this.lastDragNorm = { ...norm };
                 cvs.style.cursor = 'grabbing';
             } else if (norm.x > -0.05 && norm.x < 1.05) {
+                this.onEditStart?.();
                 this.selectedPoints = [];
                 const pts = this.curves[this.activeChannel];
                 const yMax = (this.activeChannel.startsWith('Hue')) ? 1.0 : this.rangeY;
@@ -22628,6 +22669,7 @@ class RadianceCurveEditor {
             const pts = this.curves[this.activeChannel];
             const idx = pts.indexOf(best);
             if (idx > 0 && idx < pts.length - 1) {
+                this.onEditStart?.();
                 pts.splice(idx, 1);
                 this.hoverPoint = null;
                 this.notifyChange();
@@ -23092,11 +23134,10 @@ class RadianceCurveEditor {
         // 9. Dragging / hover readout
         if (this.draggingPoint || this.hoverPoint) {
             const target = this.draggingPoint || this.hoverPoint;
-            const inVal = Math.round(target.x * 255);
-            const outVal = Math.round(target.y * 255);
+            // Scene-linear in and out: the axis the curve acts on.
             const { cx, cy } = this.normToCanvas(target.x, target.y);
 
-            const text = `${inVal} → ${outVal}`;
+            const text = `${target.x.toFixed(3)} → ${target.y.toFixed(3)}`;
             ctx.font = `bold 10px ${this.theme.mono}`;
             const tw = ctx.measureText(text).width + 12;
             const tx = Math.min(cx + 14, pX + pW - tw - 4);

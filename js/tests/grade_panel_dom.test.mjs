@@ -10,6 +10,7 @@
  *   H6   presets in the live tab; the grade written into the node
  *   M1   readouts show the value applied, take typed values, one exposure range
  *   M2   Reset and Reset All differ; section resets; double-click; Fringe
+ *   M10  Alt+drag pans the curve without adding a point; float histogram
  *
  * Skips when Playwright is unavailable.
  *
@@ -218,4 +219,20 @@ test('H6: grade presets save and load from the live Grade tab', { skip }, () => 
     assert.deepEqual(p.loaded, { saturation: 0, contrast: 1.3, offset: [0.02, 0, 0] });
     assert.equal(p.persisted, 0, 'the grade written to the node lost saturation 0');
     assert.ok(p.persistedKeys > 40);
+});
+
+test('M10: Alt+drag pans the curve editor without adding a point', { skip }, () => {
+    const c = report.curves;
+    assert.equal(c.afterAlt, 2, 'Alt+click added a point');
+    assert.equal(c.undoAfterAlt, 0);
+    assert.equal(c.afterClick, 3, 'a plain click should still add a point');
+    assert.equal(c.undoAfterClick, 1, 'adding a point is an undo step');
+    assert.ok(c.tablesKept, 'the curve table is kept for the exporters');
+});
+
+test('M10: the curve histogram comes from the float frame, in scene-linear', { skip }, () => {
+    // A 0..1 ramp spreads over the bins; the 8-bit placeholder put everything
+    // in bin 0.
+    const c = report.curves;
+    assert.ok(c.nonZeroBins >= 12, `only ${c.nonZeroBins} bins have pixels`);
 });

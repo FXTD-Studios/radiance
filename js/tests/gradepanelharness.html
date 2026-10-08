@@ -226,6 +226,29 @@ window.__run = async () => {
             persistedKeys: Object.keys(v.node.properties.radiance_grade || {}).length };
     });
 
+    // M10: Alt+drag pans without adding a point; the histogram comes from the float frame.
+    await run('curves', () => {
+        const v = makeInstance(); build(v);
+        const ed = v._ensureCurveEditor();
+        document.body.appendChild(ed.canvas);
+        ed.resize(256, 160);
+        const rect = ed.canvas.getBoundingClientRect();
+        const md = (alt) => ed.canvas.dispatchEvent(new MouseEvent('mousedown', {
+            clientX: rect.left + rect.width * 0.4, clientY: rect.top + rect.height * 0.3, button: 0, altKey: alt, bubbles: true }));
+        md(true);
+        window.dispatchEvent(new MouseEvent('mouseup'));
+        const afterAlt = ed.curves.RGB.length;
+        const undoAfterAlt = v._undoStack.length;
+        md(false);
+        window.dispatchEvent(new MouseEvent('mouseup'));
+        const afterClick = ed.curves.RGB.length;
+        const undoAfterClick = v._undoStack.length;
+        const L = Array.from(ed.histograms.L || []);
+        const nonZeroBins = L.filter(x => x > 0).length;
+        return { afterAlt, afterClick, undoAfterAlt, undoAfterClick, nonZeroBins,
+            bin0: L[0], lastBin: L[255], tablesKept: !!v._curveTable };
+    });
+
     out.errors = errors;
     out.ok = errors.length === 0;
     return out;
