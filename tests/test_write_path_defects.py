@@ -136,9 +136,10 @@ class _NeverFinishes:
 
 
 def test_a_timed_out_encode_removes_the_partial_file(tmp_path, monkeypatch):
-    """When a caller does set a cap and it fires, what is on disk is a
-    truncated master that `-y` has already written over the approved one. It is
-    removed, and the error says how far it got."""
+    """When a caller does set a cap and it fires, the partial encode is removed
+    and the error says how far it got. This used to delete the target itself,
+    because `-y` had already truncated the approved master over it; the encode
+    now goes to a hidden sibling, so the previous master survives intact."""
     target = tmp_path / "shot.mp4"
     target.write_bytes(b"not really a movie")
     monkeypatch.setattr(W.subprocess, "Popen", _NeverFinishes)
@@ -147,7 +148,8 @@ def test_a_timed_out_encode_removes_the_partial_file(tmp_path, monkeypatch):
         W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
                              "MP4 (H.264)", 24.0, 30, "", timeout=0.01)
 
-    assert not target.exists(), "a truncated master was left on disk"
+    assert target.read_bytes() == b"not really a movie", "the previous master was touched"
+    assert list(tmp_path.iterdir()) == [target], "a partial encode was left on disk"
     assert "did not finish encoding" in str(exc.value)
     assert "3 frame(s)" in str(exc.value)
 
@@ -175,11 +177,18 @@ class _ExitsBeforeOpeningTheOutput(_ExitsWithAnError):
     writes_output = False
 
 
+def _fake_ffmpeg(monkeypatch, popen):
+    """Route the encode to a fake process, whether or not ffmpeg is installed."""
+    monkeypatch.setattr(W, "_ffmpeg_ok", lambda: True)
+    monkeypatch.setattr(W, "_ffmpeg_for", lambda codec: "ffmpeg")
+    monkeypatch.setattr(W.subprocess, "Popen", popen)
+
+
 def test_a_failed_encode_removes_the_partial_file(tmp_path, monkeypatch):
     """The timeout and cancel paths removed the truncated master; a non-zero
     exit only raised, so the partial file stayed under its final name, looking
     like a short delivery (OPEN_QUESTIONS B12)."""
-    monkeypatch.setattr(W.subprocess, "Popen", _ExitsWithAnError)
+    _fake_ffmpeg(monkeypatch, _ExitsWithAnError)
 
     with pytest.raises(RuntimeError) as exc:
         W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
@@ -196,13 +205,30 @@ def test_a_failure_before_ffmpeg_opens_the_output_keeps_the_existing_file(tmp_pa
     would destroy a good master."""
     target = tmp_path / "shot.mp4"
     target.write_bytes(b"the approved master")
-    monkeypatch.setattr(W.subprocess, "Popen", _ExitsBeforeOpeningTheOutput)
+    _fake_ffmpeg(monkeypatch, _ExitsBeforeOpeningTheOutput)
 
     with pytest.raises(RuntimeError):
         W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
                              "MP4 (H.264)", 24.0, 30, "", overwrite=True)
 
     assert target.read_bytes() == b"the approved master"
+
+
+def test_a_failed_overwrite_keeps_the_previous_master(tmp_path, monkeypatch):
+    """With overwrite on, ffmpeg's -y truncated the existing master as soon as
+    it opened it, so a failure part-way lost the approved version whatever
+    happened next. The encode now goes to a hidden sibling that replaces the
+    master only on success."""
+    target = tmp_path / "shot.mp4"
+    target.write_bytes(b"the approved master")
+    _fake_ffmpeg(monkeypatch, _ExitsWithAnError)
+
+    with pytest.raises(RuntimeError):
+        W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
+                             "MP4 (H.264)", 24.0, 30, "", overwrite=True)
+
+    assert target.read_bytes() == b"the approved master"
+    assert list(tmp_path.iterdir()) == [target], "the partial encode was left behind"
 
 
 @needs_ffmpeg

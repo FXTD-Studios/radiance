@@ -1799,6 +1799,18 @@ def test_an_aborted_upload_leaves_no_partial_file(ws):
     assert (dest / "plate.exr").read_bytes() == b"FIRST"
 
 
+def test_a_failed_part_takes_the_rest_of_its_request_with_it(ws):
+    """A request is all or nothing: the client gets a 500 and no list of what
+    was saved, so a file kept from an earlier part would be orphaned, and a
+    retry would add a plate_1.exr beside it."""
+    resp = run(ws.m.upload_asset(Req(parts=[
+        _Part("a.png", b"first"),
+        _BrokenPart("b.png", b"0123456789ABCDEF"),
+    ])))
+    assert resp.status == 500
+    assert list((ws.inp / "radiance_assets").iterdir()) == []
+
+
 def test_upload_500_without_an_input_directory(ws, monkeypatch):
     monkeypatch.delattr(ws.m.folder_paths, "get_input_directory")
     resp = run(ws.m.upload_asset(Req(parts=[])))
