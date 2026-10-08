@@ -42,12 +42,13 @@ These parts of the release gate need checks that cannot run in CI:
   implements `setMask` and `setQualifier` and stores the state, so the Viewer's
   calls succeed and nothing changes on screen: both tabs are fully interactive
   and completely inert on that backend. WebGPU is opt-in since 3.4.0
-  (`localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
-  both.
-  OCIO has the same WGSL gap and at least says so, returning "OpenColorIO needs
-  the WebGL backend; this renderer has no WGSL path for it"; these two say
-  nothing. *Planned fix:* none scheduled. The two resolutions are porting the
-  shaders to WGSL, or disabling the tabs on WebGPU with that message. The gap is
+  (View > Framing & Guides > Backend, stored as
+  `localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
+  both. On WebGPU each tab opens with a notice saying so and how to switch
+  back (4.0 corrected its text, which still claimed WebGPU was the default).
+  OCIO has the same WGSL gap and returns "OpenColorIO needs the WebGL backend;
+  this renderer has no WGSL path for it". *Planned fix:* porting the shaders
+  to WGSL; none scheduled. The gap is
   listed in `js/tests/backend_parity.test.mjs`, which fails if this entry and
   the shipped source stop agreeing, so neither resolution can land without
   updating this list.

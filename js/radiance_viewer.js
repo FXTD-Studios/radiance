@@ -16050,7 +16050,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             + 'border-radius:5px; border-left:2px solid rgba(255,176,32,0.5);';
         n.textContent = `${what} are not implemented on the WebGPU backend. `
             + 'The controls below will move and the picture will not change. '
-            + 'Radiance prefers WebGPU whenever the browser offers it.';
+            + 'WebGPU is on because it was chosen in View > Framing & Guides > Backend; switch it '
+            + 'back to WebGL there and reload to use them.';
         container.appendChild(n);
         return true;
     }
