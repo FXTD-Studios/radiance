@@ -487,3 +487,33 @@ test('a lost GPU context is shown, and on restore the frame, LUT and curves come
     assert.ok(out.curves, 'the curve table was not uploaded again');
     assert.ok(out.centre[0] > 20, `the restored picture is black: ${out.centre}`);
 });
+
+// ── The grain ticker runs only for animated grain ───────────────────────────
+
+test('the grain ticker runs only while animated grain is on', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(1, 64, 48));
+        await __until(() => v.hdrData);
+        await __sleep(300);
+        const r = { off: !!v._grainRAF };
+        v.grain = 0.2; v.grainAnimate = false; v.render(); await __sleep(100);
+        r.staticGrain = !!v._grainRAF;
+        let ticks = 0;
+        const setTime = v.renderer.setTime.bind(v.renderer);
+        v.renderer.setTime = (t) => { ticks++; setTime(t); };
+        v.grainAnimate = true; v.render();
+        r.animated = !!v._grainRAF;
+        r.timeMoves = await __until(() => ticks >= 2, 8000);
+        v.grain = 0;
+        r.stoppedAfterOff = await __until(() => !v._grainRAF, 8000);
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.off, false, 'the ticker runs with grain off');
+    assert.equal(out.staticGrain, false, 'the ticker runs for grain that does not move');
+    assert.equal(out.animated, true, 'animated grain did not start the ticker');
+    assert.equal(out.timeMoves, true, 'the grain does not move');
+    assert.equal(out.stoppedAfterOff, true, 'the ticker kept running after grain was turned off');
+});
