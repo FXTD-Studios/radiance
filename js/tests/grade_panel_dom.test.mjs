@@ -156,7 +156,7 @@ test('M1: a readout takes a typed value', { skip }, () => {
     assert.equal(r.typedClamped, 3, 'a typed value is held to the slider range');
 });
 
-test('H5: a slider drag is one undo step, and undo / redo move it', { skip }, () => {
+test('H5: a slider drag is one undo step, and Ctrl+Z / Ctrl+Y on the focused slider move it', { skip }, () => {
     const u = report.undo;
     assert.deepEqual(u.afterDrag, { highlights: 0.3, steps: 1 });
     assert.equal(u.afterUndo, 0);
