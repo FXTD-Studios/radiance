@@ -339,6 +339,42 @@ def _is_float32_tiff(path: str) -> bool:
         return False
 
 
+def _needs_oiio(ext: str) -> bool:
+    """Pillow has no reader for this extension and OpenImageIO is the one.
+
+    Until 4.0 only .dpx went to OpenImageIO. Cineon, ARRIRAW, camera raw, IFF,
+    RLA and the rest were listed as readable once OIIO was installed and then
+    handed to Pillow, which failed with "cannot identify image file". An
+    extension Pillow does register (HEIC with pillow-heif) stays with Pillow.
+    """
+    if ext in _formats._pillow_extensions():
+        return False
+    return ext in _formats.OIIO_ONLY_EXTENSIONS or ext in _formats._oiio_extensions()
+
+
+def _read_oiio(path: str, ext: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """(IMAGE, MASK) through OpenImageIO, the VFX-standard reader for these."""
+    name = ext.lstrip(".").upper()
+    if not _HAS_OIIO:
+        raise ImportError(f"Reading {name} requires OpenImageIO (pip install OpenImageIO).")
+    inp = _oiio.ImageInput.open(path)
+    if inp is None:
+        raise RuntimeError(f"Cannot read {name} '{path}': {_oiio.geterror()}")
+    try:
+        spec = inp.spec()
+        pixels = inp.read_image(format=_oiio.FLOAT)
+    finally:
+        inp.close()
+    if pixels is None:
+        raise RuntimeError(f"Cannot read {name} '{path}': {_oiio.geterror()}")
+    # read_image() normalises integer samples (e.g. 10-bit DPX) to [0, 1] float.
+    arr = np.array(pixels, dtype=np.float32).reshape(spec.height, spec.width, spec.nchannels)
+    n = spec.nchannels
+    alpha = arr[..., 3] if n >= 4 else (arr[..., 1] if n == 2 else None)
+    arr = arr[..., :3] if n >= 3 else np.repeat(arr[..., :1], 3, axis=-1)
+    return _np_to_tensor(arr), (_np_to_tensor(alpha) if alpha is not None else None)
+
+
 def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Return (IMAGE, MASK) tensors from a single image file."""
     ext = Path(path).suffix.lower()
@@ -346,7 +382,9 @@ def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     if ext == ".exr":
         return _read_exr_single(path)
 
-    if ext == ".hdr":
+    if ext in (".hdr", ".pic"):
+        # .pic is Radiance's other extension for the same RGBE file; it went to
+        # Pillow, which has no reader for it.
         import cv2  # type: ignore
         arr = cv2.imread(path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
         if arr is None:
@@ -355,24 +393,8 @@ def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB).astype(np.float32)
         return _np_to_tensor(arr), None
 
-    if ext == ".dpx":
-        # ALBABIT-FIX: Pillow has no DPX plugin at all; use OpenImageIO, the
-        # VFX-industry-standard library for this format.
-        if not _HAS_OIIO:
-            raise ImportError("Reading DPX requires OpenImageIO (pip install OpenImageIO).")
-        inp = _oiio.ImageInput.open(path)
-        if inp is None:
-            raise RuntimeError(f"Cannot read DPX '{path}': {_oiio.geterror()}")
-        try:
-            spec = inp.spec()
-            pixels = inp.read_image(format=_oiio.FLOAT)
-        finally:
-            inp.close()
-        # read_image() auto-normalises integer DPX samples (e.g. 10-bit) to [0, 1] float.
-        arr = np.array(pixels, dtype=np.float32).reshape(spec.height, spec.width, spec.nchannels)
-        alpha = arr[..., 3] if spec.nchannels >= 4 else None     # was dropped
-        arr = arr[..., :3] if spec.nchannels >= 3 else np.repeat(arr[..., :1], 3, axis=-1)
-        return _np_to_tensor(arr), (_np_to_tensor(alpha) if alpha is not None else None)
+    if _needs_oiio(ext):
+        return _read_oiio(path, ext)
 
     # ALBABIT-FIX: a genuine 16-bit-per-channel RGB(A) PNG/TIFF is silently
     # collapsed to 8-bit by Pillow's .convert("RGB"/"RGBA") below -- Pillow has
