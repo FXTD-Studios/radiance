@@ -508,3 +508,30 @@ def test_a_video_keeps_every_frame_whatever_the_audio_length(tmp_path, audio_sec
     assert len(picture) // (16 * 16 * 3) == n
     sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
     assert abs(len(sound) / 2 / rate - n / fps) < 0.03
+
+
+@needs_ffmpeg
+def test_a_generator_of_unknown_length_keeps_every_frame_with_short_audio(tmp_path):
+    """With no frame_count the writer cannot trim to a known end, and fell
+    back to "-shortest", which cut the picture to a short track. The audio is
+    now padded without end and "-shortest" stops it with the picture."""
+    import wave
+
+    n, fps, rate = 25, 24.0, 48000
+    track = tmp_path / "short.wav"
+    with wave.open(str(track), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(b"\0\0" * (rate // 4))           # 0.25 s for ~1.04 s of picture
+
+    frames = (np.full((16, 16, 3), 0.5, np.float32) for _ in range(n))
+    saved, written = W.dispatch_write(
+        frames, output_path=str(tmp_path / "shot"), format="VID │ MP4 (H.264)", fps=fps,
+        quality=18, exr_compression="ZIP", start_frame=1001, frame_padding=4,
+        audio_source=str(track), overwrite=False)
+
+    picture = _decode(saved, "-map", "0:v", "-pix_fmt", "rgb24", "-f", "rawvideo")
+    assert len(picture) // (16 * 16 * 3) == n
+    sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
+    assert abs(len(sound) / 2 / rate - n / fps) < 0.06

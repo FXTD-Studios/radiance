@@ -977,7 +977,10 @@ def _save_video_ffmpeg(
             end = frame_count / fps
             cmd += ["-af", f"apad=whole_dur={end},atrim=end={end}"]
         else:
-            cmd += ["-shortest"]
+            # Length unknown (a generator): pad the audio without end and let
+            # "-shortest" stop it with the picture. Bare "-shortest" cut the
+            # picture to a short track.
+            cmd += ["-af", "apad", "-shortest"]
     cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(part_path)]
 
     try:
