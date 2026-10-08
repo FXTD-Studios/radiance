@@ -844,6 +844,101 @@ def _frame_to_raw(fr: np.ndarray, src_pix_fmt: str) -> bytes:
         np.rint(np.clip(arr, 0, 1) * 255).astype(np.uint8)).tobytes()
 
 
+#: HDR10 mastering display (SMPTE ST 2086) stamped on PQ HEVC: P3-D65
+#: primaries in a Rec.2020 container, 1000 nits peak, 0.0001 nits black. The
+#: usual HDR10 grading display and the UHD / streaming delivery default; the
+#: frames say nothing about the monitor they were judged on, so this states
+#: the common case rather than inventing one.
+HDR10_MASTER_DISPLAY = {"primaries": "P3-D65", "max_nits": 1000.0, "min_nits": 0.0001}
+
+
+def _x265_master_display() -> str:
+    """HDR10_MASTER_DISPLAY in x265's syntax: xy in 0.00002, nits in 0.0001."""
+    from ..color.encodings import PRIMARIES
+    r, g, b, w = PRIMARIES[HDR10_MASTER_DISPLAY["primaries"]]
+
+    def xy(p):
+        return f"({round(p[0] * 50000)},{round(p[1] * 50000)})"
+
+    return (f"G{xy(g)}B{xy(b)}R{xy(r)}WP{xy(w)}"
+            f"L({round(HDR10_MASTER_DISPLAY['max_nits'] * 10000)},"
+            f"{round(HDR10_MASTER_DISPLAY['min_nits'] * 10000)})")
+
+
+def _is_hdr_video(colour: "OutputColour") -> bool:
+    """True when the encode applies PQ or HLG (not an OCIO colorspace)."""
+    enc = getattr(colour, "encoding", None)
+    return bool(enc is not None and enc.hdr and not colour.ocio_colorspace
+                and colour.color_space != "Linear (pass-through)")
+
+
+def hdr_light_levels(frames: Iterable[np.ndarray],
+                     colour: "OutputColour") -> Optional[Tuple[int, int]]:
+    """(MaxCLL, MaxFALL) in nits for a PQ encode, per CTA-861.3.
+
+    `frames` are the working-space linear frames *before* the PQ encode. Each
+    goes to linear Rec.2020 and is placed at the reference white exactly as
+    the encode does, clipped at PQ's 10,000 nits; MaxCLL is the brightest
+    max(R,G,B) of any pixel, MaxFALL the brightest frame-average of it.
+    None when `colour` is not PQ.
+    """
+    enc = getattr(colour, "encoding", None)
+    if not _is_hdr_video(colour) or enc.name != "PQ (ST.2084)":
+        return None
+    from ..color import encodings as _enc
+    m = _enc.gamut_matrix(_enc.ENCODINGS[colour.working].gamut, enc.gamut).astype(np.float32)
+    max_cll = max_fall = 0.0
+    for fr in frames:
+        a = np.asarray(fr, np.float32)
+        if a.ndim == 2:
+            a = a[..., None]
+        if a.shape[-1] >= 3:
+            rgb = a[..., :3] @ m.T
+        else:
+            rgb = a[..., :1]
+        peak = np.clip(rgb.max(axis=-1) * colour.ref_nits, 0.0, 10000.0)
+        if peak.size:
+            max_cll = max(max_cll, float(peak.max()))
+            max_fall = max(max_fall, float(peak.mean()))
+    return int(np.ceil(max_cll)), int(np.ceil(max_fall))
+
+
+def _hdr_video_args(codec: str, dst_pix_fmt: str, colour: "OutputColour",
+                    light_levels: Optional[Tuple[int, int]], fmt: str) -> List[str]:
+    """Refuse an 8-bit HDR encode; HEVC colour VUI and HDR10 SEI for libx265.
+
+    PQ and HLG spread 0-10,000 nits (or the HLG range) over the code values;
+    in 8 bits that bands visibly and HDR10 is defined as 10-bit. The format
+    widget names a codec and container outright (and "MP4 (H.265 10-bit)"
+    says its depth), so an 8-bit choice is refused with the formats that work
+    rather than swapped for a different codec behind the operator's back.
+    """
+    if not _is_hdr_video(colour):
+        return []
+    if not any(d in dst_pix_fmt for d in ("10le", "12le", "16le")):
+        raise ValueError(
+            f"RadianceWrite: {colour.label} needs a 10-bit video, but {fmt} is "
+            f"8-bit ({dst_pix_fmt}); BT.2100 HDR is 10-bit and an 8-bit "
+            f"{colour.label.split(' ')[0]} file bands. Choose 'MP4 (H.265 10-bit)', 'MOV (ProRes 422 HQ)' or "
+            "'MOV (ProRes 4444)'. Nothing was written.")
+    if codec != "libx265":
+        return []
+    pq = colour.encoding.name == "PQ (ST.2084)"
+    # ffmpeg passes -color_* to x265 too, but naming them here keeps the VUI
+    # right whatever the ffmpeg build does with frame colour properties.
+    params = ["colorprim=bt2020", "colormatrix=bt2020nc",
+              "transfer=" + ("smpte2084" if pq else "arib-std-b67")]
+    if pq:
+        if light_levels is None:
+            # CTA-861.3: 0 means "not known". The frames were streamed, so
+            # they were never all in hand to measure; a player then falls
+            # back to the mastering display's peak.
+            light_levels = (0, 0)
+        params += ["hdr10=1", f"master-display={_x265_master_display()}",
+                   "max-cll={},{}".format(*light_levels)]
+    return ["-x265-params", ":".join(params)]
+
+
 def _save_video_ffmpeg(
     frames: Iterable[np.ndarray],   # (H, W, C) float32 frames in [0, 1]
     output_path: str,
@@ -857,8 +952,14 @@ def _save_video_ffmpeg(
     colour: Optional["OutputColour"] = None,
     has_alpha: bool = False,
     frame_count: Optional[int] = None,
+    light_levels: Optional[Tuple[int, int]] = None,
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
+
+    PQ and HLG refuse an 8-bit format, and PQ HEVC carries HDR10 static
+    metadata: the mastering display and `light_levels` (MaxCLL, MaxFALL from
+    `hdr_light_levels`, else 0,0 for "unknown"). Until 4.0 PQ went into 8-bit
+    H.264 and HEVC carried no mastering or light level SEI.
 
     3.5: every codec is fed 16-bit RGB (10-bit codecs got 8-bit before), the
     RGB -> YUV conversion uses the BT.709 / BT.2020 matrix instead of
@@ -915,6 +1016,8 @@ def _save_video_ffmpeg(
         fmt, ("libx264", "rgb48le", "yuv420p", ".mp4", ["-crf", str(crf)])
     )
     colour = colour or OutputColour()
+    # Before anything is opened or created: an 8-bit HDR encode is refused.
+    hdr_args = _hdr_video_args(codec, dst_pix_fmt, colour, light_levels, fmt)
     matrix = colour.yuv_matrix()
     # swscale converts RGB -> YUV with BT.601 unless told otherwise.
     tags = colour.ffmpeg_tags()
@@ -925,7 +1028,7 @@ def _save_video_ffmpeg(
     # Stamp the converted frames too: newer ffmpeg filter paths can replace
     # output codec colour options with unspecified input frame metadata.
     extra = ["-vf", f"scale=out_color_matrix={matrix}:out_range=tv:flags=accurate_rnd+full_chroma_int,"
-             f"setparams=range=limited:{frame_tags}"] + extra + tags
+             f"setparams=range=limited:{frame_tags}"] + extra + tags + hdr_args
 
     # ALBABIT-FIX: the video branch used to build its own output path by string
     # concatenation and never call `resolve_output_path`, so `overwrite=False`
@@ -1418,6 +1521,12 @@ def write_frames(
         log.info("RadianceWrite: broadcast_safe ignored for %s "
                  "(legal-range limiting does not apply to float formats)", format)
 
+    # HDR10 MaxCLL / MaxFALL, measured while the whole clip is in memory
+    # anyway (the encode itself streams). Only HEVC carries them.
+    light_levels = None
+    if _fmt_stem(format) == "MP4 (H.265 10-bit)":
+        light_levels = hdr_light_levels(frames, colour)
+
     out_frames = transform_stream(
         frames, color_space=color_space,
         apply_legal_range=apply_legal_range, alpha=alpha, colour=colour,
@@ -1446,7 +1555,7 @@ def write_frames(
             effective_audio_source, overwrite,
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
-            on_frame=on_frame, receipt=receipt,
+            on_frame=on_frame, receipt=receipt, light_levels=light_levels,
         )
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
@@ -1522,6 +1631,7 @@ def dispatch_write(
     has_alpha:      bool = False,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
+    light_levels:   Optional[Tuple[int, int]] = None,
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
 
@@ -1606,6 +1716,7 @@ def dispatch_write(
             colour=colour,
             has_alpha=has_alpha,
             frame_count=n,
+            light_levels=light_levels,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:
