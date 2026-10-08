@@ -1,0 +1,185 @@
+<!doctype html>
+<!--
+  The grade, through the real viewer and the real composite shader.
+
+  grade_gpu.test.mjs compiles the shared GLSL helpers on their own. This page
+  builds an actual RadianceViewer from the node registration, feeds it a
+  constant-colour float frame the way onExecuted does, moves the grade fields,
+  and reads the graded scene-linear result back with readPixelsFloat32 (the
+  graded-EXR path, which stops before the view transform). That is the signal
+  a colourist grades and the one an exported CDL or LUT has to reproduce, so
+  the test compares it to gradePixelFull().
+
+  Driven by js/tests/grade_render.test.mjs, which also serves the frames.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance — grade render harness</title>
+<style>html,body{margin:0;background:#222}.host{width:900px;height:640px;display:flex}</style>
+</head>
+<body>
+<script type="module">
+import "../radiance_viewer.js";
+import { gradePixelFull } from "../radiance_grade.js";
+
+const ext = (globalThis.__exts || []).find((e) => e.name === 'FXTD.RadianceViewer');
+let nextId = 10;
+class FakeNode {
+    constructor() {
+        this.id = nextId++;
+        this.size = [900, 640];
+        this.widgets = []; this.inputs = []; this.outputs = []; this.properties = {};
+        this.title = 'RadianceViewer'; this.type = 'RadianceViewer'; this.comfyClass = 'RadianceViewer';
+        this.graph = { setDirtyCanvas() {} };
+        this.host = document.createElement('div');
+        this.host.className = 'host';
+        document.body.appendChild(this.host);
+    }
+    addDOMWidget(name, type, el) { this.host.appendChild(el); const w = { name, type, element: el }; this.widgets.push(w); return w; }
+    addWidget() { return { value: null }; }
+    setDirtyCanvas() {}
+    setSize(s) { this.size = s; }
+    computeSize() { return this.size; }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFor = async (fn, ms) => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) { if (fn()) return true; await sleep(30); }
+    return false;
+};
+
+let registered = false;
+async function load(rgb, colorspace = 'Linear Rec.709 (sRGB)') {
+    if (!registered) { await ext.beforeRegisterNodeDef(FakeNode, { name: 'RadianceViewer' }, window.app); registered = true; }
+    const node = new FakeNode();
+    node.onNodeCreated();
+    await sleep(100);
+    const v = node.radianceViewer;
+    node.onExecuted({ radiance_images: [{
+        filename: 'p.png', subfolder: '', type: 'temp',
+        hdr_sidecar: `c_${rgb.join('_')}.rhdr`, hdr_primary: true, hdr_fp32: true,
+        has_hdr: false, data_range: [0, 1], source_width: 8, source_height: 8,
+        channel_names: ['R', 'G', 'B', 'A'], source_encoding: 'linear', source_colorspace: colorspace,
+    }] });
+    await waitFor(() => v.frameHDRData?.[0] && v.renderer?.textures?.image, 8000);
+    await sleep(100);
+    return { node, v };
+}
+
+// The graded scene-linear value at the centre of the frame.
+function graded(v) {
+    v.render();
+    const ex = v.renderer.readPixelsFloat32(v.imageWidth, v.imageHeight, 1.0);
+    const i = ((v.imageHeight >> 1) * v.imageWidth + (v.imageWidth >> 1)) * 4;
+    return [ex.data[i], ex.data[i + 1], ex.data[i + 2]];
+}
+
+const NEUTRAL = {
+    exposure: 0, temperature: 0, tint: 0, contrast: 1, pivot: 0.18, saturation: 1,
+    lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1], offset: [0, 0, 0],
+    shadows: 0, highlights: 0, midDetail: 0, colorBoost: 0, lumaMix: 1, hueShift: 0,
+    printerR: 0, printerG: 0, printerB: 0, colorScience: 0,
+    logShadow: [0, 0, 0], logMidtone: [0, 0, 0], logHighlight: [0, 0, 0],
+};
+
+// Set the fields the way the controls do, and the few the viewer only sends
+// from their own controls (offset, log wheels, colour science, hue shift).
+function apply(v, s) {
+    Object.assign(v, NEUTRAL, s);
+    const r = v.renderer;
+    r.setOffset(...v.offset);
+    r.setLogShadow(...v.logShadow); r.setLogMidtone(...v.logMidtone); r.setLogHighlight(...v.logHighlight);
+    r.setColorScience(v.colorScience);
+    r.setHueShift(v.hueShift);
+    if (s.curveTable) { r.updateCurveLut(s.curveTable); r.setCurveMix(1); } else r.setCurveMix(0);
+    r.setSecondaryCurveMix(0);
+}
+
+window.__run = async () => {
+    const out = { cases: {} };
+    try {
+        // H2: contrast pivots on grey.
+        {
+            const { v } = await load([0.18, 0.18, 0.18]);
+            out.cases.defaultPivot = v.pivot;
+            out.cases.contrast = {};
+            for (const k of [1.2, 1.5, 2]) { apply(v, { contrast: k, pivot: v.pivot }); out.cases.contrast[k] = graded(v); }
+        }
+        {
+            const { v } = await load([0.36, 0.36, 0.36]);
+            apply(v, { contrast: 2 }); out.cases.contrastStopAbove = graded(v);
+        }
+        // H3: white balance on black, on a negative, and the eyedropper.
+        {
+            const { v } = await load([0, 0, 0]);
+            apply(v, { temperature: 0.1 }); out.cases.wbBlack = graded(v);
+        }
+        {
+            const { v } = await load([-0.05, 0.2, 0.2]);
+            apply(v, { tint: 0.001 }); out.cases.wbNegative = graded(v);
+        }
+        for (const [key, px] of [['pick', [0.6, 0.5, 0.4]], ['pickTenth', [0.06, 0.05, 0.04]]]) {
+            const { v } = await load(px);
+            apply(v, {});
+            v._wbApplyPick(px);
+            out.cases[key] = { state: [v.temperature, v.tint], out: graded(v) };
+        }
+        // H4: ACEScct with nothing graded, for a Rec.709 and an ACEScg source.
+        for (const [key, cs] of [['cct709', 'Linear Rec.709 (sRGB)'], ['cctAP1', 'ACEScg']]) {
+            const { v } = await load([0.5, 0.2, 0.1], cs);
+            apply(v, { colorScience: 1 });
+            out.cases[key] = graded(v);
+        }
+        // M3: Luma Mix 0 with exposure +1.
+        {
+            const { v } = await load([0.2, 0.18, 0.1]);
+            apply(v, { exposure: 1, lumaMix: 0 }); out.cases.lumaMixExposure = graded(v);
+            apply(v, { saturation: 2, lumaMix: 0 }); out.cases.lumaMixSat = graded(v);
+        }
+        // M10 and C4: a curve, and a full grade, against gradePixelFull.
+        const curve = new Float32Array(1024);
+        for (let i = 0; i < 256; i++) {
+            const x = i / 255, y = Math.pow(x, 0.8);
+            curve[i * 4] = y; curve[i * 4 + 1] = x; curve[i * 4 + 2] = Math.min(1, x * 1.1); curve[i * 4 + 3] = 1;
+        }
+        out.cases.full = [];
+        const full = {
+            exposure: 0.4, temperature: 0.3, tint: -0.1, contrast: 1.3, pivot: 0.18, saturation: 1.2,
+            lift: [0.02, 0, -0.01], gamma: [1.1, 1, 0.95], gain: [1.05, 1, 0.97], offset: [0.01, 0, 0],
+            shadows: 0.2, highlights: -0.3, colorBoost: 0.2, lumaMix: 0.5, hueShift: 10,
+            printerR: 5, printerG: 0, printerB: -3, logShadow: [0.05, 0, 0], logMidtone: [0, 0.03, 0], logHighlight: [0, 0, -0.05],
+        };
+        for (const px of [[0.18, 0.18, 0.18], [0.6, 0.3, 0.1], [0.02, 0.05, 0.1], [2.0, 1.5, 0.8], [0.9, 0.95, 1.0]]) {
+            const { v } = await load(px);
+            apply(v, { ...full, curveTable: curve });
+            out.cases.full.push({ in: px, gpu: graded(v), cpu: gradePixelFull(px, { ...NEUTRAL, ...full, curveTable: curve }) });
+            apply(v, { ...full, colorScience: 1 });
+            out.cases.full.push({ in: px, cct: true, gpu: graded(v), cpu: gradePixelFull(px, { ...NEUTRAL, ...full, colorScience: 1 }) });
+        }
+        // H6: the grade goes out with the workflow and comes back on load.
+        {
+            const { node, v } = await load([0.4, 0.3, 0.2]);
+            apply(v, { saturation: 0, contrast: 1.4, offset: [0.02, 0, 0], logMidtone: [0, 0.05, 0], temperature: 0.5 });
+            const o = { properties: { ...node.properties } };
+            node.onSerialize?.(o);
+            const saved = o.properties.radiance_grade;
+            const second = await load([0.4, 0.3, 0.2]);
+            second.node.onConfigure({ properties: JSON.parse(JSON.stringify(o.properties)) });
+            await sleep(50);
+            const v2 = second.v;
+            out.cases.h6 = {
+                saved: saved && { saturation: saved.saturation, contrast: saved.contrast, offset: saved.offset },
+                restored: { saturation: v2.saturation, contrast: v2.contrast, offset: v2.offset, logMidtone: v2.logMidtone, temperature: v2.temperature },
+                gpu: graded(v2),
+                cpu: gradePixelFull([0.4, 0.3, 0.2], { ...NEUTRAL, saturation: 0, contrast: 1.4, offset: [0.02, 0, 0], logMidtone: [0, 0.05, 0], temperature: 0.5 }),
+            };
+        }
+        out.ok = true;
+    } catch (e) {
+        out.error = String(e && e.stack || e);
+    }
+    return out;
+};
+window.__ready = true;
+</script>
+</body>
+</html>

@@ -25,6 +25,9 @@ import {
 } from "./radiance_probe.js";
 import {
     PIVOT_DEFAULT as _PIVOT_DEFAULT,
+    EXPOSURE_MIN as _EXPOSURE_MIN,
+    EXPOSURE_MAX as _EXPOSURE_MAX,
+    whiteBalanceForNeutral as _wbForNeutral,
     isIdentitySecondaryTable as _isIdentitySecondaryTable,
 } from "./radiance_grade.js";
 // The one CDL writer and the one .cube writer, both built on the shared grade.
@@ -1256,6 +1259,73 @@ class RadianceViewer {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
     }
 
+    /**
+     * The working scene-linear value under an image position, as the white
+     * balance sees it: from the float frame when there is one (decoded if it
+     * is sRGB-encoded), from the 8-bit picture otherwise (always decoded).
+     * A 3x3 average, so a single noisy pixel does not set the balance.
+     */
+    _wbSampleLinear(imgU, imgV) {
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        const hdr = this.hdrData || (this.frameHDRData && this.frameHDRData[this.currentFrame]);
+        if (hdr && hdr.data) {
+            const ch = hdr.channels || 3;
+            const cx = Math.min(hdr.width - 1, Math.max(0, Math.floor(imgU * hdr.width)));
+            const cy = Math.min(hdr.height - 1, Math.max(0, Math.floor(imgV * hdr.height)));
+            const sum = [0, 0, 0];
+            let n = 0;
+            for (let y = Math.max(0, cy - 1); y <= Math.min(hdr.height - 1, cy + 1); y++) {
+                for (let x = Math.max(0, cx - 1); x <= Math.min(hdr.width - 1, cx + 1); x++) {
+                    const i = (y * hdr.width + x) * ch;
+                    const px = [hdr.data[i], hdr.data[i + 1], hdr.data[i + 2]];
+                    if (!px.every(Number.isFinite)) continue;
+                    sum[0] += px[0]; sum[1] += px[1]; sum[2] += px[2]; n++;
+                }
+            }
+            if (!n) return null;
+            const avg = sum.map((v) => v / n);
+            return this.renderer && this.renderer.isLinearTexture === false ? avg.map(decode) : avg;
+        }
+        if (!this.image) return null;
+        // Fallback to the display image (8-bit, sRGB-encoded)
+        const imgX = Math.round(imgU * (this.imageWidth - 1));
+        const imgY = Math.round(imgV * (this.imageHeight - 1));
+        const tmp = document.createElement('canvas');
+        tmp.width = 1; tmp.height = 1;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(this.image, -imgX, -imgY);
+        const d = tctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]].map((v) => decode(v / 255));
+    }
+
+    /**
+     * Set Temperature and Tint so the picked colour comes out neutral. The
+     * solve is exact (radiance_grade.js whiteBalanceForNeutral) and absolute:
+     * it replaces the balance rather than adding to it, so picking the same
+     * grey twice does not overcorrect. Returns false when there is no solve.
+     */
+    _wbApplyPick(rgb) {
+        const wb = _wbForNeutral(rgb);
+        if (!wb) {
+            this._showToast?.('White balance: pick a pixel with some red, green and blue in it.', 'warn');
+            return false;
+        }
+        const lim = RadianceViewer.WB_RANGE;
+        const clamp = (v) => Math.max(-lim, Math.min(lim, v));
+        if (Math.abs(wb.temperature) > lim || Math.abs(wb.tint) > lim) {
+            this._showToast?.(`White balance: that cast needs more than ±${lim} stops; set to the limit.`, 'warn');
+        }
+        this.temperature = clamp(wb.temperature);
+        this.tint = clamp(wb.tint);
+        if (this.renderer) {
+            this.renderer.setTemperature(this.temperature);
+            this.renderer.setTint(this.tint);
+        }
+        this._syncGradeControls?.();
+        this._gradeChanged?.();
+        return true;
+    }
+
     // ── v3.4: Eyedropper White Balance ───────────────────────────────────────
     // Clicking a neutral/grey pixel auto-computes the temperature+tint deviation
     // from D65 and sets the WB controls to correct it in one click.
@@ -1279,9 +1349,13 @@ class RadianceViewer {
 
             this._wbPickHandler = (e) => {
                 const rect = this.canvas.getBoundingClientRect();
-                // v3.5: Correct for pan/zoom to find the exact image pixel
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
+                // panX / panY / zoom are in canvas (device) pixels; the mouse is
+                // in CSS pixels. On a HiDPI screen the unscaled position picked
+                // a pixel up and to the left of the one under the cursor.
+                this._canvasScaleX = this.canvas.width / (rect.width || 1);
+                this._canvasScaleY = this.canvas.height / (rect.height || 1);
+                const mouseX = (e.clientX - rect.left) * this._canvasScaleX;
+                const mouseY = (e.clientY - rect.top) * this._canvasScaleY;
 
                 // Convert canvas pos -> image UV
                 // (mouseX - panX) / zoom = imageX
@@ -1293,57 +1367,19 @@ class RadianceViewer {
                     return;
                 }
 
-                // Sample from raw HDR data if available (32-bit float accuracy)
-                let r, g, b;
-                const hdr = this.hdrData || (this.frameHDRData && this.frameHDRData[this.currentFrame]);
-
-                if (hdr && hdr.data) {
-                    const ix = Math.floor(imgU * (hdr.width - 1));
-                    const iy = Math.floor(imgV * (hdr.height - 1));
-                    const idx = (iy * hdr.width + ix) * (hdr.channels || 3);
-                    r = hdr.data[idx];
-                    g = hdr.data[idx + 1];
-                    b = hdr.data[idx + 2];
-                } else {
-                    // Fallback to display image (8-bit SDR)
-                    const imgX = Math.round(imgU * (this.imageWidth - 1));
-                    const imgY = Math.round(imgV * (this.imageHeight - 1));
-                    const tmp = document.createElement('canvas');
-                    tmp.width = 1; tmp.height = 1;
-                    const tctx = tmp.getContext('2d');
-                    tctx.drawImage(this.image, -imgX, -imgY);
-                    const d = tctx.getImageData(0, 0, 1, 1).data;
-                    r = d[0] / 255; g = d[1] / 255; b = d[2] / 255;
-                }
+                const picked = this._wbSampleLinear(imgU, imgV);
+                if (!picked) return;
+                const [r, g, b] = picked;
 
                 // Avoid picking near black or pure white (unreliable neutral)
                 const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                if (luma < 0.01 || luma > 10.0) { // Wider range for HDR
+                if (luma < 0.001 || luma > 10.0) { // Wider range for HDR
                     console.warn('[WB] Picked pixel is invalid — choose a neutral grey');
                     return;
                 }
 
-                // Normalize to equal energy
-                const avg = (r + g + b) / 3.0;
-                if (avg < 1e-6) return;
-
-                const devR = r / avg - 1.0;
-                const devB = b / avg - 1.0;
-                const devG = g / avg - 1.0;
-
-                // Map RGB deviation -> temperature/tint correction
-                const newTemp = -(devR - devB) * 0.8; // Increased gain for better correction
-                const newTint = -(devR + devB - 2 * devG) * 0.4;
-
-                this.temperature = Math.max(-2, Math.min(2, this.temperature + newTemp));
-                this.tint = Math.max(-2, Math.min(2, this.tint + newTint));
-
-                if (this.renderer) {
-                    this.renderer.setTemperature(this.temperature);
-                    this.renderer.setTint(this.tint);
-                }
-                this.requestRender();
-                this.requestScopeUpdate();
+                this._pushUndo();
+                if (!this._wbApplyPick(picked)) return;
 
                 console.log(`[WB] Corrected temp=${this.temperature.toFixed(3)} tint=${this.tint.toFixed(3)} from luma=${luma.toFixed(3)}`);
 
@@ -5373,32 +5409,8 @@ else:
 
             case 'grade': {
                 if (args[0] === 'reset') {
-                    // Replicate the same reset logic as RESET ALL button
-                    this._pushUndo();
-                    this.exposure = 0.0; this.lift = [0, 0, 0]; this.gamma = [1, 1, 1]; this.gain = [1, 1, 1];
-                    this.temperature = 0.0; this.tint = 0.0; this.contrast = 1.0; this.pivot = _PIVOT_DEFAULT; this.saturation = 1.0;
-                    this.grain = 0.0; this.denoise = 0.0;
-                    this.printerR = 0; this.printerG = 0; this.printerB = 0; this.softClip = 0.0;
-                    this.bloom = 0.0; this.halation = 0.0; this.diffusion = 0.0;
-                    this.grainSize = 1.0; this.grainColor = 0.0; this.grainAnimate = false;
-                    this.bokehHighlightBias = 0.0; this.bokehSoapBubble = 0.0; this.bokehOpticalVig = 0.0;
-                    this.apertureBlades = 0; this.apertureRotation = 0.0; this.apertureAnamorphic = 1.0;
-                    this.anamorphicStreaks = 0.0; this.lensDistortion = 0.0; this.lensFringe = 0.0;
-                    this.vignetteIntensity = 0.0; this.vignetteFalloff = 0.5;
-                    if (this.curveEditor) this.curveEditor.resetAllChannels?.();
-                    if (this.refCurveEditor) this.refCurveEditor.resetAllChannels?.();
-                    if (this.renderer) {
-                        this.renderer.setExposure(0); this.renderer.setLift(0, 0, 0); this.renderer.setGamma(1, 1, 1); this.renderer.setGain(1, 1, 1);
-                        this.renderer.setTemperature(0); this.renderer.setTint(0); this.renderer.setContrast(1); this.renderer.setPivot(_PIVOT_DEFAULT);
-                        this.renderer.setSaturation(1); this.renderer.setGrain(0); this.renderer.setGrainSize(1.0); this.renderer.setGrainColor(0.0); this.renderer.setGrainAnimate(false);
-                        this.renderer.setDenoise(0); this.renderer.setBloom(0); this.renderer.setHalation(0); this.renderer.setDiffusion(0);
-                        this.renderer.setLensDistortion(0, 0); this.renderer.setVignette(0, 0.5);
-                        this.renderer.setBokehPhysics(0, 0, 0); this.renderer.setApertureShape(0, 0, 1.0);
-                        if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(0);
-                        this.renderer.setPrinterLights(0, 0, 0); this.renderer.setSoftClip(0);
-                    }
-                    this.render();
-                    if (this._lastRenderContent) this._lastRenderContent();
+                    // The same Reset All as the Grade tab: every grade field.
+                    this.resetGradeAll();
                     this._termLog('success', '[Grade] Reset to defaults.');
                 } else if (args[0] === 'save') {
                     const name = args[1] || `grade_${Date.now()}`;
@@ -5419,8 +5431,8 @@ else:
                     const g = this._captureGradingState();
                     this._termLog('grade', `  Exposure   : ${(g.exposure || 0).toFixed(3)}`);
                     this._termLog('grade', `  Temp/Tint  : ${(g.temperature || 0).toFixed(3)} / ${(g.tint || 0).toFixed(3)}`);
-                    this._termLog('grade', `  Contrast   : ${(g.contrast || 1).toFixed(3)}  Pivot: ${(g.pivot ?? _PIVOT_DEFAULT).toFixed(3)}`);
-                    this._termLog('grade', `  Saturation : ${(g.saturation || 1).toFixed(3)}`);
+                    this._termLog('grade', `  Contrast   : ${(g.contrast ?? 1).toFixed(3)}  Pivot: ${(g.pivot ?? _PIVOT_DEFAULT).toFixed(3)}`);
+                    this._termLog('grade', `  Saturation : ${(g.saturation ?? 1).toFixed(3)}`);
                     this._termLog('grade', `  Lift       : ${(g.lift || [0, 0, 0]).map(v => v.toFixed(3)).join('  ')}`);
                     this._termLog('grade', `  Gamma      : ${(g.gamma || [1, 1, 1]).map(v => v.toFixed(3)).join('  ')}`);
                     this._termLog('grade', `  Gain       : ${(g.gain || [1, 1, 1]).map(v => v.toFixed(3)).join('  ')}`);
@@ -7352,58 +7364,59 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
     }
 
+    /**
+     * Reset the Grade tab's own controls (exposure, tone, colour, wheels and
+     * offset). Curves, printer lights, effects, the LUT and the input space
+     * stay; Reset All takes those too.
+     */
     resetControls() {
-        this._pushUndo();
-        this.exposure = 0.0;
-        this.contrast = 1.0;
-        this.saturation = 1.0;
-        this.temperature = 0.0;
-        this.tint = 0.0;
-        this.pivot = _PIVOT_DEFAULT;
-        this.shadows = 0.0;
-        this.highlights = 0.0;
-        this.midDetail = 0.0;
-        this.colorBoost = 0.0;
-        this.softClip = 0.0;
-        this.lumaMix = 1.0;
-        this.offset = [0.0, 0.0, 0.0];
-        this.gain = [1.0, 1.0, 1.0];
-        this.gamma = [1.0, 1.0, 1.0];
-        this.lift = [0.0, 0.0, 0.0];
-
-        if (this.renderer) {
-            this.renderer.setExposure(this.exposure);
-            this.renderer.setContrast(this.contrast);
-            this.renderer.setPivot(this.pivot);
-            this.renderer.setSaturation(this.saturation);
-            this.renderer.setTemperature(this.temperature);
-            this.renderer.setTint(this.tint);
-            this.renderer.setHighlights?.(this.highlights);
-            this.renderer.setShadows?.(this.shadows);
-            this.renderer.setMidDetail?.(this.midDetail);
-            this.renderer.setColorBoost?.(this.colorBoost);
-            this.renderer.setSoftClip?.(this.softClip);
-            this.renderer.setLumaMix?.(this.lumaMix);
-            this.renderer.setOffset(...this.offset);
-            this.renderer.setGain(...this.gain);
-            this.renderer.setGamma(...this.gamma);
-            this.renderer.setLift(...this.lift);
-        }
-
-        // Update HUD UI
-        if (this._lastRenderContent) this._lastRenderContent();
-        this.render();
+        this._resetGradeFields([
+            ...RadianceViewer.GRADE_SECTIONS.exposure, ...RadianceViewer.GRADE_SECTIONS.tone,
+            ...RadianceViewer.GRADE_SECTIONS.color, ...RadianceViewer.GRADE_SECTIONS.wheels,
+        ]);
     }
 
+    /** Reset every grade field: the Grade tab, curves, printer lights, effects, LUT, input space, mask and qualifier. */
+    resetGradeAll() {
+        this._pushUndo();
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = this._captureGradingState();
+        for (const k of Object.keys(D)) state[k] = RadianceViewer._cloneGradeValue(D[k]);
+        state.curves = null;
+        state.manualLut = null;
+        state.inputSpace = 'None';
+        this._userSetIDT = false;
+        this._restoreGradingState(state);
+        this._afterGradeRestore();
+    }
+
+    /** Reset the named fields to the defaults table, as one undo step. */
+    _resetGradeFields(keys) {
+        this._pushUndo();
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = this._captureGradingState();
+        for (const k of keys) {
+            if (k === 'curves') state.curves = null;
+            else if (k === 'manualLut') state.manualLut = null;
+            else if (k === 'inputSpace') { state.inputSpace = 'None'; this._userSetIDT = false; }
+            else if (k in D) state[k] = RadianceViewer._cloneGradeValue(D[k]);
+        }
+        this._restoreGradingState(state);
+        this._afterGradeRestore();
+    }
+
+    /**
+     * Step exposure (numpad +/-, the scroll gesture). Clamped to the same
+     * ±12 stops the Exposure slider covers and the shader applies, and the
+     * slider follows: evControl was never assigned, so it went stale.
+     */
     adjustEV(delta) {
         this._pushUndoDebounced();
-        this.exposure = Math.max(-12.0, Math.min(12.0, this.exposure + delta));
-        // v2.2: Update HUD slider (replaces crashed evSlider.setValue)
-        if (this.evControl) {
-            const input = this.evControl.querySelector('input[type="range"]');
-            if (input) { input.value = this.exposure; input.dispatchEvent(new Event('input')); }
-        }
+        const ev = (this.exposure ?? 0) + delta;
+        this.exposure = Math.max(_EXPOSURE_MIN, Math.min(_EXPOSURE_MAX, Math.round(ev * 1000) / 1000));
         if (this.renderer) this.renderer.setExposure(this.exposure);
+        this._syncGradeControls();
+        this._schedulePersistGrade();
         this.render();
     }
 
@@ -12131,13 +12144,17 @@ self.onmessage = async ({ data: { id, url } }) => {
                     transform: scale(1.2);
                 }
                 .radiance-ref-slider output { height:22px; display:flex; align-items:center; justify-content:center; border-radius:4px; background:rgba(0,0,0,.45); color:var(--radiance-text); font:10px/1 var(--radiance-font-mono, monospace); border: 1px solid var(--radiance-panel-border); }
+                .radiance-ref-slider .radiance-ref-readout { width:100%; height:22px; padding:0 4px; text-align:center; border-radius:4px; background:rgba(0,0,0,.45); color:var(--radiance-text); font:10px/1 var(--radiance-font-mono, monospace); border:1px solid var(--radiance-panel-border); outline:none; }
+                .radiance-ref-slider .radiance-ref-readout:focus { border-color:var(--radiance-accent); }
+                .radiance-ref-section-reset { height:18px; padding:0 7px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.04); color:var(--radiance-text-dim); font:600 9px/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.3px; text-transform:none; cursor:pointer; }
+                .radiance-ref-section-reset:hover { border-color:var(--radiance-accent); color:#fff; }
                 .radiance-ref-slider.temperature input { accent-color:#ffffff; }
                 .radiance-ref-slider.tint input { accent-color:#d45cff; }
                 .radiance-ref-slider.saturation input { accent-color:#59d86f; }
                 .radiance-ref-wheels { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
                 .radiance-ref-wheel { min-width:0; text-align:center; }
                 .radiance-ref-wheel-label { color:var(--radiance-text-dim); font-size:10px; margin-bottom:8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-                .radiance-ref-wheel-ring { width:58px; height:58px; margin:0 auto 8px; border-radius:50%; padding:2.5px; background:conic-gradient(from 180deg, #ff4a4a, #ffff4a, #4aff4a, #4affff, #4a4aff, #ff4aff, #ff4a4a); box-shadow:0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,.04); }
+                .radiance-ref-wheel-ring { width:58px; height:58px; margin:0 auto 8px; border-radius:50%; padding:2.5px; background:conic-gradient(from 90deg, #ff4a4a, #ffff4a, #4aff4a, #4affff, #4a4aff, #ff4aff, #ff4a4a); box-shadow:0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,.04); }
                 .radiance-ref-wheel-inner { width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, #1a1a24 0%, #0d0d12 100%); border:1px solid rgba(255,255,255,.08); position:relative; }
                 .radiance-ref-wheel-inner::after { content:""; position:absolute; width:4px; height:4px; border-radius:50%; left:50%; top:50%; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.8); background:rgba(255,255,255,.2); }
                 .radiance-ref-wheel-puck { position:absolute; left:50%; top:50%; width:8px; height:8px; border-radius:50%; transform:translate(-50%,-50%); border:2px solid #ffffff; background:var(--radiance-accent); box-shadow:0 0 8px var(--radiance-accent), 0 2px 4px rgba(0,0,0,.5); pointer-events:none; }
@@ -12310,12 +12327,24 @@ self.onmessage = async ({ data: { id, url } }) => {
         window.addEventListener('keydown', this._undoKeyHandler);
     }
 
-    _renderReferenceSection(parent, title) {
+    _renderReferenceSection(parent, title, onReset = null) {
         const section = document.createElement('section');
         section.className = 'radiance-ref-section';
         const heading = document.createElement('div');
         heading.className = 'radiance-ref-title';
         heading.textContent = title;
+        if (onReset) {
+            // Each grade section resets on its own, back to the defaults table.
+            heading.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'radiance-ref-section-reset';
+            btn.textContent = 'Reset';
+            btn.title = `Reset ${title.toLowerCase()} to defaults`;
+            btn.dataset.radianceReset = title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+            btn.onclick = onReset;
+            heading.appendChild(btn);
+        }
         section.appendChild(heading);
         parent.appendChild(section);
         return section;
@@ -12579,38 +12608,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         btnGroup.style.cssText = 'display: flex; gap: 4px;';
         selectorRow.appendChild(btnGroup);
 
-        // Initialize Sidebar Curve Editor if it doesn't exist
-        if (!this.refCurveEditor) {
-            this.refCurveEditor = new RadianceCurveEditor(240, 160, this.theme, (data, secData) => {
-                if (this.renderer) {
-                    this.renderer.updateCurveLut(data);
-                    if (secData) {
-                        this.renderer.updateSecondaryCurveLut(secData);
-                        const isIdentity = secData.every((v, i) => i % 4 === 3 ? true : Math.abs(v - 0.5) < 0.001);
-                        if (!isIdentity) {
-                            this.renderer.setSecondaryCurveMix(1.0);
-                        } else {
-                            this.renderer.setSecondaryCurveMix(0.0);
-                        }
-                    }
-                    this.renderer.setCurveMix(this.curveMix !== undefined ? this.curveMix : 1.0);
-                    this.render();
-                }
-                if (this.curveEditor && this.curveEditor !== this.refCurveEditor) {
-                    this.curveEditor.draw();
-                }
-            });
-
-            if (this.curveEditor) {
-                this.refCurveEditor.curves = this.curveEditor.curves;
-                this.refCurveEditor.levels = this.curveEditor.levels;
-                this.refCurveEditor.channelGain = this.curveEditor.channelGain;
-                this.refCurveEditor.softClipEnabled = this.curveEditor.softClipEnabled;
-                this.refCurveEditor.softClipParams = this.curveEditor.softClipParams;
-            }
-            if (this.image) this.refCurveEditor.updateHistogram(this.image);
-            this.refCurveEditor.notifyChange();
-        }
+        this._ensureCurveEditor();
 
         const channelMap = [
             { ch: 'RGB', label: 'Y', color: '#e0e0e0', bg: 'rgba(255,255,255,0.12)' },
@@ -12714,8 +12712,62 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._refCurveResizeObs.observe(editorContainer);
     }
 
+    /**
+     * The sidebar curve editor, created on first use. A grade restored from
+     * the workflow or a preset calls this too, so its curves reach the shader
+     * without the Inspector tab having been opened.
+     */
+    _ensureCurveEditor() {
+        if (this.refCurveEditor) return this.refCurveEditor;
+        if (typeof RadianceCurveEditor === 'undefined') return null;
+        this.refCurveEditor = new RadianceCurveEditor(240, 160, this.theme, (data, secData) => {
+            // The tables the shader samples, kept for the CDL and LUT exports.
+            this._curveTable = data;
+            if (secData) this._secondaryCurveTable = secData;
+            if (this.renderer) {
+                this.renderer.updateCurveLut(data);
+                if (secData) {
+                    this.renderer.updateSecondaryCurveLut(secData);
+                    this.renderer.setSecondaryCurveMix(_isIdentitySecondaryTable(secData) ? 0.0 : 1.0);
+                }
+                this.renderer.setCurveMix(this.curveMix !== undefined ? this.curveMix : 1.0);
+                this.render();
+            }
+            if (this.curveEditor && this.curveEditor !== this.refCurveEditor) {
+                this.curveEditor.draw();
+            }
+            this._schedulePersistGrade?.();
+        });
+        // A point drag, an added or removed point: one undo step each.
+        this.refCurveEditor.onEditStart = () => this._pushUndo();
+
+        if (this.curveEditor) {
+            this.refCurveEditor.curves = this.curveEditor.curves;
+            this.refCurveEditor.levels = this.curveEditor.levels;
+            this.refCurveEditor.channelGain = this.curveEditor.channelGain;
+            this.refCurveEditor.softClipEnabled = this.curveEditor.softClipEnabled;
+            this.refCurveEditor.softClipParams = this.curveEditor.softClipParams;
+        }
+        if (this._pendingCurves) {
+            const c = RadianceViewer._cloneGradeValue(this._pendingCurves);
+            this._pendingCurves = null;
+            this.refCurveEditor.curves = { ...this.refCurveEditor.curves, ...c.curves };
+            if (c.levels) this.refCurveEditor.levels = c.levels;
+            if (c.channelGain) this.refCurveEditor.channelGain = c.channelGain;
+            this.refCurveEditor.softClipEnabled = !!c.softClipEnabled;
+            if (c.softClipParams) this.refCurveEditor.softClipParams = c.softClipParams;
+        }
+        if (this.image) this.refCurveEditor.updateHistogram(this.image);
+        this.refCurveEditor.notifyChange();
+        return this.refCurveEditor;
+    }
+
     _renderReferenceGrade(parent) {
-        const transform = this._renderReferenceSection(parent, 'COLOR TRANSFORM');
+        // Controls register here so adjustEV, undo and the eyedropper can move
+        // them without a rebuild.
+        this._gradeControls = new Map();
+        const transform = this._renderReferenceSection(parent, 'COLOR TRANSFORM',
+            () => this._resetGradeFields(RadianceViewer.GRADE_SECTIONS.transform));
         const field = (label, options, value, onChange) => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-field';
@@ -12752,9 +12804,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             { label: 'LogC4', value: 'IDT: LogC4 → Linear' },
             { label: 'S-Log3', value: 'IDT: S-Log3 → Linear' },
         ], inputSpaceValue, v => {
+            this._pushUndo();
             this.inputSpace = v;
             this._userSetIDT = true;
-            this.requestRender();
+            this._gradeChanged();
         });
         field('Output Transform', [
             'None',
@@ -12764,82 +12817,78 @@ self.onmessage = async ({ data: { id, url } }) => {
             'Reinhard Tonemap',
             'ACES Filmic',
         ], ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(this.displayLut) ? 'ACES Filmic' : (this.displayLut || 'None'), v => {
+            this._pushUndo();
             this._setManualDisplayLut(v);
+            this._gradeChanged();
         });
 
-        const slider = (parentEl, label, min, max, value, step, cb, cls = '') => {
-            const row = document.createElement('div');
-            row.className = `radiance-ref-slider ${cls}`;
-            row.dataset.radianceParam = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-            const l = document.createElement('label');
-            l.textContent = label;
-            const input = document.createElement('input');
-            input.type = 'range';
-            input.dataset.radianceParam = row.dataset.radianceParam;
-            input.min = min;
-            input.max = max;
-            input.step = step;
-            input.value = value;
-            const out = document.createElement('output');
-            const setText = () => out.textContent = Number(input.value).toFixed(step < 0.05 ? 2 : step < 1 ? 1 : 0);
-            setText();
-            input.oninput = () => {
-                setText();
-                cb(parseFloat(input.value));
-                this.requestRender();
-                this.requestScopeUpdate?.();
-            };
-            row.append(l, input, out);
-            parentEl.appendChild(row);
-            return input;
-        };
+        const S = RadianceViewer.GRADE_SECTIONS;
+        const exposure = this._renderReferenceSection(parent, 'EXPOSURE', () => this._resetGradeFields(S.exposure));
+        this._refSlider(exposure, { label: 'Exposure', key: 'exposure', min: _EXPOSURE_MIN, max: _EXPOSURE_MAX, step: 0.05,
+            title: 'Stops', get: () => this.exposure, set: v => { this.exposure = v; this.renderer?.setExposure(v); } });
+        this._refSlider(exposure, { label: 'Contrast', key: 'contrast', min: 0.2, max: 3, step: 0.01,
+            title: 'A power curve about the pivot: each stop above and below it is spread by this factor',
+            get: () => this.contrast, set: v => { this.contrast = v; this.renderer?.setContrast(v); } });
+        this._refSlider(exposure, { label: 'Pivot', key: 'pivot', min: 0, max: 1, step: 0.01,
+            title: 'Scene-linear value contrast leaves unchanged (0.18 = 18% grey)',
+            get: () => this.pivot, set: v => { this.pivot = v; this.renderer?.setPivot(v); } });
 
-        const exposure = this._renderReferenceSection(parent, 'EXPOSURE');
-        slider(exposure, 'Exposure', -10, 10, this.exposure || 0, 0.1, v => { this.exposure = v; this.renderer?.setExposure(v); });
-        slider(exposure, 'Contrast', 0.2, 3, this.contrast || 1, 0.01, v => { this.contrast = v; this.renderer?.setContrast(v); });
-        slider(exposure, 'Pivot', 0, 1, this.pivot ?? _PIVOT_DEFAULT, 0.01, v => { this.pivot = v; this.renderer?.setPivot(v); });
+        const tone = this._renderReferenceSection(parent, 'TONE', () => this._resetGradeFields(S.tone));
+        this._refSlider(tone, { label: 'Highlights', key: 'highlights', min: -1, max: 1, step: 0.01,
+            get: () => this.highlights, set: v => { this.highlights = v; this.renderer?.setHighlights?.(v); } });
+        this._refSlider(tone, { label: 'Mid Detail', key: 'midDetail', min: -1, max: 1, step: 0.01,
+            get: () => this.midDetail, set: v => { this.midDetail = v; this.renderer?.setMidDetail?.(v); } });
+        this._refSlider(tone, { label: 'Shadows', key: 'shadows', min: -1, max: 1, step: 0.01,
+            get: () => this.shadows, set: v => { this.shadows = v; this.renderer?.setShadows?.(v); } });
+        this._refSlider(tone, { label: 'Soft Clip', key: 'softClip', min: 0, max: 1, step: 0.01,
+            get: () => this.softClip, set: v => { this.softClip = v; this.renderer?.setSoftClip?.(v); } });
+        this._refSlider(tone, { label: 'Luma Mix', key: 'lumaMix', min: 0, max: 1, step: 0.01,
+            title: '0 keeps the brightness the primaries set while saturation and hue move',
+            get: () => this.lumaMix, set: v => { this.lumaMix = v; this.renderer?.setLumaMix?.(v); } });
 
-        const tone = this._renderReferenceSection(parent, 'TONE');
-        slider(tone, 'Highlights', -1, 1, this.highlights || 0, 0.01, v => { this.highlights = v; this.renderer?.setHighlights?.(v); });
-        slider(tone, 'Mid Detail', -1, 1, this.midDetail || 0, 0.01, v => { this.midDetail = v; this.renderer?.setMidDetail?.(v); });
-        slider(tone, 'Shadows', -1, 1, this.shadows || 0, 0.01, v => { this.shadows = v; this.renderer?.setShadows?.(v); });
-        slider(tone, 'Soft Clip', 0, 1, this.softClip || 0, 0.01, v => { this.softClip = v; this.renderer?.setSoftClip?.(v); });
-        slider(tone, 'Luma Mix', 0, 1, this.lumaMix ?? 1, 0.01, v => { this.lumaMix = v; this.renderer?.setLumaMix?.(v); });
+        const color = this._renderReferenceSection(parent, 'COLOR', () => this._resetGradeFields(S.color));
+        const wb = RadianceViewer.WB_RANGE;
+        this._refSlider(color, { label: 'Temperature', key: 'temperature', min: -wb, max: wb, step: 0.05, cls: 'temperature',
+            title: 'Stops of red against blue: + warmer, - cooler. Brightness of a neutral is kept.',
+            get: () => this.temperature, set: v => { this.temperature = v; this.renderer?.setTemperature(v); } });
+        this._refSlider(color, { label: 'Tint', key: 'tint', min: -wb, max: wb, step: 0.05, cls: 'tint',
+            title: 'Stops of magenta against green: + magenta, - green. Brightness of a neutral is kept.',
+            get: () => this.tint, set: v => { this.tint = v; this.renderer?.setTint(v); } });
+        {
+            const pickRow = document.createElement('div');
+            pickRow.className = 'radiance-ref-actions';
+            pickRow.style.cssText = 'justify-content:flex-start;padding-top:0;margin:-2px 0 6px 88px;';
+            const pick = document.createElement('button');
+            pick.type = 'button';
+            pick.textContent = 'Pick neutral';
+            pick.dataset.radianceParam = 'wb_pick';
+            pick.title = 'Click a grey or white in the picture to set Temperature and Tint so it comes out neutral';
+            pick.onclick = () => this._toggleWBPicker?.(pick);
+            pickRow.appendChild(pick);
+            color.appendChild(pickRow);
+        }
+        this._refSlider(color, { label: 'Saturation', key: 'saturation', min: 0, max: 2, step: 0.01, cls: 'saturation',
+            get: () => this.saturation, set: v => { this.saturation = v; this.renderer?.setSaturation(v); } });
+        this._refSlider(color, { label: 'Color Boost', key: 'colorBoost', min: 0, max: 1, step: 0.01,
+            get: () => this.colorBoost, set: v => { this.colorBoost = v; this.renderer?.setColorBoost?.(v); } });
 
-        const color = this._renderReferenceSection(parent, 'COLOR');
-        slider(color, 'Temperature', -2, 2, this.temperature || 0, 0.05, v => { this.temperature = v; this.renderer?.setTemperature(v); }, 'temperature');
-        slider(color, 'Tint', -2, 2, this.tint || 0, 0.05, v => { this.tint = v; this.renderer?.setTint(v); }, 'tint');
-        slider(color, 'Saturation', 0, 2, this.saturation || 1, 0.01, v => { this.saturation = v; this.renderer?.setSaturation(v); }, 'saturation');
-        slider(color, 'Color Boost', 0, 1, this.colorBoost || 0, 0.01, v => { this.colorBoost = v; this.renderer?.setColorBoost?.(v); });
-
-        const wheels = this._renderReferenceSection(parent, 'COLOR WHEELS');
+        const wheels = this._renderReferenceSection(parent, 'COLOR WHEELS', () => this._resetGradeFields(S.wheels));
         const wheelsGrid = document.createElement('div');
         wheelsGrid.className = 'radiance-ref-wheels';
         wheels.appendChild(wheelsGrid);
         const wheelDefs = [
-            ['Lift', 'lift', this.lift || [0, 0, 0], -0.2, 0.2, 0.01, vals => this.renderer?.setLift?.(...vals)],
-            ['Gamma', 'gamma', this.gamma || [1, 1, 1], 0.2, 3, 0.01, vals => this.renderer?.setGamma?.(...vals)],
-            ['Gain', 'gain', this.gain || [1, 1, 1], 0, 3, 0.01, vals => this.renderer?.setGain?.(...vals)],
+            ['Lift', 'lift', -0.2, 0.2, 0.01, vals => this.renderer?.setLift?.(...vals)],
+            ['Gamma', 'gamma', 0.2, 3, 0.01, vals => this.renderer?.setGamma?.(...vals)],
+            ['Gain', 'gain', 0, 3, 0.01, vals => this.renderer?.setGain?.(...vals)],
         ];
         const renderWheelReadout = (container, vals) => {
             container.textContent = vals.map(v => Number(v).toFixed(2)).join(' ');
         };
         const clamp = (v, minVal, maxVal) => Math.max(minVal, Math.min(maxVal, v));
-        const hueToRgb = angle => {
-            const h = ((angle / (Math.PI * 2)) + 1) % 1;
-            const sector = h * 6;
-            const x = 1 - Math.abs((sector % 2) - 1);
-            let r = 0, g = 0, b = 0;
-            if (sector < 1) [r, g, b] = [1, x, 0];
-            else if (sector < 2) [r, g, b] = [x, 1, 0];
-            else if (sector < 3) [r, g, b] = [0, 1, x];
-            else if (sector < 4) [r, g, b] = [0, x, 1];
-            else if (sector < 5) [r, g, b] = [x, 0, 1];
-            else [r, g, b] = [1, 0, x];
-            return [r, g, b];
-        };
-        wheelDefs.forEach(([label, prop, initial, min, max, step, apply]) => {
-            this[prop] = Array.isArray(this[prop]) ? this[prop] : [...initial];
+        wheelDefs.forEach(([label, prop, min, max, step, apply]) => {
+            const neutral = RadianceViewer.GRADE_DEFAULTS[prop];
+            const current = () => (Array.isArray(this[prop]) ? this[prop] : [...neutral]);
+            this[prop] = [...current()];
             const item = document.createElement('div');
             item.className = 'radiance-ref-wheel';
             item.dataset.radianceParam = prop;
@@ -12865,20 +12914,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             controls.className = 'radiance-ref-wheel-controls';
             const controlRefs = [];
             const wheelRange = (max - min) * (prop === 'lift' ? 0.45 : 0.18);
-            const syncWheel = next => {
-                this[prop] = next;
-                controlRefs.forEach((ref, idx) => {
-                    ref.input.value = next[idx];
-                    ref.out.textContent = Number(next[idx]).toFixed(2);
-                });
-                renderWheelReadout(miniValues, next);
-                apply(next);
-                this.requestRender();
-                this.requestScopeUpdate?.();
-                updatePuck();
-            };
             const updatePuck = () => {
-                const vals = Array.isArray(this[prop]) ? this[prop] : [...initial];
+                const vals = current();
                 const mean = (vals[0] + vals[1] + vals[2]) / 3;
                 const dr = vals[0] - mean;
                 const dg = vals[1] - mean;
@@ -12894,6 +12931,26 @@ self.onmessage = async ({ data: { id, url } }) => {
                 puck.style.left = `calc(50% + ${Math.cos(angle) * radius}px)`;
                 puck.style.top = `calc(50% + ${Math.sin(angle) * radius}px)`;
             };
+            const syncFromState = () => {
+                const vals = current();
+                controlRefs.forEach((ref, idx) => {
+                    ref.input.value = vals[idx];
+                    ref.out.textContent = Number(vals[idx]).toFixed(2);
+                });
+                renderWheelReadout(miniValues, vals);
+                updatePuck();
+            };
+            const syncWheel = next => {
+                this[prop] = next;
+                apply(next);
+                syncFromState();
+                this._gradeChanged();
+            };
+            // The level the drag started from. Each move used to rebuild the
+            // colour around the average of values that already held the last
+            // move's shift, so holding the Gain puck on red took the level from
+            // 1.00 to 0.27 in four moves.
+            let dragLevel = null;
             const setFromWheel = evt => {
                 const rect = inner.getBoundingClientRect();
                 const cx = rect.left + rect.width / 2;
@@ -12901,24 +12958,33 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const dx = evt.clientX - cx;
                 const dy = evt.clientY - cy;
                 const maxRadius = Math.max(1, rect.width / 2 - 4);
-                const sat = clamp(Math.hypot(dx, dy) / maxRadius, 0, 1);
-                const rgb = hueToRgb(Math.atan2(dy, dx));
-                const current = Array.isArray(this[prop]) ? this[prop] : [...initial];
-                const base = clamp((current[0] + current[1] + current[2]) / 3, min, max);
-                const next = rgb.map(c => clamp(base + (c - 0.5) * 2 * sat * wheelRange, min, max));
-                syncWheel(next);
+                const strength = clamp(Math.hypot(dx, dy) / maxRadius, 0, 1) * wheelRange;
+                const a = Math.atan2(dy, dx);
+                if (dragLevel === null) {
+                    const vals = current();
+                    dragLevel = clamp((vals[0] + vals[1] + vals[2]) / 3, min, max);
+                }
+                // A zero-mean chroma offset around the held level, as
+                // createColorWheel does: red at 0, green at 120, blue at 240.
+                const chroma = [Math.cos(a), Math.cos(a - 2 * Math.PI / 3), Math.cos(a - 4 * Math.PI / 3)];
+                syncWheel(chroma.map(c => clamp(dragLevel + c * strength, min, max)));
             };
             inner.addEventListener('pointerdown', evt => {
                 evt.preventDefault();
                 inner.setPointerCapture?.(evt.pointerId);
+                this._pushUndo();   // one undo step per drag
+                dragLevel = null;
                 setFromWheel(evt);
             });
             inner.addEventListener('pointermove', evt => {
-                if (evt.buttons) setFromWheel(evt);
+                if (evt.buttons && dragLevel !== null) setFromWheel(evt);
             });
+            const endDrag = () => { dragLevel = null; };
+            inner.addEventListener('pointerup', endDrag);
+            inner.addEventListener('pointercancel', endDrag);
             inner.addEventListener('dblclick', () => {
-                const neutral = prop === 'lift' ? [0, 0, 0] : [1, 1, 1];
-                syncWheel(neutral);
+                this._pushUndo();
+                syncWheel([...neutral]);
             });
             ['R', 'G', 'B'].forEach((channel, idx) => {
                 const row = document.createElement('label');
@@ -12933,38 +12999,158 @@ self.onmessage = async ({ data: { id, url } }) => {
                 input.step = step;
                 input.value = this[prop][idx];
                 const out = document.createElement('output');
-                const updateOut = () => out.textContent = Number(input.value).toFixed(2);
-                updateOut();
+                out.textContent = Number(input.value).toFixed(2);
+                input.addEventListener('pointerdown', () => this._pushUndo());
+                input.addEventListener('keydown', () => this._pushUndoDebounced());
+                input.addEventListener('dblclick', () => {
+                    this._pushUndo();
+                    const next = [...current()];
+                    next[idx] = neutral[idx];
+                    syncWheel(next);
+                });
                 input.oninput = () => {
-                    const next = [...this[prop]];
+                    const next = [...current()];
                     next[idx] = parseFloat(input.value);
-                    this[prop] = next;
-                    updateOut();
-                    renderWheelReadout(miniValues, next);
-                    apply(next);
-                    this.requestRender();
-                    this.requestScopeUpdate?.();
-                    updatePuck();
+                    syncWheel(next);
                 };
                 row.append(ch, input, out);
                 controlRefs.push({ input, out });
                 controls.appendChild(row);
             });
-            updatePuck();
+            syncFromState();
+            (this._gradeControls ||= new Map()).set(`wheel:${prop}`, { sync: syncFromState });
             item.append(wheelLabel, ring, mini, controls);
             wheelsGrid.appendChild(item);
         });
 
+        this._renderReferencePresets(parent);
+
         const actions = document.createElement('div');
         actions.className = 'radiance-ref-actions';
         const reset = document.createElement('button');
+        reset.type = 'button';
         reset.textContent = 'Reset';
+        reset.title = 'Reset this tab: exposure, tone, colour and the wheels';
         reset.onclick = () => this.resetControls?.();
         const resetAll = document.createElement('button');
+        resetAll.type = 'button';
         resetAll.textContent = 'Reset All';
-        resetAll.onclick = () => this.resetControls?.();
+        resetAll.title = 'Reset every grade field: this tab, curves, printer lights, effects, LUT and input space';
+        resetAll.onclick = () => this.resetGradeAll?.();
         actions.append(reset, resetAll);
         parent.appendChild(actions);
+    }
+
+    /**
+     * One Grade or Effects slider. Its readout shows the value the grade holds
+     * (at the step's own precision, so 0.05 does not round to 0.1) and takes a
+     * typed value; a drag is one undo step; a double-click returns it to the
+     * defaults table.
+     */
+    _refSlider(parentEl, { label, key, min, max, step, get, set, cls = '', title = '' }) {
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const param = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const row = document.createElement('div');
+        row.className = `radiance-ref-slider ${cls}`;
+        row.dataset.radianceParam = param;
+        if (title) row.title = title;
+        const l = document.createElement('label');
+        l.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.dataset.radianceParam = param;
+        input.min = min;
+        input.max = max;
+        input.step = step;
+        input.setAttribute('aria-label', label);
+        const readout = document.createElement('input');
+        readout.type = 'text';
+        readout.inputMode = 'decimal';
+        readout.className = 'radiance-ref-readout';
+        readout.dataset.radianceReadout = param;
+        readout.setAttribute('aria-label', `${label} value`);
+        const decimals = String(step).includes('.') ? String(step).split('.')[1].length : 0;
+        const neutral = D[key] ?? 0;
+        const read = () => {
+            const v = Number(get());
+            return Number.isFinite(v) ? v : neutral;
+        };
+        const sync = () => {
+            const v = read();
+            input.value = String(v);
+            if (document.activeElement !== readout) readout.value = v.toFixed(decimals);
+        };
+        const apply = (v) => { set(v); sync(); this._gradeChanged(); };
+        const reset = () => { this._pushUndo(); apply(neutral); };
+        input.addEventListener('pointerdown', () => this._pushUndo());   // one step per drag
+        input.addEventListener('keydown', () => this._pushUndoDebounced());
+        input.addEventListener('input', () => apply(parseFloat(input.value)));
+        input.addEventListener('dblclick', reset);
+        l.addEventListener('dblclick', reset);
+        readout.addEventListener('focus', () => readout.select());
+        readout.addEventListener('keydown', (e) => {
+            // Digits typed here are not viewer shortcuts.
+            e.stopPropagation();
+            if (e.key === 'Enter') readout.blur();
+            else if (e.key === 'Escape') { readout.value = read().toFixed(decimals); readout.blur(); }
+        });
+        readout.addEventListener('change', () => {
+            const v = parseFloat(readout.value);
+            if (!Number.isFinite(v)) { sync(); return; }
+            this._pushUndo();
+            apply(Math.max(Number(min), Math.min(Number(max), v)));
+        });
+        readout.addEventListener('blur', sync);
+        sync();
+        row.append(l, input, readout);
+        parentEl.appendChild(row);
+        (this._gradeControls ||= new Map()).set(`slider:${key}`, { sync });
+        return input;
+    }
+
+    /** Grade presets: save the whole grade by name, load it back, delete it. */
+    _renderReferencePresets(parent) {
+        const section = this._renderReferenceSection(parent, 'PRESETS');
+        const presets = RadianceViewer.readJSON('radiance_presets', {});
+        const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
+        const row = document.createElement('div');
+        row.className = 'radiance-ref-field';
+        row.dataset.radianceParam = 'presets';
+        const l = document.createElement('label');
+        l.textContent = 'Grade preset';
+        const select = document.createElement('select');
+        select.dataset.radianceParam = 'grade_preset';
+        if (!names.length) {
+            const o = document.createElement('option');
+            o.value = ''; o.textContent = 'No presets saved';
+            select.appendChild(o);
+        }
+        names.forEach(n => {
+            const o = document.createElement('option');
+            o.value = n; o.textContent = n;
+            select.appendChild(o);
+        });
+        if (this._selectedPreset && names.includes(this._selectedPreset)) select.value = this._selectedPreset;
+        select.onchange = () => { this._selectedPreset = select.value || null; };
+        row.append(l, select);
+        section.appendChild(row);
+
+        const actions = document.createElement('div');
+        actions.className = 'radiance-ref-actions';
+        const button = (text, title, onClick, disabled = false) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = text;
+            b.title = title;
+            b.disabled = disabled;
+            b.dataset.radianceAction = text.toLowerCase().replace(/[^a-z]+/g, '_').replace(/_$/, '');
+            b.onclick = onClick;
+            actions.appendChild(b);
+        };
+        button('Load', 'Apply the selected preset (one undo step)', () => select.value && this.loadGrade(select.value), !names.length);
+        button('Save', 'Save the whole grade as a preset', () => this.saveGrade());
+        button('Delete', 'Delete the selected preset', () => select.value && this.deleteGrade(select.value), !names.length);
+        section.appendChild(actions);
     }
 
     _renderReferenceScopes(parent) {
@@ -13128,32 +13314,12 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _renderReferenceEffects(parent) {
-        const makeSlider = (parentEl, label, min, max, value, step, cb, cls = '') => {
-            const row = document.createElement('div');
-            row.className = `radiance-ref-slider ${cls}`;
-            row.dataset.radianceParam = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-            const l = document.createElement('label');
-            l.textContent = label;
-            const input = document.createElement('input');
-            input.type = 'range';
-            input.dataset.radianceParam = row.dataset.radianceParam;
-            input.min = min;
-            input.max = max;
-            input.step = step;
-            input.value = value;
-            const out = document.createElement('output');
-            const updateText = () => out.textContent = Number(input.value).toFixed(step < 0.05 ? 2 : step < 1 ? 1 : 0);
-            updateText();
-            input.oninput = () => {
-                updateText();
-                cb(parseFloat(input.value));
-                this.requestRender();
-                this.requestScopeUpdate?.();
-            };
-            row.append(l, input, out);
-            parentEl.appendChild(row);
-            return input;
-        };
+        this._gradeControls = new Map();
+        const S = RadianceViewer.GRADE_SECTIONS;
+        // The same slider as the Grade tab: editable readout, one undo step per
+        // drag, double-click to the defaults table.
+        const makeSlider = (parentEl, label, min, max, key, step, cb, cls = '') =>
+            this._refSlider(parentEl, { label, key, min, max, step, cls, get: () => this[key], set: cb });
 
         const makeToggle = (parentEl, label, enabled, cb, statusText = '') => {
             const row = document.createElement('div');
@@ -13173,10 +13339,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             toggle.className = `radiance-ref-toggle ${enabled ? 'is-on' : ''}`;
             toggle.onclick = () => {
                 const next = !toggle.classList.contains('is-on');
+                this._pushUndo();
                 toggle.classList.toggle('is-on', next);
                 cb(next);
-                this.requestRender();
-                this.requestScopeUpdate?.();
+                this._gradeChanged();
             };
             right.appendChild(toggle);
             row.append(l, right);
@@ -13215,7 +13381,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             return select;
         };
 
-        const grain = this._renderReferenceSection(parent, 'FILM GRAIN');
+        const grain = this._renderReferenceSection(parent, 'FILM GRAIN', () => this._resetGradeFields(S.grain));
 
         const grainPresets = [
             { value: 'none', label: 'Off / Custom', amount: 0.0, size: 1.0, color: 0.0, animate: false },
@@ -13234,6 +13400,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         ];
 
         makeSelect(grain, 'Film Stock', grainPresets, this.activeGrainPreset || 'none', val => {
+            this._pushUndo();
             this.activeGrainPreset = val;
             const preset = grainPresets.find(p => p.value === val);
             if (preset) {
@@ -13248,7 +13415,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.renderer?.setGrainAnimate(this.grainAnimate);
             }
             this._renderReferenceRightHUD();
-            this.requestRender();
+            this._gradeChanged();
         });
 
         makeToggle(grain, 'Animate Grain', !!this.grainAnimate, v => {
@@ -13257,43 +13424,43 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.renderer?.setGrainAnimate(v);
         }, this.grainAnimate ? 'LIVE' : 'STATIC');
 
-        makeSlider(grain, 'Amount', 0, 1, this.grain || 0, 0.01, v => {
+        makeSlider(grain, 'Amount', 0, 1, 'grain', 0.01, v => {
             this.grain = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrain(v);
         });
 
-        makeSlider(grain, 'Size', 0.25, 4, this.grainSize || 1, 0.05, v => {
+        makeSlider(grain, 'Size', 0.25, 4, 'grainSize', 0.05, v => {
             this.grainSize = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainSize(v);
         });
 
-        makeSlider(grain, 'Color', 0, 1, this.grainColor || 0, 0.01, v => {
+        makeSlider(grain, 'Color', 0, 1, 'grainColor', 0.01, v => {
             this.grainColor = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainColor(v);
         }, 'saturation');
 
-        const lens = this._renderReferenceSection(parent, 'LENS EFFECTS');
-        makeSlider(lens, 'Bloom', 0, 2, this.bloom || 0, 0.01, v => {
+        const lens = this._renderReferenceSection(parent, 'LENS EFFECTS', () => this._resetGradeFields(S.lens));
+        makeSlider(lens, 'Bloom', 0, 2, 'bloom', 0.01, v => {
             this.bloom = v;
             this.renderer?.setBloom(v);
         });
-        makeSlider(lens, 'Halation', 0, 2, this.halation || 0, 0.01, v => {
+        makeSlider(lens, 'Halation', 0, 2, 'halation', 0.01, v => {
             this.halation = v;
             this.renderer?.setHalation(v);
         });
-        makeSlider(lens, 'Diffusion', 0, 2, this.diffusion || 0, 0.01, v => {
+        makeSlider(lens, 'Diffusion', 0, 2, 'diffusion', 0.01, v => {
             this.diffusion = v;
             this.renderer?.setDiffusion(v);
         });
-        makeSlider(lens, 'Fringe', 0, 2, this.lensFringe || 0, 0.01, v => {
+        makeSlider(lens, 'Fringe', 0, 2, 'lensFringe', 0.01, v => {
             this.lensFringe = v;
             this.renderer?.setLensDistortion(this.lensDistortion || 0, v);
         });
 
-        const depth = this._renderReferenceSection(parent, 'REALTIME DEPTH');
+        const depth = this._renderReferenceSection(parent, 'REALTIME DEPTH', () => this._resetGradeFields(S.depth));
         const hasDepth = !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
         makeToggle(depth, 'Show Depth Overlay', !!this.showZdepth, v => {
             this.showZdepth = v;
@@ -13307,35 +13474,35 @@ self.onmessage = async ({ data: { id, url } }) => {
         preview.className = 'radiance-ref-depth-preview';
         depth.appendChild(preview);
         this._renderReferenceDepthPreview(preview);
-        makeSlider(depth, 'Focus', 0, 1, this.focusDistance ?? 0.5, 0.01, v => {
+        makeSlider(depth, 'Focus', 0, 1, 'focusDistance', 0.01, v => {
             this.focusDistance = v;
             this.renderer?.setFocusDistance(v);
         });
-        makeSlider(depth, 'Aperture', 0, 1, this.aperture || 0, 0.01, v => {
+        makeSlider(depth, 'Aperture', 0, 1, 'aperture', 0.01, v => {
             this.aperture = v;
             this.renderer?.setAperture(v);
         });
-        makeSlider(depth, 'Blades', 0, 9, this.apertureBlades || 0, 1, v => {
+        makeSlider(depth, 'Blades', 0, 9, 'apertureBlades', 1, v => {
             this.apertureBlades = Math.round(v);
             this.renderer?.setApertureShape(this.apertureBlades, this.apertureRotation || 0, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Angle', 0, 360, this.apertureRotation || 0, 1, v => {
+        makeSlider(depth, 'Angle', 0, 360, 'apertureRotation', 1, v => {
             this.apertureRotation = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, v, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Anamorphic', 1, 2, this.apertureAnamorphic || 1, 0.05, v => {
+        makeSlider(depth, 'Anamorphic', 1, 2, 'apertureAnamorphic', 0.05, v => {
             this.apertureAnamorphic = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, this.apertureRotation || 0, v);
         });
-        makeSlider(depth, 'Highlight', 0, 5, this.bokehHighlightBias || 0, 0.1, v => {
+        makeSlider(depth, 'Highlight', 0, 5, 'bokehHighlightBias', 0.1, v => {
             this.bokehHighlightBias = v;
             this.renderer?.setBokehPhysics(v, this.bokehSoapBubble || 0, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Rim', 0, 2, this.bokehSoapBubble || 0, 0.05, v => {
+        makeSlider(depth, 'Rim', 0, 2, 'bokehSoapBubble', 0.05, v => {
             this.bokehSoapBubble = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, v, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Cat Eye', 0, 1, this.bokehOpticalVig || 0, 0.05, v => {
+        makeSlider(depth, 'Cat Eye', 0, 1, 'bokehOpticalVig', 0.05, v => {
             this.bokehOpticalVig = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, this.bokehSoapBubble || 0, v);
         });
@@ -13343,41 +13510,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         const actions = document.createElement('div');
         actions.className = 'radiance-ref-actions';
         const reset = document.createElement('button');
+        reset.type = 'button';
         reset.textContent = 'Reset Effects';
+        reset.title = 'Reset grain, lens effects (Fringe included) and depth of field';
+        // Every effect field from the defaults table. The list here was typed
+        // out by hand and left Fringe out.
         reset.onclick = () => {
-            this.grain = 0;
-            this.grainSize = 1;
-            this.grainColor = 0;
-            this.grainAnimate = false;
-            this.activeGrainPreset = 'none';
-            this.bloom = 0;
-            this.halation = 0;
-            this.diffusion = 0;
             this.showZdepth = false;
-            this.dofEnabled = false;
-            this.aperture = 0;
-            this.focusDistance = 0.5;
-            this.apertureBlades = 0;
-            this.apertureRotation = 0;
-            this.apertureAnamorphic = 1;
-            this.bokehHighlightBias = 0;
-            this.bokehSoapBubble = 0;
-            this.bokehOpticalVig = 0;
-            this.renderer?.setGrain(0);
-            this.renderer?.setGrainSize(1);
-            this.renderer?.setGrainColor(0);
-            this.renderer?.setGrainAnimate(false);
-            this.renderer?.setBloom(0);
-            this.renderer?.setHalation(0);
-            this.renderer?.setDiffusion(0);
-            this.renderer?.setShowDepth(false);
-            this.renderer?.setDoFEnabled(false);
-            this.renderer?.setAperture(0);
-            this.renderer?.setFocusDistance(0.5);
-            this.renderer?.setApertureShape(0, 0, 1);
-            this.renderer?.setBokehPhysics(0, 0, 0);
-            this._renderReferenceRightHUD();
-            this.requestRender();
+            this.renderer?.setShowDepth?.(false);
+            this._resetGradeFields([...S.grain, ...S.lens, ...S.depth]);
         };
         actions.appendChild(reset);
         parent.appendChild(actions);
@@ -19251,112 +19392,251 @@ self.onmessage = async ({ data: { id, url } }) => {
     //                         UNDO / REDO STACK
     // ═══════════════════════════════════════════════════════════════════════════
 
-    _captureGradingState() {
-        return {
-            exposure: this.exposure || 0.0,
-            lift: this.lift ? [...this.lift] : [0, 0, 0],
-            gamma: this.gamma ? (Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma, this.gamma, this.gamma]) : [1, 1, 1],
-            gain: this.gain ? [...this.gain] : [1, 1, 1],
-            temperature: this.temperature || 0.0,
-            tint: this.tint || 0.0,
-            contrast: this.contrast || 1.0,
-            pivot: this.pivot ?? _PIVOT_DEFAULT,
-            saturation: this.saturation || 1.0,
-            grain: this.grain || 0.0,
-            grainSize: this.grainSize || 1.0,
-            grainColor: this.grainColor || 0.0,
-            grainAnimate: this.grainAnimate || false,
-            denoise: this.denoise || 0.0,
-            bloom: this.bloom || 0.0,
-            halation: this.halation || 0.0,
-            diffusion: this.diffusion || 0.0,
-            lensDistortion: this.lensDistortion || 0.0,
-            lensFringe: this.lensFringe || 0.0,
-            vignetteIntensity: this.vignetteIntensity || 0.0,
-            vignetteFalloff: this.vignetteFalloff ?? 0.5,
-            bokehHighlightBias: this.bokehHighlightBias || 0.0,
-            bokehSoapBubble: this.bokehSoapBubble || 0.0,
-            bokehOpticalVig: this.bokehOpticalVig || 0.0,
-            apertureBlades: this.apertureBlades || 0,
-            apertureRotation: this.apertureRotation || 0.0,
-            apertureAnamorphic: this.apertureAnamorphic || 1.0,
-            anamorphicStreaks: this.anamorphicStreaks || 0.0,
-            // v3.4 additions
-            printerR: this.printerR || 0,
-            printerG: this.printerG || 0,
-            printerB: this.printerB || 0,
-            softClip: this.softClip || 0.0,
-        };
+    /**
+     * Every grade field and its neutral value: the one table the Reset buttons,
+     * the double-click on a slider, undo, presets and the workflow save read.
+     * Undo used to capture a third of these and wrote `|| 1.0`, so Saturation 0
+     * (black and white) came back as 1.
+     */
+    static GRADE_DEFAULTS = Object.freeze({
+        // Grade tab
+        exposure: 0, contrast: 1, pivot: _PIVOT_DEFAULT, saturation: 1,
+        temperature: 0, tint: 0,
+        highlights: 0, midDetail: 0, shadows: 0, softClip: 0, lumaMix: 1, colorBoost: 0, hueShift: 0,
+        lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1], offset: [0, 0, 0],
+        logShadow: [0, 0, 0], logMidtone: [0, 0, 0], logHighlight: [0, 0, 0],
+        printerR: 0, printerG: 0, printerB: 0,
+        colorScience: 0, lutIntensity: 1,
+        maskState: { type: 0, center: [0.5, 0.5], scale: [0.3, 0.3], feather: 0.2, rotation: 0, invert: false, showOverlay: false },
+        qualifierState: { enabled: false, showMask: false, h: 0, hW: 0.1, hS: 0.05, s: 0.5, sW: 0.5, sS: 0.1, l: 0.5, lW: 0.5, lS: 0.1 },
+        // Effects tab
+        grain: 0, grainSize: 1, grainColor: 0, grainAnimate: false, activeGrainPreset: 'none',
+        bloom: 0, halation: 0, diffusion: 0, lensDistortion: 0, lensFringe: 0,
+        vignetteIntensity: 0, vignetteFalloff: 0.5, anamorphicStreaks: 0, denoise: 0,
+        dofEnabled: false, focusDistance: 0.5, aperture: 0,
+        apertureBlades: 0, apertureRotation: 0, apertureAnamorphic: 1,
+        bokehHighlightBias: 0, bokehSoapBubble: 0, bokehOpticalVig: 0,
+    });
+
+    /** The fields each section's own Reset button returns to the table. */
+    static GRADE_SECTIONS = Object.freeze({
+        transform: ['inputSpace', 'manualLut'],
+        exposure: ['exposure', 'contrast', 'pivot'],
+        tone: ['highlights', 'midDetail', 'shadows', 'softClip', 'lumaMix'],
+        color: ['temperature', 'tint', 'saturation', 'colorBoost', 'hueShift'],
+        wheels: ['lift', 'gamma', 'gain', 'offset', 'logShadow', 'logMidtone', 'logHighlight'],
+        grain: ['grain', 'grainSize', 'grainColor', 'grainAnimate', 'activeGrainPreset'],
+        lens: ['bloom', 'halation', 'diffusion', 'lensFringe', 'lensDistortion', 'vignetteIntensity',
+            'vignetteFalloff', 'anamorphicStreaks', 'denoise'],
+        depth: ['dofEnabled', 'focusDistance', 'aperture', 'apertureBlades', 'apertureRotation',
+            'apertureAnamorphic', 'bokehHighlightBias', 'bokehSoapBubble', 'bokehOpticalVig'],
+    });
+
+    /** Temperature and Tint range, in stops (see whiteBalanceGains). */
+    static WB_RANGE = 2;
+
+    static _cloneGradeValue(v) {
+        if (Array.isArray(v)) return [...v];
+        if (v && typeof v === 'object') return JSON.parse(JSON.stringify(v));
+        return v;
     }
 
-    _restoreGradingState(snapshot) {
-        this.exposure = snapshot.exposure;
-        this.lift = [...snapshot.lift];
-        this.gamma = [...snapshot.gamma];
-        this.gain = [...snapshot.gain];
-        this.temperature = snapshot.temperature;
-        this.tint = snapshot.tint;
-        this.contrast = snapshot.contrast;
-        this.pivot = snapshot.pivot;
-        this.saturation = snapshot.saturation;
-        this.grain = snapshot.grain;
-        this.grainSize = snapshot.grainSize ?? 1.0;
-        this.grainColor = snapshot.grainColor ?? 0.0;
-        this.grainAnimate = snapshot.grainAnimate ?? false;
-        this.denoise = snapshot.denoise;
-        this.bloom = snapshot.bloom ?? 0.0;
-        this.halation = snapshot.halation ?? 0.0;
-        this.diffusion = snapshot.diffusion ?? 0.0;
-        this.lensDistortion = snapshot.lensDistortion;
-        this.lensFringe = snapshot.lensFringe;
-        this.vignetteIntensity = snapshot.vignetteIntensity;
-        this.vignetteFalloff = snapshot.vignetteFalloff;
-        this.bokehHighlightBias = snapshot.bokehHighlightBias ?? 0.0;
-        this.bokehSoapBubble = snapshot.bokehSoapBubble ?? 0.0;
-        this.bokehOpticalVig = snapshot.bokehOpticalVig ?? 0.0;
-        this.apertureBlades = snapshot.apertureBlades ?? 0;
-        this.apertureRotation = snapshot.apertureRotation ?? 0.0;
-        this.apertureAnamorphic = snapshot.apertureAnamorphic ?? 1.0;
-        this.anamorphicStreaks = snapshot.anamorphicStreaks ?? 0.0;
-        // v3.4: Printer Lights + Soft Clip
-        this.printerR = snapshot.printerR ?? 0;
-        this.printerG = snapshot.printerG ?? 0;
-        this.printerB = snapshot.printerB ?? 0;
-        this.softClip = snapshot.softClip ?? 0.0;
-
-        if (this.renderer) {
-            this.renderer.setExposure(this.exposure);
-            this.renderer.setLift(this.lift[0], this.lift[1], this.lift[2]);
-            this.renderer.setGamma(this.gamma[0], this.gamma[1], this.gamma[2]);
-            this.renderer.setGain(this.gain[0], this.gain[1], this.gain[2]);
-            this.renderer.setTemperature(this.temperature);
-            this.renderer.setTint(this.tint);
-            this.renderer.setContrast(this.contrast);
-            this.renderer.setPivot(this.pivot);
-            this.renderer.setSaturation(this.saturation);
-            this.renderer.setGrain(this.grain);
-            this.renderer.setGrainSize(this.grainSize);
-            this.renderer.setGrainColor(this.grainColor);
-            this.renderer.setGrainAnimate(this.grainAnimate);
-            this.renderer.setDenoise(this.denoise);
-            this.renderer.setBloom(this.bloom);
-            this.renderer.setHalation(this.halation);
-            this.renderer.setDiffusion(this.diffusion);
-            this.renderer.setLensDistortion(this.lensDistortion, this.lensFringe);
-            this.renderer.setVignette(this.vignetteIntensity, this.vignetteFalloff);
-            this.renderer.setBokehPhysics(this.bokehHighlightBias, this.bokehSoapBubble, this.bokehOpticalVig);
-            this.renderer.setApertureShape(this.apertureBlades, this.apertureRotation, this.apertureAnamorphic);
-            if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(this.anamorphicStreaks);
-            this.renderer.setPrinterLights(this.printerR, this.printerG, this.printerB);
-            this.renderer.setSoftClip(this.softClip);
+    /**
+     * The complete grade as one plain object. Undo, Reset, presets and the
+     * workflow save all use it, so none of them can drop a field the others
+     * keep. `??`, never `||`: 0 is a real value for most of these.
+     */
+    _captureGradingState() {
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = { version: 2 };
+        for (const [k, d] of Object.entries(D)) {
+            const v = this[k];
+            if (Array.isArray(d)) {
+                state[k] = Array.isArray(v) && v.length >= 3 ? v.slice(0, 3).map(Number)
+                    : (typeof v === 'number' ? [v, v, v] : [...d]);
+            } else if (d && typeof d === 'object') {
+                state[k] = RadianceViewer._cloneGradeValue(v ?? d);
+            } else {
+                state[k] = v ?? d;
+            }
         }
-        this.render();
+        state.curves = this._captureCurves();
+        state.inputSpace = this.inputSpace ?? 'None';
+        // The LUT is part of the grade only when it was picked by hand; an auto
+        // view follows the source and the user's view preference instead.
+        state.manualLut = this.viewMode === 'manual' ? (this.displayLut ?? null) : null;
+        return state;
+    }
+
+    /**
+     * Apply a grade object. Missing fields take the table's neutral value, so
+     * an older preset or workflow loads predictably; the input space and LUT
+     * are left as they are when a snapshot does not mention them.
+     */
+    _restoreGradingState(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return;
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        for (const [k, d] of Object.entries(D)) {
+            const v = snapshot[k];
+            if (Array.isArray(d)) {
+                this[k] = Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every((x) => Number.isFinite(Number(x)))
+                    ? v.slice(0, 3).map(Number) : (typeof v === 'number' ? [v, v, v] : [...d]);
+            } else if (d && typeof d === 'object') {
+                this[k] = { ...RadianceViewer._cloneGradeValue(d), ...RadianceViewer._cloneGradeValue(v ?? {}) };
+            } else if (typeof d === 'number') {
+                const n = Number(v);
+                this[k] = v !== undefined && v !== null && Number.isFinite(n) ? n : d;
+            } else {
+                this[k] = v ?? d;
+            }
+        }
+        if ('curves' in snapshot) this._restoreCurves(snapshot.curves);
+        if (typeof snapshot.inputSpace === 'string' && snapshot.inputSpace !== this.inputSpace) {
+            this.inputSpace = snapshot.inputSpace;
+            this._userSetIDT = snapshot.inputSpace !== 'None';
+        }
+        if ('manualLut' in snapshot) {
+            const want = snapshot.manualLut;
+            if (typeof want === 'string' && want) {
+                if (this.viewMode !== 'manual' || this.displayLut !== want) this._setManualDisplayLut?.(want);
+            } else if (this.viewMode === 'manual') {
+                let mode = 'auto';
+                try { mode = localStorage.getItem('radiance_view_mode') || 'auto'; } catch { /* private mode */ }
+                this.setViewMode?.(mode === 'manual' ? 'auto' : mode);
+            }
+        }
+        this._pushGradeToRenderer();
+        this.render?.();
+    }
+
+    /** Send every grade field to the renderer (render() only pushes some each frame). */
+    _pushGradeToRenderer() {
+        const r = this.renderer;
+        if (!r) return;
+        r.setExposure?.(this.exposure);
+        r.setContrast?.(this.contrast);
+        r.setPivot?.(this.pivot);
+        r.setSaturation?.(this.saturation);
+        r.setTemperature?.(this.temperature);
+        r.setTint?.(this.tint);
+        r.setHighlights?.(this.highlights);
+        r.setShadows?.(this.shadows);
+        r.setMidDetail?.(this.midDetail);
+        r.setColorBoost?.(this.colorBoost);
+        r.setSoftClip?.(this.softClip);
+        r.setLumaMix?.(this.lumaMix);
+        r.setHueShift?.(this.hueShift);
+        r.setOffset?.(...this.offset);
+        r.setLift?.(...this.lift);
+        r.setGamma?.(...this.gamma);
+        r.setGain?.(...this.gain);
+        r.setLogShadow?.(...this.logShadow);
+        r.setLogMidtone?.(...this.logMidtone);
+        r.setLogHighlight?.(...this.logHighlight);
+        r.setPrinterLights?.(this.printerR, this.printerG, this.printerB);
+        r.setColorScience?.(this.colorScience);
+        r.setGrain?.(this.grain);
+        r.setGrainSize?.(this.grainSize);
+        r.setGrainColor?.(this.grainColor);
+        r.setGrainAnimate?.(this.grainAnimate);
+        r.setDenoise?.(this.denoise);
+        r.setBloom?.(this.bloom);
+        r.setHalation?.(this.halation);
+        r.setDiffusion?.(this.diffusion);
+        r.setLensDistortion?.(this.lensDistortion, this.lensFringe);
+        r.setVignette?.(this.vignetteIntensity, this.vignetteFalloff);
+        r.setBokehPhysics?.(this.bokehHighlightBias, this.bokehSoapBubble, this.bokehOpticalVig);
+        r.setApertureShape?.(this.apertureBlades, this.apertureRotation, this.apertureAnamorphic);
+        r.setAnamorphicStreaks?.(this.anamorphicStreaks);
+        r.setFocusDistance?.(this.focusDistance);
+        r.setAperture?.(this.aperture);
+    }
+
+    /** The curve editor's points, levels and per-channel strength, or null at identity. */
+    _captureCurves() {
+        const ed = this.refCurveEditor || this.curveEditor;
+        if (!ed) return this._pendingCurves ? RadianceViewer._cloneGradeValue(this._pendingCurves) : null;
+        const out = RadianceViewer._cloneGradeValue({
+            curves: ed.curves, levels: ed.levels, channelGain: ed.channelGain,
+            softClipEnabled: ed.softClipEnabled, softClipParams: ed.softClipParams,
+        });
+        const ident = (pts, y0, y1) => pts?.length === 2 && pts[0].x === 0 && pts[0].y === y0 && pts[1].x === 1 && pts[1].y === y1;
+        const c = out.curves || {};
+        const neutral = ['RGB', 'R', 'G', 'B'].every((k) => ident(c[k], 0, 1))
+            && ['HueVsHue', 'HueVsSat', 'HueVsLuma'].every((k) => ident(c[k], 0.5, 0.5))
+            && (out.levels?.inBlack ?? 0) === 0 && (out.levels?.inWhite ?? 255) === 255
+            && Object.values(out.channelGain || {}).every((g) => g === 100) && !out.softClipEnabled;
+        return neutral ? null : out;
+    }
+
+    /** Put curves back into the editor (creating it when a saved grade has curves) and the renderer. */
+    _restoreCurves(saved) {
+        const editors = [this.refCurveEditor, this.curveEditor].filter(Boolean);
+        if (!saved) {
+            this._pendingCurves = null;
+            editors.forEach((ed) => ed.resetAll?.());
+            return;
+        }
+        if (!editors.length) {
+            const ed = this._ensureCurveEditor?.();
+            if (ed) editors.push(ed);
+        }
+        if (!editors.length) { this._pendingCurves = RadianceViewer._cloneGradeValue(saved); return; }
+        const clone = RadianceViewer._cloneGradeValue(saved);
+        for (const ed of editors) {
+            ed.curves = { ...ed.curves, ...clone.curves };
+            if (clone.levels) ed.levels = { ...clone.levels };
+            if (clone.channelGain) ed.channelGain = { ...clone.channelGain };
+            ed.softClipEnabled = !!clone.softClipEnabled;
+            if (clone.softClipParams) ed.softClipParams = { ...clone.softClipParams };
+        }
+        this._pendingCurves = null;
+        editors[0].notifyChange?.();
+        editors.forEach((ed) => ed.draw?.());
+    }
+
+    _afterGradeRestore() {
+        this._syncGradeControls();
+        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._schedulePersistGrade();
+        this.requestScopeUpdate?.();
+    }
+
+    /** A control changed the grade: draw, refresh scopes, and keep the workflow copy current. */
+    _gradeChanged() {
+        this.requestRender?.();
+        this.requestScopeUpdate?.();
+        this._schedulePersistGrade();
+    }
+
+    /** Move every registered slider, readout and wheel to the current state without rebuilding the panel. */
+    _syncGradeControls() {
+        if (!this._gradeControls) return;
+        for (const c of this._gradeControls.values()) {
+            try { c.sync(); } catch { /* a control from a panel that has since been rebuilt */ }
+        }
+    }
+
+    _schedulePersistGrade() {
+        if (this._persistGradeTimer) clearTimeout(this._persistGradeTimer);
+        this._persistGradeTimer = setTimeout(() => { this._persistGradeTimer = null; this._persistGrade(); }, 250);
+    }
+
+    /**
+     * Keep the grade in the node's properties, which the workflow saves. It
+     * was never written anywhere, so reloading a workflow lost it.
+     */
+    _persistGrade() {
+        if (!this.node) return;
+        this.node.properties = this.node.properties || {};
+        this.node.properties.radiance_grade = this._captureGradingState();
     }
 
     _pushUndo() {
         const state = this._captureGradingState();
+        this._undoStack = this._undoStack || [];
         this._undoStack.push(state);
-        if (this._undoStack.length > this._undoMaxSize) {
+        if (this._undoStack.length > (this._undoMaxSize || 50)) {
             this._undoStack.shift(); // Drop oldest
         }
         this._redoStack = []; // Clear redo on new action
@@ -19373,22 +19653,23 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     undo() {
-        if (this._undoStack.length === 0) return;
+        if (!this._undoStack?.length) return;
         // Save current state to redo before restoring
+        this._redoStack = this._redoStack || [];
         this._redoStack.push(this._captureGradingState());
         const prev = this._undoStack.pop();
         this._restoreGradingState(prev);
         // Re-render the controls panel to update knob visuals
-        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._afterGradeRestore();
     }
 
     redo() {
-        if (this._redoStack.length === 0) return;
+        if (!this._redoStack?.length) return;
         // Save current state to undo before restoring
         this._undoStack.push(this._captureGradingState());
         const next = this._redoStack.pop();
         this._restoreGradingState(next);
-        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._afterGradeRestore();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -19402,7 +19683,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         const state = this._captureGradingState();
         const presets = RadianceViewer.readJSON('radiance_presets', {});
         presets[name] = state;
-        localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        try {
+            localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        } catch {
+            this._showToast?.('Could not save the preset: browser storage is full or blocked.', 'error');
+            return;
+        }
+        this._selectedPreset = name;
         console.log(`[Radiance] Preset "${name}" saved.`);
         if (this._lastRenderContent) this._lastRenderContent(); // Refresh UI
     }
@@ -19413,6 +19700,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (state) {
             this._pushUndo();
             this._restoreGradingState(state);
+            this._selectedPreset = name;
+            this._afterGradeRestore();
             console.log(`[Radiance] Preset "${name}" applied.`);
         }
     }
@@ -19420,7 +19709,8 @@ self.onmessage = async ({ data: { id, url } }) => {
     deleteGrade(name) {
         const presets = RadianceViewer.readJSON('radiance_presets', {});
         delete presets[name];
-        localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        try { localStorage.setItem('radiance_presets', JSON.stringify(presets)); } catch { /* storage blocked */ }
+        if (this._selectedPreset === name) this._selectedPreset = null;
         if (this._lastRenderContent) this._lastRenderContent();
     }
 
@@ -21666,11 +21956,30 @@ app.registerExtension({
             // in Advanced (a converted Lite Viewer carries 'simple').
             const saved = info?.properties?.radiance_viewer_mode;
             this.radianceViewer?.setUIMode?.(saved || 'advanced');
+            // The grade the workflow was saved with (written by _persistGrade
+            // and onSerialize). It used to be lost on every reload.
+            const grade = info?.properties?.radiance_grade;
+            if (grade && typeof grade === 'object') this.radianceViewer?._restoreGradingState?.(grade);
             const video = info?.properties?.radiance_viewer_video;
             if (typeof video === 'string' && video.startsWith(api.apiURL('/view?'))) {
                 this.radianceViewer?.loadVideo(video);
             } else if (info?.properties?.radiance_viewer_result?.radiance_images?.length) {
                 this.onExecuted(info.properties.radiance_viewer_result);
+            }
+            return result;
+        };
+
+        // Write the grade into the node's properties as the workflow is saved,
+        // so a save straight after a slider move still carries it.
+        const onSerialize = nodeType.prototype.onSerialize;
+        nodeType.prototype.onSerialize = function (o) {
+            const result = onSerialize?.apply(this, arguments);
+            const viewer = this.radianceViewer;
+            if (viewer?._captureGradingState) {
+                const grade = viewer._captureGradingState();
+                this.properties = this.properties || {};
+                this.properties.radiance_grade = grade;
+                if (o) { o.properties = o.properties || {}; o.properties.radiance_grade = grade; }
             }
             return result;
         };
