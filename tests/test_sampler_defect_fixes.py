@@ -944,6 +944,24 @@ class TestSamplerKeepsPackedVideoLatents:
         with pytest.raises(self._Reached):
             run_sampler(latent=latent, model_type="minimax", steps=2)
 
+    def test_a_pass_without_noise_samples_a_packed_latent(self):
+        """A second LTX-AV pass with add_noise off crashed: torch.zeros_like
+        rejects the NestedTensor. Splitting the HighRes pass in two failed on
+        its second "Sampler"."""
+
+        class Packed(_FakeNestedTensor):
+            shape = (1, 24, 2, 4, 4)
+            ndim = 5
+
+        video, audio = torch.ones(1, 24, 2, 4, 4), torch.ones(1, 32, 2, 8)
+        recorder = SampleCustomRecorder(denoise=lambda latent, noise, sigmas: latent)
+        run_sampler(latent={"samples": Packed((video, audio))}, model_type="ltxav", add_noise=False,
+                    sigmas_override=torch.tensor([0.725, 0.421875, 0.0]), recorder=recorder)
+
+        noise = recorder.calls[0]["noise"]
+        assert [t.shape for t in noise.tensors] == [video.shape, audio.shape]
+        assert not any(t.any() for t in noise.tensors)
+
 
 def test_regional_replace_keeps_the_global_outside_the_region():
     """Audit 3.5: Replace dropped the base from the whole frame."""

@@ -258,9 +258,14 @@ def import_into_resolve(paths: List[str], first: int, last: int, sequence_patter
     """Run the native Resolve API outside ComfyUI so a DLL crash is contained."""
     worker = Path(__file__).resolve().parents[2] / "tools" / "resolve_import.py"
     request = dict(paths=paths, first=first, last=last, sequence_pattern=sequence_pattern)
+    # fusionscript must find the worker's Python DLL, including in Conda. Scoped
+    # to the worker process; ComfyUI's own environment is untouched.
+    worker_env = None
+    if sys.platform == "win32":
+        worker_env = {**os.environ, "PYTHONHOME": sys.base_prefix}
     try:
         completed = subprocess.run(
-            [sys.executable, str(worker)], input=json.dumps(request),
+            [sys.executable, str(worker)], input=json.dumps(request), env=worker_env,
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )

@@ -7,7 +7,7 @@ name = "radiance"
 description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to HDR, HDR VAE encode and decode, OCIO colour management, EXR I/O, a pro Viewer, and Nuke / Resolve handoff."
 # Keep in step with config/constants.py VERSION, package.json and CHANGELOG.md;
 # tests/test_version_sync.py fails if they drift.
-version = "3.5.3"
+version = "3.5.4"
 readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]

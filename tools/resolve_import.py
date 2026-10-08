@@ -27,9 +27,9 @@ def _resolve_module_dirs() -> List[str]:
 
 def _resolve_app():
     """(resolve, None) for the running Resolve, or (None, why)."""
-    if sys.platform == "win32":
-        # fusionscript must find this worker's Python DLL, including in Conda.
-        os.environ["PYTHONHOME"] = sys.base_prefix
+    # On Windows, PYTHONHOME is passed in by the caller's spawn env
+    # (studio_integrations.import_into_resolve) so fusionscript finds this
+    # worker's Python DLL, including in Conda.
     try:
         import DaVinciResolveScript as dvr  # type: ignore
     except ImportError:

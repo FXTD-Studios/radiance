@@ -5,11 +5,9 @@ import logging
 import os
 import sys
 
-# OpenCV reads this once, the first time any code in the process touches an
-# EXR through cv2, and never again. Set to "1" before anything else so it is
-# on however Radiance is loaded; a "0" left in the environment would silently
-# disable every cv2 EXR fallback in the package.
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+# OPENCV_IO_ENABLE_OPENEXR is forced once, by configure_runtime_environment()
+# below (config/env.py RUNTIME_ENV_FORCED). OpenCV reads it at the first EXR
+# read or write, not at import, and no EXR is touched before that call runs.
 
 
 def _bootstrap_package_context() -> None:

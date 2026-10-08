@@ -716,11 +716,15 @@ class ACESConfigManager:
                 with open(config_file, "wb") as f:
                     f.write(response.read())
 
-            os.environ["OCIO"] = config_file
+            # $OCIO is left alone: rewriting it would change the colour
+            # pipeline of every other node in the session. The path is the
+            # node's output; wire it into OCIO Context, or export OCIO before
+            # launching ComfyUI to make it the default.
             return (
                 config_file,
                 f"Successfully downloaded ACES 2.0 config to: {config_file}\n"
-                f"OCIO environment variable set for this session.",
+                f"Wire this path into OCIO Context, or set OCIO to it before "
+                f"launching ComfyUI to make it the session default.",
             )
         except Exception as e:
             return (

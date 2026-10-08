@@ -190,9 +190,9 @@ class NukeConnector:
             try:
                 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 script_path = os.path.join(base_dir, "scripts", "start_nuke_server.py").replace("\\", "/")
-                cmd = f"exec(open('{script_path}').read())"
+                cmd = f"import runpy; runpy.run_path('{script_path}')"
             except Exception:
-                cmd = "exec(open('scripts/start_nuke_server.py').read())"
+                cmd = "import runpy; runpy.run_path('scripts/start_nuke_server.py')"
 
             msg = (
                 f"Nuke not reachable at {self.host}:{self.port}. "
