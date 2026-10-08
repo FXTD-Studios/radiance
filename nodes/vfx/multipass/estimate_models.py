@@ -20,8 +20,10 @@ with the licence's use restrictions):
         albedo + shading + residual; only its UNet is needed (~1.7 GB)
     -> ComfyUI/models/radiance/marigold/<name>/
 
-Downloads are pinned to those commits. Hugging Face verifies each LFS file
-against its sha256 as it downloads. They happen only when the node's
+Downloads are pinned to those commits and checked after download (4.0):
+MoGe-2 against MOGE_SHA256; each Marigold file against the hash the Hub
+reports for it at the pinned commit (the LFS sha256, or the git blob id for
+small files). A mismatch deletes the file. They happen only when the node's
 ``download_missing_models`` widget is on and nothing in the environment says
 no (``RADIANCE_ALLOW_DOWNLOADS=0``, ``HF_HUB_OFFLINE=1``,
 ``TRANSFORMERS_OFFLINE=1``).
@@ -180,6 +182,57 @@ def _refuse(what: str, size_mb: int, dest: str, url: str) -> EstimateModelError:
     )
 
 
+def _sha256(path: Path) -> str:
+    from radiance.core.model_fetch import _sha256_of
+    return _sha256_of(str(path))
+
+
+def _git_blob_id(path: Path) -> str:
+    """The git object id of a file: sha1 of b"blob <size>\\0" + content."""
+    import hashlib
+    h = hashlib.sha1(b"blob %d\0" % path.stat().st_size, usedforsecurity=False)
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _verify_marigold(target: Path, name: str) -> None:
+    """Check every downloaded Marigold file against the Hub's hash for it at
+    the pinned commit; delete any that differ and raise."""
+    from huggingface_hub import HfApi
+    src = MARIGOLD_SOURCES[name]
+    files = list(src["files"])  # type: ignore[arg-type]
+    try:
+        infos = HfApi().get_paths_info(str(src["repo"]), files, revision=str(src["revision"]))
+    except Exception as exc:  # noqa: BLE001 - offline, rate limit, API change
+        raise EstimateModelError(
+            f"[Multipass Estimate] Marigold {name}: could not read the file hashes to verify "
+            f"the download ({exc}). Nothing was deleted; queue again to retry.") from exc
+    expected = {i.path: i for i in infos if getattr(i, "blob_id", None)}
+    bad = []
+    for rel in files:
+        info = expected.get(rel)
+        if info is None:
+            bad.append((rel, "not listed at the pinned commit"))
+            continue
+        path = target / rel
+        if info.lfs is not None:
+            ok = _sha256(path) == info.lfs.sha256
+        else:
+            ok = _git_blob_id(path) == info.blob_id
+        if not ok:
+            bad.append((rel, "hash differs"))
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    if bad:
+        raise EstimateModelError(
+            f"[Multipass Estimate] Marigold {name}: {len(bad)} file(s) failed verification and were "
+            "deleted: " + ", ".join(f"{r} ({why})" for r, why in bad) + ". Queue again to download them.")
+
+
 def ensure_moge(allow_download: bool) -> Path:
     found = find_moge()
     if found:
@@ -201,13 +254,20 @@ def ensure_moge(allow_download: bool) -> Path:
             repo_id=MOGE_REPO, filename=MOGE_REPO_PATH, revision=MOGE_REVISION,
             local_dir=str(staging),
         ))
+        import shutil
         if local.stat().st_size != MOGE_SIZE:
+            shutil.rmtree(staging, ignore_errors=True)
             raise EstimateModelError(f"[Multipass Estimate] {MOGE_FILENAME} downloaded with the wrong size.")
+        actual = _sha256(local)
+        if actual != MOGE_SHA256:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise EstimateModelError(
+                f"[Multipass Estimate] {MOGE_FILENAME}: CHECKSUM MISMATCH (expected {MOGE_SHA256}, "
+                f"got {actual}). The download was deleted; nothing was installed.")
         final = target / MOGE_FILENAME
         os.replace(local, final)
         # hf_hub_download leaves its lock and metadata files in the staging
         # folder; nothing reads them once the file is in place.
-        import shutil
         shutil.rmtree(staging, ignore_errors=True)
         logger.info("[Radiance] Installed %s", final)
         return final
@@ -241,6 +301,7 @@ def ensure_marigold(name: str, allow_download: bool) -> Path:
         )
         if not marigold_complete(target, name):
             raise EstimateModelError(f"[Multipass Estimate] Marigold {name} download is incomplete in {target}.")
+        _verify_marigold(target, name)
         return target
 
 

@@ -300,6 +300,7 @@ def test_moge_download_leaves_no_staging_folder(tmp_path, monkeypatch):
 
     import huggingface_hub
     with mock.patch.object(em, "_geometry_dirs", return_value=[tmp_path]), \
+         mock.patch.object(em, "_sha256", return_value=em.MOGE_SHA256), \
          mock.patch.object(huggingface_hub, "hf_hub_download", fake_download):
         path = em.ensure_moge(True)
     assert path == tmp_path / em.MOGE_FILENAME and path.stat().st_size == em.MOGE_SIZE
