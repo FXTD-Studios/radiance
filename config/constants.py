@@ -34,4 +34,7 @@ WEB_DIRECTORY = "./js"
 #: 2026-09-25: 158 -> 157. RadianceLiteViewer removed; the Viewer's Simple
 #: mode replaces it and the frontend converts saved Lite Viewers on load.
 #: 2026-09-25: 157 -> 156. RadianceVectorMaskDraw (Roto) removed.
-EXPECTED_MIN_NODE_COUNT = 156
+#: 4.0: 156 -> 152. The hidden placeholders RadianceSAMModelLoader,
+#: RadianceSAMGenerator, RadianceHDRLatentEncoder and RadianceHDRTurboEncoder
+#: removed (they only raised since 3.5.0).
+EXPECTED_MIN_NODE_COUNT = 152

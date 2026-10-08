@@ -78,11 +78,9 @@ These parts of the release gate need checks that cannot run in CI:
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 
-- **SAM Loader / SAM Mask Generator are not shipped.** Radiance bundles no
-  SAM runtime; the generator used to return discs drawn around the click
-  points. Both nodes are hidden from the menu (`DEPRECATED`), still load in
-  saved graphs, and raise a clear error when executed. *Planned fix:* a real
-  SAM2 backend, or removal in 4.0.
+- **No SAM node.** Radiance bundles no SAM runtime. The 3.5 placeholders
+  (SAM Loader, SAM Mask Generator) were removed in 4.0; use a SAM2 node pack
+  and feed its MASK into Radiance.
 - **Upscale `confidence` output is geometric.** 1 at tile centres, lower
   toward tile edges. It locates seam blending; it does not measure
   hallucination, which none of the backends report.
@@ -222,11 +220,10 @@ node downloads").
 
 ## Minor
 
-- **Three legacy nodes are hidden, not removed.** HDR Latent Encoder and HDR
-  Turbo Encoder stop with a message naming VAE Encode (HDR), because their
-  decoders were retired and their latents would render clipped. ACES 2.0
-  Output Transform (Legacy) still works. All three stay registered only so
-  saved graphs open. *Planned:* remove them in 3.6.
+- **ACES 2.0 Output Transform (Legacy) is hidden, not removed.** It still
+  renders, so it stays registered for saved graphs; new graphs use the ACES
+  2.0 Output Transform. HDR Latent Encoder and HDR Turbo Encoder, which only
+  stopped with a message naming VAE Encode (HDR), were removed in 4.0.
 - **Learned highlight recovery restores brightness, not colour.** RUDRA's
   released SDR → HDR checkpoints (v5, shadow_v1 and seeds) were trained on
   SDR rendered at -1 EV, which almost never clipped (median clipped fraction

@@ -20,8 +20,6 @@ from radiance.nodes.vfx.multipass import (
 
 # ── Phase 1, 2, 3 and 5 new high-precision linear VFX nodes ───────────
 from radiance.nodes.vfx.masking import (
-    RadianceSAMModelLoader,
-    RadianceSAMGenerator,
     RadianceMultiMaskVisualPicker,
     RadianceLinearMatting,
 )
@@ -68,8 +66,6 @@ NODE_CLASS_MAPPINGS = {
     **MP_MAPPINGS,
     
     # Phase 1: Masking & Matting
-    "RadianceSAMModelLoader": RadianceSAMModelLoader,
-    "RadianceSAMGenerator": RadianceSAMGenerator,
     "RadianceMultiMaskVisualPicker": RadianceMultiMaskVisualPicker,
     "RadianceLinearMatting": RadianceLinearMatting,
     
@@ -104,8 +100,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **MP_DISPLAY_NAMES,
     
     # Phase 1: Masking & Matting display names
-    "RadianceSAMModelLoader": "◎ SAM Model Loader (not shipped)",
-    "RadianceSAMGenerator": "◎ SAM Mask Generator (not shipped)",
     "RadianceMultiMaskVisualPicker": "◎ SAM Multi-Mask Picker",
     "RadianceLinearMatting": "◎ Linear Alpha Matting",
     
