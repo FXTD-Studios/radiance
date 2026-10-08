@@ -18,7 +18,7 @@ decodes back with metadata-driven reconstruction. Does not own model loading
 | `hdr/vae.py:LATENT_FORMAT_MAP` (:153) | Latent channel count to format label | Implemented; disagrees with `model/detect.py` |
 | `hdr/vae.py:detect_vae_factor`, `detect_latent_format` | Spatial factor and latent format from the VAE object | Implemented |
 | `hdr/vae.py:RadianceVAE4KEncode._prepare_for_vae` (~:1255) | Linearise, expose, clamp the floor, log-encode (the source's own curve, or LogC4) | Implemented |
-| `hdr/vae.py:TileEngine` (~:869) | Tiled encode/decode with cosine blend | Implemented |
+| `hdr/vae_tiling.py:TileEngine` | Tiled encode/decode with cosine blend. Moved out of `hdr/vae.py` in 4.0 (re-exported there) | Implemented |
 | `hdr/vae.py:RadianceVAE4KDecode.decode` (~:2733), `_vae_output_to_target` (~:2283) | Shoulder, highlight denoise, inverse curve, optional display tonemap, target space | Implemented |
 | `hdr/vae.py:_save_rhdr` (~:2666) | Optional `.rhdr` sidecar, written through `core/rhdr.py` (zlib level 6) | Implemented; `safe_join` guard restored and fp16 clamped in the fix pass |
 | `hdr/decode_meta.py:verify_radiance_meta` (~:116), `LOG_SPACE_GAMUT` | Latent metadata contract and fingerprint | Implemented |

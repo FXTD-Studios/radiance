@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "generator": "project-mapper",
-  "generated_at_utc": "2026-10-05T07:28:49Z",
+  "generated_at_utc": "2026-10-08T14:19:36Z",
   "scope": "full: every first-party node group and implementation package of the radiance ComfyUI package, js/ frontend, tests, CI and release tooling; static source analysis only",
   "revision": {
-    "commit": "7f3c0a501febe8e2b5b9e1f29e9b8f9401768862",
+    "commit": "d176ebb89ce95ad43eaa078bf8c5d65de4751d14",
     "branch": "version-4-Beta",
-    "worktree_state": "clean; source includes the fix pass recorded in CODE_REVIEW.md and main up to 0174a58 (3.5.4); descriptions of fixed items keep their pre-fix line numbers"
+    "worktree_state": "clean at this commit; the 4.0.0 beta work (removed nodes, DCC token, delivery naming, implemented controls, verified downloads, one OCIO source, TileEngine split) is recorded in CODE_REVIEW.md, OPEN_QUESTIONS.md and the subsystem notes; line numbers elsewhere may have shifted"
   },
   "coverage": {
     "inventory_count": 483,
@@ -76,7 +76,7 @@
     },
     {
       "path": "config/constants.py",
-      "sha256": "8f080f8789389c5f95e5aaa212d89037c2a90513ba82a0d3ff4084282cc31d79"
+      "sha256": "dd7b950ee632e294e03a750378e01e5c3b215469cc4ea326896096776eae2c1f"
     },
     {
       "path": "config/env.py",
@@ -108,7 +108,7 @@
     },
     {
       "path": "nodes/branding.py",
-      "sha256": "782024c1d4fabb3083032d5d787beecb904f27fea8c055bbeb5a8c75f4e73213"
+      "sha256": "46a0139fc9f4cb87d5f1eba37a70a37bb1470f9bdaa5a19d9546d825b4ee72ef"
     },
     {
       "path": "nodes/gizmo.py",
@@ -120,7 +120,7 @@
     },
     {
       "path": "nodes/hdr/__init__.py",
-      "sha256": "22ed63a4c02b836fc1ea18fbf62f8477ef7d676aa59b7a17f2422fbd0f0643c2"
+      "sha256": "f1ef98e9e8f2c3e8f765c9ae8840bd10d55e251ba7be29ec1f32fbf438e154a7"
     },
     {
       "path": "nodes/io/__init__.py",
@@ -128,7 +128,7 @@
     },
     {
       "path": "nodes/vfx/__init__.py",
-      "sha256": "b909d48eb568a72e6e44da6f6892e6ac3c114b97ec8109dc50b3672e52aa7c80"
+      "sha256": "c73cd1eab5581c6218e28a776f2727ad44818271998cea2a43ecb4b6f2fc5cfa"
     },
     {
       "path": "nodes/pipeline/__init__.py",
@@ -160,7 +160,7 @@
     },
     {
       "path": "color/encodings.py",
-      "sha256": "c45f7878d59609ea8829768e39953be663254448cb8839565dc740189f6046bf"
+      "sha256": "cdfcc8b2eca3c967e9532bd6e2e0022992448a1a19aaf0940f5aea02cb26de0e"
     },
     {
       "path": "color/pipeline.py",
@@ -168,7 +168,7 @@
     },
     {
       "path": "color/ocio_setup.py",
-      "sha256": "4a21b8ca652d92fdfd0091551a6e57ba2f8f23816c55b15d82b06cef685ef228"
+      "sha256": "661cdad928ea9143a988b53d44026465c28a8fdff31f7b7c5e62678ae4c10c9b"
     },
     {
       "path": "color/viewer_space.py",
@@ -176,11 +176,11 @@
     },
     {
       "path": "radiance_ocio.py",
-      "sha256": "8d06130173f6c6f61ca649eaa6d84aa1ac27b647cf8612dcfea59ac29dee7ae7"
+      "sha256": "839d2666b1214ed0baef2fbe879e300528590d7feab03ec11ffdd5a3a0e39c1c"
     },
     {
       "path": "hdr/vae.py",
-      "sha256": "84f38ecfcea434e54fe85deacf4ed01a86c6036f583379eb693757d610148b27"
+      "sha256": "52b3e7bc44218aff0ed12f0c9b00130c1701880724a7e2b69827afe00c4ee1aa"
     },
     {
       "path": "hdr/decode_meta.py",
@@ -188,7 +188,7 @@
     },
     {
       "path": "hdr/ocio.py",
-      "sha256": "7f74f3bb2c9d698b9d3463b862e56c5031ba906c7a4f0ebb84879aeae4c8a181"
+      "sha256": "3d8ac9a2d0973a809afcbc094fc9cc481a1bd2b89bde562ea3a8e628b35e480a"
     },
     {
       "path": "hdr/aces2_ocio.py",
@@ -244,7 +244,7 @@
     },
     {
       "path": "io/writer.py",
-      "sha256": "760dc1de2c3363b3e278f7f159337df6f61c1b3482940a9fdec4ce5f5142139a"
+      "sha256": "dfee8ac6656be79fb70f9e57d7296a6418b9287371db930138766ec79d4232d6"
     },
     {
       "path": "nodes/io/write.py",
@@ -252,7 +252,7 @@
     },
     {
       "path": "delivery/handler.py",
-      "sha256": "8ce140bdf813e576a0bbf92138875a3d25047df2a272227b24914c8dff839ec4"
+      "sha256": "d6210074779d8d8519dc99330f2c785e7dd449365a29d385a559a2f3cf1526ef"
     },
     {
       "path": "cache.py",
@@ -264,7 +264,7 @@
     },
     {
       "path": "sampler_utils.py",
-      "sha256": "524acb9969a238399051cc33bda3a54aecca254a5df14cb8116a33137f31b2b4"
+      "sha256": "915716561f8ba3e49e58ad974a7e602a5c2f589ee08345847327330f55bedee1"
     },
     {
       "path": "model/detect.py",
@@ -280,7 +280,7 @@
     },
     {
       "path": "nodes/generate/sampler.py",
-      "sha256": "f52006133ac6aa19fc90e2cb4b96ee500b6b1d2a1bdf566deb9c2dea04dfdca3"
+      "sha256": "089bb186749d36bc4ad0a6b412cbc271e8c03428c434b0b55f1071c92d4fb4fe"
     },
     {
       "path": "nodes/generate/engine.py",
@@ -324,15 +324,15 @@
     },
     {
       "path": "pyproject.toml",
-      "sha256": "03fdce294f35f96c8dc5f0be8a7cfa1d10975536cf35d7218869707c27667c1c"
+      "sha256": "c45a561ccf2666dc72c3e4b9ad0df300bf0ccefff444699591747842a0327444"
     },
     {
       "path": "package.json",
-      "sha256": "8ad01c007801dfd34839513d3fd7cb2b68ea3b51ab56ea65c78db683c8e66627"
+      "sha256": "b89528a168a6322e426933892749b70c4ac4d1888ca8556a60cd888c506dd6d8"
     },
     {
       "path": "README.md",
-      "sha256": "8218a5dbc0570aa2d21ca6fd726ed2bada861242831ea12d6b03b7a8e29d7d58"
+      "sha256": "f2645d4ab313c2727949a5d82863fc96ad4c8d25ea806955fc93057840583539"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -340,7 +340,7 @@
     },
     {
       "path": "KNOWN_ISSUES.md",
-      "sha256": "4fc6f4c9993b294cc35b3b48359eede76beaa0c1430c4cb243fd278434f9d904"
+      "sha256": "a9b398ba628862320b5b0511adefa8326779d5020fee3e4deb83669652b0faa8"
     },
     {
       "path": "nodes/vfx/depth.py",
@@ -356,7 +356,7 @@
     },
     {
       "path": "nodes/vfx/masking.py",
-      "sha256": "8062b49ebac42ee5353a898ea5466b22c262a69ea307e3589bbabe4441f87ad0"
+      "sha256": "0394233c241f235c383195ef741179b133f5ed7cf7cdfd2cd9c093230ad4a503"
     },
     {
       "path": "nodes/vfx/camera.py",
@@ -372,7 +372,7 @@
     },
     {
       "path": "nodes/vfx/multipass/estimate_models.py",
-      "sha256": "178e6b09c5ca074ac8dc4a298df1c8cc2a936dd764d9e3bffed52bd4c052003b"
+      "sha256": "0e2b42b5bd6d5323b530dc689febbcf3c7f0d811c98295e2f393033d9802722f"
     },
     {
       "path": "nodes/vfx/multipass/master.py",
@@ -432,11 +432,11 @@
     },
     {
       "path": "nodes/pipeline/audio.py",
-      "sha256": "a951760d5107586e34d27196ed02b6fe6a9f128d6276b98908d8dc0dc3585d7a"
+      "sha256": "6a6c4919ea8b8b9c3c66c9fb0ca560d95f539f6e647e1679f35181ee6054ccbe"
     },
     {
       "path": "nodes/pipeline/dcc.py",
-      "sha256": "68a78048bcd215574f345715c1c62bfed2e98a131f7eab14f406e622480d6f2c"
+      "sha256": "b42a4e20b6a3b34505dfbb223db6ab856f20b689bdfe4ee6ad35355ba1f58059"
     },
     {
       "path": "nodes/pipeline/studio_integrations.py",
@@ -473,6 +473,10 @@
     {
       "path": "js/radiance_graph_format.js",
       "sha256": "abc50c0c065f3369fd373baf8017b7342145fc4ce9bf1485a43ee951f909d1a5"
+    },
+    {
+      "path": "hdr/vae_tiling.py",
+      "sha256": "21f96e0535483aaf1df132d50a7607b3893c063694cc032e3cc6d98e03089d57"
     }
   ],
   "artifacts": [
@@ -513,6 +517,7 @@
     "Mermaid files were not parsed or rendered: no renderer is installed and none was installed.",
     "2026-10-05: OPEN_QUESTIONS reconciled with CODE_REVIEW.md (review IDs cross-referenced; B20 withdrawn, B25 reclassified, B27b/B30-B32 added; CODE_REVIEW B12 verdict corrected).",
     "Fix pass after b645400: source fingerprints refreshed for delivery/handler.py, hdr/vae.py, image/upscale.py, io/writer.py, loader_utils.py, nodes/generate/loader.py, nodes/generate/sampler.py, nodes/io/write.py, nodes/monitor/viewer.py, nodes/pipeline/workspace.py, sampler_utils.py; core/rhdr.py and js/radiance_graph_format.js added. Subsystem notes were not re-mapped; see CODE_REVIEW.md Fix status.",
-    "Merged main (3.5.4, PRs #61-#64) in 7f3c0a5: fingerprints refreshed for README.md, __init__.py, config/constants.py, hdr/ocio.py, image/upscale.py, io/writer.py, js/radiance_viewer.js, nodes/generate/engine.py, nodes/generate/sampler.py, nodes/monitor/viewer.py, nodes/pipeline/studio_integrations.py, nodes/upscale/upscale.py, nodes/vfx/multipass/core.py, package.json, pyproject.toml, tools/nuke_connector.py, tools/resolve_import.py. Only the version strings in the map were updated; main's viewer, writer, sampler, upscale, OCIO and DCC-tool changes were not re-mapped, so line numbers in those notes may have shifted."
+    "Merged main (3.5.4, PRs #61-#64) in 7f3c0a5: fingerprints refreshed for README.md, __init__.py, config/constants.py, hdr/ocio.py, image/upscale.py, io/writer.py, js/radiance_viewer.js, nodes/generate/engine.py, nodes/generate/sampler.py, nodes/monitor/viewer.py, nodes/pipeline/studio_integrations.py, nodes/upscale/upscale.py, nodes/vfx/multipass/core.py, package.json, pyproject.toml, tools/nuke_connector.py, tools/resolve_import.py. Only the version strings in the map were updated; main's viewer, writer, sampler, upscale, OCIO and DCC-tool changes were not re-mapped, so line numbers in those notes may have shifted.",
+    "4.0.0 beta: fingerprints refreshed for KNOWN_ISSUES.md, README.md, color/encodings.py, color/ocio_setup.py, config/constants.py, delivery/handler.py, hdr/ocio.py, hdr/vae.py, hdr/vae_tiling.py (new), io/writer.py, nodes/branding.py, nodes/generate/sampler.py, nodes/hdr/__init__.py, nodes/pipeline/audio.py, nodes/pipeline/dcc.py, nodes/vfx/__init__.py, nodes/vfx/masking.py, nodes/vfx/multipass/estimate_models.py, package.json, pyproject.toml, radiance_ocio.py, sampler_utils.py. Re-mapped: registry counts (152), downloads (MoGe, Marigold, ACESConfigManager, whisper), OCIO default config, delivery naming, writer audio pad, TileEngine location, DCC bridge token. Sampler, Bit Depth Degrade and Denoise internals changed but their subsystem notes did not describe the changed code beyond KNOWN_ISSUES."
   ]
 }
