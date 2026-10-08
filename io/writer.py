@@ -956,6 +956,9 @@ def _save_video_ffmpeg(
         cmd += ["-i", audio_source, "-c:a", "aac", "-shortest"]
     cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(out_path)]
 
+    # What was at out_path before ffmpeg ran, so a failure removes only a file
+    # this encode created or changed.
+    before = _file_signature(out_path)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     errors: List[bytes] = []
@@ -1017,14 +1020,35 @@ def _save_video_ffmpeg(
         )
 
     if proc.returncode not in (0, None):
+        # Like the timeout above: a partial file under the final name looks
+        # like a short delivery. Removed only if this encode created or changed
+        # it; ffmpeg can fail before opening the output, and then the file
+        # already at that path is intact and must stay.
+        removed = ""
+        after = _file_signature(out_path)
+        if after is not None and after != before:
+            try:
+                Path(out_path).unlink()
+                removed = " The partial file was removed."
+            except OSError as _exc:  # pragma: no cover
+                log.debug("could not remove the failed encode %s: %s", out_path, _exc)
         raise RuntimeError(
             f"ffmpeg failed to encode {Path(out_path).name} (exit "
-            f"{proc.returncode}) after {written} frame(s)."
+            f"{proc.returncode}) after {written} frame(s).{removed}"
             + (f"\nffmpeg said: {tail}" if tail else
                "\nffmpeg printed nothing on stderr.")
         )
 
     return str(out_path)
+
+
+def _file_signature(path) -> Optional[Tuple[int, int, int]]:
+    """(inode, size, mtime_ns) of a file, or None when there is none."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_ino, st.st_size, st.st_mtime_ns)
 
 
 def _write_audio_temp_wav(audio: Any) -> Optional[str]:
