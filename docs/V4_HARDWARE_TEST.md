@@ -93,7 +93,20 @@ anything that fails.
 
 ## 6. Viewer
 
-- [ ] Playback at 24 fps and above on the RTX 4080 (not measured yet).
+- [ ] Playback at 24 fps and above on the RTX 4080 (not measured yet), 1080p and
+      4K sequences, with the Scopes tab open and closed.
+- [ ] Scopes on the GPU: a frame with a few clipped speculars shows them at the
+      100% line on the waveform; the sidebar keeps up while scrubbing (note the
+      update time at 1080p and 4K from the console if it falls back to 1024 px).
+- [ ] Two viewers in one graph: each keeps its own panel; deleting one leaves
+      the other working; memory in Task Manager drops back after deleting.
+- [ ] A video file (H.264 and ProRes) loaded into the viewer: arrows, ‹ › and
+      the scrubber move the picture frame by frame; the frame rate is read.
+- [ ] Grade, then reload the workflow: the grade comes back. Export .cube and
+      .cdl: they match the screen in Resolve and Nuke (OCIOFileTransform).
+- [ ] Deliver a graded master: it matches the viewer.
+- [ ] Restart ComfyUI and reopen a workflow: the viewer says its files are
+      gone instead of showing a blank canvas.
 - [ ] With WebGPU chosen (View > Framing & Guides > Backend), Masks and Qualifiers open
       with the notice that names that control; back on WebGL they work.
 
