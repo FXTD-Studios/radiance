@@ -124,8 +124,8 @@ class VideoTruncatedError(VideoDecodeError):
 class VideoInfo:
     """What the container claims about itself.
 
-    Every field is what ffprobe reported, not what Radiance would like it to
-    be. ``frames_estimated`` is the one to check before trusting ``frames``.
+    Every field is what ffprobe (or, without it, ffmpeg's stream banner)
+    reported, not what Radiance would like it to be. ``frames_estimated`` is the one to check before trusting ``frames``.
     """
 
     path: str
@@ -305,13 +305,10 @@ def probe(path: str, *, timeout: float = _PROBE_TIMEOUT) -> VideoInfo:
 
     exe = ffprobe_exe()
     if not exe:
-        logger.warning(
-            "ffprobe was not found, so %s is being decoded without reading its "
-            "metadata: frame rate, frame count, colour tags and timecode will "
-            "be unavailable. Install ffmpeg (which ships ffprobe) to get them.",
-            os.path.basename(path),
-        )
-        return VideoInfo(path=path)
+        # imageio-ffmpeg ships ffmpeg and no ffprobe. Until 4.0 this returned
+        # an empty VideoInfo, decode() then had no frame size, and every video
+        # read on such an install failed. ffmpeg's own banner has the fields.
+        return _probe_with_ffmpeg(path, timeout)
 
     cmd = [
         exe, "-v", "quiet", "-print_format", "json",
@@ -321,9 +318,9 @@ def probe(path: str, *, timeout: float = _PROBE_TIMEOUT) -> VideoInfo:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         data = json.loads(out.stdout or "{}")
     except (subprocess.SubprocessError, OSError, ValueError) as exc:
-        logger.warning("ffprobe could not read %s (%s); decoding without metadata.",
+        logger.warning("ffprobe could not read %s (%s); reading ffmpeg's banner instead.",
                        os.path.basename(path), exc)
-        return VideoInfo(path=path)
+        return _probe_with_ffmpeg(path, timeout)
 
     streams = data.get("streams") or []
     fmt = data.get("format") or {}
@@ -385,6 +382,188 @@ def probe(path: str, *, timeout: float = _PROBE_TIMEOUT) -> VideoInfo:
         field_order=str(video.get("field_order") or ""),
         sample_aspect_ratio=str(video.get("sample_aspect_ratio") or ""),
         audio_streams=sum(1 for s in streams if s.get("codec_type") == "audio"),
+    )
+
+
+def _probe_with_ffmpeg(path: str, timeout: float) -> VideoInfo:
+    """:func:`probe` for an install with ffmpeg and no ffprobe.
+
+    ``ffmpeg -i`` prints the same stream description ffprobe reads, as text.
+    It carries no frame count, so that is estimated from duration x fps and
+    marked as such.
+    """
+    exe = ffmpeg_exe()
+    if not exe:
+        logger.warning(
+            "Neither ffprobe nor ffmpeg was found, so %s cannot be probed. "
+            "Install ffmpeg, or pip install imageio-ffmpeg.", os.path.basename(path))
+        return VideoInfo(path=path)
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-nostdin", "-i", path],
+                             capture_output=True, text=True, errors="replace",
+                             timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.warning("ffmpeg could not read %s (%s); decoding without metadata.",
+                       os.path.basename(path), exc)
+        return VideoInfo(path=path)
+    logger.debug("ffprobe not found; read %s's metadata from ffmpeg's banner.",
+                 os.path.basename(path))
+    return _info_from_banner(path, out.stderr or "")
+
+
+_STREAM_RE = re.compile(r"^\s*Stream #\d+:\d+\S*: (\w+): (.*)$")
+_DURATION_RE = re.compile(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)")
+_SIZE_RE = re.compile(r"(\d+)x(\d+)(?:\s*\[SAR (\d+:\d+))?")
+_SAR_RE = re.compile(r"^SAR (\d+:\d+)")
+_RATE_RE = re.compile(r"^([\d.]+)(k?) (fps|tbr)$")
+_ROTATION_RE = re.compile(r"rotation of (-?[\d.]+) degrees")
+_TIMECODE_RE = re.compile(r"^\s*timecode\s*: (\S+)")
+#: ffmpeg's banner spells field order out; ffprobe uses the short names.
+_FIELD_ORDER = {"progressive": "progressive", "top first": "tt", "bottom first": "bb",
+                "top coded first (swapped)": "tb", "bottom coded first (swapped)": "bt"}
+#: Printed at -v verbose and above; never a colour name.
+_CHROMA_LOCATIONS = frozenset({"left", "center", "topleft", "top", "bottomleft", "bottom"})
+
+
+def _split_top_level(text: str) -> List[str]:
+    """Split on commas that are not inside () or []."""
+    parts, depth, cur = [], 0, []
+    for ch in text:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(depth - 1, 0)
+        if ch == "," and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append("".join(cur).strip())
+    return parts
+
+
+def _banner_rate(value: str, kilo: str) -> Fraction:
+    """``"23.98"`` -> 24000/1001. The banner rounds to two decimals."""
+    rate = float(value) * (1000 if kilo else 1)
+    ntsc = round(rate * 1.001)
+    if ntsc and abs(rate * 1.001 - ntsc) < 0.01 and abs(rate - ntsc) > 0.01:
+        return Fraction(ntsc * 1000, 1001)
+    return Fraction(rate).limit_denominator(1001)
+
+
+def _info_from_banner(path: str, text: str) -> VideoInfo:
+    """A :class:`VideoInfo` from the stderr of ``ffmpeg -i``.
+
+    The video line reads, for example::
+
+        Video: h264 (High) (avc1 / 0x31637661), yuv420p10le(tv, bt2020nc/bt2020/smpte2084,
+        progressive), 1920x1080 [SAR 1:1 DAR 16:9], 50 kb/s, 23.98 fps, 23.98 tbr, ...
+
+    The colour names are libavutil's, the same strings ffprobe reports.
+    """
+    lines = text.splitlines()
+    video_at, audio = -1, 0
+    for i, line in enumerate(lines):
+        m = _STREAM_RE.match(line)
+        if not m:
+            continue
+        if m.group(1) == "Video" and video_at < 0:
+            video_at = i
+        elif m.group(1) == "Audio":
+            audio += 1
+    if video_at < 0:
+        if not any(_STREAM_RE.match(line) for line in lines):
+            logger.warning("ffmpeg could not describe %s; decoding without metadata.",
+                           os.path.basename(path))
+            return VideoInfo(path=path)
+        raise VideoDecodeError(f"{os.path.basename(path)} has no video stream.")
+
+    fields = _split_top_level(_STREAM_RE.match(lines[video_at]).group(2))
+    codec_part = fields[0] if fields else ""
+    codec = codec_part.split(" ", 1)[0]
+    profile = next((p for p in re.findall(r"\(([^()]*)\)", codec_part)
+                    if " / 0x" not in p), "")
+
+    pix_fmt, colour = "", []
+    if len(fields) > 1:
+        m = re.match(r"^([\w]+)(?:\((.*)\))?$", fields[1])
+        if m:
+            pix_fmt = m.group(1)
+            colour = [c.strip() for c in (m.group(2) or "").split(",") if c.strip()]
+    color_range = color_space = primaries = transfer = field_order = ""
+    for token in colour:
+        if token in ("tv", "pc"):
+            color_range = token
+        elif token in _FIELD_ORDER:
+            field_order = _FIELD_ORDER[token]
+        elif token.endswith("bpc") or token in _CHROMA_LOCATIONS:
+            continue
+        elif "/" in token:
+            color_space, primaries, transfer = (token.split("/") + ["", ""])[:3]
+        elif not field_order:
+            # One name means all three agree.
+            color_space = primaries = transfer = token
+
+    width = height = 0
+    sar = ""
+    fps = tbr = Fraction(0)
+    for field in fields[2:]:
+        m = _SIZE_RE.match(field)
+        if m and not width:
+            width, height = int(m.group(1)), int(m.group(2))
+            sar = m.group(3) or sar
+            continue
+        m = _SAR_RE.match(field)
+        if m:
+            sar = sar or m.group(1)
+            continue
+        m = _RATE_RE.match(field)
+        if m:
+            rate = _banner_rate(m.group(1), m.group(2))
+            if m.group(3) == "fps":
+                fps = rate
+            else:
+                tbr = rate
+    fps = fps if fps > 0 else (tbr if tbr > 0 else Fraction(24, 1))
+
+    duration = 0.0
+    m = _DURATION_RE.search(text)
+    if m:
+        duration = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    frames = int(round(duration * float(fps))) if duration > 0 else 0
+
+    # The stream's own block (metadata, side data) runs to the next stream.
+    block = []
+    for line in lines[video_at + 1:]:
+        if _STREAM_RE.match(line):
+            break
+        block.append(line)
+    rotation = 0
+    m = _ROTATION_RE.search("\n".join(block))
+    if m:
+        rotation = int(round(float(m.group(1)))) % 360
+    header = lines[:next((i for i, line in enumerate(lines) if _STREAM_RE.match(line)),
+                         len(lines))]
+    timecode = ""
+    for line in block + header:
+        m = _TIMECODE_RE.match(line)
+        if m:
+            timecode = m.group(1)
+            break
+
+    def known(name: str) -> str:
+        return "" if name in ("unknown", "reserved") else name
+
+    return VideoInfo(
+        path=path, width=width, height=height, fps=fps,
+        frames=frames, frames_estimated=frames > 0, duration=duration,
+        codec=codec, profile=profile, pix_fmt=pix_fmt,
+        bit_depth=pix_fmt_bit_depth(pix_fmt), has_alpha=pix_fmt_has_alpha(pix_fmt),
+        color_range=color_range, color_space=known(color_space),
+        color_primaries=known(primaries), color_transfer=known(transfer),
+        rotation=rotation, timecode=timecode, field_order=field_order,
+        sample_aspect_ratio=sar, audio_streams=audio,
     )
 
 
