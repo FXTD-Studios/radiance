@@ -839,7 +839,7 @@ class RadianceViewer:
             precision = "fp32" if use_32bit else "fp16"
             try:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
-                size = _rhdr.write(rhdr_filepath, frame_to_save, fp32=use_32bit, clamp_f16=True, level=0)
+                size = _rhdr.write(rhdr_filepath, frame_to_save, fp32=use_32bit, level=0)
                 rhdr_saved = True
                 compressed = size - _rhdr.HEADER.size
                 raw = frame_to_save.size * (4 if use_32bit else 2)
@@ -1198,8 +1198,8 @@ class RadianceViewer:
                     try:
                         npy_filepath = safe_join(output_dir, npy_filename)
                         # BUG-FIX (BUG-3): fp32 in 32-bit Float mode, as in _process_frame().
-                        # Stored (level 0), see _process_frame. Not clamped yet.
-                        _rhdr.write(npy_filepath, depth_np, fp32=use_32bit, clamp_f16=False, level=0)
+                        # Stored (level 0), see _process_frame. fp16 depth clamps to 65504.
+                        _rhdr.write(npy_filepath, depth_np, fp32=use_32bit, level=0)
                         frame_meta["hdr_sidecar"] = npy_filename
                     except (IOError, OSError, ValueError) as e:
                         logger.warning(f"Failed to save depth sidecar {depth_idx}: {e}")

@@ -16,9 +16,9 @@ The zlib level is pinned on purpose. The viewer stores (level 0) because
 compressing cost 264 ms per 1080p frame there; the VAE export uses level 6.
 Changing either is an optimization decision, not part of the refactor.
 
-Inputs stay inside the fp16 range except where a writer clamps today. The VAE
-and zdepth writers do not clamp, and what they do above 65504 is a bug, not a
-contract to keep.
+Every writer now goes through radiance.core.rhdr, and every fp16 write clamps
+to +-65504; the VAE and zdepth writers used to write inf above it (P3-4, see
+the tests at the end of this file).
 """
 import os
 import re
@@ -36,7 +36,7 @@ ZLIB_STORED = b"\x78\x01"   # zlib header written by level 0
 ZLIB_DEFAULT = b"\x78\x9c"  # zlib header written by levels 2-6
 
 # One row of RGB samples: negative, mid-grey, a bright HDR value, and a value
-# past the fp16 maximum (65504) that only the viewer frame writer clamps.
+# past the fp16 maximum (65504), which an fp16 write clamps.
 VIEWER_ROW = [[-2.0, 0.5, 1e3], [1e5, 0.25, 3.0]]
 VAE_ROW = [[-2.0, 0.5, 1e3], [1e4, 0.25, 3.0]]
 
@@ -216,3 +216,41 @@ def test_vae_export_returns_none_instead_of_raising():
     from radiance.hdr.vae import RadianceVAE4KDecode
     missing = os.path.join(tempfile.mkdtemp(), "does-not-exist")
     assert RadianceVAE4KDecode._save_rhdr(_vae_frame(), missing) is None
+
+
+# ── P3-4: fp16 overflow and the VAE path guard ───────────────────────────────
+# The VAE export and the zdepth sidecar cast to fp16 without the clamp the
+# Viewer frame applies, so a value above 65504 was written as inf and poisoned
+# tonemapping and scopes. The VAE's safe_join import pointed at a module that
+# does not exist, so its traversal guard never ran.
+
+@pytest.mark.real_torch
+def test_vae_half_export_clamps_instead_of_writing_inf():
+    from radiance.hdr.vae import RadianceVAE4KDecode
+    d = tempfile.mkdtemp()
+    frame = np.array([[[1e5, -1e5, 0.5]]], dtype=np.float32)
+    name = RadianceVAE4KDecode._save_rhdr(frame, d, precision="f16")
+    _, _, px = _read(os.path.join(d, name))
+    assert np.isfinite(px).all(), "1e5 must clamp to the fp16 range, not become inf"
+    np.testing.assert_array_equal(px[0, 0], np.array([65504.0, -65504.0, 0.5], np.float16))
+
+
+@pytest.mark.real_torch
+def test_viewer_half_depth_sidecar_clamps_instead_of_writing_inf(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    depth = torch.full((1, 4, 2, 1), 1e5)
+    entries = RadianceViewer().view(_image(VAE_ROW), zdepth=depth, unique_id="rw6")["ui"]["radiance_images"]
+    (e,) = [x for x in entries if x.get("is_zdepth")]
+    _, _, px = _read(os.path.join(temp_out, e["hdr_sidecar"]))
+    assert np.isfinite(px).all()
+    assert (px == np.float16(65504.0)).all()
+
+
+@pytest.mark.real_torch
+def test_vae_export_refuses_a_prefix_that_leaves_the_output_folder():
+    from radiance.hdr.vae import RadianceVAE4KDecode
+    root = tempfile.mkdtemp()
+    out = os.path.join(root, "out")
+    os.mkdir(out)
+    assert RadianceVAE4KDecode._save_rhdr(_vae_frame(), out, prefix="../escaped") is None
+    assert os.listdir(root) == ["out"] and os.listdir(out) == []
