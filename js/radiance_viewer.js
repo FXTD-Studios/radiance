@@ -128,6 +128,9 @@ class RadianceViewer {
         return Object.entries(theme).map(([k, v]) => `${name(k)}: ${v};`).join('\n');
     }
 
+    /** M18, L6: what the Effects tab says when there is no depth map. */
+    static NO_DEPTH_MESSAGE = 'No depth map: connect zdepth to enable depth of field';
+
     /** The viewer last pointed at: a tie-break for keyboard ownership only. */
     /** C2: the scopes measure every pixel up to this long edge (4K DCI). */
     static SCOPE_SIGNAL_MAX = 4096;
@@ -11822,6 +11825,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         const col = this.controlsPanel?.querySelector('.radiance-ref-col');
         if (!col) return;
         if (tab === 'effects') {
+            // A depth map that arrives (or goes) with the frame enables or
+            // disables the depth controls: that is a rebuild, not a readout.
+            if (this._hasDepthMap() !== this._effectsBuiltWithDepth) {
+                this._renderReferenceRightHUD();
+                return;
+            }
             const preview = col.querySelector('.radiance-ref-depth-preview');
             if (preview) this._renderReferenceDepthPreview(preview);
             return;
@@ -14636,14 +14645,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         qc.appendChild(grid);
     }
 
+    /** A depth map for the clip: on this viewer, in its frames, or on the GPU. */
+    _hasDepthMap() {
+        return !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
+    }
+
     _renderReferenceDepthPreview(preview) {
         preview.innerHTML = '';
         const src = this.zdepthImage || this.frameZdepthImages?.[this.currentFrame] || null;
+        // M18: no map is one line, not a square of gradient.
+        preview.classList.toggle('is-empty', !src);
         if (!src) {
-            const empty = document.createElement('div');
-            empty.style.cssText = 'height:100%;display:flex;align-items:center;justify-content:center;color:var(--radiance-text-dim);font:700 var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace);letter-spacing:.8px;';
-            empty.textContent = 'NO DEPTH MAP';
-            preview.appendChild(empty);
+            preview.textContent = this._hasDepthMap() ? 'No depth map for this frame' : RadianceViewer.NO_DEPTH_MESSAGE;
             return;
         }
         const canvas = document.createElement('canvas');
@@ -14675,27 +14688,42 @@ self.onmessage = async ({ data: { id, url } }) => {
         const makeSlider = (parentEl, label, min, max, key, step, cb, cls = '') =>
             this._refSlider(parentEl, { label, key, min, max, step, cls, get: () => this[key], set: cb });
 
-        const makeToggle = (parentEl, label, enabled, cb, statusText = '') => {
+        // M15: a switch is a button named by its label, with aria-pressed,
+        // and its status pill (status(on)) follows a click; both used to
+        // stay as drawn. 'disabled' is the reason it cannot be used.
+        const uid = `radiance-fx-${this.node?.id ?? 'x'}`;
+        const makeToggle = (parentEl, label, enabled, cb, { id, status = null, disabled = '' } = {}) => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-toggle-row';
             const l = document.createElement('span');
             l.textContent = label;
+            l.id = `${uid}-${id}`;
             const right = document.createElement('div');
             right.style.cssText = 'display:flex;align-items:center;gap:8px;';
-            if (statusText) {
-                const pill = document.createElement('span');
+            const pill = status ? document.createElement('span') : null;
+            if (pill) {
                 pill.className = 'radiance-ref-status-pill';
-                pill.textContent = statusText;
+                pill.textContent = status(!!enabled);
                 right.appendChild(pill);
             }
             const toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.className = `radiance-ref-toggle ${enabled ? 'is-on' : ''}`;
+            toggle.dataset.radianceToggle = id;
+            toggle.setAttribute('aria-labelledby', l.id);
+            toggle.setAttribute('aria-pressed', String(!!enabled));
+            if (disabled) {
+                toggle.disabled = true;
+                toggle.title = disabled;
+                row.title = disabled;
+            }
             toggle.onclick = () => {
-                const next = !toggle.classList.contains('is-on');
+                const next = toggle.getAttribute('aria-pressed') !== 'true';
                 this._pushUndo();
                 toggle.classList.toggle('is-on', next);
+                toggle.setAttribute('aria-pressed', String(next));
                 cb(next);
+                if (pill) pill.textContent = status(next);
                 this._gradeChanged();
             };
             right.appendChild(toggle);
@@ -14776,7 +14804,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.grainAnimate = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainAnimate(v);
-        }, this.grainAnimate ? 'LIVE' : 'STATIC');
+        }, { id: 'grain-animate', status: (on) => (on ? 'LIVE' : 'STATIC') });
 
         makeSlider(grain, 'Amount', 0, 1, 'grain', 0.01, v => {
             this.grain = v;
@@ -14815,50 +14843,68 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         const depth = this._renderReferenceSection(parent, 'REALTIME DEPTH', () => this._resetGradeFields(S.depth));
-        const hasDepth = !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
+        // M18, L6: without a depth map this section is one line saying so,
+        // and its controls are disabled with that reason. It was a half-panel
+        // gradient over live sliders that changed nothing.
+        const hasDepth = this._hasDepthMap();
+        this._effectsBuiltWithDepth = hasDepth;
+        const noDepth = hasDepth ? '' : RadianceViewer.NO_DEPTH_MESSAGE;
         makeToggle(depth, 'Show Depth Overlay', !!this.showZdepth, v => {
             this.showZdepth = v;
             this.renderer?.setShowDepth(v);
-        }, hasDepth ? 'READY' : 'NO MAP');
+        }, { id: 'depth-overlay', status: () => (hasDepth ? 'READY' : 'NO MAP'), disabled: noDepth });
         makeToggle(depth, 'Depth Of Field', !!this.dofEnabled, v => {
             this.dofEnabled = v;
             this.renderer?.setDoFEnabled(v);
-        }, this.dofEnabled ? 'ON' : 'OFF');
+        }, { id: 'dof', status: (on) => (on ? 'ON' : 'OFF'), disabled: noDepth });
         const preview = document.createElement('div');
         preview.className = 'radiance-ref-depth-preview';
         depth.appendChild(preview);
         this._renderReferenceDepthPreview(preview);
-        makeSlider(depth, 'Focus', 0, 1, 'focusDistance', 0.01, v => {
+        const depthSliders = [];
+        const depthSlider = (...a) => { const input = makeSlider(depth, ...a); depthSliders.push(input); return input; };
+        depthSlider('Focus', 0, 1, 'focusDistance', 0.01, v => {
             this.focusDistance = v;
             this.renderer?.setFocusDistance(v);
         });
-        makeSlider(depth, 'Aperture', 0, 1, 'aperture', 0.01, v => {
+        depthSlider('Aperture', 0, 1, 'aperture', 0.01, v => {
             this.aperture = v;
             this.renderer?.setAperture(v);
         });
-        makeSlider(depth, 'Blades', 0, 9, 'apertureBlades', 1, v => {
-            this.apertureBlades = Math.round(v);
+        depthSlider('Blades', 0, 9, 'apertureBlades', 1, v => {
+            // L6: a shape needs three blades; 1 and 2 drew the same round
+            // disc as 0. They snap to round (1) or to three (2).
+            const n = Math.round(v);
+            this.apertureBlades = n === 1 ? 0 : n === 2 ? 3 : n;
             this.renderer?.setApertureShape(this.apertureBlades, this.apertureRotation || 0, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Angle', 0, 360, 'apertureRotation', 1, v => {
+        depthSlider('Angle', 0, 360, 'apertureRotation', 1, v => {
             this.apertureRotation = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, v, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Anamorphic', 1, 2, 'apertureAnamorphic', 0.05, v => {
+        depthSlider('Anamorphic', 1, 2, 'apertureAnamorphic', 0.05, v => {
             this.apertureAnamorphic = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, this.apertureRotation || 0, v);
         });
-        makeSlider(depth, 'Highlight', 0, 5, 'bokehHighlightBias', 0.1, v => {
+        depthSlider('Highlight', 0, 5, 'bokehHighlightBias', 0.1, v => {
             this.bokehHighlightBias = v;
             this.renderer?.setBokehPhysics(v, this.bokehSoapBubble || 0, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Rim', 0, 2, 'bokehSoapBubble', 0.05, v => {
+        depthSlider('Rim', 0, 2, 'bokehSoapBubble', 0.05, v => {
             this.bokehSoapBubble = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, v, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Cat Eye', 0, 1, 'bokehOpticalVig', 0.05, v => {
+        depthSlider('Cat Eye', 0, 1, 'bokehOpticalVig', 0.05, v => {
             this.bokehOpticalVig = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, this.bokehSoapBubble || 0, v);
+        });
+        depthSliders.forEach((input) => {
+            const row = input.closest('.radiance-ref-slider');
+            if (input.dataset.radianceParam === 'blades') row.title = 'Aperture blades: 0 is round, 3 to 9 are polygons';
+            if (hasDepth) return;
+            input.disabled = true;
+            row.querySelector('.radiance-ref-readout')?.setAttribute('disabled', '');
+            row.title = noDepth;
         });
 
         const actions = document.createElement('div');
