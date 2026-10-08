@@ -183,9 +183,20 @@ class NukeConnector:
             response = accumulated.decode("utf-8", errors="replace")
             response = response.replace(END_MARKER.decode(), "").strip()
 
-            if response.startswith("ERROR:"):
+            # The listener answers after 10 s when Nuke's main thread is busy:
+            # "PENDING: ..." since 4.0, "ERROR: Timeout" before. The command is
+            # still queued there, so it is unconfirmed, not failed.
+            busy = response.startswith("PENDING:") or response == "ERROR: Timeout"
+            if response.startswith("ERROR:") and not busy:
                 self._last_error = response
                 return (False, response)
+
+            if busy:
+                msg = (f"UNCONFIRMED: Nuke at {self.host}:{self.port} is busy and has not run the "
+                       "command yet; it is queued there and may still run")
+                self._last_error = msg
+                logger.warning(msg)
+                return (False, msg)
 
             if not confirmed:
                 # The listener ends every reply with END_MARKER. Without it the
