@@ -157,14 +157,26 @@ def find_moge() -> Optional[Path]:
     return None
 
 
+#: Written before Radiance downloads Marigold into a folder and removed once
+#: every file has passed _verify_marigold, so a check that could not run (rate
+#: limit, network blip) runs again next time instead of being skipped. A
+#: folder installed by hand has no marker and is used as it is.
+MARIGOLD_UNVERIFIED = ".radiance_unverified"
+
+
 def marigold_complete(path: Path, name: str) -> bool:
     files = MARIGOLD_SOURCES[name]["files"]
     return all((path / f).is_file() for f in files)  # type: ignore[union-attr]
 
 
+def _marigold_unverified(path: Path) -> bool:
+    return (path / MARIGOLD_UNVERIFIED).is_file()
+
+
 def find_marigold(name: str) -> Optional[Path]:
+    """A complete Marigold folder whose files are verified or were installed by hand."""
     for d in _marigold_dirs(name):
-        if marigold_complete(d, name):
+        if marigold_complete(d, name) and not _marigold_unverified(d):
             return d
     return None
 
@@ -283,25 +295,38 @@ def ensure_marigold(name: str, allow_download: bool) -> Path:
     target = _first_writable(candidates)
     dest = str(target or f"ComfyUI/models/radiance/marigold/{name}/")
     if not downloads_permitted(allow_download):
+        unchecked = next((d for d in candidates if marigold_complete(d, name)), None)
+        if unchecked is not None:
+            raise EstimateModelError(
+                f"[Multipass Estimate] Marigold {name} in {unchecked} was downloaded but its files "
+                "have not been checked against the Hub yet, and downloads are off. Allow downloads "
+                f"for one run to check them, or delete {MARIGOLD_UNVERIFIED} in that folder to use "
+                "them as they are.")
         raise _refuse(f"Marigold {name}", int(src["size_mb"]), dest, url)  # type: ignore[arg-type]
     if target is None:
         raise EstimateModelError(f"[Multipass Estimate] No writable models/radiance folder for Marigold {name}.")
     with _dl_lock:
-        if marigold_complete(target, name):
-            return target
-        from huggingface_hub import snapshot_download
-        logger.info(
-            "[Radiance] Downloading Marigold %s (~%s MB) to %s\n"
-            "           Weights licensed OpenRAIL++-M (commercial use allowed, with use restrictions): %s",
-            name, src["size_mb"], target, MARIGOLD_LICENSE_URL,
-        )
-        snapshot_download(
-            repo_id=str(src["repo"]), revision=str(src["revision"]),
-            allow_patterns=list(src["files"]), local_dir=str(target),  # type: ignore[arg-type]
-        )
-        if not marigold_complete(target, name):
-            raise EstimateModelError(f"[Multipass Estimate] Marigold {name} download is incomplete in {target}.")
+        found = find_marigold(name)
+        if found:
+            return found
+        marker = target / MARIGOLD_UNVERIFIED
+        if not (marigold_complete(target, name) and marker.is_file()):
+            from huggingface_hub import snapshot_download
+            logger.info(
+                "[Radiance] Downloading Marigold %s (~%s MB) to %s\n"
+                "           Weights licensed OpenRAIL++-M (commercial use allowed, with use restrictions): %s",
+                name, src["size_mb"], target, MARIGOLD_LICENSE_URL,
+            )
+            target.mkdir(parents=True, exist_ok=True)
+            marker.write_text("Radiance removes this once the files match the Hub's hashes.\n")
+            snapshot_download(
+                repo_id=str(src["repo"]), revision=str(src["revision"]),
+                allow_patterns=list(src["files"]), local_dir=str(target),  # type: ignore[arg-type]
+            )
+            if not marigold_complete(target, name):
+                raise EstimateModelError(f"[Multipass Estimate] Marigold {name} download is incomplete in {target}.")
         _verify_marigold(target, name)
+        marker.unlink(missing_ok=True)
         return target
 
 

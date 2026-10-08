@@ -430,6 +430,11 @@ class RadianceAudioCut:
 # Transcription helpers
 # ===========================================================================
 
+#: openai-whisper's cache names where they are not "<size>.pt" (its _MODELS),
+#: for when only the CLI is installed and the package cannot be asked.
+_WHISPER_CACHE_NAMES = {"large": "large-v3.pt", "turbo": "large-v3-turbo.pt"}
+
+
 def _whisper_weights_present(model_size: str) -> bool:
     """True when whisper would load `model_size` without downloading it.
 
@@ -440,8 +445,8 @@ def _whisper_weights_present(model_size: str) -> bool:
     try:
         import whisper  # type: ignore
         url = getattr(whisper, "_MODELS", {}).get(model_size)
-    except Exception:  # noqa: BLE001 - no package (the CLI alone): its names are <size>.pt
-        url = f"{model_size}.pt"
+    except Exception:  # noqa: BLE001 - no package (the CLI alone)
+        url = _WHISPER_CACHE_NAMES.get(model_size, f"{model_size}.pt")
     if not url:
         return os.path.isfile(model_size)
     root = os.path.join(os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache")),
