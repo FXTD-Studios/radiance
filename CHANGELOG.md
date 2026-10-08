@@ -48,10 +48,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   and the measured peak and clipping on saturated log content change.
 - **Installed upscale and face models are checked once.** The first run after
   upgrading hashes each one against its pinned SHA-256 (records the pass in
-  `<file>.radiance-sha256`). A file that does not match is downloaded again,
-  or reported when downloads are off; it is never used silently.
+  `<file>.radiance-sha256`, tied to the file's inode and change time). A file
+  that does not match is moved to `<file>.radiance-mismatch` and the pinned
+  one downloaded, or reported when downloads are off; it is never used
+  silently or overwritten.
 - **Nuke push** reports `UNCONFIRMED` when Nuke does not reply before the read
-  timeout or drops the connection; it reported `OK`.
+  timeout, drops the connection, or is busy (the listener now answers
+  `PENDING` after 10 s); it reported `OK`, or `FAILED` for a busy Nuke whose
+  command still ran. Update `scripts/start_nuke_server.py` in Nuke too.
 - **Downloads.** The ACES config manager's download needs download consent
   (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
   SHA-256. Whisper model downloads ask for consent too (weights already in
@@ -116,7 +120,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   limit, network) is checked again on the next run instead of being used.
 - **Reading:**
   - Image sequences report the frame rate their EXR, DPX or Cineon header
-    declares (24 only as a stated fallback); every sequence said 24.
+    declares (24 only as a stated fallback; DPX's float rates snap, so 23.976
+    is 24000/1001); every sequence said 24.
   - Video reads work with only ffmpeg installed (imageio-ffmpeg ships no
     ffprobe): the stream is probed from ffmpeg's banner.
   - `raw` on a video skips the colour-tag decode and any OCIO override, as it
@@ -124,7 +129,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   - Formats only OpenImageIO reads (Cineon, RLA, IFF, ARRIRAW and others) go
     to OpenImageIO instead of failing in Pillow, with an install hint when it
     is missing; `.pic` (Radiance RGBE) is read as float HDR.
-- **RGBA:** Tier 2 upscale and an external `UPSCALE_MODEL` carry alpha
+- **RGBA:** Tier 2 upscale, SeedVR2 and an external `UPSCALE_MODEL` carry alpha
   (resized to the output; the model sees RGB), Face Restore keeps the input
   alpha (it wrote the face's red into alpha), Focus Peaking keeps alpha, and
   Split View, Contact Sheet, Flipbook GIF and Preview Server accept RGBA and
@@ -133,8 +138,9 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **AI Upscale** honours `RADIANCE_UPSCALE_OFFLINE` and says why a model was
   not downloaded.
 - **DCC Bridge:** export from an image sequence works (it always failed on an
-  unknown colour space name); at most 16 connections are served at once, and
-  the server stops when ComfyUI exits.
+  unknown colour space name); at most 16 connections are served at once (8 per
+  address), a request line must arrive within 30 s, and the server stops
+  when ComfyUI exits.
 - **Audio Transcribe:** chunks of a split segment each get their own start
   and end; they all started at the segment start.
 - **Startup** ends on a warning naming any missing required dependency, and
