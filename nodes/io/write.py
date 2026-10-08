@@ -725,7 +725,10 @@ class RadianceWrite:
                             "oiio:ColorSpace); video gets primaries/transfer/matrix tags. "
                             "For a video of scene-linear HDR (e.g. from SDR -> HDR Universal) "
                             "pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light "
-                            "in a video plays back too dark."),
+                            "in a video plays back too dark. PQ and HLG video need a 10-bit "
+                            "format (H.265 10-bit or ProRes); H.264 and DNxHR HQ are refused. "
+                            "PQ H.265 carries HDR10 metadata (P3-D65 1000-nit mastering "
+                            "display, MaxCLL/MaxFALL measured from the frames)."),
             }),
             "fps": ("FLOAT", {
                 "default": 0.0, "min": 0.0, "max": 240.0, "step": 0.001,
