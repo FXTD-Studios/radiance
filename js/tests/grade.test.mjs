@@ -218,7 +218,11 @@ test('both shaders are emitted from this module', () => {
 test('both CPU paths call this module rather than repeating it', () => {
     assert.match(read('radiance_webgpu.js'), /px = gradeLift\(/,
         'the WebGPU CPU readback must use the shared functions');
-    assert.match(read('radiance_viewer.js'), /_gradePixel\(\[r, g, b\]/,
+    // The exports: the viewer calls the one exporter module, and that module
+    // grades every lattice point with gradePixelFull from here.
+    assert.match(read('radiance_viewer.js'), /_buildCubeLUT\(this\._gradeExportState\(\)/,
+        'the .cube export must go through radiance_grade_export.js');
+    assert.match(read('radiance_grade_export.js'), /gradePixelFull\(src, state/,
         'the .cube export must use the shared grade');
 });
 

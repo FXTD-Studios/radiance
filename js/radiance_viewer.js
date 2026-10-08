@@ -23,7 +23,12 @@ import {
     formatValue as _probeFormat,
     HDR_REFERENCE_WHITE_NITS as _PROBE_REF_WHITE,
 } from "./radiance_probe.js";
-import { gradePixel as _gradePixel, PIVOT_DEFAULT as _PIVOT_DEFAULT } from "./radiance_grade.js";
+import {
+    PIVOT_DEFAULT as _PIVOT_DEFAULT,
+    isIdentitySecondaryTable as _isIdentitySecondaryTable,
+} from "./radiance_grade.js";
+// The one CDL writer and the one .cube writer, both built on the shared grade.
+import { buildCDL as _buildCDL, buildCubeLUT as _buildCubeLUT } from "./radiance_grade_export.js";
 // The bounded paging window for sequence playback. Lives in its own module so
 // the memory bound can be measured in a test rather than reasoned about.
 import {
@@ -7501,112 +7506,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
     }
 
-    // v3.0 #7: ASC CDL Export — writes current grading state as .cdl XML
-    _exportCDL() {
-        // Gain (slope), Lift (offset), Power (gamma), Saturation
-        // FIX-006: CDL is (in * slope + offset) ^ power. The Viewer applies
-        // exposure, offset, gain, then gamma (^ 1/gamma), so slope = 2^exposure
-        // * gain and offset = offset * gain. Lift is luma-pivoted, not a CDL
-        // offset; it used to be written as one.
-        const _k = Math.pow(2, this.exposure || 0);
-        const _gain = this.gain || [1, 1, 1];
-        const _off = this.offset || [0, 0, 0];
-        const slope = _gain.map(g => _k * g);
-        const offset = _off.map((o, i) => o * _gain[i]);
-        // Power: inverse of gamma (CDL power = 1/gamma for gamma>0)
-        const gamma = this.gamma && Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const power = gamma.map(g => g > 0 ? (1.0 / g).toFixed(6) : '1.000000');
-        const sat = (this.saturation !== undefined ? this.saturation : 1.0).toFixed(6);
-
-        const s = slope.map(v => v.toFixed(6)).join(' ');
-        const o = offset.map(v => v.toFixed(6)).join(' ');
-        const p = power.join(' ');
-
-        const xml = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">',
-            '  <ColorDecision>',
-            '    <!-- Radiance Viewer v3.0 Grade Export -->',
-            '    <ColorCorrection id="radiance_grade">',
-            '      <SOPNode>',
-            `        <Slope>${s}</Slope>`,
-            `        <Offset>${o}</Offset>`,
-            `        <Power>${p}</Power>`,
-            '      </SOPNode>',
-            '      <SatNode>',
-            `        <Saturation>${sat}</Saturation>`,
-            '      </SatNode>',
-            '    </ColorCorrection>',
-            '  </ColorDecision>',
-            '</ColorDecisionList>',
-        ].join('\n');
-
-        const blob = new Blob([xml], { type: 'text/xml' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cdl`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        console.log('[Radiance v3.0] CDL exported');
-    }
-
-    // ── Sprint 3: .CUBE 3D LUT export from live grade ──────────────────────
-    // Bakes the current LGG/Sat/Contrast grade into a 17³-point 3D LUT .cube
-    // file that can be loaded into DaVinci Resolve, Nuke, Baselight, or SCRATCH.
-    _exportGradeLUT() {
-        const N = 17; // Grid size (17³ = 4913 points, standard for creative LUTs)
-        const lines = [
-            `# Radiance Viewer Grade LUT — exported ${new Date().toISOString()}`,
-            `# Gain: ${(this.gain || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Gamma: ${(this.gamma || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Lift: ${(this.lift || [0, 0, 0]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Saturation: ${(this.saturation || 1).toFixed(4)}`,
-            `# Contrast: ${(this.contrast || 1).toFixed(4)}  Pivot: ${(this.pivot || 0.18).toFixed(4)}`,
-            'LUT_3D_SIZE 17',
-            'DOMAIN_MIN 0.0 0.0 0.0',
-            'DOMAIN_MAX 1.0 1.0 1.0',
-            ''
-        ];
-
-        const gain = Array.isArray(this.gain) ? this.gain : [1, 1, 1];
-        const gamma = Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const lift = Array.isArray(this.lift) ? this.lift : [0, 0, 0];
-        const sat = this.saturation || 1.0;
-        const con = this.contrast || 1.0;
-        const piv = this.pivot || 0.18;
-
-        // The shared grade definition -- the same one the shaders are emitted
-        // from. This was a fourth hand-written copy, and it differed from the
-        // WebGL one it was meant to mirror by leaving contrast unclamped, so a
-        // .cube taken into Resolve did not match the viewer it came from.
-        const applyGrade = (r, g, b) => {
-            const out = _gradePixel([r, g, b], {
-                lift, gain, gamma, contrast: con, pivot: piv, saturation: sat,
-            });
-            // Clamp to [0, 1] for the LUT domain -- a .cube cannot carry values
-            // outside it.
-            return out.map((v) => Math.max(0, Math.min(1, v)));
-        };
-
-        // .CUBE Ordering: R varies fastest, then G, then B
-        for (let bi = 0; bi < N; bi++) {
-            for (let gi = 0; gi < N; gi++) {
-                for (let ri = 0; ri < N; ri++) {
-                    const r = ri / (N - 1), g = gi / (N - 1), bv = bi / (N - 1);
-                    const [or, og, ob] = applyGrade(r, g, bv);
-                    lines.push(`${or.toFixed(6)} ${og.toFixed(6)} ${ob.toFixed(6)}`);
-                }
-            }
-        }
-
-        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cube`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        this._termLog?.('success', `[LUT] Exported 17³ .cube LUT from live grade`);
-    }
+    // _exportCDL and _exportGradeLUT live with the grade state (GRADE EXPORT &
+    // PRESETS): one CDL writer and one .cube writer, for every menu and button.
 
     // v3.0 #7: ASC CDL Import — reads .cdl XML and applies to current grading state
     _importCDL() {
@@ -12653,8 +12554,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Open Scopes', () => { this._setReferenceTab?.('scopes'); this.updateScopes?.(); }],
             ['Open Effects', () => { this._setReferenceTab?.('effects'); }],
             ['Snapshot', () => this.exportSnapshot?.('png')],
-            ['Export .CUBE', () => this.exportToCube()],
-            ['Export .CDL', () => this.exportToCDL()],
+            ['Export .CUBE', () => this._exportGradeLUT()],
+            ['Export .CDL', () => this._exportCDL()],
         ].forEach(([label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -17780,13 +17681,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         const cubeBtn = document.createElement('button');
         cubeBtn.textContent = '⤒ EXPORT .CUBE';
         cubeBtn.style.cssText = 'background: #1a1a20; color: #ffca28; border: 1px solid #ffca2855; padding: 6px; border-radius: 4px; font-size: 10px; cursor: pointer; flex: 1; font-weight: bold;';
-        cubeBtn.onclick = () => this.exportToCube();
+        cubeBtn.onclick = () => this._exportGradeLUT();
         exportRow.appendChild(cubeBtn);
 
         const cdlExportBtn = document.createElement('button');
         cdlExportBtn.textContent = '⤒ EXPORT .CDL';
         cdlExportBtn.style.cssText = 'background: #1a1a20; color: #88ff88; border: 1px solid #88ff8855; padding: 6px; border-radius: 4px; font-size: 10px; cursor: pointer; flex: 1; font-weight: bold;';
-        cdlExportBtn.onclick = () => this.exportToCDL();
+        cdlExportBtn.onclick = () => this._exportCDL();
         exportRow.appendChild(cdlExportBtn);
 
         const cdlImportBtn = document.createElement('button');
@@ -19523,6 +19424,68 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._lastRenderContent) this._lastRenderContent();
     }
 
+    /** The grade plus what the exporters need to know about the frame and the effects. */
+    _gradeExportState() {
+        const sec = this._secondaryCurveTable;
+        return {
+            ...this._captureGradingState(),
+            curveTable: this._curveTable || null,
+            curveMix: this.curveMix ?? 1,
+            secondaryCurveTable: sec || null,
+            secondaryCurveMix: sec && !_isIdentitySecondaryTable(sec) ? 1 : 0,
+            maskActive: (this.maskState?.type || 0) > 0,
+            qualifierActive: !!this.qualifierState?.enabled,
+            creativeLut: !!this.renderer?.lutEnabled,
+        };
+    }
+
+    _downloadText(text, fileName, type) {
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    /**
+     * ASC CDL of the grade. The one CDL exporter: the File menu and the
+     * Inspector both run this. What CDL cannot hold is listed in the file and
+     * shown to the user, rather than silently left out.
+     */
+    _exportCDL() {
+        const cdl = _buildCDL(this._gradeExportState());
+        this._downloadText(cdl.xml, cdl.fileName, 'application/xml');
+        if (cdl.dropped.length) {
+            this._showToast?.(`CDL exported. Not representable in CDL, left out: ${cdl.dropped.join(', ')}.`, 'warn');
+        } else {
+            this._showToast?.('CDL exported.', 'success');
+        }
+        this._termLog?.('success', `[CDL] Exported ${cdl.fileName}${cdl.dropped.length ? ` (left out: ${cdl.dropped.join(', ')})` : ''}`);
+        return cdl;
+    }
+
+    /**
+     * The grade as a 65-point .cube, ACEScct (AP1) in and out, so values above
+     * 1.0 survive. The one LUT exporter: the File menu and the Inspector both
+     * run this.
+     */
+    _exportGradeLUT() {
+        const lut = _buildCubeLUT(this._gradeExportState(), {
+            gamut: this.renderer?.sourceGamut ?? 0,
+            inputTransform: this.inputSpace || 'None',
+            isLinear: this.renderer?.isLinearTexture ?? true,
+        });
+        this._downloadText(lut.text, lut.fileName, 'text/plain');
+        const msg = `Exported a ${lut.size}-point .cube, ACEScct (AP1) in and out.`;
+        if (lut.notBaked.length) this._showToast?.(`${msg} Not baked: ${lut.notBaked.join(', ')}.`, 'warn');
+        else this._showToast?.(msg, 'success');
+        this._termLog?.('success', `[LUT] ${msg}`);
+        return lut;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //                         TERMINAL / SCRIPT EDITOR
     // ═══════════════════════════════════════════════════════════════════════════
@@ -19879,140 +19842,6 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
         };
         reader.readAsText(file);
-    }
-
-    exportToCube() {
-        console.log("[Radiance] Generating 3D LUT (.cube)...");
-        const size = 33;
-        let cube = `TITLE "Radiance Export"\nLUT_3D_SIZE ${size} \nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n\n`;
-
-        // Helper to apply math (matching radiance_webgl.js and Python apply_grading)
-        const applyMath = (c) => {
-            let r = c[0], g = c[1], b = c[2];
-
-            // 1. Offset
-            r += this.offset[0] || 0; g += this.offset[1] || 0; b += this.offset[2] || 0;
-
-            // 2. Exposure (Stops)
-            const expMult = Math.pow(2.0, this.exposure || 0);
-            r *= expMult; g *= expMult; b *= expMult;
-
-            // 3. White Balance (Temp / Tint usually skipped in LUT for neutral grey, but adding for completeness)
-            // Skipping WB here as Temp is usually done globally before grading, but could be added.
-
-            // 4. Lift (Pivoted at White)
-            const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-            const liftPivot = Math.max(0.0, Math.min(1.0, 1.0 - luma));
-            r += (this.lift[0] || 0) * liftPivot;
-            g += (this.lift[1] || 0) * liftPivot;
-            b += (this.lift[2] || 0) * liftPivot;
-
-            // 5. Gain
-            r *= (this.gain[0] || 1); g *= (this.gain[1] || 1); b *= (this.gain[2] || 1);
-
-            // 6. Gamma
-            r = Math.sign(r) * Math.pow(Math.abs(r), 1.0 / (this.gamma[0] || 1));
-            g = Math.sign(g) * Math.pow(Math.abs(g), 1.0 / (this.gamma[1] || 1));
-            b = Math.sign(b) * Math.pow(Math.abs(b), 1.0 / (this.gamma[2] || 1));
-
-            // 7. Contrast & Pivot
-            const con = this.contrast || 1.0;
-            const piv = this.pivot || 0.18;
-            r = (r - piv) * con + piv;
-            g = (g - piv) * con + piv;
-            b = (b - piv) * con + piv;
-
-            // 8. Log Wheels (Shadow/Midtone/Highlight)
-            // Precise reimplementation of 'applyLogWheels' from glsl
-            const logLuma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-
-            // Shadow curve log_s(x)
-            let logS = 0;
-            if (logLuma <= 0.45) {
-                if (logLuma <= 0.33) logS = 1.0;
-                else logS = 1.0 - (logLuma - 0.33) / (0.45 - 0.33);
-            }
-
-            // Highlight curve log_h(x)
-            let logH = 0;
-            if (logLuma >= 0.55) {
-                if (logLuma >= 0.66) logH = 1.0;
-                else logH = (logLuma - 0.55) / (0.66 - 0.55);
-            }
-
-            // Midtone curve log_m(x)
-            const logM = 1.0 - logS - logH;
-
-            const ls = this.logShadow || [1, 1, 1];
-            const lm = this.logMidtone || [1, 1, 1];
-            const lh = this.logHighlight || [1, 1, 1];
-
-            r = r * (logS * ls[0] + logM * lm[0] + logH * lh[0]);
-            g = g * (logS * ls[1] + logM * lm[1] + logH * lh[1]);
-            b = b * (logS * ls[2] + logM * lm[2] + logH * lh[2]);
-
-            // 9. Saturation
-            const luma2 = r * 0.2126 + g * 0.7152 + b * 0.0722;
-            const sat = this.saturation || 1.0;
-            r = luma2 + (r - luma2) * sat;
-            g = luma2 + (g - luma2) * sat;
-            b = luma2 + (b - luma2) * sat;
-
-            return [Math.max(0, r), Math.max(0, g), Math.max(0, b)];
-        };
-
-        for (let b = 0; b < size; b++) {
-            for (let g = 0; g < size; g++) {
-                for (let r = 0; r < size; r++) {
-                    const result = applyMath([r / (size - 1), g / (size - 1), b / (size - 1)]);
-                    cube += `${result[0].toFixed(6)} ${result[1].toFixed(6)} ${result[2].toFixed(6)}\n`;
-                }
-            }
-        }
-
-        const blob = new Blob([cube], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "radiance_grade.cube";
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    exportToCDL() {
-        console.log("[Radiance] Generating ASC CDL (.cdl)...");
-        const slope = this.gain || [1.0, 1.0, 1.0];
-        const offset = this.lift || [0.0, 0.0, 0.0];
-        const power = this.gamma || [1.0, 1.0, 1.0];
-        const sat = this.saturation ?? 1.0;
-
-        const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">
-  <ColorDecision>
-    <ColorCorrection id="radiance_grade_${Date.now()}">
-      <SOPNode>
-        <Slope>${slope[0].toFixed(6)} ${slope[1].toFixed(6)} ${slope[2].toFixed(6)}</Slope>
-        <Offset>${offset[0].toFixed(6)} ${offset[1].toFixed(6)} ${offset[2].toFixed(6)}</Offset>
-        <Power>${power[0].toFixed(6)} ${power[1].toFixed(6)} ${power[2].toFixed(6)}</Power>
-      </SOPNode>
-      <SatNode>
-        <Saturation>${sat.toFixed(6)}</Saturation>
-      </SatNode>
-    </ColorCorrection>
-  </ColorDecision>
-</ColorDecisionList>`;
-
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `radiance_grade_${Date.now()}.cdl`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        this._termLog?.('success', `[CDL] Exported ASC-CDL XML successfully`);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
