@@ -508,8 +508,11 @@ class RadianceMCP:
                 return ("Error: sequence_path is required when source=Sequence.", "")
             end = frame_end if frame_end > 0 else 0
             try:
+                # The frames go out as they are on disk. Until 4.0 this passed
+                # "Linear (none)", a name the reader does not know, so every
+                # sequence export failed.
                 batch, _alpha, w, h, n, seq_fps, _ = _read_sequence(
-                    sequence_path, frame_start, end, 1, "Linear (none)", "Skip"
+                    sequence_path, frame_start, end, 1, "Linear Rec.709 (sRGB)", "Skip", raw=True
                 )
                 frames = batch.detach().cpu().float().numpy()
                 if frames.ndim == 3:
