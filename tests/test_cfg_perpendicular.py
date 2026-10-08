@@ -95,3 +95,16 @@ def test_standard_mode_installs_no_cfg_function():
 def test_the_mode_keeps_its_saved_name():
     from radiance.sampler_utils import SamplerMode
     assert "CFG++ (Perpendicular)" in SamplerMode.ALL
+
+
+def test_refiner_steps_get_the_perpendicular_guidance_too():
+    # 4.0 beta installed it on the base model only: refiner stages ran plain CFG.
+    from _sampler_harness import run_sampler, FakeModelPatcher
+    refiner = FakeModelPatcher()
+    _, rec = run_sampler(sampler_mode="CFG++ (Perpendicular)", cfg=5.0,
+                         refiner_model=refiner, refiner_start_step=4)
+    models = [c["model"] for c in rec.calls]
+    assert any(m.clone_count and m.model is refiner.model for m in models), "refiner never ran"
+    for m in models:
+        assert m.model_options.get("sampler_cfg_function") is perpendicular_cfg_function
+    assert "sampler_cfg_function" not in refiner.model_options     # the input is not patched
