@@ -1,4 +1,4 @@
-# Known Issues — Radiance 3.5
+# Known Issues — Radiance 4.0 (beta)
 
 Tracked limitations and tech debt. Full production approval remains open: the
 video visual-acceptance failure below blocks production approval of temporal windowing. Other limitations
@@ -19,9 +19,10 @@ These parts of the release gate need checks that cannot run in CI:
   uses the ACES 2.0 100-nit P3-D65 rendering with gamma 2.6.
 - **Saved ACES 2.0 Tonescale nodes** keep `grey_target` 0.10 and run the
   labelled creative curve; set 0 for the reference tone scale.
-- **RGBA on review utilities.** Focus Peaking, Split View, Contact Sheet and
-  Video Assembler still raise on 4-channel input (TEN-007, P1). No colour is
-  changed; they fail rather than run.
+- **RGBA on review utilities (resolved in 4.0).** Focus Peaking keeps alpha
+  on its output; Split View, Contact Sheet, Flipbook GIF and Preview Server
+  show RGB; Video Assembler gives RGB frames opaque alpha when a buffer mixes
+  RGB and RGBA (TEN-007).
 
 ## Architecture / tech debt
 

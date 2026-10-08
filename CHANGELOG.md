@@ -124,10 +124,12 @@ else is fixes. Read the upgrade notes before moving a production setup.
   - Formats only OpenImageIO reads (Cineon, RLA, IFF, ARRIRAW and others) go
     to OpenImageIO instead of failing in Pillow, with an install hint when it
     is missing; `.pic` (Radiance RGBE) is read as float HDR.
-- **RGBA:** Tier 2 upscale carries alpha (resized to the output), Face
-  Restore keeps the input alpha (it wrote the face's red into alpha), and
-  Flipbook GIF and Preview Server accept RGBA and show RGB (the GIF's colours
-  were scrambled, the preview raised).
+- **RGBA:** Tier 2 upscale and an external `UPSCALE_MODEL` carry alpha
+  (resized to the output; the model sees RGB), Face Restore keeps the input
+  alpha (it wrote the face's red into alpha), Focus Peaking keeps alpha, and
+  Split View, Contact Sheet, Flipbook GIF and Preview Server accept RGBA and
+  show RGB (they raised, or the GIF's colours were scrambled). Video Assembler
+  joins RGB and RGBA frames (TEN-007).
 - **AI Upscale** honours `RADIANCE_UPSCALE_OFFLINE` and says why a model was
   not downloaded.
 - **DCC Bridge:** export from an image sequence works (it always failed on an
