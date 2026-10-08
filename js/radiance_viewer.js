@@ -483,6 +483,62 @@ class RadianceViewer {
                     color: var(--radiance-text);
                     background: var(--radiance-control);
                 }
+                .radiance-settings-popover {
+                    position: fixed;
+                    z-index: 30000;
+                    width: 300px;
+                    padding: 12px 14px 14px;
+                    border-radius: 8px;
+                    border: 1px solid var(--radiance-border-strong);
+                    background: var(--radiance-surface-raised);
+                    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+                    color: var(--radiance-text);
+                    font: var(--radiance-fs-body)/1.35 var(--radiance-font);
+                    box-sizing: border-box;
+                }
+                .radiance-settings-popover .rsp-title {
+                    color: var(--radiance-text);
+                    font-size: var(--radiance-fs-heading);
+                    font-weight: 700;
+                    letter-spacing: .9px;
+                    text-transform: uppercase;
+                    margin-bottom: 10px;
+                }
+                .radiance-settings-popover .rsp-row {
+                    display: grid;
+                    grid-template-columns: 96px minmax(0, 1fr);
+                    gap: 4px 10px;
+                    align-items: center;
+                    padding: 6px 0;
+                    border-top: 1px solid var(--radiance-panel-border);
+                }
+                .radiance-settings-popover .rsp-label { color: var(--radiance-text-dim); }
+                .radiance-settings-popover .rsp-note {
+                    grid-column: 2;
+                    color: var(--radiance-text-muted);
+                }
+                .radiance-settings-popover .rsp-choice { display: flex; gap: 2px; flex-wrap: wrap; }
+                .radiance-settings-popover button,
+                .radiance-settings-popover select {
+                    min-height: 28px;
+                    padding: 0 8px;
+                    border-radius: 4px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    font: var(--radiance-fs-body) var(--radiance-font);
+                    cursor: pointer;
+                }
+                .radiance-settings-popover select { width: 100%; }
+                .radiance-settings-popover button:hover { background: var(--radiance-control-hover); }
+                .radiance-settings-popover button[aria-pressed="true"],
+                .radiance-settings-popover button[aria-checked="true"] {
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-settings-popover button:disabled { opacity: .45; cursor: not-allowed; }
+                .radiance-settings-popover .rsp-switch { justify-self: start; min-width: 52px; }
                 /* Tactile Micro-Compression Physics (Apple Design) */
                 .radiance-pro-container button,
                 .radiance-pro-viewer-bar button,
@@ -3019,20 +3075,190 @@ class RadianceViewer {
 
         const actions = document.createElement('div');
         actions.className = 'radiance-pro-actions';
-        [
-            ['Snapshot', () => this.showExportMenu?.({ target: actions })],
-            ['Compare', () => this.cycleCompareMode()],
-            ['HDR', () => { this.toggleHDRHeatmap(); }],
-            ['⚙', () => this.toggleControls()],
-        ].forEach(([label, handler]) => {
+        const action = (label, title, handler, cls = '') => {
             const btn = document.createElement('button');
+            btn.type = 'button';
             btn.textContent = label;
-            btn.title = label === '⚙' ? 'Settings' : label;
+            btn.title = title;
+            if (cls) btn.className = cls;
             btn.onclick = handler;
             actions.appendChild(btn);
-        });
+            return btn;
+        };
+        action('Snapshot', 'Snapshot', () => this.showExportMenu?.({ target: actions }));
+        action('Compare', 'Compare', () => this.cycleCompareMode());
+        this._hdrHeatmapBtn = action('HDR', 'HDR heatmap: scene luminance in nits', () => this.toggleHDRHeatmap());
+        this._hdrHeatmapBtn.setAttribute('aria-pressed', 'false');
+        // M18: hiding the panel is its own button. It used to be the gear,
+        // labelled Settings.
+        this._panelBtn = action('Hide Panel', 'Hide the right panel', () => this.toggleControls(), 'radiance-pro-panel-btn');
+        this._panelBtn.setAttribute('aria-expanded', 'true');
+        const gear = action('⚙', 'Settings', () => this._toggleSettings(gear), 'radiance-pro-settings-btn');
+        gear.setAttribute('aria-label', 'Settings');
+        gear.setAttribute('aria-haspopup', 'dialog');
+        gear.setAttribute('aria-expanded', 'false');
+        this._settingsBtn = gear;
         bar.appendChild(actions);
         return bar;
+    }
+
+    /** The panel button's label and state, from showControls. */
+    _syncPanelButton() {
+        const b = this._panelBtn;
+        if (!b) return;
+        const shown = this.showControls !== false;
+        b.textContent = shown ? 'Hide Panel' : 'Show Panel';
+        b.title = shown ? 'Hide the right panel' : 'Show the right panel';
+        b.setAttribute('aria-expanded', String(shown));
+        if (this.rightControlPanel?.id) b.setAttribute('aria-controls', this.rightControlPanel.id);
+    }
+
+    _toggleSettings(anchor) {
+        if (this._settingsPopover) this._closeSettings();
+        else this._openSettings(anchor);
+    }
+
+    _closeSettings({ restoreFocus = true } = {}) {
+        const pop = this._settingsPopover;
+        if (!pop) return;
+        this._settingsPopover = null;
+        this._settingsAbort?.abort();
+        this._settingsAbort = null;
+        pop.remove();
+        this._settingsBtn?.setAttribute('aria-expanded', 'false');
+        if (restoreFocus && pop.contains(document.activeElement)) this._settingsBtn?.focus();
+    }
+
+    /**
+     * M18: the gear's settings, the viewer preferences kept in
+     * localStorage: renderer backend, pipeline precision, magnification,
+     * safe-area standard, aspect matte and high contrast. Each control
+     * writes the same key, through the same method, as before.
+     */
+    _openSettings(anchor) {
+        const pop = document.createElement('div');
+        pop.className = 'radiance-settings-popover';
+        pop.setAttribute('role', 'dialog');
+        pop.setAttribute('aria-label', 'Viewer settings');
+        const uid = `radiance-settings-${this.node?.id ?? 'x'}`;
+
+        const row = (label, control, note = '') => {
+            const r = document.createElement('div');
+            r.className = 'rsp-row';
+            const l = document.createElement('div');
+            l.className = 'rsp-label';
+            l.textContent = label;
+            l.id = `${uid}-${control.dataset.setting}`;
+            control.setAttribute('aria-labelledby', l.id);
+            r.append(l, control);
+            if (note) {
+                const n = document.createElement('div');
+                n.className = 'rsp-note';
+                n.textContent = note;
+                r.appendChild(n);
+            }
+            pop.appendChild(r);
+        };
+        // A row of buttons, one pressed: [value, label, disabledReason?].
+        const choice = (setting, options, current, onPick) => {
+            const g = document.createElement('div');
+            g.className = 'rsp-choice';
+            g.setAttribute('role', 'group');
+            g.dataset.setting = setting;
+            const paint = (v) => g.querySelectorAll('button').forEach((b) => {
+                b.setAttribute('aria-pressed', String(b.dataset.value === v));
+            });
+            options.forEach(([value, label, disabled]) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.dataset.value = value;
+                b.textContent = label;
+                if (disabled) { b.disabled = true; b.title = disabled; }
+                b.onclick = () => { onPick(value); paint(value); };
+                g.appendChild(b);
+            });
+            paint(current);
+            return g;
+        };
+        const select = (setting, options, current, onPick) => {
+            const sel = document.createElement('select');
+            sel.dataset.setting = setting;
+            options.forEach((o) => {
+                const opt = document.createElement('option');
+                opt.value = o.id; opt.textContent = o.label;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+            sel.onchange = () => onPick(sel.value);
+            return sel;
+        };
+        const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+        const read = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+        const title = document.createElement('div');
+        title.className = 'rsp-title';
+        title.textContent = 'Settings';
+        pop.appendChild(title);
+
+        const gpu = typeof navigator !== 'undefined' && !!navigator.gpu;
+        row('Renderer', choice('backend', [
+            ['webgl', 'WebGL'],
+            ['webgpu', 'WebGPU', gpu ? '' : 'This browser has no WebGPU'],
+        ], read('radiance_prefer_webgpu') === '1' ? 'webgpu' : 'webgl', (v) => {
+            store('radiance_prefer_webgpu', v === 'webgpu' ? '1' : '0');
+            this._termLog?.('warn', v === 'webgpu'
+                ? '[Renderer] WebGPU enabled: masks, qualifiers, HDR heatmap and OCIO are not implemented there. Reload to apply.'
+                : '[Renderer] WebGL restored. Reload to apply.');
+        }), 'Takes effect on reload. WebGPU has no masks, qualifiers, HDR heatmap or OpenColorIO.');
+        row('Precision', choice('precision', [['u8', 'INT 8'], ['f16', 'FLOAT 16'], ['f32', 'FLOAT 32']],
+            this.renderer?.pipelinePrecision || read('radiance_pipeline_precision') || 'f32',
+            (v) => this._setPipelinePrecision(v)), 'The pipeline\'s working precision (Alt+B cycles it).');
+        row('Magnify', choice('magnify', [['nearest', 'Nearest'], ['linear', 'Linear']], this.pixelFilter || 'nearest',
+            (v) => { if (v !== this.pixelFilter) this.togglePixelFilter(); }), 'Above 100%: actual pixels, or interpolated.');
+        row('Safe areas', select('safe-standard', RadianceViewer.SAFE_AREA_PRESETS, this.safeAreaPreset || 'modern', (v) => {
+            this.safeAreaPreset = v;
+            store('radiance_safe_preset', v);
+            this.renderOverlay();
+        }));
+        row('Matte', select('matte', RadianceViewer.MATTE_PRESETS, this.matteMode || 'off', (v) => {
+            this.matteMode = v;
+            store('radiance_matte', v);
+            this.renderOverlay();
+        }));
+        const hc = document.createElement('button');
+        hc.type = 'button';
+        hc.className = 'rsp-switch';
+        hc.dataset.setting = 'high-contrast';
+        hc.setAttribute('role', 'switch');
+        const paintHc = () => {
+            hc.setAttribute('aria-checked', String(!!this.highContrast));
+            hc.textContent = this.highContrast ? 'On' : 'Off';
+        };
+        hc.onclick = () => { this.setHighContrast(!this.highContrast); paintHc(); };
+        paintHc();
+        row('High contrast', hc, 'Brighter secondary text and edges.');
+
+        document.body.appendChild(pop);
+        const r = anchor.getBoundingClientRect();
+        pop.style.top = `${Math.round(r.bottom + 6)}px`;
+        pop.style.left = `${Math.round(Math.max(8, Math.min(r.right - pop.offsetWidth, window.innerWidth - pop.offsetWidth - 8)))}px`;
+        this._settingsPopover = pop;
+        anchor.setAttribute('aria-expanded', 'true');
+
+        // Closes on Escape, on a press outside it, and with the viewer.
+        this._settingsAbort = new AbortController();
+        const signal = this._settingsAbort.signal;
+        pop.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeSettings(); }
+        }, { signal });
+        setTimeout(() => {
+            if (signal.aborted) return;
+            document.addEventListener('mousedown', (e) => {
+                if (!pop.contains(e.target) && !anchor.contains(e.target)) this._closeSettings({ restoreFocus: false });
+            }, { capture: true, signal });
+        }, 0);
+        this._listenerSignal?.addEventListener('abort', () => this._closeSettings({ restoreFocus: false }), { signal });
+        pop.querySelector('button:not(:disabled), select')?.focus();
     }
 
     createProSidebar() {
@@ -3169,6 +3395,12 @@ class RadianceViewer {
         if (!items) return;
         const states = items.map((it) => (it.state ? it.state() : null));
         const sig = states.map((st) => (st ? `${st.on ? 1 : 0}${st.label || ''}` : '-')).join('|');
+        // The header's HDR button is the same toggle as the rail's.
+        const hdr = this._hdrHeatmapBtn;
+        if (hdr && hdr.getAttribute('aria-pressed') !== String(!!this.hdrHeatmap)) {
+            hdr.classList.toggle('is-active', !!this.hdrHeatmap);
+            hdr.setAttribute('aria-pressed', String(!!this.hdrHeatmap));
+        }
         if (sig === this._railSig) return;
         this._railSig = sig;
         items.forEach((it, i) => {
@@ -4136,6 +4368,7 @@ class RadianceViewer {
         const rcpWidth = Math.min(760, Math.max(520, savedRcpWidth || 620));
         this.rightControlPanel = document.createElement('div');
         this.rightControlPanel.className = 'radiance-right-control-panel';
+        this.rightControlPanel.id = `radiance-panel-${this.node?.id ?? Math.random().toString(36).slice(2)}`;
         this.rightControlPanel.style.setProperty('--rcp-width', rcpWidth + 'px');
         this.rightControlPanel.style.flex = `0 0 ${rcpWidth}px`;
         // Resize handle on left edge
@@ -21981,6 +22214,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.controlsToggle) {
             this.controlsToggle.style.color = this.showControls ? this.theme.accent : this.theme.textDim;
         }
+        this._syncPanelButton();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
