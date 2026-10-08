@@ -63,3 +63,29 @@ def test_it_is_far_better_than_no_compensation_on_real_motion():
     before = (neighbor - frame)[m:-m, m:-m].abs().mean()
     after = (MC(frame, neighbor) - frame)[m:-m, m:-m].abs().mean()
     assert after < 0.02 * before
+
+
+def _large_pair(dy, dx, h=480, w=854, margin=48, seed=0):
+    # Detail at every scale from 1 to 32 px, as in footage; white noise has
+    # nothing for the coarse levels to lock onto.
+    g = torch.Generator().manual_seed(seed)
+    H, W = h + 2 * margin, w + 2 * margin
+    tex = torch.zeros(1, 3, H, W)
+    for k in (1, 2, 4, 8, 16, 32):
+        n = torch.rand(1, 3, H // k + 2, W // k + 2, generator=g)
+        tex += F.interpolate(n, size=(H, W), mode="bilinear", align_corners=False) / 6
+    tex = tex[0].permute(1, 2, 0).contiguous()
+    frame = tex[margin:margin + h, margin:margin + w]
+    neighbor = tex[margin - dy:margin - dy + h, margin - dx:margin - dx + w]
+    return frame, neighbor
+
+
+@pytest.mark.parametrize("dy, dx", [(20, -25), (0, 28), (-30, 0), (28, 28), (30, 30)])
+def test_motion_up_to_about_30_px_is_followed_on_a_large_frame(dy, dx):
+    # 4.0 beta searched +-2 at the coarsest level too, so the estimate lost
+    # lock past about 16 px and picked false vectors (0, 24 came out as 5, 12).
+    frame, neighbor = _large_pair(dy, dx)
+    aligned = MC(frame, neighbor)
+    m = 40
+    err = (aligned[m:-m, m:-m] - frame[m:-m, m:-m]).abs().mean()
+    assert err < 1e-3, f"shift ({dy}, {dx}) left error {err:.4f}"
