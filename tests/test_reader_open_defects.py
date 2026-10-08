@@ -331,3 +331,29 @@ def test_b5_parse_fps_accepts_the_shapes_headers_use():
     assert _parse_fps("0/0") is None
     assert _parse_fps(None) is None
     assert _parse_fps("junk") is None
+
+
+# ── review: an estimated frame count does not turn the 1001 default into a trim
+
+def test_the_sequence_default_start_is_not_a_trim_when_the_count_is_estimated(monkeypatch):
+    # Without ffprobe the count comes from the container duration, which an
+    # audio tail inflates (48 real frames estimated as 72). A clip with fewer
+    # than 1001 real frames but an estimate above it had start 1001 honoured,
+    # and the read failed with "No frames were decoded".
+    from radiance.core import video as V
+    from radiance.io import reader as R
+    info = V.VideoInfo(path="x.mov", width=8, height=8, frames=1200, frames_estimated=True)
+    monkeypatch.setattr(V, "probe", lambda path, *a, **k: info)
+    assert R._video_frame_range("x.mov", 1001, 0) == (0, 0)
+    # A start someone chose inside the estimate is still honoured.
+    assert R._video_frame_range("x.mov", 500, 0) == (500, 0)
+
+
+@pytest.mark.parametrize("stored, expected", [
+    (23.97599983, 24000 / 1001), (29.96999931, 30000 / 1001), (59.94005966, 60000 / 1001),
+    (24.0, 24.0), (25.00000095, 25.0), (12.5, 12.5),
+])
+def test_a_float32_header_rate_snaps_to_the_rate_it_stands_for(stored, expected):
+    # DPX keeps the rate as a float32, so 23.976 came back as 23.97599983.
+    from radiance.io import reader as R
+    assert R._parse_fps(stored) == expected
