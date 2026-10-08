@@ -71,7 +71,7 @@ class RadianceViewer {
         ['manual', 'Custom (Output Transform)'],
     ];
 
-    static singletonHUD = null;
+    /** The viewer last pointed at: a tie-break for keyboard ownership only. */
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -881,6 +881,10 @@ class RadianceViewer {
         // the status-bar badge so it cannot claim FP32 over a tonemapped PNG.
         this._hdrFallbackReasons = [];
         this.frameCompareImages = [];
+        this.frameCompareHDR = [];          // B's float frames, when the node sent them
+        this.compareFit = (() => {
+            try { return localStorage.getItem('radiance_compare_fit') === 'fit' ? 'fit' : 'pixel'; } catch { return 'pixel'; }
+        })();
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
@@ -1210,8 +1214,8 @@ class RadianceViewer {
         this.setupKeyboardShortcuts();
         requestAnimationFrame(() => this.resize());
 
-        // Continuous grain ticker — only fires when grain is active
-        this._startGrainTicker();
+        // The grain ticker starts from render() when animated grain is on
+        // (_syncGrainTicker); it no longer runs at 60 fps with grain off.
 
         // Wire ComfyUI events → terminal
         this._termWireEvents();
@@ -1237,15 +1241,16 @@ class RadianceViewer {
     // Drives a ~24fps RAF loop that re-renders only when grain is active,
     // so the noise pattern animates even when the user isn't touching any control.
     _startGrainTicker() {
+        if (this._grainRAF) return;
         let lastT = 0;
         const FPS = 24;
         const INTERVAL = 1000 / FPS;
 
         const tick = (t) => {
+            // Only while grain is on AND animate mode is enabled: the loop
+            // ends itself otherwise, and render() starts it again.
+            if ((this.grain || 0) <= 0.0 || !this.grainAnimate) { this._grainRAF = null; return; }
             this._grainRAF = requestAnimationFrame(tick);
-            // Only animate if grain is on AND animate mode is enabled
-            if ((this.grain || 0) <= 0.0) return;
-            if (!this.grainAnimate) return;
             if (t - lastT < INTERVAL) return;
             lastT = t;
             if (!this.renderer || !this.renderer.textures.image) return;
@@ -1324,6 +1329,11 @@ class RadianceViewer {
         this._syncGradeControls?.();
         this._gradeChanged?.();
         return true;
+    }
+
+    /** Start the grain ticker when animated grain is on. Called from render(). */
+    _syncGrainTicker() {
+        if (!this._grainRAF && (this.grain || 0) > 0 && this.grainAnimate && !this._destroyed) this._startGrainTicker();
     }
 
     // ── v3.4: Eyedropper White Balance ───────────────────────────────────────
@@ -1473,7 +1483,8 @@ class RadianceViewer {
         let isProxy = false;
         const hdr = this.hdrData;
 
-        if (hdr && hdr.data) {
+        // fp16data first: 'data' on an fp16 frame decodes it (_lazyHalfFloats).
+        if (hdr && (hdr.fp16data || hdr.data)) {
             if (hdr.format === 'rhdr') {
                 inputLabel = 'FP16';
                 inputDetail = 'RHDR half-float sidecar';
@@ -1538,55 +1549,29 @@ class RadianceViewer {
         this._hdrZoneStats = null;
 
         const hdr = this.hdrData;
-        if (!hdr || !hdr.data || hdr.data.length === 0) return;
+        if (!hdr) return;
 
-        const data = hdr.data; // Float32Array
-        const ch   = hdr.channels || 3;
-        const n    = Math.floor(data.length / ch);
-
-        // Sub-sample for performance (target ≤ 500k samples)
-        const step = Math.max(1, Math.ceil(n / 500_000));
-        const sampleCount = Math.ceil(n / step);
-        const luma = new Float32Array(sampleCount);
-
-        let clipped = 0, negative = 0, written = 0;
-        let clippedR = 0, clippedG = 0, clippedB = 0;
-        for (let i = 0; i < n; i += step) {
-            const base = i * ch;
-            const r = data[base]     || 0;
-            const g = ch > 1 ? (data[base + 1] || 0) : r;
-            const b = ch > 2 ? (data[base + 2] || 0) : r;
-            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            luma[written++] = y;
-            if (y > 1.0) clipped++;
-            if (y < 0.0) negative++;
-            if (r > 1.0) clippedR++;
-            if (g > 1.0) clippedG++;
-            if (b > 1.0) clippedB++;
+        // Once per frame, and normally already done in the decode worker. It
+        // was a sort of up to 500,000 samples on the main thread for every
+        // frame shown (about 100 ms), during playback too.
+        let raw = hdr.zoneStats;
+        if (!raw) {
+            // fp16data first: reading 'data' on an fp16 frame decodes it.
+            const values = hdr.fp16data || hdr.data;
+            if (!values || values.length === 0) return;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            raw = this._zoneStatsFromFloats(values, hdr.channels || hdr.shape?.[2] || 3, table, 500_000);
+            if (!raw) return;
+            hdr.zoneStats = raw;
         }
 
-        // Sort a copy for percentile computation
-        const sorted = luma.slice(0, written).sort();
-        const total  = sorted.length;
-
-        const pct = (p) => {
-            const idx = Math.min(total - 1, Math.max(0, Math.floor(p * 0.01 * (total - 1))));
-            return sorted[idx];
-        };
-
-        const p1   = pct(1),  p10  = pct(10), p50 = pct(50);
-        const p90  = pct(90), p99  = pct(99), p999 = pct(99.9);
-
-        let sum = 0;
-        for (let i = 0; i < written; i++) sum += sorted[i];
-        const meanLuma = sum / written;
-
-        const clippedPct  = (clipped  / written) * 100;
-        const negativePct = (negative / written) * 100;
-        const clippedRPct = (clippedR / written) * 100;
-        const clippedGPct = (clippedG / written) * 100;
-        const clippedBPct = (clippedB / written) * 100;
-        const evRange     = p1 > 1e-6 ? Math.log2(Math.max(p99, 1e-6) / p1) : 0;
+        const { p1, p10, p50, p90, p99, p999, meanLuma, clippedPct, negativePct,
+            clippedRPct, clippedGPct, clippedBPct } = raw;
+        // From the lowest NON-ZERO percentile. A frame whose darkest 1% is
+        // true black has p1 = 0, and the old formula then gave up and said
+        // 0.0 EV for a frame running from black to 41.6.
+        const low = raw.p1NonZero;
+        const evRange = low > 0 && p99 > 0 ? Math.max(0, Math.log2(p99 / low)) : 0;
 
         // Nit estimate: decode through IDT log curve if one is active,
         // then apply ITU-R BT.2408 SDR reference (203 cd/m²)
@@ -1594,8 +1579,8 @@ class RadianceViewer {
         const decodedPeak = this._decodeLogForNit(rawPeak);
         const nitPeak = decodedPeak * 203;
 
-        const shadowCeiling = pct(30);
-        const midCeiling    = pct(70);
+        const shadowCeiling = raw.p30;
+        const midCeiling    = raw.p70;
 
         this._hdrZoneStats = {
             p1, p10, p50, p90, p99, p999,
@@ -1609,6 +1594,75 @@ class RadianceViewer {
         };
 
         this._updateHDRPeakBadge();
+    }
+
+    /**
+     * Scene-linear luminance statistics of one frame, from a histogram.
+     *
+     * `values` is the frame's samples: a Float32Array, or the fp16 halves with
+     * `table` (_halfFloatTable) to read them. Positive luminance is binned by
+     * the top 16 bits of its float32 pattern, the exponent and 7 mantissa
+     * bits, so each bin is 1/128 of a stop wide: no sort and no log per
+     * sample. Self-contained, because the decode worker runs it too.
+     */
+    _zoneStatsFromFloats(values, channels, table = null, maxSamples = 0) {
+        const ch = channels || 3;
+        const n = Math.floor(values.length / ch);
+        if (n === 0) return null;
+        const step = maxSamples > 0 ? Math.max(1, Math.ceil(n / maxSamples)) : 1;
+        const hist = new Uint32Array(32768);
+        const f = new Float32Array(1);
+        const u = new Uint32Array(f.buffer);
+        let samples = 0, nonPositive = 0, negative = 0, sum = 0;
+        let clipped = 0, clippedR = 0, clippedG = 0, clippedB = 0;
+        for (let i = 0; i < n; i += step) {
+            const base = i * ch;
+            const r = (table ? table[values[base]] : values[base]) || 0;
+            const g = ch > 1 ? ((table ? table[values[base + 1]] : values[base + 1]) || 0) : r;
+            const b = ch > 2 ? ((table ? table[values[base + 2]] : values[base + 2]) || 0) : r;
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            samples++;
+            sum += y;
+            if (y > 1.0) clipped++;
+            if (r > 1.0) clippedR++;
+            if (g > 1.0) clippedG++;
+            if (b > 1.0) clippedB++;
+            if (y > 0) {
+                f[0] = y;
+                hist[u[0] >>> 16]++;
+            } else {
+                nonPositive++;
+                if (y < 0) negative++;
+            }
+        }
+        const binValue = (bin) => { u[0] = (bin << 16) | 0x8000; return f[0]; };
+        // The p-th percentile of the positive samples, skipping 'skip' of them
+        // that sort first (the non-positive ones, which read as 0).
+        const percentile = (p, total, skip) => {
+            if (total <= 0) return 0;
+            const target = Math.floor(p * 0.01 * (total - 1));
+            if (target < skip) return 0;
+            let acc = skip;
+            for (let bin = 0; bin < 32768; bin++) {
+                acc += hist[bin];
+                if (acc > target) return binValue(bin);
+            }
+            return binValue(32767);
+        };
+        const pct = (p) => percentile(p, samples, nonPositive);
+        const positives = samples - nonPositive;
+        return {
+            p1: pct(1), p10: pct(10), p30: pct(30), p50: pct(50), p70: pct(70),
+            p90: pct(90), p99: pct(99), p999: pct(99.9),
+            p1NonZero: percentile(1, positives, 0),
+            meanLuma: sum / samples,
+            clippedPct: (clipped / samples) * 100,
+            negativePct: (negative / samples) * 100,
+            clippedRPct: (clippedR / samples) * 100,
+            clippedGPct: (clippedG / samples) * 100,
+            clippedBPct: (clippedB / samples) * 100,
+            samples,
+        };
     }
 
     // Decode a scene-linear-encoded peak value through the active IDT log curve
@@ -1709,17 +1763,21 @@ class RadianceViewer {
 
         const BINS = 16;
         const computeFromHDR = (hdr) => {
-            if (!hdr || !hdr.data) return null;
-            const data = hdr.data;
+            // The half floats through the table: reading 'data' on an fp16
+            // frame decodes the whole frame, for 8,000 samples.
+            const data = hdr && (hdr.fp16data || hdr.data);
+            if (!data) return null;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            const at = (i) => (table ? table[data[i]] : data[i]) || 0;
             const ch = hdr.channels || 3;
             const n = Math.floor(data.length / ch);
             const step = Math.max(1, Math.ceil(n / 8000)); // ≤8k samples
             const hist = new Uint16Array(BINS);
             for (let i = 0; i < n; i += step) {
                 const base = i * ch;
-                const r = data[base] || 0;
-                const g = ch > 1 ? (data[base + 1] || 0) : r;
-                const b = ch > 2 ? (data[base + 2] || 0) : r;
+                const r = at(base);
+                const g = ch > 1 ? at(base + 1) : r;
+                const b = ch > 2 ? at(base + 2) : r;
                 const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                 // Reinhard to map HDR to [0,1] display range, then bin
                 const yn = y / (y + 1);
@@ -1968,6 +2026,100 @@ class RadianceViewer {
 
         const container = this.container || document.body;
         container.appendChild(toast);
+    }
+
+    /**
+     * A message over the picture, for a state the canvas alone shows as
+     * black or not at all: frames gone from the server, a video the browser
+     * cannot play, a lost GPU context. One per kind, until cleared.
+     */
+    _showViewerMessage(kind, text, onClick = null) {
+        const host = this.canvasWrapper || this.container;
+        if (!host) return;
+        if (!this._viewerMessages) this._viewerMessages = new Map();
+        let el = this._viewerMessages.get(kind);
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'radiance-viewer-message';
+            el.dataset.kind = kind;
+            el.setAttribute('role', 'alert');
+            el.style.cssText = `
+                position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                max-width: min(480px, 80%); padding: 14px 18px; z-index: 40;
+                color: #f5f5f7; background: rgba(10,12,20,0.94);
+                border: 1px solid rgba(255,107,107,0.55); border-radius: 8px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+                font: 12px/1.5 var(--radiance-font-ui, -apple-system, 'Segoe UI', sans-serif);
+                text-align: center;
+            `;
+            host.appendChild(el);
+            this._viewerMessages.set(kind, el);
+        }
+        el.textContent = text;
+        el.style.cursor = onClick ? 'pointer' : 'default';
+        el.onclick = onClick;
+    }
+
+    _clearViewerMessage(kind) {
+        const el = this._viewerMessages?.get(kind);
+        if (!el) return;
+        el.remove();
+        this._viewerMessages.delete(kind);
+    }
+
+    /** A frame of the sequence could not be loaded. */
+    _onFrameLoadError(err, idx) {
+        console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+        // Only the frame on screen gets a message: a read-ahead frame that
+        // fails is retried when the playhead reaches it.
+        if (idx !== this.currentFrame) return;
+        if (err?.missing) {
+            this._showViewerMessage('frames',
+                'The frames of this result are no longer on the server. ComfyUI was restarted, '
+                + 'or a later run replaced them. Run the workflow again to see them.');
+        } else {
+            this._showViewerMessage('frames',
+                `Frame ${idx + 1} could not be loaded: ${err?.message || err}.`);
+        }
+        this._termLog?.('error', `[Viewer] Frame ${idx + 1} could not be loaded: ${err?.message || err}`);
+    }
+
+    /** The GPU context is gone: say so, instead of leaving a black viewer. */
+    _onGLContextLost() {
+        this._showViewerMessage('context',
+            'The GPU context was lost, so the picture cannot be drawn. It comes back when the '
+            + 'browser restores the context. Click to try now.',
+            () => {
+                try { this.renderer?.gl?.getExtension('WEBGL_lose_context')?.restoreContext(); } catch { /* not ours to restore */ }
+            });
+        this._termLog?.('error', '[Viewer] GPU context lost.');
+    }
+
+    /** The context is back with nothing on it: upload the picture again. */
+    _onGLContextRestored() {
+        this._clearViewerMessage('context');
+        const r = this.renderer;
+        if (!r) return;
+        r.setPixelFilter?.(this.pixelFilter);
+        if (this.videoMode && this.videoEl) {
+            this._captureVideoFrame();
+        } else if (this.hdrData) {
+            const h = this.hdrData;
+            const ch = h.channels || h.shape?.[2] || 3;
+            if (h.fp16data) r.loadFloat16Texture(h.fp16data, h.width, h.height, ch);
+            else r.loadFloat32Texture(h.data, h.width, h.height, ch);
+        } else if (this.image) {
+            r.loadImageTexture(this.image);
+        }
+        if (this.compareSource === 'input') this._updateCompareForFrame(this.currentFrame || 0, true);
+        if (this.zdepthImage) r.loadDepthTexture(this.zdepthImage);
+        // The curve tables live in textures too; the editors hold the curves.
+        this.refCurveEditor?.notifyChange?.();
+        if (this.curveEditor && this.curveEditor !== this.refCurveEditor) this.curveEditor.notifyChange?.();
+        this._applyCompareToRenderer?.();
+        this.render();
+        this.updateScopes();
+        this._termLog?.('info', '[Viewer] GPU context restored.');
     }
 
     _showToast(message, tone = "info") {
@@ -2280,7 +2432,7 @@ class RadianceViewer {
                 document.removeEventListener('mousedown', close, true);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+        setTimeout(() => document.addEventListener('mousedown', close, { capture: true, signal: this._listenerSignal }), 0);
     }
 
     // ── 3.5.0: Simple / Advanced ─────────────────────────────────────────────
@@ -2432,8 +2584,12 @@ class RadianceViewer {
             else { this.pinReference(); if (this.compareMode === 'none') this.setCompareMode('wipe'); else this.render(); }
             this._syncCompareUI();
         }, 'rsb-pin');
+        // How B sits on A when their sizes differ: pixel for pixel and
+        // centred, or scaled to fit. It used to be stretched over A.
+        this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
+            () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
         const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbPin, fit);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
         return bar;
     }
 
@@ -2457,6 +2613,15 @@ class RadianceViewer {
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
             if (cm === 'blink') this._sbBLabel.textContent += this._blinkB ? '  [B]' : '  [A]';
+        }
+        if (this._sbBFit) {
+            const fitted = this.compareFit === 'fit';
+            this._sbBFit.textContent = fitted ? 'B fit' : 'B 1:1';
+            this._sbBFit.title = fitted
+                ? 'B scaled to fit inside A. Click for B pixel for pixel, centred'
+                : 'B pixel for pixel, centred on A. Click to fit B inside A instead';
+            this._sbBFit.setAttribute('aria-pressed', String(fitted));
+            this._sbBFit.disabled = this.compareSource !== 'input';
         }
         if (this._sbPin) {
             this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
@@ -3134,7 +3299,7 @@ class RadianceViewer {
                 Object.values(trackButtons).forEach(b => b.updateVisual());
             }
         };
-        window.addEventListener('keydown', this._seqDockKeyHandler);
+        window.addEventListener('keydown', this._seqDockKeyHandler, { signal: this._listenerSignal });
 
         head.append(left, center, right);
         dock.appendChild(head);
@@ -3523,8 +3688,8 @@ class RadianceViewer {
             this._timelineMouseMoveBound = onMouseMoveGlobal;
             this._timelineMouseUpBound = onMouseUpGlobal;
 
-            window.addEventListener('mousemove', onMouseMoveGlobal);
-            window.addEventListener('mouseup', onMouseUpGlobal);
+            window.addEventListener('mousemove', onMouseMoveGlobal, { signal: this._listenerSignal });
+            window.addEventListener('mouseup', onMouseUpGlobal, { signal: this._listenerSignal });
 
             // Hover preview card
             this.sequenceTrack.onmousemove = (e) => {
@@ -3709,8 +3874,8 @@ class RadianceViewer {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         this.mainArea.appendChild(this.rightControlPanel);
 
@@ -3771,6 +3936,8 @@ class RadianceViewer {
         try {
             if (typeof RadianceWebGLRenderer !== 'undefined') {
                 this.renderer = new RadianceWebGLRenderer(this.glCanvas);
+                this.renderer.onContextLost = () => this._onGLContextLost();
+                this.renderer.onContextRestored = () => this._onGLContextRestored();
                 if (this.renderer.init()) {
                     console.log('[Radiance] WebGL Renderer Initialized');
                     this._gpuBackend = 'webgl';
@@ -5010,8 +5177,8 @@ class RadianceViewer {
             this._termResizing = true;
             startY = e.clientY;
             startH = termContainer.getBoundingClientRect().height;
-            document.addEventListener('mousemove', onDrag);
-            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('mousemove', onDrag, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', endDrag, { signal: this._listenerSignal });
         };
         const onDrag = (e) => {
             const delta = startY - e.clientY;
@@ -6175,7 +6342,7 @@ else:
 
             this.scopePanelWidth = newWidth;
             this.scopePanel.style.flex = `0 0 ${newWidth}px`;
-        });
+        }, { signal: this._listenerSignal });
 
         document.addEventListener('mouseup', () => {
             if (this.isResizingScopePanel) {
@@ -6184,7 +6351,18 @@ else:
                 // Save width to localStorage
                 localStorage.setItem('radiance_scope_width', this.scopePanelWidth);
             }
-        });
+        }, { signal: this._listenerSignal });
+    }
+
+    /**
+     * Every window and document listener a viewer adds carries this signal,
+     * and destroy() aborts it. Two of them (the scope-panel resize above)
+     * were never removed and held each deleted viewer, with its frame, for the
+     * life of the page: 55 MB at 1080p, about 230 MB at 4K.
+     */
+    get _listenerSignal() {
+        if (!this._globalListeners) this._globalListeners = new AbortController();
+        return this._globalListeners.signal;
     }
 
     // v2.2: Full cleanup — prevents memory leaks on node deletion
@@ -6708,6 +6886,7 @@ else:
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
+                if (payload.compareHdr) this.frameCompareHDR[idx] = payload.compareHdr;
                 if (payload.compare) {
                     this.frameCompareImages[idx] = payload.compare;
                     if (idx === this.currentFrame) {
@@ -6720,7 +6899,7 @@ else:
                 }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
-                    this._renderReferenceRightHUD?.();
+                    this._syncReferenceReadouts('analysis');
                 }
                 if (this._allFramesReady()) this.updateFrameDisplay();
                 this._queueCacheMarks();
@@ -6729,16 +6908,20 @@ else:
                 // The whole point of the window: drop the decoded pixels for a
                 // frame that has scrolled out of reach. Leaving these set was
                 // the 330 GB defect.
+                if (this.frameHDRData[idx] !== this.hdrData) RadianceViewer._releaseHalfFloats(this.frameHDRData[idx]?.fp16data);
                 this.frameImages[idx] = null;
                 this.frameHDRData[idx] = null;
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
-                if (this._compareEntries.length) this.frameCompareImages[idx] = null;
+                if (this._compareEntries.length) {
+                    this.frameCompareImages[idx] = null;
+                    if (this.frameCompareHDR) this.frameCompareHDR[idx] = null;
+                }
                 this._queueCacheMarks();
             },
             onError: (err, idx) => {
-                console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+                if (this.generationID === generation) this._onFrameLoadError(err, idx);
             },
         });
 
@@ -6767,19 +6950,36 @@ else:
         RadianceViewer._sidecarPool = null;
         try {
             const p = RadianceViewer.prototype;
-            const src = `const RadianceViewer = {};
-class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} }
+            const src = `const RadianceViewer = { _lazyHalfFloats: (parsed) => parsed };
+class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} ${p._zoneStatsFromFloats} }
 const decoder = new Decoder();
+let halfTable = null;
 self.onmessage = async ({ data: { id, url } }) => {
     try {
-        const buffer = await (await fetch(url)).arrayBuffer();
+        const response = await fetch(url);
+        if (!response.ok) {
+            // A 404 is a deleted temp file (ComfyUI restarted, or another run
+            // purged it), not a decode failure, and must be reported as one.
+            self.postMessage({ id, missing: response.status === 404, error: 'HTTP ' + response.status + ' fetching the float sidecar' });
+            return;
+        }
+        const buffer = await response.arrayBuffer();
         if (buffer.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buffer, 0, 4)) !== 'RHDR') {
             self.postMessage({ id, buffer }, [buffer]);
             return;
         }
         const parsed = await decoder._parseRHDR(buffer);
-        const transfer = parsed ? new Set([parsed.data.buffer, parsed.fp16data?.buffer].filter(Boolean)) : [];
-        self.postMessage({ id, parsed }, [...transfer]);
+        if (parsed) {
+            // The frame's luminance statistics, here rather than on the main thread.
+            if (parsed.fp16data && !halfTable) {
+                halfTable = new Float32Array(65536);
+                for (let h = 0; h < 65536; h++) halfTable[h] = decoder._halfToFloat(h);
+            }
+            parsed.zoneStats = decoder._zoneStatsFromFloats(parsed.fp16data || parsed.data,
+                parsed.shape[2] || 1, parsed.fp16data ? halfTable : null, 2000000);
+        }
+        const transfer = parsed ? [parsed.fp16data ? parsed.fp16data.buffer : parsed.data.buffer] : [];
+        self.postMessage({ id, parsed }, transfer);
     } catch (e) {
         self.postMessage({ id, error: String(e?.message || e) });
     }
@@ -6821,13 +7021,41 @@ self.onmessage = async ({ data: { id, url } }) => {
         const pool = RadianceViewer._sidecarWorkers();
         if (pool) {
             const reply = await pool.decode(new URL(url, location.href).href);
-            if (reply.error) throw new Error(reply.error);
+            if (reply.error) {
+                const err = new Error(reply.error);
+                err.missing = !!reply.missing;
+                throw err;
+            }
             if (reply.buffer) return this._parseHDRBuffer(reply.buffer);       // not RHDR
-            if (!reply.workerFailed) return reply.parsed;
+            if (!reply.workerFailed) return RadianceViewer._lazyHalfFloats(reply.parsed);
             console.warn('[Radiance] Sidecar worker failed, decoding frames on the main thread:', reply.workerFailed);
             RadianceViewer._sidecarPool = null;
         }
-        return this._parseHDRBuffer(await (await fetch(url)).arrayBuffer());
+        const response = await fetch(url);
+        if (!response.ok) {
+            const err = new Error(`HTTP ${response.status} fetching the float sidecar`);
+            err.missing = response.status === 404;
+            throw err;
+        }
+        return this._parseHDRBuffer(await response.arrayBuffer());
+    }
+
+    /** B's float sidecar for compare, or null (no sidecar, or it failed). */
+    _loadCompareFloat(entry) {
+        if (!entry?.hdr_sidecar) return Promise.resolve(null);
+        const url = api.apiURL(`/view?filename=${encodeURIComponent(entry.hdr_sidecar)}`
+            + `&subfolder=${encodeURIComponent(entry.subfolder || '')}&type=${entry.type || 'temp'}`);
+        return this._fetchSidecar(url).then((npy) => {
+            if (!npy) return null;
+            npy.height = npy.shape[0];
+            npy.width = npy.shape[1];
+            npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+            npy.source_encoding = entry.source_encoding;
+            return npy;
+        }).catch((e) => {
+            console.warn('[Radiance] Compare float sidecar failed, B uses the preview:', e?.message || e);
+            return null;
+        });
     }
 
     _loadSequenceFrame(imgData, idx, generation) {
@@ -6874,7 +7102,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         // _parseRHDR returns null with no DecompressionStream
                         // and on a payload-size integrity mismatch.
                         payload.fallbackReason =
-                            'RHDR decode returned no data (missing DecompressionStream, or integrity mismatch)';
+                            'the RHDR sidecar could not be decoded (corrupt or truncated, or no DecompressionStream)';
                         return null;
                     }
                     npy.height = npy.shape[0];
@@ -6904,7 +7132,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                     return npy;
                 })
                 .catch((e) => {
-                    payload.fallbackReason = `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.fallbackReason = e?.missing
+                        ? 'the float sidecar is no longer on the server (HTTP 404)'
+                        : `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.missing = !!e?.missing;
                     console.warn('[Radiance] Failed to load RHDR primary:', e);
                     return null;
                 });
@@ -6938,22 +7169,39 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(brackets && brackets.high),
             loadBracket(depthEntry),
             loadBracket(compareEntry),
-        ]).then(([img, hdr, low, high, depth, compare]) => {
+            this._loadCompareFloat(compareEntry),
+        ]).then(([img, hdr, low, high, depth, compare, compareHdr]) => {
             if (this.generationID !== generation) return null;
-            if (!img && !hdr) return null;
+            if (!img && !hdr) {
+                // Neither the picture nor its proxy: say why, rather than
+                // leave the canvas blank (see _onFrameLoadError).
+                const err = new Error(payload.fallbackReason && imgData.hdr_sidecar
+                    ? `the preview and the float sidecar both failed to load (${payload.fallbackReason})`
+                    : 'the preview image failed to load');
+                // No sidecar to ask: a preview that will not load after a
+                // restart is gone as well.
+                err.missing = imgData.hdr_sidecar ? !!payload.missing : true;
+                throw err;
+            }
             payload.img = img;
             payload.hdr = hdr;
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
             payload.compare = compare;
+            if (compare && compareEntry) {
+                compare.source_width = compareEntry.source_width;
+                compare.source_height = compareEntry.source_height;
+            }
+            payload.compareHdr = compareHdr;
             return payload;
         });
     }
 
     /**
-     * Put a paged-in frame on screen. Split out of the old inline onload/then
-     * handlers so the scrub path and the arrival path agree.
+     * Put a frame on screen: the one display routine, for a frame landing
+     * from the paging window and for setFrame (scrub, step, playback), so
+     * the two paths cannot drift apart again.
      */
     _displaySequenceFrame(idx) {
         const img = this.frameImages[idx] || null;
@@ -6985,20 +7233,25 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.hdrData = hdr;
             this.imageWidth = hdr.width;
             this.imageHeight = hdr.height;
-            // Replaces this.image with a sized canvas for the 2D paths, as the
-            // HDR arrival handler always did. The PNG stays in frameImages[idx]
-            // for the filmstrip and for the fallback below.
+            // Replaces this.image with a sized stand-in for the 2D paths, as
+            // the HDR arrival handler always did. The PNG stays in
+            // frameImages[idx] for the filmstrip and for the fallback below.
             this.createPlaceholderImage(hdr.width, hdr.height);
-        } else {
+        } else if (img) {
             this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            if (!img) return;
             this.image = img;
             this.imageWidth = img.width;
             this.imageHeight = img.height;
             if (this.renderer) this.renderer.loadImageTexture(img);
+        } else {
+            // Not paged in yet: the last picture stays until it lands, the
+            // frame counter moves now.
+            this.updateFrameDisplay();
+            return;
         }
+        this._clearViewerMessage('frames');
+
+        this._updateCompareForFrame(idx);
 
         const depth = this.frameZdepthImages && this.frameZdepthImages[idx];
         this.zdepthImage = depth || null;
@@ -7016,8 +7269,79 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.render();
         this.updateInfo();
-        this.updateScopes();
+        this.updateFrameDisplay();
+        // Statistics and the nit badge belong to the frame on screen. They
+        // are computed once per frame, normally in the decode worker.
         if (hdr) this._computeHDRZoneStats();
+        else { this._hdrZoneStats = null; this._updateHDRPeakBadge?.(); }
+        // v4.3: Repaint sparkline current-frame marker on every frame change
+        if (this._frameSparklines) this._drawSparklines();
+        this.updateScopes();
+        this._refreshReferenceReadouts();
+        if (this.activeTab === 'scopes') this.renderScopesTab(this.tabContentContainer);
+    }
+
+    /**
+     * The workflow's copy of a result: the file token and, for each kind of
+     * frame (main, brackets, compare, depth), one entry as a template and a
+     * count. Every name the node writes is <prefix>_<token>_<index>..., so
+     * the entries are rebuilt from those. Per-frame statistics are left out
+     * (the viewer measures each frame as it loads). Returns null when the
+     * result does not rebuild exactly, and the caller keeps it whole.
+     */
+    static _compactResult(message) {
+        const token = message?.file_token?.[0];
+        const images = message?.radiance_images;
+        if (!token || !Array.isArray(images) || !images.length) return null;
+        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_compare ? 'compare'
+            : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
+        const groups = new Map();
+        for (const e of images) {
+            if (!groups.has(kindOf(e))) groups.set(kindOf(e), []);
+            groups.get(kindOf(e)).push(e);
+        }
+        const mark = `_${token}_`;
+        const saved = { v: 1, token, groups: [], message: {} };
+        for (const [kind, list] of groups) {
+            const first = list[0];
+            const index = Number.isInteger(first.frame) ? first.frame : 0;
+            const template = {};
+            for (const [k, v] of Object.entries(first)) {
+                if (PER_FRAME.includes(k)) continue;
+                template[k] = typeof v === 'string' ? v.split(`${mark}${index}`).join(`${mark}{i}`) : v;
+            }
+            saved.groups.push({ kind, count: list.length, template });
+        }
+        for (const [k, v] of Object.entries(message)) {
+            if (k === 'radiance_images' || k === 'warnings') continue;
+            saved.message[k] = k === 'flicker_data' && Array.isArray(v) ? v.map((x) => Math.round(x * 1000) / 1000) : v;
+        }
+        // Only if it rebuilds every entry exactly.
+        const rebuilt = RadianceViewer._expandResult(saved)?.radiance_images || [];
+        const strip = (e) => JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !PER_FRAME.includes(k))));
+        const original = [...groups.values()].flat();
+        if (rebuilt.length !== original.length) return null;
+        for (let i = 0; i < original.length; i++) if (strip(rebuilt[i]) !== strip(original[i])) return null;
+        return saved;
+    }
+
+    /** The result a _compactResult() copy stands for, or null. */
+    static _expandResult(saved) {
+        if (!saved || saved.v !== 1 || !saved.token || !Array.isArray(saved.groups)) return null;
+        const mark = `_${saved.token}_`;
+        const images = [];
+        for (const { count, template } of saved.groups) {
+            for (let i = 0; i < count; i++) {
+                const entry = {};
+                for (const [k, v] of Object.entries(template)) {
+                    entry[k] = typeof v === 'string' ? v.split(`${mark}{i}`).join(`${mark}${i}`) : v;
+                }
+                if ('frame' in template) entry.frame = i;
+                images.push(entry);
+            }
+        }
+        return { ...saved.message, radiance_images: images };
     }
 
     /** Record why a frame has no float data, for the status-bar badge. */
@@ -7060,7 +7384,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     switchTab(tabId) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const validTabs = ['prompt', 'primaries', 'curves', 'effects', 'masks', 'view'];
         if (!validTabs.includes(tabId)) return;
 
@@ -7075,7 +7399,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     setFocusedWheel(name) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.focusedWheelName = name;
 
         const wheels = {
@@ -7096,7 +7420,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     getFocusedWheelElement() {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const name = active.focusedWheelName || 'OFFSET';
         const wheels = {
             'SHADOW': active.shadowWheel,
@@ -7111,7 +7435,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelChroma(dx, dy, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005; // Standard step size
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -7126,7 +7450,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelMaster(delta, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005;
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -7180,7 +7504,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.container.style.display === 'none' || !this.container.isConnected) return;
             this.handleKey(e);
         };
-        document.addEventListener('keydown', this._docKeyHandler);
+        document.addEventListener('keydown', this._docKeyHandler, { signal: this._listenerSignal });
     }
 
     handleKey(e) {
@@ -7459,8 +7783,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 requestAnimationFrame(() => { this.resize(); this.render(); });
             };
-            document.addEventListener('fullscreenchange', handler);
-            document.addEventListener('webkitfullscreenchange', handler);
+            document.addEventListener('fullscreenchange', handler, { signal: this._listenerSignal });
+            document.addEventListener('webkitfullscreenchange', handler, { signal: this._listenerSignal });
         } else {
             this.exitFullscreen();
         }
@@ -7536,7 +7860,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousedown', closeMenu);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
+        setTimeout(() => document.addEventListener('mousedown', closeMenu, { signal: this._listenerSignal }), 10);
     }
 
     // _exportCDL and _exportGradeLUT live with the grade state (GRADE EXPORT &
@@ -8187,7 +8511,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** True when a B picture is available to compare against. */
     _hasCompareB() {
-        if (this.renderer?.textures) return !!this.renderer.textures.reference;
+        if (this.renderer?.textures) return !!(this.renderer.textures.reference || this.renderer._compareSrc);
         return !!this.compareImage;
     }
 
@@ -8391,18 +8715,33 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.showHistogram) this.updateHistogram();
             if (this.showWaveform) this.updateWaveform();
             if (this.showVectorscope) this.updateVectorscope();
-            this._updateReferenceScopes?.();
+            this._scheduleReferenceScopeUpdate();
             if (this.scopeOverlay) this.renderOverlay();
         }, this.scopeDebounceMs);
     }
 
+    /**
+     * The one place the SCOPES tab is redrawn from. Each redraw is four
+     * 512x512 read-backs, and a frame change used to ask for two (one from
+     * render(), one from setFrame). Now at most one is pending, and during
+     * playback they come at most about six times a second.
+     */
     _scheduleReferenceScopeUpdate() {
         if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
-        if (this._referenceScopeRAF) cancelAnimationFrame(this._referenceScopeRAF);
-        this._referenceScopeRAF = requestAnimationFrame(() => {
-            this._referenceScopeRAF = null;
-            this._updateReferenceScopes?.();
-        });
+        if (this._referenceScopeRAF || this._referenceScopeTimer) return;   // one is already coming
+        const draw = () => {
+            this._referenceScopeRAF = requestAnimationFrame(() => {
+                this._referenceScopeRAF = null;
+                this._referenceScopeAt = performance.now();
+                this._updateReferenceScopes?.();
+            });
+        };
+        const wait = this.isPlaying ? 160 - (performance.now() - (this._referenceScopeAt || 0)) : 0;
+        if (wait > 0) {
+            this._referenceScopeTimer = setTimeout(() => { this._referenceScopeTimer = null; draw(); }, wait);
+        } else {
+            draw();
+        }
     }
 
     updateHistogram() {
@@ -9102,7 +9441,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.canvas.style.cursor = 'crosshair';
             }
         };
-        window.addEventListener('mouseup', this._winMouseUpHandler);
+        window.addEventListener('mouseup', this._winMouseUpHandler, { signal: this._listenerSignal });
 
         this.canvas.addEventListener('click', (e) => {
             if (this.dofEnabled && !this.isAnnotating && !this.isPanning && !this.isDraggingWipe) {
@@ -9176,7 +9515,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._annotationCurrentLine.pts.push({ x: mx, y: my });
             this._drawAnnotations();
         };
-        document.addEventListener('mousemove', this._docAnnotMoveHandler);
+        document.addEventListener('mousemove', this._docAnnotMoveHandler, { signal: this._listenerSignal });
 
         this._docAnnotUpHandler = () => {
             if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.pts.length > 1) {
@@ -9185,7 +9524,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._isAnnotating = false;
             this._annotationCurrentLine = null;
         };
-        document.addEventListener('mouseup', this._docAnnotUpHandler);
+        document.addEventListener('mouseup', this._docAnnotUpHandler, { signal: this._listenerSignal });
 
         // Shift+Alt+Click clears all annotations
         this.canvas.addEventListener('click', (eAnn) => {
@@ -9929,38 +10268,74 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     createPlaceholderImage(width, height) {
-        // Create a small placeholder for 2D canvas operations
-        const placeholder = document.createElement('canvas');
-        placeholder.width = width;
-        placeholder.height = height;
-        const ctx = placeholder.getContext('2d');
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('WebGL2 HDR Mode', width / 2, height / 2);
-
-        this.image = placeholder;
-        // v3.0 FIX: Store .data (Uint8ClampedArray), not ImageData object.
-        // The rest of the code indexes this.imageData[i] for pixel values.
-        this.imageData = ctx.getImageData(0, 0, width, height).data;
+        // A sized stand-in for this.image while a float frame is on screen:
+        // the 2D paths and readouts need its size, a truthy image and an
+        // indexable this.imageData. It was a full-size canvas, filled,
+        // lettered and read back with getImageData for every frame (0.1 to
+        // 0.7 s at 1080p, up to 2 s at 8K) only to serve as that flag. One
+        // stand-in per size is kept instead: a canvas with no context holds
+        // no pixels, and a zeroed buffer is only paged in where it is read.
+        let stub = this._placeholder;
+        if (!stub || stub.width !== width || stub.height !== height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            // v3.0 FIX: .data (Uint8ClampedArray), not ImageData. The rest of
+            // the code indexes this.imageData[i] for pixel values.
+            stub = this._placeholder = { canvas, width, height, data: new Uint8ClampedArray(width * height * 4) };
+        }
+        this.image = stub.canvas;
+        this.imageData = stub.data;
         this._probeInvalidate();   // the probe measures this frame, not the last one
     }
 
     /** 3.5.0: the compare sequence follows the playhead (it stayed on frame 0). */
     _updateCompareForFrame(idx, force = false) {
-        const list = this.frameCompareImages;
-        if (!list || !list.length) return;
+        const list = this.frameCompareImages || [];
+        const floats = this.frameCompareHDR || [];
+        const n = Math.max(list.length, floats.length);
+        if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const img = list[Math.min(idx, list.length - 1)];
-        if (!img || (img === this.compareImage && !force)) return;
+        const i = Math.min(idx, n - 1);
+        const img = list[i] || null, hdr = floats[i] || null;
+        if (!img && !hdr) return;
+        if (img === this.compareImage && hdr === this.compareHDR && !force) return;
         this.compareSource = 'input';
-        this.compareImage = img;
+        if (img) this.compareImage = img;
+        this.compareHDR = hdr;
         this.diffCanvas = null;
-        if (this.renderer?.loadCompareTexture) {
-            try { this.renderer.loadCompareTexture(img); } catch (e) { /* backend without compare */ }
+        try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /**
+     * B to the renderer: its float frame when the node sent one, drawn
+     * through the same view as A, else the preview PNG; placed by pixel size
+     * either way (see RadianceWebGLRenderer.setCompareSource).
+     */
+    _pushCompareToRenderer(img, hdr) {
+        const r = this.renderer;
+        if (!r) return;
+        if (!r.setCompareSource) {            // WebGPU: the preview, as before
+            if (img) r.loadCompareTexture?.(img);
+            return;
         }
+        r.setCompareFit?.(this.compareFit);
+        if (hdr) {
+            r.setCompareSource({ kind: 'float', hdr, encoding: hdr.source_encoding });
+        } else if (img) {
+            r.setCompareSource({ kind: 'display', image: img,
+                width: img.source_width || img.naturalWidth || img.width,
+                height: img.source_height || img.naturalHeight || img.height });
+        }
+    }
+
+    /** B at 1:1 and centred ('pixel', the default) or scaled to fit A ('fit'). */
+    setCompareFit(mode) {
+        this.compareFit = mode === 'fit' ? 'fit' : 'pixel';
+        try { localStorage.setItem('radiance_compare_fit', this.compareFit); } catch { /* storage is optional */ }
+        this.renderer?.setCompareFit?.(this.compareFit);
+        this._syncCompareUI?.();
+        this.render();
     }
 
     setCompareImage(img) {
@@ -9969,9 +10344,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.compareImage = img;
         this.compareSource = img ? 'input' : null;
         this.diffCanvas = null; // Clear difference cache
-        if (this.renderer && this.renderer.loadCompareTexture && img) {
+        if (this.renderer && img) {
             try {
-                this.renderer.loadCompareTexture(img);
+                this._pushCompareToRenderer(img, this.frameCompareHDR?.[0] || null);
             } catch (e) {
                 this._termLog?.('warn', `[Compare] This renderer cannot show a compare image: ${e.message}`);
             }
@@ -9983,6 +10358,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     togglePlayback() {
         if (this.videoMode && this.videoEl) {
             // Video element mode — delegate to native play/pause
+            if (this._videoProbing) {                 // the rate is being read: play after
+                this._videoPlayAfterProbe = !this._videoPlayAfterProbe;
+                return;
+            }
             if (this._videoReversing) { this._videoReverse(false); return; }
             if (this.videoEl.paused) {
                 this.videoEl.play();
@@ -10016,7 +10395,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._seqRAF = null;
             }
             // ALBABIT-FIX: the panel shows the frame playback stopped on.
-            if (this._hudDrawnAt) this._renderReferenceRightHUD?.();
+            if (this._hudDrawnAt) this._refreshReferenceReadouts();
         }
     }
 
@@ -10194,7 +10573,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.node.properties ||= {};
         this.node.properties.radiance_viewer_video = fileOrUrl;
         delete this.node.properties.radiance_viewer_result;
+        delete this.node.properties.radiance_viewer_saved;
         this._sequenceAudio?.pause();
+        // The video replaces any sequence: its frames must not stay in the
+        // paging window or in the dock's frame count.
+        this.generationID = (this.generationID || 0) + 1;
+        this._frameWindow?.clear();
+        this.frameImages = [];
+        this.frameHDRData = [];
+        this.hdrData = null;
+        this._hdrZoneStats = null;
 
         const url = (fileOrUrl instanceof File || fileOrUrl instanceof Blob)
             ? URL.createObjectURL(fileOrUrl)
@@ -10223,13 +10611,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         vid.addEventListener('loadedmetadata', () => {
             canvas.width = vid.videoWidth;
             canvas.height = vid.videoHeight;
-            this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || 25)));
+            // The user's rate until the container's own is measured
+            // (_measureVideoFps). It was a fixed 25.
+            this._videoNativeFps = this.playbackFps || 24;
+            this._setVideoFrameCount();
             this.currentFrame = 0;
             this._updateVideoTimeline();
             this._updateScrubberRange();
         });
 
         vid.addEventListener('play', () => {
+            if (this._videoProbing) return;
             if (this._videoReversing) this._videoReverse(false);
             this.isPlaying = true;
             this._updatePlayBtn();
@@ -10237,33 +10629,53 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         vid.addEventListener('pause', () => {
+            if (this._videoProbing) return;
             this.isPlaying = !!this._videoReversing;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
+            // Stop on a whole frame: the one on screen, at its middle, so the
+            // counter, the scrubbers and the picture agree (currentTime can be
+            // a frame ahead of what was presented).
+            if (!this._videoReversing && this._videoMediaTime != null) {
+                const fps = this._videoNativeFps || this.playbackFps || 24;
+                const shown = Math.round(this._videoMediaTime * fps);
+                this._videoMediaTime = null;
+                this.currentFrame = shown;
+                this._seekVideoToFrame(shown);
+                return;
+            }
             // Still capture the paused frame
             this._captureVideoFrame();
         });
 
         vid.addEventListener('ended', () => {
+            if (this._videoProbing) return;
             this.isPlaying = false;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
         });
 
         vid.addEventListener('timeupdate', () => {
-            // Update scrubber & timecode during playback
-            this._updateVideoTimeline();
+            // The frame counter, scrubbers and timecode follow the video.
+            this._syncFrameFromVideo();
         });
 
         vid.addEventListener('seeked', () => {
+            if (this._videoProbing) return;
             this._captureVideoFrame();
         });
 
+        // A codec the browser cannot play, or a file that is gone, used to
+        // leave an empty viewer: there was no error listener at all.
+        vid.addEventListener('error', () => this._onVideoError(vid, url));
+
         // Show video info in bottom bar
         vid.addEventListener('loadeddata', () => {
+            this._clearViewerMessage('video');
             this._updateVideoTimeline();
             this._captureVideoFrame();
-        });
+            this._measureVideoFps(vid);
+        }, { once: true });
 
         this.videoEl = vid;
         this._updatePlayBtn();
@@ -10274,6 +10686,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     unloadVideo(preserveSource = false) {
         this._videoLoadRequest = (this._videoLoadRequest || 0) + 1;
+        this._clearViewerMessage('video');
+        this._videoProbing = false;
         if (!preserveSource && this.node.properties) delete this.node.properties.radiance_viewer_video;
         this._stopVideoRenderLoop();
         if (this._videoRevRAF) { cancelAnimationFrame(this._videoRevRAF); this._videoRevRAF = null; }
@@ -10347,7 +10761,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Decode cadence avoids uploading the same 24/30fps frame on every
         // 60/120Hz display refresh. Keep RAF for older browsers.
         if (this.videoEl.requestVideoFrameCallback) {
-            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback(() => this._videoRenderLoop());
+            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback((now, meta) => {
+                // The time of the frame on screen, which currentTime runs ahead of.
+                this._videoMediaTime = meta?.mediaTime;
+                this._videoRenderLoop();
+            });
         } else {
             this._videoRAF = requestAnimationFrame(() => this._videoRenderLoop());
         }
@@ -10367,6 +10785,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
+        // The video frame is the picture, for the readouts and the 2D paths
+        // (this.image was left at whatever was shown before the video).
+        this.image = canvas;
 
         // Upload synchronously: asynchronous bitmap copies used to queue up
         // and could paint stale frames after a seek or replacement video.
@@ -10377,7 +10798,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
-        this._updateVideoTimeline();
+        this._syncFrameFromVideo();
     }
 
     _updateVideoTimeline() {
@@ -10403,6 +10824,159 @@ self.onmessage = async ({ data: { id, url } }) => {
         const fps = this._videoNativeFps || 25;
         const approxFrame = Math.round(t * fps);
         if (this.frameCounter) this.frameCounter.textContent = `${approxFrame} / ${Math.round(dur * fps)}`;
+    }
+
+    /** Frames in the loaded video at the rate in use. */
+    _setVideoFrameCount() {
+        const vid = this.videoEl;
+        if (!vid || !Number.isFinite(vid.duration) || vid.duration <= 0) return;
+        this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || this.playbackFps || 24)));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+    }
+
+    /**
+     * Move the video to frame idx: the middle of the frame, (idx + 0.5) / fps,
+     * so the decoder lands on that frame and not on a boundary. setFrame used
+     * to move only the counter in video mode, and the one piece of code that
+     * did seek stepped by float seconds after an unconditional return.
+     */
+    _seekVideoToFrame(idx) {
+        const vid = this.videoEl;
+        if (!vid) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        let t = (idx + 0.5) / fps;
+        if (Number.isFinite(vid.duration) && vid.duration > 0) t = Math.max(0, Math.min(t, vid.duration - 0.25 / fps));
+        vid.currentTime = t;
+    }
+
+    /** The frame counter, scrubbers and dock follow the video's own time. */
+    _syncFrameFromVideo() {
+        const vid = this.videoEl;
+        if (!vid || this._videoProbing || !this.videoMode) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        const last = Math.max(0, (this.totalFrames || 1) - 1);
+        // Playing: the frame presented (a frame start time). Paused: the
+        // video sits mid-frame (_seekVideoToFrame), so the floor is the frame.
+        const frame = !vid.paused && this._videoMediaTime != null
+            ? Math.round(this._videoMediaTime * fps)
+            : Math.floor(vid.currentTime * fps + 1e-6);
+        this.currentFrame = Math.max(0, Math.min(last, frame));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+        this._updateVideoTimeline();
+    }
+
+    /**
+     * The container's frame rate, from the frames themselves: the media
+     * times of a few requestVideoFrameCallback calls, played muted before
+     * the user plays it, and of one frame near the end. The user's rate stays
+     * when the browser cannot say.
+     */
+    async _measureVideoFps(vid) {
+        if (!vid?.requestVideoFrameCallback || this.videoEl !== vid) return null;
+        const times = [];
+        const muted = vid.muted;
+        // The media time of the next frame presented, or null after 'ms'.
+        const nextFrame = (ms) => new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), ms);
+            vid.requestVideoFrameCallback((now, meta) => { clearTimeout(timer); resolve(meta.mediaTime); });
+        });
+        this._videoProbing = true;
+        try {
+            vid.muted = true;
+            const playing = vid.play();
+            let failed = false;
+            if (playing?.catch) playing.catch(() => { failed = true; });
+            for (let i = 0; i < 10 && !failed && this.videoEl === vid; i++) {
+                const t = await nextFrame(2500);
+                if (t == null) break;
+                times.push(t);
+            }
+            if (this.videoEl === vid) vid.pause();
+            // A frame far from the start tells 24 from 23.976, which a
+            // fraction of a second of millisecond time stamps cannot.
+            if (times.length >= 3 && Number.isFinite(vid.duration) && vid.duration > 1 && this.videoEl === vid) {
+                vid.currentTime = vid.duration * 0.9;
+                const far = await nextFrame(1500);
+                if (far != null && far > times[times.length - 1]) times.push(far);
+            }
+        } finally {
+            if (this.videoEl === vid) vid.pause();
+            vid.muted = muted;
+            this._videoProbing = false;
+        }
+        if (this.videoEl !== vid) return null;
+        const fps = RadianceViewer._frameRateFromTimes(times);
+        if (fps) {
+            this._videoContainerFps = fps;
+            this.setPlaybackFps(fps);                 // sets _videoNativeFps too
+        }
+        this._setVideoFrameCount();
+        // Where the user went (and whether they pressed Play) while the rate
+        // was being read, applied now with the rate known.
+        const target = Math.max(0, Math.min((this.totalFrames || 1) - 1, this._videoPendingFrame ?? 0));
+        const play = this._videoPlayAfterProbe;
+        this._videoPendingFrame = null;
+        this._videoPlayAfterProbe = false;
+        this.currentFrame = -1;                       // so setFrame is not a no-op
+        this.setFrame(target);
+        if (play) this.togglePlayback();
+        return fps;
+    }
+
+    /**
+     * The frame rate that explains a list of frame start times (seconds,
+     * kept to the millisecond by most containers). Each standard rate near
+     * the measured one is tried: the one whose frame grid the times fit best
+     * wins, a whole-number rate when the fit cannot tell them apart.
+     */
+    static _frameRateFromTimes(times) {
+        const gaps = [];
+        for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] > 1e-4) gaps.push(times[i] - times[i - 1]);
+        if (gaps.length < 2) return null;
+        // One-frame gaps only: a skipped frame makes a gap of two.
+        const shortest = Math.min(...gaps);
+        const single = gaps.filter((g) => g < 1.5 * shortest);
+        const raw = single.length / single.reduce((a, b) => a + b, 0);
+        const misfit = (rate) => {
+            let worst = 0;
+            for (const t of times) {
+                const d = (t - times[0]) * rate;
+                worst = Math.max(worst, Math.abs(d - Math.round(d)) / rate);
+            }
+            return worst;
+        };
+        const standard = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 119.88, 120]
+            .filter((r) => Math.abs(r - raw) / r < 0.015);
+        if (!standard.length) return Math.round(raw * 1000) / 1000;
+        standard.sort((a, b) => misfit(a) - misfit(b)
+            || (Number.isInteger(b) ? 1 : 0) - (Number.isInteger(a) ? 1 : 0));
+        const best = standard[0];
+        const whole = standard.find((r) => Number.isInteger(r));
+        return whole && misfit(whole) <= misfit(best) + 0.0006 ? whole : best;
+    }
+
+    /** The video element reported an error: say what, over the picture. */
+    _onVideoError(vid, url) {
+        if (this.videoEl !== vid) return;
+        const why = {
+            1: 'loading it was aborted',
+            2: 'a network error interrupted it',
+            3: 'it could not be decoded',
+            4: 'the file is missing, or this browser cannot play its format or codec',
+        }[vid.error?.code] || 'it could not be loaded';
+        this._showViewerMessage('video', `This video cannot be played: ${why}.`);
+        this._termLog?.('error', `[Video] Cannot be played: ${why}${vid.error?.message ? ` (${vid.error.message})` : ''}.`);
+        // A media error does not say "not found"; the server does.
+        if (typeof url === 'string' && !url.startsWith('blob:')) {
+            fetch(url, { method: 'HEAD' }).then((r) => {
+                if (r.status === 404 && this.videoEl === vid) {
+                    this._showViewerMessage('video',
+                        'This video is no longer on the server. ComfyUI was restarted, or the file was removed. Load it again.');
+                }
+            }).catch(() => {});
+        }
     }
 
     _updateScrubberRange() {
@@ -10515,7 +11089,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!Number.isFinite(v) || v <= 0) return;
         this.playbackFps = v;
         this.frameRate = v;
-        if (this.videoEl) this._videoNativeFps = v;
+        if (this.videoEl) { this._videoNativeFps = v; this._setVideoFrameCount(); }
         if (this._fpsSelect) {
             const key = String(v);
             if (![...this._fpsSelect.options].some((o) => o.value === key)) {
@@ -10569,6 +11143,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.currentFrame = idx;
         this._syncSequenceAudio();
 
+        // A video loaded straight into the viewer: the frame is a time in it.
+        // The picture arrives with 'seeked', the counter follows the video.
+        if (this.videoMode && this.videoEl) {
+            // While the rate is being read the frame is kept for afterwards.
+            if (this._videoProbing) this._videoPendingFrame = idx;
+            else this._seekVideoToFrame(idx);
+            this.updateFrameDisplay();
+            return;
+        }
+
         // Move the paging window with the playhead. The viewer no longer holds
         // the whole sequence, so a scrub outside the window has to page the
         // frame in on demand; ensure() jumps it ahead of the read-ahead queue
@@ -10589,69 +11173,120 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
         }
 
-        // Update Display
-        if (this.frameHDRData[idx]) {
-            // We have HDR data for this frame
-            const npy = this.frameHDRData[idx];
-            this.hdrData = npy;
-            this.imageWidth = npy.width;
-            this.imageHeight = npy.height;
+        // The same routine that shows a frame as it lands, so the stats, the
+        // nit badge and the panel follow every path to a frame. setFrame had
+        // its own copy, and on it the badge went on showing an older frame.
+        this._displaySequenceFrame(idx);
+    }
 
-            if (this.renderer) {
-                // 3.5.0: the cached loaders, like _displaySequenceFrame. The
-                // uncached ones re-uploaded the whole frame on every step.
-                const frameId = `${this.generationID}:${idx}`;
-                if (npy.fp16data) {
-                    this.renderer.loadFloat16TextureCached(frameId, npy.fp16data, npy.width, npy.height, npy.channels);
-                } else {
-                    this.renderer.loadFloat32TextureCached(frameId, npy.data, npy.width, npy.height, npy.channels);
-                }
-            }
-        } else if (this.frameImages[idx]) {
-            // Fallback to PNG
-            this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            this.image = this.frameImages[idx];
-            if (this.renderer) this.renderer.loadImageTexture(this.image);
-        }
-
-        this._updateCompareForFrame(idx);
-
-        // Update Z-Depth for the new frame
-        if (this.frameZdepthImages && this.frameZdepthImages[idx]) {
-            this.zdepthImage = this.frameZdepthImages[idx];
-            if (this.renderer) this.renderer.loadDepthTexture(this.zdepthImage);
-        } else {
-            this.zdepthImage = null;
-        }
-
-        this.render();
-        this.updateInfo();
-        this.updateFrameDisplay();
-        // v4.3: Repaint sparkline current-frame marker on every frame change
-        if (this._frameSparklines) this._drawSparklines();
-        if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
+    /**
+     * The right panel after a frame change: readouts only, never a rebuild
+     * under the user's hands.
+     *
+     * Every frame change used to rebuild the whole panel (every 250 ms during
+     * playback, every frame while scrubbing), which removed a slider being
+     * dragged from the page and wiped the channel search text. GRADE and
+     * SCOPES have nothing that follows the frame (the scopes have their own
+     * schedule); the rest have their readouts rewritten in place.
+     */
+    _refreshReferenceReadouts() {
+        const tab = this._referenceRightTab || 'inspector';
+        if (tab === 'grade' || tab === 'scopes') return;
         // ALBABIT-FIX: at most four times a second during playback. EFFECTS
         // (opened by "Depth") redraws the depth map, ~55 ms: 18 frames/s.
-        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
-            && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
-            this._hudDrawnAt = performance.now();
-            this._renderReferenceRightHUD?.();
-        }
+        if (this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250) return;
+        this._hudDrawnAt = performance.now();
+        this._syncReferenceReadouts(tab);
+    }
 
-        // Update Scopes
-        // Note: Real-time scopes update from displayed texture, so just calling updateScopes() is enough
-        // assuming updateScopes pulls from renderer's texture.
-        if (this.activeTab === 'scopes') {
-            this.renderScopesTab(this.tabContentContainer);
+    _syncReferenceReadouts(tab) {
+        const col = this.controlsPanel?.querySelector('.radiance-ref-col');
+        if (!col) return;
+        if (tab === 'effects') {
+            const preview = col.querySelector('.radiance-ref-depth-preview');
+            if (preview) this._renderReferenceDepthPreview(preview);
+            return;
         }
+        if (tab !== 'inspector' && tab !== 'analysis') return;
+        const fresh = document.createElement('div');
+        if (tab === 'analysis') this._renderReferenceAnalysis(fresh);
+        else this._renderReferenceInspector(fresh);
+        if (this._copyReadouts(fresh, col)) return;
+        // The layout itself changed (a frame with other channels): rebuild,
+        // which waits while a control in the panel is held or focused.
+        this._renderReferenceRightHUD();
+    }
+
+    /**
+     * Copy the readout text of freshly rendered sections onto the live ones
+     * with the same titles. False when the two do not have the same layout.
+     */
+    _copyReadouts(fresh, live) {
+        const titleOf = (sec) => sec.querySelector('.radiance-ref-title')?.textContent;
+        const liveSections = new Map([...live.querySelectorAll('.radiance-ref-section')].map((sec) => [titleOf(sec), sec]));
+        const READOUTS = '.radiance-ref-kv > div, .radiance-ref-status-tile > div';
+        for (const sec of fresh.querySelectorAll('.radiance-ref-section')) {
+            const target = liveSections.get(titleOf(sec));
+            if (!target) return false;
+            const from = sec.querySelectorAll(READOUTS);
+            const to = target.querySelectorAll(READOUTS);
+            if (from.length !== to.length) return false;
+            for (let i = 0; i < from.length; i++) {
+                if (from[i].className !== to[i].className) return false;
+                if (to[i].classList.contains('k') || to[i].classList.contains('label')) {
+                    if (from[i].textContent !== to[i].textContent) return false;
+                } else if (to[i].textContent !== from[i].textContent) {
+                    to[i].textContent = from[i].textContent;
+                }
+            }
+            // The channel list: with the same rows only their state differs,
+            // and a filtered list is the user's, so it is left as it is.
+            const rowsFrom = sec.querySelectorAll('.radiance-ref-channel');
+            const rowsTo = target.querySelectorAll('.radiance-ref-channel');
+            const search = target.querySelector('.radiance-ref-search');
+            if (rowsFrom.length && !(search && search.value)) {
+                if (rowsFrom.length !== rowsTo.length) return false;
+                for (let i = 0; i < rowsFrom.length; i++) {
+                    if (rowsFrom[i].textContent !== rowsTo[i].textContent) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True when a rebuild must wait: one asked for from outside the panel
+     * while a control in it is held or focused. It runs when the control is
+     * let go (see createHUD).
+     */
+    _referenceRebuildDeferred() {
+        if (this._inPanelEvent || !this._referencePanelBusy()) {
+            this._referencePanelStale = false;
+            return false;
+        }
+        this._referencePanelStale = true;
+        return true;
+    }
+
+    /** True while a control in the right panel is held or has focus. */
+    _referencePanelBusy() {
+        const panel = this.controlsPanel;
+        if (!panel) return false;
+        if (this._referencePointerDown) return true;
+        const el = document.activeElement;
+        return !!(el && el !== document.body && panel.contains(el)
+            && el.matches('input, select, textarea, [contenteditable="true"]'));
     }
 
     updateFrameDisplay() {
         this._syncSimpleTransport?.();
         this._syncCompareUI?.();
-        if (this.videoMode) return; // video mode manages its own timeline
+        if (this.videoMode) {
+            // The video drives its own timeline (_syncFrameFromVideo); the dock
+            // still shows where it is.
+            this._refreshSequenceDock?.();
+            return;
+        }
 
         // Update frame counter text
         if (this.frameCounter && this.frameCounter.tagName !== 'INPUT') {
@@ -10991,6 +11626,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     render() {
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
+        this._syncGrainTicker();
 
         // ═══════════════════════════════════════════════════════════════
         // GPU-ACCELERATED WEBGL RENDERING PATH (Primary - Always On)
@@ -12085,6 +12721,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     _renderReferenceRightHUD() {
         const panel = this.controlsPanel;
         if (!panel) return;
+        if (this._referenceRebuildDeferred()) return;
 
         panel.innerHTML = '';
         panel.classList.add('radiance-panel-embedded');
@@ -12260,6 +12897,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         let activeTab = this._referenceRightTab || 'inspector';
         const render = () => {
+            if (this._referenceRebuildDeferred()) return;
             col.innerHTML = '';
             [...tabs.children].forEach(btn => btn.classList.toggle('is-active', btn.dataset.tabId === activeTab));
             if (activeTab === 'grade') {
@@ -12346,7 +12984,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (k === 'z' && !e.shiftKey) { e.preventDefault(); active.undo?.(); }
             else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); active.redo?.(); }
         };
-        window.addEventListener('keydown', this._undoKeyHandler);
+        window.addEventListener('keydown', this._undoKeyHandler, { signal: this._listenerSignal });
     }
 
     _renderReferenceSection(parent, title, onReset = null) {
@@ -13588,22 +14226,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     createHUD() {
-        // Singleton pattern: Check if HUD already exists
-        if (RadianceViewer.singletonHUD) {
-            this.controlsPanel = RadianceViewer.singletonHUD;
-            // Attach to THIS instance's rightControlPanel (not document.body)
-            if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-                if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-                this.rightControlPanel.appendChild(this.controlsPanel);
-            }
-
-            // v2.4: Sync active instance and re-render content immediately on creation if HUD already exists
-            RadianceViewer.activeInstance = this;
-            this._renderReferenceRightHUD();
-            if (typeof this._lastRenderContent === 'function') this._lastRenderContent();
-            return;
-        }
-
+        // One panel per viewer. It used to be a page-wide singleton that moved
+        // into whichever viewer was built last: viewer A's panel emptied when
+        // B was added, its controls then drove the wrong viewer, and deleting
+        // B left A with no panel until a reload.
         if (this._hudResizeListener) {
             window.removeEventListener('resize', this._hudResizeListener);
             this._hudResizeListener = null;
@@ -13612,8 +14238,31 @@ self.onmessage = async ({ data: { id, url } }) => {
         const t = this.theme;
         this.controlsPanel = document.createElement('div');
         this.controlsPanel.className = 'radiance-glass-dock radiance-panel-embedded';
-        this.controlsPanel.id = 'radiance-singleton-hud';
-        RadianceViewer.singletonHUD = this.controlsPanel;
+
+        // A frame change only rewrites readouts, and nothing outside the
+        // panel (a frame change, OCIO finishing loading) rebuilds it while
+        // one of its controls is held or focused (_referencePanelBusy). A
+        // rebuild that had to wait runs once the control is let go. The
+        // panel's own controls may still redraw it from their handlers.
+        const catchUp = () => {
+            if (this._referencePanelStale && !this._referencePanelBusy()) this._renderReferenceRightHUD();
+        };
+        const inPanelEvent = () => {
+            this._inPanelEvent = true;
+            queueMicrotask(() => { this._inPanelEvent = false; });
+        };
+        for (const type of ['input', 'change', 'click', 'keydown', 'pointerdown', 'pointerup']) {
+            this.controlsPanel.addEventListener(type, inPanelEvent, true);
+        }
+        this.controlsPanel.addEventListener('pointerdown', () => { this._referencePointerDown = true; }, true);
+        const release = () => {
+            if (!this._referencePointerDown) return;
+            this._referencePointerDown = false;
+            catchUp();
+        };
+        window.addEventListener('pointerup', release, { capture: true, signal: this._listenerSignal });
+        window.addEventListener('pointercancel', release, { capture: true, signal: this._listenerSignal });
+        this.controlsPanel.addEventListener('focusout', () => setTimeout(catchUp, 0));
 
         // v3.0 #15: High Contrast Mode Initialization
         // Restores accessibility preference from localStorage and applies the CSS hook.
@@ -13784,7 +14433,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             border: 1px solid transparent;
         `;
 
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.activeTab = 'primaries';
         const tabContentContainer = document.createElement('div');
         this.tabContentContainer = tabContentContainer;
@@ -13801,7 +14450,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._hudTabs = [];
 
         const renderTabs = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabsRow.innerHTML = '';
             tabs.forEach(tab => {
                 const btn = document.createElement('div');
@@ -13843,7 +14492,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
 
         const renderContent = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabContentContainer.innerHTML = '';
             tabContentContainer.style.cssText = 'display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;';
 
@@ -13894,7 +14543,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // A/B Bypass Toggle
         const bypassBtn = document.createElement('div');
         bypassBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active._gradingBypassed = !active._gradingBypassed;
             if (active._gradingBypassed) {
                 // Save current state and set identity
@@ -13951,18 +14600,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         undoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         undoBtn.onmouseenter = () => { undoBtn.style.color = this._undoStack.length > 0 ? this.theme.accent : '#555'; };
         undoBtn.onmouseleave = () => { undoBtn.style.color = '#555'; };
-        undoBtn.onclick = () => { (RadianceViewer.activeInstance || this).undo(); };
+        undoBtn.onclick = () => { this.undo(); };
 
         const redoBtn = document.createElement('div');
         redoBtn.textContent = '↷';
         redoBtn.title = 'Redo (Ctrl+Shift+Z)';
         redoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         redoBtn.onmouseenter = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             redoBtn.style.color = active._redoStack.length > 0 ? active.theme.accent : '#555';
         };
         redoBtn.onmouseleave = () => { redoBtn.style.color = '#555'; };
-        redoBtn.onclick = () => { (RadianceViewer.activeInstance || this).redo(); };
+        redoBtn.onclick = () => { this.redo(); };
 
         undoRedoGroup.appendChild(undoBtn);
         undoRedoGroup.appendChild(redoBtn);
@@ -13973,7 +14622,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         resetBtn.textContent = 'RESET ALL';
         resetBtn.style.cssText = 'font-size: 9px; color: #666; cursor: pointer; letter-spacing: 1px;';
         resetBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             // Push undo before resetting
             active._pushUndo();
             // Primaries
@@ -14028,8 +14677,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._undoKeyListener = (e) => {
                 if (!this._ownsKeyboard(e)) return;
                 // Only respond when HUD is visible and not in a text input
-                if (!RadianceViewer.singletonHUD || RadianceViewer.singletonHUD.style.opacity === '0') return;
-                const active = RadianceViewer.activeInstance;
+                if (!this.controlsPanel || this.controlsPanel.style.opacity === '0') return;
+                const active = this;
                 if (!active) return;
 
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -14069,7 +14718,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                     }
                 }
             };
-            document.addEventListener('keydown', this._undoKeyListener);
+            document.addEventListener('keydown', this._undoKeyListener, { signal: this._listenerSignal });
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -14480,7 +15129,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         };
         if (!this._transportSpaceHandler) {
             this._transportSpaceHandler = spaceHandler;
-            document.addEventListener('keydown', this._transportSpaceHandler);
+            document.addEventListener('keydown', this._transportSpaceHandler, { signal: this._listenerSignal });
         }
 
         // Float transport over the canvas
@@ -17968,9 +18617,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.highContrast = e.target.checked;
             localStorage.setItem('radiance_high_contrast', this.highContrast ? '1' : '0');
             if (this.highContrast) {
-                RadianceViewer.singletonHUD?.classList.add('high-contrast');
+                this.controlsPanel?.classList.add('high-contrast');
             } else {
-                RadianceViewer.singletonHUD?.classList.remove('high-contrast');
+                this.controlsPanel?.classList.remove('high-contrast');
             }
         };
         hcRow.appendChild(hcCheck);
@@ -19961,8 +20610,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         root.appendChild(resizeHandle);
 
@@ -20630,7 +21279,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Pointer click automatically requests focus
         svg.addEventListener('pointerdown', () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active.setFocusedWheel(label);
         });
 
@@ -21011,30 +21660,72 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Legacy fp16 path (flags=0)
-        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload)
+        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload). Only this
+        // is kept: every frame used to carry a Float32Array copy as well, so a
+        // 1080p frame cost 50 MB instead of 17. 'data' decodes on first use
+        // (see _lazyHalfFloats), which only the probe and CPU readouts need.
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
-        // Also create Float32Array for CPU-side reads (probe, scopes)
-        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
-        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
-        if (!RadianceViewer._halfTable) {
-            RadianceViewer._halfTable = new Float32Array(65536);
-            for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
-        }
-        const table = RadianceViewer._halfTable;
-        const fp32 = new Float32Array(fp16Raw.length);
-        for (let i = 0; i < fp16Raw.length; i++) {
-            fp32[i] = table[fp16Raw[i]];
-        }
-
-        return {
-            data: fp32,      // Float32Array for CPU reads
+        return RadianceViewer._lazyHalfFloats({
             fp16data: fp16Raw,   // Uint16Array for GPU HALF_FLOAT upload
             shape: [height, width, channels],
             format: 'rhdr',
             channel_names: channelNames,
             metadata
-        };
+        });
+    }
+
+    /**
+     * Give an fp16 frame a `data` that decodes to floats when it is read.
+     *
+     * Not enumerable, so a worker's postMessage leaves it behind and a frame
+     * crosses to the main thread as its half floats only. The decoded arrays
+     * live in a small cache for the whole page (_halfFloats), so reading
+     * `hdr.data` on the frame on screen costs one decode, not one per read,
+     * and a window of 16 frames never holds 16 float copies.
+     */
+    static _lazyHalfFloats(parsed) {
+        if (!parsed || !parsed.fp16data) return parsed;
+        Object.defineProperty(parsed, 'data', {
+            configurable: true,
+            enumerable: false,
+            get() { return RadianceViewer._halfFloats(this.fp16data); },
+        });
+        return parsed;
+    }
+
+    /** All 65536 half values as floats, built once. */
+    static _halfFloatTable() {
+        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
+        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
+        if (!RadianceViewer._halfTable) {
+            const table = new Float32Array(65536);
+            for (let h = 0; h < 65536; h++) table[h] = RadianceViewer.prototype._halfToFloat(h);
+            RadianceViewer._halfTable = table;
+        }
+        return RadianceViewer._halfTable;
+    }
+
+    /** Floats for an fp16 array, from the page-wide cache of the last two decoded. */
+    static _halfFloats(fp16) {
+        const cache = RadianceViewer._halfDecoded || (RadianceViewer._halfDecoded = new Map());
+        let f32 = cache.get(fp16);
+        if (f32) {
+            cache.delete(fp16);
+            cache.set(fp16, f32);
+            return f32;
+        }
+        const table = RadianceViewer._halfFloatTable();
+        f32 = new Float32Array(fp16.length);
+        for (let i = 0; i < fp16.length; i++) f32[i] = table[fp16[i]];
+        cache.set(fp16, f32);
+        while (cache.size > 2) cache.delete(cache.keys().next().value);
+        return f32;
+    }
+
+    /** Drop the decoded floats for these fp16 arrays (a deleted viewer's frames). */
+    static _releaseHalfFloats(fp16) {
+        if (fp16 && RadianceViewer._halfDecoded) RadianceViewer._halfDecoded.delete(fp16);
     }
 
     // Legacy .npy parser (backward compatibility)
@@ -21537,8 +22228,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const writer = ds.writable.getWriter();
                 const reader = ds.readable.getReader();
 
-                writer.write(compressed);
-                writer.close();
+                // A corrupt stream rejects these two as well as the read
+                // below. The read's rejection is handled; these were not, so
+                // one bad sidecar raised six uncaught promise errors.
+                writer.write(compressed).catch(() => {});
+                writer.close().catch(() => {});
 
                 const chunks = [];
                 let totalLen = 0;
@@ -21646,6 +22340,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     destroy() {
+        this._destroyed = true;
+        // Every window/document listener this viewer added, in one go.
+        this._globalListeners?.abort();
+        this._globalListeners = null;
         // Both of these were added to 'window' and never removed.
         if (this._seqDockKeyHandler) {
             window.removeEventListener('keydown', this._seqDockKeyHandler);
@@ -21701,22 +22399,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
         if (this._seqRAF) { cancelAnimationFrame(this._seqRAF); this._seqRAF = null; }
         if (this._referenceScopeRAF) { cancelAnimationFrame(this._referenceScopeRAF); this._referenceScopeRAF = null; }
+        if (this._referenceScopeTimer) { clearTimeout(this._referenceScopeTimer); this._referenceScopeTimer = null; }
         if (this._videoRAF) { cancelAnimationFrame(this._videoRAF); this._videoRAF = null; }
         if (this.scopeUpdateTimer) { clearTimeout(this.scopeUpdateTimer); this.scopeUpdateTimer = null; }
         if (this._scopeUpdateTimer) { clearTimeout(this._scopeUpdateTimer); this._scopeUpdateTimer = null; }
 
-        // Remove control panels from DOM.
-        // The HUD is a STATIC SINGLETON shared by every viewer instance
-        // (RadianceViewer.singletonHUD). Detaching it unconditionally here meant
-        // deleting one viewer node ripped the shared control panel out of every
-        // other one, leaving them with an empty right dock -- no exposure, no
-        // curves, no scopes, no delivery -- until a full page reload, because
-        // createHUD() never rebuilds an existing singleton.
-        const _isSharedHUD = this.controlsPanel && this.controlsPanel === RadianceViewer.singletonHUD;
-        const _lastInstance = RadianceViewer.allInstances.size <= 1;
-        if (this.controlsPanel && this.controlsPanel.parentNode && (!_isSharedHUD || _lastInstance)) {
+        // Remove control panels from DOM. Each viewer owns its panel, so this
+        // touches no other viewer's.
+        if (this.controlsPanel && this.controlsPanel.parentNode) {
             this.controlsPanel.parentNode.removeChild(this.controlsPanel);
         }
+        this.controlsPanel = null;
+        this._lastRenderContent = null;
         if (this.rightControlPanel && this.rightControlPanel.parentNode) {
             this.rightControlPanel.parentNode.removeChild(this.rightControlPanel);
         }
@@ -21738,26 +22432,32 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Release the big buffers explicitly rather than waiting for the
         // instance itself to become unreachable.
         if (this._frameWindow) { this._frameWindow.clear(); this._frameWindow = null; }
+        RadianceViewer._releaseHalfFloats(this.hdrData?.fp16data);
         this._hdrFallbackReasons = null;
         this.frameHDRData = null;
         this.frameImages = null;
+        this.frameCompareImages = null;
+        this.frameZdepthImages = null;
+        this.frameBracketImages = { low: [], high: [] };
         this.imageData = null;
+        this.hdrData = null;
+        this.image = null;
+        this.compareImage = null;
+        this.compareHDR = null;
+        this.frameCompareHDR = null;
+        this.zdepthImage = null;
+        this._placeholder = null;
+        this._hdrZoneStats = null;
         this._probeInvalidate();   // the probe measures this frame, not the last one
         // Clear container
         if (this.container) this.container.innerHTML = '';
 
         // ── Instance & HUD Management ──
         RadianceViewer.allInstances.delete(this);
-        if (RadianceViewer.activeInstance === this) {
-            RadianceViewer.activeInstance = Array.from(RadianceViewer.allInstances)[0] || null;
-            if (RadianceViewer.activeInstance && RadianceViewer.activeInstance._lastRenderContent) {
-                RadianceViewer.activeInstance._lastRenderContent();
-            }
-        }
-        if (RadianceViewer.allInstances.size === 0 && RadianceViewer.singletonHUD) {
-            RadianceViewer.singletonHUD.remove();
-            RadianceViewer.singletonHUD = null;
-        }
+        // activeInstance only breaks a keyboard tie between selected viewers
+        // (_ownsKeyboard); it must not keep a deleted one alive.
+        if (RadianceViewer.activeInstance === this) RadianceViewer.activeInstance = null;
+        if (RadianceViewer._activeViewer === this) RadianceViewer._activeViewer = null;
     }
 }
 
@@ -21997,19 +22697,19 @@ app.registerExtension({
 
             this.radianceViewer = new RadianceViewer(this, container);
 
-            // Lifecycle hooks for singleton HUD management
+            // Lifecycle hooks. The node can outlive its viewer (undo, a
+            // graph switch), so it lets go of it once it is destroyed.
             const _prevOnRemoved = this.onRemoved;
             this.onRemoved = function () {
                 _prevOnRemoved?.apply(this, arguments);
                 if (this.radianceViewer) this.radianceViewer.destroy();
+                this.radianceViewer = null;
             };
             const _prevOnSelected = this.onSelected;
             this.onSelected = function () {
                 _prevOnSelected?.apply(this, arguments);
+                // Keyboard tie-break only: each viewer has its own panel.
                 RadianceViewer.activeInstance = this.radianceViewer;
-                if (this.radianceViewer && this.radianceViewer._lastRenderContent) {
-                    this.radianceViewer._lastRenderContent();
-                }
             };
         };
 
@@ -22027,9 +22727,13 @@ app.registerExtension({
             const grade = info?.properties?.radiance_grade;
             if (grade && typeof grade === 'object') this.radianceViewer?._restoreGradingState?.(grade);
             const video = info?.properties?.radiance_viewer_video;
+            const savedResult = RadianceViewer._expandResult(info?.properties?.radiance_viewer_saved);
             if (typeof video === 'string' && video.startsWith(api.apiURL('/view?'))) {
                 this.radianceViewer?.loadVideo(video);
+            } else if (savedResult?.radiance_images?.length) {
+                this.onExecuted(savedResult);
             } else if (info?.properties?.radiance_viewer_result?.radiance_images?.length) {
+                // A workflow saved before the compact form: the whole list.
                 this.onExecuted(info.properties.radiance_viewer_result);
             }
             return result;
@@ -22094,7 +22798,23 @@ app.registerExtension({
             if (!viewer) return;
             viewer.unloadVideo();
             this.properties ||= {};
-            this.properties.radiance_viewer_result = message;
+            // What the workflow keeps to show this again after a reload: the
+            // run's file token and frame counts, not the whole result list
+            // (about 1.4 KB a frame, so 6 MB for a 5,000-frame shot, copied into
+            // every saved PNG, every prompt and the clipboard). A result that
+            // cannot be rebuilt from its token is kept whole, as before.
+            const compact = RadianceViewer._compactResult(message);
+            if (compact) {
+                this.properties.radiance_viewer_saved = compact;
+                delete this.properties.radiance_viewer_result;
+            } else {
+                this.properties.radiance_viewer_result = message;
+                delete this.properties.radiance_viewer_saved;
+            }
+            if (message.warnings?.length) {
+                for (const w of message.warnings) viewer._termLog?.('warn', `[Viewer] ${w}`);
+                viewer._showToast?.(message.warnings.join(' '), 'warn');
+            }
             if (viewer._sequenceAudio) {
                 viewer._sequenceAudio.pause();
                 viewer._sequenceAudio.removeAttribute('src');
@@ -22125,6 +22845,8 @@ app.registerExtension({
             // Reset frame arrays
             viewer.frameImages = [];
             viewer.frameCompareImages = [];
+            viewer.frameCompareHDR = [];
+            viewer.compareHDR = null;
             viewer.frameZdepthImages = [];
             viewer.frameBracketImages = { low: [], high: [] };
             viewer.frameHDRData = [];
@@ -22212,6 +22934,16 @@ app.registerExtension({
             if (!pageCompare) compareImages.forEach((imgData, idx) => {
                 const cmp = new Image();
                 cmp.crossOrigin = 'anonymous';
+                cmp.source_width = imgData.source_width;
+                cmp.source_height = imgData.source_height;
+                // B's float frame, when the node wrote one: shown through
+                // the same view as A instead of the preview.
+                const float = viewer._loadCompareFloat(imgData).then((hdr) => {
+                    if (viewer.generationID !== currentGen || !hdr) return;
+                    viewer.frameCompareHDR[idx] = hdr;
+                    if (cmp.complete && viewer.frameCompareImages[idx]) viewer._updateCompareForFrame(viewer.currentFrame || 0, true);
+                });
+                void float;
                 cmp.onload = () => {
                     if (viewer.generationID !== currentGen) return;
                     viewer.frameCompareImages[idx] = cmp;

@@ -34,7 +34,7 @@ function methodSource(name) {
 }
 
 const METHODS = ['setCompareMode', '_applyCompareToRenderer', '_hasCompareB', 'pinReference',
-    'releaseReference', '_updateCompareForFrame', 'setCompareImage', 'cycleCompareMode'];
+    'releaseReference', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode'];
 const Proto = new Function(`return class { ${METHODS.map(methodSource).join('\n')} }`)();
 
 const timers = [];
