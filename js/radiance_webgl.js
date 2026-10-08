@@ -2010,6 +2010,7 @@ ${GRADE_GLSL}
             uniform int u_displayLutMode;
             uniform int u_inputLutMode;
             uniform int u_sourceGamut;
+            uniform bool u_displayP3;          // M6: the canvas is tagged Display P3
             uniform float u_minify;            // H10: source pixels per output pixel (>= 1)
             uniform float u_displayLutStrength;
 
@@ -2554,6 +2555,54 @@ const float GOLDEN_ANGLE = 2.39996323;
                 vec3 v = ACES_IN * color;
                 v = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081);
                 return clamp(ACES_OUT * v, 0.0, 1.0);
+            }
+
+            // Source gamut (u_sourceGamut) to linear Rec.709, the built-in
+            // display curves' gamut. OCIO does this itself; with an input
+            // transform the gamut is the IDT's and is left alone.
+            vec3 sourceToRec709(vec3 c) {
+                if (u_inputLutMode != 0) return c;
+                if (u_sourceGamut == 1) return mat3( // ACEScg, OCIO ACES studio
+                    1.7050509453, -0.1302564144, -0.0240033567,
+                    -0.6217921376, 1.1408047676, -0.1289689690,
+                    -0.0832588747, -0.0105483187, 1.1529723406) * c;
+                if (u_sourceGamut == 2) return mat3( // ACES2065-1, OCIO ACES studio
+                    2.5216860771, -0.2764798999, -0.0153780654,
+                    -1.1341309547, 1.3727190495, -0.1529753357,
+                    -0.3875552118, -0.0962391719, 1.1683534384) * c;
+                if (u_sourceGamut == 3) return mat3( // Linear Rec.2020, OCIO ACES studio
+                    1.6604909897, -0.1245504767, -0.0181507636,
+                    -0.5876411200, 1.1328998804, -0.1005788967,
+                    -0.0728498623, -0.0083494224, 1.1187297106) * c;
+                if (u_sourceGamut == 4) return mat3( // Linear P3-D65, OCIO ACES studio
+                    1.2249401808, -0.0420569554, -0.0196375549,
+                    -0.2249401808, 1.0420569181, -0.0786360428,
+                    0.0000000000, 0.0000000000, 1.0982736349) * c;
+                return c;
+            }
+
+            // M6: luminance weights of the source gamut (the Y row of its
+            // RGB to XYZ matrix). Everything used Rec.709's for every source.
+            vec3 sourceLumaWeights() {
+                if (u_inputLutMode != 0) return vec3(0.2126, 0.7152, 0.0722);
+                if (u_sourceGamut == 1) return vec3(0.2722287168, 0.6740817658, 0.0536895174);   // AP1
+                if (u_sourceGamut == 2) return vec3(0.3439664498, 0.7281660966, -0.0721325464);  // AP0
+                if (u_sourceGamut == 3) return vec3(0.2627002120, 0.6779980715, 0.0593017165);   // Rec.2020
+                if (u_sourceGamut == 4) return vec3(0.2289745641, 0.6917385218, 0.0792869141);   // P3-D65
+                return vec3(0.2126, 0.7152, 0.0722);
+            }
+
+            // M6: a colour outside the gamut the display can show is one with
+            // a negative component after conversion to that gamut. The
+            // warning tested the source gamut, so ACEScg pure green (inside
+            // AP1, far outside Rec.709) clipped on screen without a flag.
+            bool outsideDisplayGamut(vec3 sceneLinear) {
+                vec3 d = sourceToRec709(sceneLinear);
+                if (u_displayP3) d = mat3(
+                    0.8224621, 0.0331941, 0.0170827,
+                    0.1775380, 0.9668058, 0.0723974,
+                    0.0000000, 0.0000000, 0.9105199) * d;
+                return any(lessThan(d, vec3(-1e-4)));
             }
 
             // Simple Reinhard Tone Mapping
@@ -3324,8 +3373,8 @@ vec3 getDenoiseColor(vec2 uv) {
         // 5c. Secondary Curves (Hue vs X)
         color = applySecondaryCurves(color);
 
-        // 6. Saturation
-        float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        // 6. Saturation (about the source gamut's own luminance, M6)
+        float luma = dot(color, sourceLumaWeights());
         color = mix(vec3(luma), color, u_saturation);
 
         // v3.0: Hue Shift
@@ -3547,22 +3596,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // Built-in display curves expect Rec.709. OCIO performs this
         // conversion itself; scene-linear EXR export keeps the source gamut.
         if (!u_lutIsDisplayTransform && u_inputLutMode == 0) {
-            if (u_sourceGamut == 1) color = mat3( // ACEScg, OCIO ACES studio
-                1.7050509453, -0.1302564144, -0.0240033567,
-                -0.6217921376, 1.1408047676, -0.1289689690,
-                -0.0832588747, -0.0105483187, 1.1529723406) * color;
-            if (u_sourceGamut == 2) color = mat3( // ACES2065-1, OCIO ACES studio
-                2.5216860771, -0.2764798999, -0.0153780654,
-                -1.1341309547, 1.3727190495, -0.1529753357,
-                -0.3875552118, -0.0962391719, 1.1683534384) * color;
-            if (u_sourceGamut == 3) color = mat3( // Linear Rec.2020, OCIO ACES studio
-                1.6604909897, -0.1245504767, -0.0181507636,
-                -0.5876411200, 1.1328998804, -0.1005788967,
-                -0.0728498623, -0.0083494224, 1.1187297106) * color;
-            if (u_sourceGamut == 4) color = mat3( // Linear P3-D65, OCIO ACES studio
-                1.2249401808, -0.0420569554, -0.0196375549,
-                -0.2249401808, 1.0420569181, -0.0786360428,
-                0.0000000000, 0.0000000000, 1.0982736349) * color;
+            color = sourceToRec709(color);
         }
 
         // 6. Display LUT / Tonemap  (runs after 5. LUT)
@@ -3701,13 +3735,13 @@ vec3 getDenoiseColor(vec2 uv) {
         float lumaDisplay = dot(color, vec3(0.2126, 0.7152, 0.0722));
 
         if (u_falseColor) {
-            color = getFalseColorMap(arriSignal(dot(sceneLinearForHeatmap, vec3(0.2126, 0.7152, 0.0722))));
+            color = getFalseColorMap(arriSignal(dot(sceneLinearForHeatmap, sourceLumaWeights())));
         }
 
         // Reads scene luminance, not display luma: the whole point is absolute
         // cd/m2, which the display transform has already thrown away.
         if (u_hdrHeatmap) {
-            color = getHDRHeatmap(dot(sceneLinearForHeatmap, vec3(0.2126, 0.7152, 0.0722)));
+            color = getHDRHeatmap(dot(sceneLinearForHeatmap, sourceLumaWeights()));
         }
 
         if (u_zebra) {
@@ -3729,9 +3763,8 @@ vec3 getDenoiseColor(vec2 uv) {
         }
 
         if (u_gamutWarning) {
-            // A negative component in scene-linear is a colour outside the
-            // working gamut's triangle: it cannot be displayed without mapping.
-            if (any(lessThan(sceneLinearForHeatmap, vec3(-1e-4)))) {
+            // Outside the display's gamut: it cannot be shown without mapping.
+            if (outsideDisplayGamut(sceneLinearForHeatmap)) {
                 color = vec3(1.0, 0.0, 1.0); // Solid Magenta
             }
         }
@@ -4788,6 +4821,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_displayLutMode', this.displayReferredTexture ? 0 : this.displayLutMode);
         this._ui1(program, 'u_inputLutMode', this.inputLutMode);
         this._ui1(program, 'u_sourceGamut', this.displayReferredTexture || this.sourceDisplayEncoded ? 0 : this.sourceGamut);
+        this._ui1(program, 'u_displayP3', this.displayColorSpace === 'display-p3' ? 1 : 0);
         this._uf1(program, 'u_displayLutStrength', this.displayLutStrength);
         this._ui1(program, 'u_lutIsDisplayTransform', this.lutIsDisplayTransform ? 1 : 0);
 

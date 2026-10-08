@@ -496,6 +496,33 @@ if (!skip) {
             });
         });
 
+        // M6: ACEScg pure green is out of the display gamut.
+        await guard('m6', async () => {
+            await load(msg(entry('c_0_1_0.rhdr', { encoding: 'linear', colorspace: 'ACEScg' })), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                const plain = window.__sample(v);
+                v.gamutWarning = true; v.render(); await window.__sleep(50);
+                const warn = window.__sample(v);
+                v.gamutWarning = false; v.render();
+                return { plain, warn };
+            });
+        });
+        // M6: false colour reads luminance with the source gamut's Y row.
+        // ACEScg (0, 0, 4): AP1 Y = 4 x 0.0537 = 0.215, 45 % on the ARRI
+        // signal, which is no band (grey). Rec.709 weights read 0.289, 53 %,
+        // the pink one-stop-over band.
+        await guard('m6_luma', async () => {
+            await load(msg(entry('c_0_0_4.rhdr', { encoding: 'linear', colorspace: 'ACEScg' })), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                v.falseColor = true; v.render(); await window.__sleep(50);
+                const fc = window.__sample(v);
+                v.falseColor = false; v.render();
+                return { fc };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -717,6 +744,19 @@ test('H17: the saved PNG states its colour space', { skip: skip || ok(R.h17) }, 
 });
 
 // ── M6 ──────────────────────────────────────────────────────────────────────
+
+test('M6: the gamut warning tests the display gamut, not the source gamut', { skip: skip || ok(R.m6) }, () => {
+    const [r, g, b] = R.m6.warn;
+    assert.ok(r > 230 && g < 30 && b > 230, `ACEScg pure green with the warning on: ${R.m6.warn} (plain ${R.m6.plain})`);
+});
+
+test('M6: false colour uses the source gamut luminance row', { skip: skip || ok(R.m6_luma) }, () => {
+    // ACEScg (0, 0, 4): AP1 Y = 0.215 -> ARRI signal 45 %, no band, grey 115.
+    // Rec.709 weights read Y = 0.289 -> 53 %, the pink band (255, 128, 191).
+    const [r, g, b] = R.m6_luma.fc;
+    assert.ok(Math.abs(r - g) < 8 && Math.abs(g - b) < 8, `false colour is banded: ${R.m6_luma.fc}`);
+    near(r, 115, 8, 'false colour grey level');
+});
 
 // ── M7 ──────────────────────────────────────────────────────────────────────
 
