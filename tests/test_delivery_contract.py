@@ -56,8 +56,12 @@ def _js_payload_keys():
 
 
 def _handler_read_keys():
-    """Every key the handler pulls out of `grading`."""
+    """Every key the handler pulls out of `grading`, itself or through
+    color/grading.py viewer_grade_kwargs, which maps the grade for it."""
     py = _src("delivery/handler.py")
+    grading_py = _src("color/grading.py")
+    start = grading_py.index("def viewer_grade_kwargs(")
+    py += grading_py[start:grading_py.index("\ndef ", start + 1)]
     return set(re.findall(r"grading\.get\(\s*['\"]([A-Za-z_]\w*)['\"]", py))
 
 
@@ -129,7 +133,12 @@ def test_a_complete_payload_is_silent(caplog):
     assert not caplog.records
 
 
-# ── Temp / tint now use the viewer's model, not a fabricated Kelvin ─────────
+# ── Temp / tint use the viewer's model, not a fabricated Kelvin ────────────
+#
+# The viewer's Temperature and Tint are luminance-preserving gains in stops
+# (js/radiance_grade.js whiteBalanceGains). These tests used to pin the old
+# additive shift, `shift.r += temp; shift.g -= tint`, which tinted black and
+# clamped negatives; that was the bug, and the export copied it.
 
 @pytest.mark.real_torch
 def test_tint_reaches_the_graded_pixels():
@@ -143,10 +152,12 @@ def test_tint_reaches_the_graded_pixels():
     img = np.full((4, 4, 3), 0.5, dtype=np.float32)
     out = apply_grading(img, tint_shift=0.25)
     assert not np.allclose(out, img), "tint_shift did nothing"
-    # The shader does `shift.g -= tint`: green down, red and blue untouched.
-    assert out[0, 0, 1] < img[0, 0, 1] - 0.2
-    assert abs(float(out[0, 0, 0] - img[0, 0, 0])) < 1e-6
-    assert abs(float(out[0, 0, 2] - img[0, 0, 2])) < 1e-6
+    # Positive tint is magenta: green down, red and blue up by the same gain,
+    # and the luminance of the grey is kept.
+    assert out[0, 0, 1] < img[0, 0, 1]
+    assert abs(float(out[0, 0, 0] - out[0, 0, 2])) < 1e-6 and out[0, 0, 0] > 0.5
+    luma = 0.2126 * out[0, 0, 0] + 0.7152 * out[0, 0, 1] + 0.0722 * out[0, 0, 2]
+    assert abs(float(luma) - 0.5) < 1e-5
 
 
 @pytest.mark.real_torch
@@ -156,10 +167,15 @@ def test_temp_shift_matches_the_shader_not_a_kelvin_curve():
 
     img = np.full((2, 2, 3), 0.5, dtype=np.float32)
     out = apply_grading(img, temp_shift=0.2)
-    # applyTempTint: shift.r += temp; shift.b -= temp; green untouched.
-    assert abs(float(out[0, 0, 0]) - 0.7) < 1e-5
-    assert abs(float(out[0, 0, 1]) - 0.5) < 1e-6
-    assert abs(float(out[0, 0, 2]) - 0.3) < 1e-5
+    # whiteBalanceGains: red against blue by 0.2 stop, green between, and the
+    # grey keeps its luminance.
+    assert abs(float(np.log2(out[0, 0, 0] / out[0, 0, 2])) - 0.2) < 1e-5
+    assert out[0, 0, 0] > out[0, 0, 1] > out[0, 0, 2]
+    luma = 0.2126 * out[0, 0, 0] + 0.7152 * out[0, 0, 1] + 0.0722 * out[0, 0, 2]
+    assert abs(float(luma) - 0.5) < 1e-5
+    # A gain leaves black black, where the old shift turned it red.
+    black = apply_grading(np.zeros((1, 1, 3), dtype=np.float32), temp_shift=0.2)
+    assert np.all(black == 0.0)
 
 
 @pytest.mark.real_torch
@@ -178,4 +194,10 @@ def test_handler_no_longer_fabricates_kelvin_from_the_slider():
         "the handler is back to inventing a Kelvin value from the viewer's "
         "additive [-2, 2] slider, which applies a different curve than the shader"
     )
-    assert "temp_shift" in py and "tint_shift" in py
+    # The handler maps the payload with viewer_grade_kwargs, which passes
+    # Temperature and Tint as the viewer's gains and leaves Kelvin at 6500.
+    assert "viewer_grade_kwargs(grading)" in py
+    grading_py = _src("color/grading.py")
+    assert "temp_shift=_f(grading.get('temperature')" in grading_py
+    assert "tint_shift=_f(grading.get('tint')" in grading_py
+    assert "temperature=6500.0," in grading_py
