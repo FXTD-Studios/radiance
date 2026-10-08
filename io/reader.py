@@ -649,10 +649,24 @@ def _parse_fps(value: Any) -> Optional[float]:
         elif isinstance(value, str):
             fps = float(Fraction(value.strip()))
         else:
-            fps = float(value)
+            fps = _snap_float_rate(float(value))
     except (TypeError, ValueError, ZeroDivisionError):
         return None
     return fps if math.isfinite(fps) and 0.0 < fps <= 1000.0 else None
+
+
+def _snap_float_rate(fps: float) -> float:
+    """A float32 header rate (DPX) as the rate it stands for: 23.97599983 is
+    24000/1001, 25.00000095 is 25. Anything else is returned as stored."""
+    if not math.isfinite(fps) or fps <= 0:
+        return fps
+    whole = round(fps)
+    if whole and abs(fps - whole) < 1e-4:
+        return float(whole)
+    ntsc = round(fps * 1.001)
+    if ntsc and abs(fps - ntsc * 1000 / 1001) < 1e-4:
+        return ntsc * 1000 / 1001
+    return fps
 
 
 def _header_fps(path: str, exr_info=None) -> Optional[float]:
@@ -979,8 +993,11 @@ def _video_frame_range(path: str, start_frame: int, end_frame: int) -> Tuple[int
     except Exception:  # the decoder will produce the real error in a moment
         return 0, end
 
-    if info.frames > 0 and start >= info.frames:
-        if start == _SEQUENCE_START_DEFAULT:
+    # An estimated count (no ffprobe: container duration x fps) can exceed the
+    # real one, so the untouched sequence default is never a trim then.
+    untouched = start == _SEQUENCE_START_DEFAULT
+    if info.frames > 0 and (start >= info.frames or (untouched and info.frames_estimated)):
+        if untouched:
             log.debug(
                 "start_frame is at its sequence default (%d) and %s has only %d "
                 "frame(s), so the whole clip is being read.",
