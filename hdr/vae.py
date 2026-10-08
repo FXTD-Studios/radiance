@@ -95,7 +95,6 @@ import torch.nn.functional as F
 import json
 import math
 import logging
-import os
 import uuid
 from typing import Tuple, Dict, Any, Optional
 
@@ -110,6 +109,7 @@ logger = logging.getLogger("radiance")
 # Local imports
 from .utils import tensor_srgb_to_linear, tensor_linear_to_srgb
 from radiance.core import rhdr as _rhdr
+from radiance.core.system.path_utils import safe_join
 
 # Log curve imports from canonical color package
 _HAS_LOG_CURVES = True
@@ -2691,18 +2691,16 @@ class RadianceVAE4KDecode:
             unique_id = uuid.uuid4().hex[:12]
             filename = f"{prefix}_{unique_id}.rhdr"
 
-            # V-7 FIX: Use safe_join to prevent path traversal via malicious prefix
-            try:
-                from .path_utils import safe_join
-                filepath = safe_join(output_dir, filename)
-            except ImportError:
-                filepath = os.path.join(output_dir, filename)
+            # V-7 FIX: refuse a prefix that leaves output_dir. The import used
+            # to name a module that does not exist, so this never ran.
+            filepath = safe_join(output_dir, filename)
 
             # BUG-F FIX: Support fp32 for scenes with linear values > 65504.
             # BUG-G FIX: the header flag says which (0 = fp16, 1 = fp32).
-            # Layout in radiance/core/rhdr.py; zlib level 6, not clamped yet.
+            # Layout in radiance/core/rhdr.py; zlib level 6. fp16 clamps to
+            # +-65504, so a specular above it is no longer written as inf.
             fp32 = precision == "f32"
-            size = _rhdr.write(filepath, img_np, fp32=fp32, clamp_f16=False, level=6)
+            size = _rhdr.write(filepath, img_np, fp32=fp32, level=6)
 
             raw = img_np.size * (4 if fp32 else 2)
             ratio = (size - _rhdr.HEADER.size) / raw * 100 if raw else 0

@@ -105,11 +105,16 @@ def test_fp16_clamps_to_its_finite_range_by_default():
     np.testing.assert_array_equal(px[0, 0], np.array([65504.0, -65504.0, 65504.0, 3.0], np.float16))
 
 
-def test_fp16_without_clamp_is_a_plain_cast_inside_the_range():
-    # clamp_f16=False keeps the bytes of the writers that never clamped. Only
-    # in-range values are checked: what they do above 65504 is a bug.
+def test_fp16_clamping_leaves_in_range_values_bit_identical():
     pixels = _ramp()
-    assert rhdr.encode(pixels, clamp_f16=False) == rhdr.encode(pixels)
+    assert zlib.decompress(rhdr.encode(pixels)[12:]) == pixels.astype(np.float16).tobytes()
+
+
+def test_there_is_no_way_to_write_an_unclamped_fp16_file():
+    # Every writer used to choose; the VAE export and the depth sidecar chose
+    # not to clamp and wrote inf. The option is gone.
+    with pytest.raises(TypeError):
+        rhdr.encode(_ramp(), clamp_f16=False)
 
 
 def test_fp32_is_never_clamped():
@@ -135,7 +140,7 @@ def test_every_level_decodes_to_the_same_samples(level):
 
 # ── write ────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("kwargs", [{}, {"fp32": True}, {"level": 6}, {"clamp_f16": False}])
+@pytest.mark.parametrize("kwargs", [{}, {"fp32": True}, {"level": 6}])
 def test_write_puts_exactly_the_encoded_bytes_on_disk(tmp_path, kwargs):
     pixels = _ramp()
     path = tmp_path / "frame.rhdr"

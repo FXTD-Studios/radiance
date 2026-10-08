@@ -21,9 +21,9 @@ Layout (little-endian)
 The parser rejects a file whose decompressed size is not
 width * height * channels * bytes-per-sample.
 
-``clamp_f16`` and ``level`` exist so each writer can keep exactly the bytes it
-wrote before moving here. Clamping to +-65504 is what the format needs: an
-unclamped fp16 cast turns a bright specular into inf.
+fp16 samples are always clamped to +-65504 first: an unclamped cast turns a
+bright specular into inf, which poisons tonemapping and scopes downstream.
+``level`` is the zlib level each writer chose; the Viewer stores (0).
 
 numpy only: no torch, so it imports in the light test lane.
 """
@@ -70,7 +70,7 @@ def _shape(pixels: np.ndarray) -> Tuple[int, int, int]:
     return w, h, c
 
 
-def _encode_parts(pixels, fp32: bool, clamp_f16: bool, level: int) -> Tuple[bytes, bytes]:
+def _encode_parts(pixels, fp32: bool, level: int) -> Tuple[bytes, bytes]:
     """The header and the zlib stream, kept apart so ``write`` never joins them.
 
     Joining would copy the whole compressed frame once more; at level 0 that is
@@ -82,35 +82,33 @@ def _encode_parts(pixels, fp32: bool, clamp_f16: bool, level: int) -> Tuple[byte
         samples = pixels.astype(np.float32)
         flags = FLAG_FP32
     else:
-        if clamp_f16:
-            pixels = np.clip(pixels, -FP16_MAX, FP16_MAX)
-        samples = pixels.astype(np.float16)
+        samples = np.clip(pixels, -FP16_MAX, FP16_MAX).astype(np.float16)
         flags = FLAG_FP16
     return HEADER.pack(MAGIC, w, h, c, flags), zlib.compress(samples.tobytes(), level=level)
 
 
-def encode(pixels, *, fp32: bool = False, clamp_f16: bool = True, level: int = 0) -> bytes:
+def encode(pixels, *, fp32: bool = False, level: int = 0) -> bytes:
     """The complete .rhdr file for an (H, W) or (H, W, C) float array.
 
     fp32 writes the samples as float32 (flags 1). Otherwise they are written as
-    float16 (flags 0), clamped to +-65504 first unless ``clamp_f16`` is False.
+    float16 (flags 0), clamped to +-65504 first.
     ``level`` is the zlib level; 0 stores, which is what the Viewer writes
     because compressing cost far more time than it saved.
 
     Raises ValueError for any other rank or a dimension above 65535.
     """
-    header, payload = _encode_parts(pixels, fp32, clamp_f16, level)
+    header, payload = _encode_parts(pixels, fp32, level)
     return header + payload
 
 
-def write(path: str, pixels, *, fp32: bool = False, clamp_f16: bool = True, level: int = 0) -> int:
+def write(path: str, pixels, *, fp32: bool = False, level: int = 0) -> int:
     """Write ``encode(pixels, ...)`` to ``path`` and return the file size in bytes.
 
     Encoding happens before the file is opened, so a ValueError leaves no file.
     The write itself is not atomic, as it was not in any of the writers this
     replaces.
     """
-    header, payload = _encode_parts(pixels, fp32, clamp_f16, level)
+    header, payload = _encode_parts(pixels, fp32, level)
     with open(path, "wb") as f:
         f.write(header)
         f.write(payload)
