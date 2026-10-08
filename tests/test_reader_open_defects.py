@@ -244,3 +244,90 @@ def test_b11_radiance_pic_reads_as_float(tmp_path):
     image, mask = reader._read_image(str(pic))
     assert mask is None
     np.testing.assert_allclose(image[0].numpy(), rgb, rtol=0.02)
+
+
+# ── B5: sequence frame rate ───────────────────────────────────────────────
+
+def _exr_sequence(tmp_path, fps=None, frames=(1001, 1002, 1003)):
+    OpenEXR = pytest.importorskip("OpenEXR")
+    if not hasattr(OpenEXR, "File"):
+        pytest.skip("this OpenEXR build has no File API")
+    header = {"compression": OpenEXR.ZIP_COMPRESSION, "type": OpenEXR.scanlineimage}
+    if fps is not None:
+        header["framesPerSecond"] = fps
+    for f in frames:
+        chans = {c: np.full((4, 6), v, np.float32) for c, v in zip("RGB", (0.1, 0.2, 0.3))}
+        with OpenEXR.File(header, chans) as handle:
+            handle.write(str(tmp_path / f"shot.{f:04d}.exr"))
+    return str(tmp_path / "shot.%04d.exr")
+
+
+@pytest.mark.real_torch
+def test_b5_exr_sequence_reports_its_header_rate(tmp_path):
+    from radiance.io.reader import _read_sequence
+
+    pattern = _exr_sequence(tmp_path, Fraction(25, 1))
+    *_rest, fps, meta = _read_sequence(pattern, 1001, 1003, 1, "Auto / Linear (pass-through)")
+    assert fps == 25.0
+    meta = json.loads(meta)
+    assert meta["fps"] == 25.0 and meta["fps_source"] == "header"
+
+
+@pytest.mark.real_torch
+def test_b5_ntsc_rate_survives(tmp_path):
+    from radiance.io.reader import read_frames
+
+    pattern = _exr_sequence(tmp_path, Fraction(24000, 1001))
+    _img, _mask, info = read_frames(path=pattern)
+    assert info["fps"] == pytest.approx(23.976, abs=1e-3)
+    assert info["fps_source"] == "header"
+
+
+@pytest.mark.real_torch
+def test_b5_sequence_without_a_rate_says_it_defaulted(tmp_path):
+    pytest.importorskip("PIL.Image")
+    from PIL import Image
+    from radiance.io.reader import _read_sequence
+
+    for f in (1, 2, 3):
+        Image.fromarray(np.full((4, 6, 3), 128, np.uint8)).save(tmp_path / f"p.{f:04d}.png")
+    *_rest, fps, meta = _read_sequence(str(tmp_path / "p.%04d.png"), 1, 3, 1,
+                                       "Auto / Linear (pass-through)")
+    assert fps == 24.0
+    meta = json.loads(meta)
+    assert meta["fps"] is None and meta["fps_source"] == "default"
+
+
+@pytest.mark.real_torch
+def test_b5_dpx_sequence_reports_its_header_rate(tmp_path):
+    from radiance.io import reader
+
+    if not reader._HAS_OIIO:
+        pytest.skip("needs OpenImageIO")
+    oiio = reader._oiio
+    for f in (1, 2):
+        path = str(tmp_path / f"d.{f:04d}.dpx")
+        spec = oiio.ImageSpec(6, 4, 3, oiio.UINT16)
+        spec.attribute("dpx:FrameRate", 25.0)
+        out = oiio.ImageOutput.create(path)
+        out.open(path, spec)
+        out.write_image(np.full((4, 6, 3), 0.5, np.float32))
+        out.close()
+    *_rest, fps, meta = reader._read_sequence(str(tmp_path / "d.%04d.dpx"), 1, 2, 1,
+                                              "Auto / Linear (pass-through)")
+    assert fps == 25.0
+    assert json.loads(meta)["fps_source"] == "header"
+
+
+def test_b5_parse_fps_accepts_the_shapes_headers_use():
+    from radiance.io.reader import _parse_fps
+
+    assert _parse_fps(Fraction(24000, 1001)) == pytest.approx(23.976, abs=1e-3)
+    assert _parse_fps("24000/1001") == pytest.approx(23.976, abs=1e-3)
+    assert _parse_fps("25") == 25.0
+    assert _parse_fps((30, 1)) == 30.0
+    assert _parse_fps(float("nan")) is None
+    assert _parse_fps(0) is None
+    assert _parse_fps("0/0") is None
+    assert _parse_fps(None) is None
+    assert _parse_fps("junk") is None
