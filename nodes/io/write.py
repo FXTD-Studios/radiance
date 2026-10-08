@@ -1410,15 +1410,18 @@ def register_read_routes():
         if not raw:
             return None, web.json_response({"error": "no path given"}, status=400)
         candidate = _resolve_browse(raw) or strip_path_quotes(raw)
-        if not os.path.isfile(candidate):
-            return None, web.json_response(
-                {"error": "not a file", "path": candidate}, status=404)
+        # Containment first. Checking existence first answered 404 for a
+        # missing path and 403 for a present one anywhere on the host, the
+        # oracle the root check exists to close.
         if not _is_inside_allowed_read_root(candidate):
             return None, web.json_response({
                 "error": "outside the allowed roots",
                 "hint": f"Set {_ENV_READ_ROOTS} to the directories Radiance may "
                         f"inspect, os.pathsep-separated.",
             }, status=403)
+        if not os.path.isfile(candidate):
+            return None, web.json_response(
+                {"error": "not a file", "path": candidate}, status=404)
         return candidate, None
 
     @PromptServer.instance.routes.get("/radiance/media/layers")
