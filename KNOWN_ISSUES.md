@@ -149,22 +149,24 @@ The six nodes that broke or crawled at production size, ten more that held the c
 
 Writing a tooltip for all 1,259 inputs meant reading the code behind each
 one. The bugs it found are fixed (see the changelog, "Bugs found while
-documenting every input"). These controls still do not do what their name
-says; each tooltip says what really happens.
+documenting every input"). The controls it found that did not do what their
+name said are resolved below; each tooltip says what really happens.
 
-**Controls that do nothing or less than their name**
+**Controls that did nothing or less than their name (resolved in 4.0)**
 
-- Do nothing: Sampler `conditioning_clip_target`; Bit Depth Degrade
-  `restore_from_quantized`.
-- Only label a report: ACES Compliance `output_type` and `peak_nits`; Color
-  Space Info `scene_referred` and `peak_nits`.
-- Narrower than named: `creative_white_scale` is a linear gain;
-  CFG++ "(Perpendicular)" is a cosine cfg
-  scale.
-- Denoise: `motion_compensation` is a ±1 px search.
+- Implemented: Bit Depth Degrade `restore_from_quantized` dequantises;
+  CFG++ "(Perpendicular)" now guides perpendicular to the conditional
+  prediction; Denoise `motion_compensation` is hierarchical block matching
+  (about ±30 px) instead of a ±1 px search.
+- Relabelled, by design: Sampler `conditioning_clip_target` has no effect (the
+  encoder is chosen at encode time; the widget stays so saved workflows load);
+  ACES Compliance `peak_nits` and Color Space Info `scene_referred` and
+  `peak_nits` are labels and metadata; `creative_white_scale` is a linear gain,
+  and both tooltips say so.
+- ACES Compliance `output_type` was listed here by mistake: it chooses the
+  reference the image is compared with.
 
-*Planned fix:* one pass that either implements each control or removes it,
-with a test per item, section by section. Done so far: Color (LUT and LUT
+*Earlier passes,* with a test per item, section by section: Color (LUT and LUT
 Blend `log_space`, HueCurves `grade_info`, OCIO Context) and Upscale (resampling
 kernels, Downscale `antialiasing`, Auto colour space). The production pass also
 fixed ClipDetector channel selection with soft edges, ExposureBlend weighting

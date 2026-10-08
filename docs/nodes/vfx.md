@@ -104,7 +104,7 @@ Quantise an image to a lower bit depth, with optional dither, and output the err
 | `dither_mode` | choice | `triangular` | `none`, `triangular`, `floyd-steinberg` | none: plain rounding. triangular: random TPDF noise of +/-1 step before rounding. floyd-steinberg: error diffusion (the classic scan-line result, computed a diagonal at a time). |
 | `delta_gain` (optional) | float | 10 | 1 to 100, step 0.5 | Multiplier on the absolute error \|original - quantised\| for the delta_amplified output, clipped to 1. |
 | `banding_threshold` (optional) | float | 0.004 | 0.0005 to 0.05, step 0.0005 | Per-pixel error (0..1 units, largest channel) above which banding_mask is white. 0.004 is about one 8-bit code value. This flags quantisation error, not detected bands. |
-| `restore_from_quantized` (optional) | boolean | off |  | Currently has no effect: the node ignores this setting. |
+| `restore_from_quantized` (optional) | boolean | off |  | Dequantise the result: smooth it in 8 passes, each clamped back to the values the pixel could have come from (half a step around its code value; a step and a half with dither). Removes banding on smooth gradients; the other outputs and the metrics then measure the restored image. |
 
 **Outputs**
 

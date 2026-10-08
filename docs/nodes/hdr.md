@@ -82,7 +82,7 @@ Compare a display render against the ACES 2.0 reference Output Transform (OpenCo
 | `scene_image` | IMAGE |  |  | Scene-linear ACEScg image BEFORE the output transform. |
 | `display_image` | IMAGE |  |  | Display-encoded image AFTER the output transform under test. |
 | `output_type` | choice | `SDR_sRGB` | `SDR_sRGB`, `SDR_P3`, `HDR_PQ_1000`, `HDR_PQ_2000`, `HDR_PQ_4000`, `HDR_HLG` | ACES 2.0 Output Transform the display image is meant to be. The reference is rendered for this output and compared. |
-| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Shown in the report header only; the peak comes from output_type. |
+| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Label only: printed in the report header, never checked. The peak the reference is rendered for comes from output_type (SDR 100, PQ 1000/2000/4000, HLG 1000 nits). |
 
 **Outputs**
 
