@@ -2671,7 +2671,7 @@ class RadianceViewer {
         this._proFps = document.createElement('span');
         this._proFps.textContent = '24.00 FPS';
         this._proColor = document.createElement('span');
-        this._proColor.textContent = 'ACEScg';
+        this._proColor.textContent = '-';     // the source tag, once a frame arrives
         this._proDepth = document.createElement('span');
         this._proDepth.textContent = '32-bit (float)';
         this._engineBadge = document.createElement('span');
@@ -3583,9 +3583,21 @@ class RadianceViewer {
             this._proAspect.textContent = w && h ? (w / h).toFixed(2) + ':1' : '—';
         }
         if (this._proFps) this._proFps.textContent = `${(this.playbackFps || 24).toFixed(2)} FPS`;
-        if (this._proColor) this._proColor.textContent = this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace.replace('IDT: ', '') : 'ACEScg';
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
         if (this._proDepth) this._proDepth.textContent = this.hdrData ? '32-bit (float)' : '8/16-bit';
         this._updateEngineBadge();
+    }
+
+    /**
+     * H11: what the pixels are, for every colour-space label: the input
+     * transform when one is set, otherwise the node's source tag. The header,
+     * the Inspector and the Grade tab all said ACEScg for every source while
+     * the rendering followed the real tag, so a Linear Rec.709 frame was
+     * labelled with the wrong primaries.
+     */
+    _inputLabel() {
+        if (this.inputSpace && this.inputSpace !== 'None') return this.inputSpace.replace('IDT: ', '');
+        return this.sourceTag?.colorspace || '-';
     }
 
     createUI() {
@@ -12581,8 +12593,13 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _renderReferenceInspector(parent) {
         const current = this._getCurrentResult();
-        const fileName = current.filename || current.exr_filename || current.hdr_sidecar || 'No shot loaded';
-        const resolution = this.imageWidth && this.imageHeight ? `${this.imageWidth} x ${this.imageHeight}` : '— x —';
+        // M16: the frame, not its 8-bit thumbnail: the float sidecar the
+        // viewer shows when there is one, else the PNG. Resolution and format
+        // fall back to the frame record, so a panel drawn before the pixels
+        // land is not blank or wrong.
+        const fileName = current.hdr_sidecar || current.hdr_filename || current.filename || current.exr_filename || 'No shot loaded';
+        const resW = this.imageWidth || current.source_width, resH = this.imageHeight || current.source_height;
+        const resolution = resW && resH ? `${resW} x ${resH}` : '— x —';
         const frame = (this.currentFrame ?? current.frame ?? 0) + 1;
         const fps = this.playbackFps || 24;
         const durationFrames = Math.max(0, (this.totalFrames || 1) - 1);
@@ -12590,9 +12607,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const duration = `${String(Math.floor(durationSeconds / 60)).padStart(2, '0')}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}:${String(durationFrames % Math.round(fps)).padStart(2, '0')}`;
         const format = this.hdrData?.format === 'rhdr_f32' ? 'RHDR fp32'
             : this.hdrData?.format === 'rhdr' ? 'RHDR fp16'
-                : current.exr_filename ? 'EXR'
-                    : current.hdr_sidecar ? 'RHDR'
-                        : this.image ? 'PNG / Canvas' : '—';
+                : this.hdrData?.format ? String(this.hdrData.format).toUpperCase()
+                    : current.hdr_sidecar ? `RHDR ${current.hdr_fp32 ? 'fp32' : 'fp16'}`
+                        : this.image ? 'PNG (8-bit preview)' : '—';
         const dataRange = Array.isArray(current.data_range)
             ? `${Number(current.data_range[0]).toFixed(4)} - ${Number(current.data_range[1]).toFixed(4)}`
             : '—';
@@ -12609,7 +12626,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Frame', frame],
             ['Frame Rate', `${Number(fps).toFixed(2)} FPS`],
             ['Duration', duration],
-            ['Input Transform', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : this.inputSpace],
+            ['Input Transform', this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace : `None (source: ${this._inputLabel()})`],
             ['Display', this.displayLut || 'None'],
             ['Bit Depth', '32-bit (float)'],
             ['Data Range', dataRange],
@@ -12723,7 +12740,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const kv = document.createElement('div');
         kv.className = 'radiance-ref-kv';
         [
-            ['Input', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : (this.inputSpace || 'Scene Linear')],
+            ['Input', this._inputLabel()],
             ['Output', this.displayLut || 'None'],
             ['Texture', this.hdrData?.format === 'rhdr_f32' ? 'RGBA32F' : this.hdrData?.format === 'rhdr' ? 'RGBA16F' : this.hdrData ? 'Float HDR' : 'Canvas'],
             ['Compare', this.compareMode || 'Off'],
@@ -12939,7 +12956,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             'S-Log3 (Sony)': 'IDT: S-Log3 → Linear',
         })[this.inputSpace] || (this.inputSpace || 'None');
         field('Input Color Space', [
-            { label: 'ACEScg / Linear', value: 'None' },
+            { label: `As tagged: ${this.sourceTag?.colorspace || 'source'}`, value: 'None' },
             { label: 'sRGB', value: 'IDT: sRGB → Linear' },
             { label: 'Rec.709', value: 'IDT: Rec.709 → Linear' },
             { label: 'LogC3', value: 'IDT: LogC3 → Linear' },
@@ -17204,6 +17221,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             encoding: enc,
             colorspace: tag?.colorspace || (enc === 'srgb' ? 'sRGB Encoded Rec.709 (sRGB)' : 'Linear Rec.709 (sRGB)'),
         };
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
         this.renderer?.setSourceEncoding?.(enc);
         this.renderer?.setSourceColorSpace?.(this.sourceTag.colorspace);
         if (!this._userSetIDT) {
