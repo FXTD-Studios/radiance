@@ -951,16 +951,17 @@ def _save_video_ffmpeg(
     # encode has succeeded. Writing out_path directly meant `-y` truncated an
     # existing master the moment ffmpeg opened it, so any failure after that
     # (an encoder error, a timeout, a cancel) lost the approved version.
-    fd, part_name = tempfile.mkstemp(
-        prefix=f".{Path(out_path).stem}.", suffix=f".partial{Path(out_path).suffix}",
-        dir=str(Path(out_path).parent))
-    os.close(fd)
-    part_path = Path(part_name)
+    # A random name rather than mkstemp: mkstemp creates the file 0600, and
+    # os.replace keeps that mode, so every master would have been unreadable to
+    # other users (a render farm, a shared NAS). ffmpeg creates this one, so the
+    # usual umask applies; `-n` refuses the vanishingly rare clash.
+    part_path = Path(out_path).with_name(
+        f".{Path(out_path).stem}.partial-{os.urandom(6).hex()}{Path(out_path).suffix}")
 
     cmd = [
-        # `-y` for the sibling this call just created. `overwrite=False` is
-        # enforced when the sibling is moved into place, below.
-        _ffmpeg_for(codec), "-v", "error", "-y",
+        # `-n` for the fresh sibling. `overwrite` is enforced when the sibling
+        # is moved into place, below.
+        _ffmpeg_for(codec), "-v", "error", "-n",
         "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{w}x{h}", "-pix_fmt", src_pix_fmt,
         "-r", str(fps),
@@ -1048,15 +1049,36 @@ def _save_video_ffmpeg(
         )
 
     try:
-        if not overwrite and Path(out_path).exists():
-            # resolve_output_path chose a free name; something took it since.
-            raise FileExistsError(
-                f"{out_path} appeared while encoding; not replacing it (overwrite is off).")
-        os.replace(part_path, out_path)
+        if overwrite:
+            os.replace(part_path, out_path)
+        else:
+            _publish_without_replacing(part_path, Path(out_path))
     except BaseException:
         _discard_partial(part_path)
         raise
     return str(out_path)
+
+
+def _publish_without_replacing(part_path: Path, out_path: Path) -> None:
+    """Move the finished encode to out_path, never over a file that is there.
+
+    resolve_output_path chose a free name, but a file can appear there while a
+    long encode runs. A hard link is created exclusively, so it refuses that
+    file; where links are not supported (FAT, some network shares) an
+    existence check stands in, with the small window that implies.
+    """
+    clash = FileExistsError(
+        f"{out_path} appeared while encoding; not replacing it (overwrite is off).")
+    try:
+        os.link(part_path, out_path)
+    except FileExistsError:
+        raise clash from None
+    except OSError:
+        if out_path.exists():
+            raise clash from None
+        os.replace(part_path, out_path)
+        return
+    _discard_partial(part_path)
 
 
 def _discard_partial(path: Path) -> None:
