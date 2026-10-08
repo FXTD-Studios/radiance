@@ -7772,27 +7772,48 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Default PNG Export
+        this._saveResultPNG();
+    }
+
+    /**
+     * H17: "Save PNG (Result)": the graded picture through the view, at full
+     * size, in the colour space the view encodes for, and nothing the viewer
+     * adds for looking: no viewer f-stop or gamma, no false colour, zebra,
+     * wipe, grid or dither. That is the scopes' display signal, so it is
+     * rendered with readDisplaySignal. It used to read the live canvas, so a
+     * +2 viewer f-stop took a 127 pixel to 238 in the file and false colour
+     * was saved as the picture, and a Display P3 view was saved untagged.
+     *
+     * The canvas is created in the view's colour space, so a P3 result is
+     * written as Display P3 (the browser tags the PNG) and an sRGB one as
+     * sRGB; the file name and the log say which.
+     */
+    _saveResultPNG() {
+        const p3 = this.renderer?.displayColorSpace === 'display-p3';
+        const space = p3 ? 'display-p3' : 'srgb';
         const exp = document.createElement('canvas');
         exp.width = this.imageWidth;
         exp.height = this.imageHeight;
-        const ctx = exp.getContext('2d');
-
-        if (this.useWebGL && this.renderer && this.renderer.textures.image) {
-            const prevW = this.glCanvas.width, prevH = this.glCanvas.height;
-            this.glCanvas.width = this.imageWidth;
-            this.glCanvas.height = this.imageHeight;
-            this.renderer.render(this.lutIntensity || 1.0);
-            ctx.drawImage(this.glCanvas, 0, 0);
-            this.glCanvas.width = prevW;
-            this.glCanvas.height = prevH;
+        const ctx = exp.getContext('2d', { colorSpace: space });
+        const sig = this.useWebGL && this.renderer?.readDisplaySignal
+            ? this.renderer.readDisplaySignal(this.imageWidth, this.imageHeight, this.lutIntensity || 1.0, true)
+            : null;
+        if (sig?.data) {
+            let img;
+            try { img = new ImageData(sig.data, sig.width, sig.height, { colorSpace: space }); }
+            catch { img = new ImageData(sig.data, sig.width, sig.height); }
+            ctx.putImageData(img, 0, 0);
         } else {
             this.renderImage(ctx, this.image);
         }
-
+        const tag = p3 ? 'DisplayP3' : 'sRGB';
         const link = document.createElement('a');
-        link.download = `radiance_${Date.now()}.png`;
+        link.download = `radiance_${Date.now()}_${tag}.png`;
         link.href = exp.toDataURL('image/png');
         link.click();
+        const view = this.ocioActive ? `${this.ocioDisplay} / ${this.ocioView}` : (this.displayLut || 'no view');
+        this._termLog?.('success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
+            + `(view: ${view}; no viewer f-stop, gamma or overlays)`);
     }
 
     // ── v4.0: OpenEXR 32-bit FLOAT Encoder ───────────────────────────────────

@@ -470,6 +470,32 @@ if (!skip) {
             });
         });
 
+        // H17: Save PNG (Result) with the viewer f-stop, false colour and a P3 tag.
+        await guard('h17', async () => {
+            await load(msg(entry('c_0.5_0.5_0.5.rhdr', SRGB)), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                let href = null, name = null;
+                const orig = HTMLAnchorElement.prototype.click;
+                HTMLAnchorElement.prototype.click = function () { href = this.href; name = this.download; };
+                const grab = async () => {
+                    href = null; v.exportSnapshot('png');
+                    const img = new Image(); img.src = href; await img.decode();
+                    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+                    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+                    return { px: Array.from(x.getImageData(img.width >> 1, img.height >> 1, 1, 1).data.slice(0, 3)), name, size: [img.width, img.height] };
+                };
+                const base = await grab();
+                v.viewExposure = 2; v.viewGamma = 1.5; v.render();
+                const look = await grab();
+                v.viewExposure = 0; v.viewGamma = 1; v.falseColor = true; v.zebra = true; v.render();
+                const overlays = await grab();
+                v.falseColor = false; v.zebra = false; v.render();
+                HTMLAnchorElement.prototype.click = orig;
+                return { base, look, overlays, logs: (v._termLines || []).slice(-3) };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -677,6 +703,18 @@ test('M16: File Info names the frame, its resolution and its real format', { ski
 });
 
 // ── H17 ─────────────────────────────────────────────────────────────────────
+
+test('H17: Save PNG (Result) leaves out the viewer look, overlays and dither', { skip: skip || ok(R.h17) }, () => {
+    const { base, look, overlays } = R.h17;
+    base.px.forEach((c) => near(c, 128, 1, 'base PNG'));
+    assert.deepEqual(look.px, base.px, 'viewer f-stop / gamma baked into the PNG');
+    assert.deepEqual(overlays.px, base.px, 'false colour / zebra baked into the PNG');
+    assert.deepEqual(base.size, [64, 48]);
+});
+
+test('H17: the saved PNG states its colour space', { skip: skip || ok(R.h17) }, () => {
+    assert.match(R.h17.base.name, /sRGB|DisplayP3/i, `file name: ${R.h17.base.name}`);
+});
 
 // ── M6 ──────────────────────────────────────────────────────────────────────
 
