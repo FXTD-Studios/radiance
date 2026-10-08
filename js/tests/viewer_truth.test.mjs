@@ -417,6 +417,27 @@ if (!skip) {
             return ev(() => ({ filmic: window.__sample(window.__lastViewer)[0] }));
         });
 
+        // H10: one-pixel stripes at 50 % and 25 % zoom.
+        await guard('h10', async () => {
+            await load(msg(entry('stripes.rhdr', { ...SRGB, w: 512, h: 256 })), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                const out = {};
+                for (const z of [1, 0.5, 0.25]) {
+                    v.setZoom(z); await window.__sleep(150); v.render();
+                    const ctx = v.canvas.getContext('2d');
+                    const cx = Math.round(v.panX + v.imageWidth * v.zoom / 2), cy = Math.round(v.panY + v.imageHeight * v.zoom / 2);
+                    const d = ctx.getImageData(cx - 10, cy, 20, 1).data;
+                    let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i];
+                    out['z' + z] = s / (d.length / 4);
+                }
+                // The full-size paths must stay full size.
+                const sig = v.renderer.readDisplaySignal(512, 256, 1.0, true);
+                out.signalStripes = [sig.data[(128 * 512 + 100) * 4], sig.data[(128 * 512 + 101) * 4]];
+                return out;
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -594,6 +615,12 @@ test('C3: the status bar Disp is the rendered display value', { skip: skip || ok
 
 test('H9: the built-in filmic view puts 18% grey near ACES 2.0 (89)', { skip: skip || ok(R.h9) }, () => {
     near(R.h9.filmic, 89, 4, 'filmic 18% grey');
+});
+
+test('H10: Fit averages fine detail in light, not in code values', { skip: skip || ok(R.h10) }, () => {
+    near(R.h10['z0.5'], 188, 6, 'stripes at 50%');
+    near(R.h10['z0.25'], 188, 6, 'stripes at 25%');
+    assert.deepEqual(R.h10.signalStripes.map((v) => v > 128), [false, true], 'the full-size signal lost its stripes');
 });
 
 // ── H11 / M16 ───────────────────────────────────────────────────────────────
