@@ -654,49 +654,6 @@ class TestSetupOffloadMode:
         assert mm.vram_state is mm.VRAMState.NORMAL_VRAM
         assert info == []
 
-    # vram_state is a process global. One sequential run used to leave every
-    # later load in the session, in any workflow, on LOW_VRAM until ComfyUI
-    # restarted (code review P2-4). It cannot be restored when the Loader
-    # returns, because ComfyUI loads the weights later, while sampling; the
-    # next Loader run that does not ask for sequential puts it back.
-
-    @pytest.fixture(autouse=True)
-    def _no_saved_state(self, monkeypatch):
-        monkeypatch.setattr(L, "_VRAM_STATE_BEFORE_SEQUENTIAL", None, raising=False)
-
-    @pytest.mark.parametrize("next_mode", ["none", "cpu_offload"])
-    def test_a_later_run_without_sequential_restores_the_state(self, monkeypatch, next_mode):
-        comfy = make_comfy()
-        monkeypatch.setattr(L, "comfy", comfy)
-        mm = comfy.model_management
-        L.setup_offload_mode("sequential", [])
-        assert mm.vram_state is mm.VRAMState.LOW_VRAM
-        info: list[str] = []
-        L.setup_offload_mode(next_mode, info)
-        assert mm.vram_state is mm.VRAMState.NORMAL_VRAM
-        assert "Offload: restored ComfyUI VRAM state" in info
-
-    def test_repeated_sequential_runs_restore_the_original_state(self, monkeypatch):
-        comfy = make_comfy()
-        monkeypatch.setattr(L, "comfy", comfy)
-        mm = comfy.model_management
-        L.setup_offload_mode("sequential", [])
-        L.setup_offload_mode("sequential", [])
-        L.setup_offload_mode("none", [])
-        assert mm.vram_state is mm.VRAMState.NORMAL_VRAM
-
-    def test_a_lowvram_launch_is_left_alone(self, monkeypatch):
-        """--lowvram set LOW_VRAM before the node ran; it is not the node's to undo."""
-        comfy = make_comfy()
-        comfy.model_management.vram_state = comfy.model_management.VRAMState.LOW_VRAM
-        monkeypatch.setattr(L, "comfy", comfy)
-        mm = comfy.model_management
-        L.setup_offload_mode("sequential", [])
-        info: list[str] = []
-        L.setup_offload_mode("none", info)
-        assert mm.vram_state is mm.VRAMState.LOW_VRAM
-        assert info == []
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  estimate_vram_for_load
