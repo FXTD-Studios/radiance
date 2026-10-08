@@ -178,7 +178,7 @@ class RadianceHDRPerChannelNorm:
          VAE decode.
 
     Connect:
-        image → RadianceHDRPerChannelNorm → image_norm → RadianceHDRTurboEncoder
+        image → RadianceHDRPerChannelNorm → image_norm → VAE Encode
                                           → stats_json → (store in metadata node)
     """
 
