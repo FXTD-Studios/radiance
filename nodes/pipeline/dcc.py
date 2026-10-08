@@ -1,3 +1,4 @@
+import hmac
 import os
 import json
 import socket
@@ -28,12 +29,29 @@ _MAX_LINE = 4 * 1024 * 1024
 _SERVER: Optional[socket.socket] = None
 _SERVER_THREAD: Optional[threading.Thread] = None
 _SERVER_RUNNING = False
-_BOUND_LOOPBACK = True  # set at bind time; recorded for diagnostics
+_BOUND_LOOPBACK = True  # set at bind time; a remote bind requires the token on `queue`
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 def _remote_bridge_allowed() -> bool:
     return os.environ.get("RADIANCE_ALLOW_REMOTE_BRIDGE", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _queue_token_ok(msg) -> bool:
+    """A remote bind queues only for a client holding the shared DCC token.
+
+    The token is the one core/dcc_auth gives the Nuke listener
+    (RADIANCE_DCC_AUTH_TOKEN, else ~/.radiance/dcc_token). Loopback binds
+    accept `queue` without it, as before 4.0.
+    """
+    if _BOUND_LOOPBACK:
+        return True
+    sent = msg.get("token")
+    if not isinstance(sent, str) or not sent:
+        return False
+    from radiance.core.dcc_auth import load_or_create_token
+    expected = load_or_create_token()
+    return bool(expected) and hmac.compare_digest(sent.encode(), expected.encode())
 
 
 def _handle(conn, addr=None):
@@ -83,6 +101,13 @@ def _handle(conn, addr=None):
                         "ok": False,
                         "error": "The 'exec' command has been removed for security reasons. "
                                  "Use 'queue' to submit a workflow prompt instead.",
+                    }) + "\n").encode())
+                elif cmd == "queue" and not _queue_token_ok(msg):
+                    conn.sendall((json.dumps({
+                        "ok": False,
+                        "error": "This bridge is bound to a network address: 'queue' needs "
+                                 "\"token\", the shared DCC token (RADIANCE_DCC_AUTH_TOKEN "
+                                 "or ~/.radiance/dcc_token).",
                     }) + "\n").encode())
                 elif cmd == "queue":
                     payload = msg.get("prompt", {})

@@ -135,3 +135,60 @@ def test_remote_bridge_disabled_by_default(monkeypatch):
     assert dcc._remote_bridge_allowed() is False
     monkeypatch.setenv("RADIANCE_ALLOW_REMOTE_BRIDGE", "1")
     assert dcc._remote_bridge_allowed() is True
+
+
+# ── Remote queue needs the DCC token (code review P2-6) ─────────────────────
+# With RADIANCE_ALLOW_REMOTE_BRIDGE=1 the bridge listened on the network and
+# relayed `queue` to ComfyUI's /prompt for anyone who could reach the port:
+# any installed node, so effectively code execution. A non-loopback bridge now
+# requires the shared DCC token (~/.radiance/dcc_token, or
+# RADIANCE_DCC_AUTH_TOKEN), the same secret the Nuke listener uses.
+
+@pytest.fixture
+def _queued(monkeypatch):
+    import urllib.request
+
+    sent = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"prompt_id": "x"}'
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: sent.append(req) or _Resp())
+    monkeypatch.setenv("RADIANCE_DCC_AUTH_TOKEN", "s3cret-token")
+    return sent
+
+
+def _queue(token=None):
+    msg = {"cmd": "queue", "prompt": {"1": {"class_type": "PreviewImage", "inputs": {}}}}
+    if token is not None:
+        msg["token"] = token
+    conn = _FakeConn([_json.dumps(msg)])
+    dcc._handle(conn, ("10.0.0.7", 50000))
+    return _responses(conn)[0]
+
+
+@pytest.mark.parametrize("token", [None, "", "wrong", "s3cret-token "])
+def test_a_remote_bridge_refuses_queue_without_the_token(monkeypatch, _queued, token):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", False)
+    reply = _queue(token)
+    assert reply["ok"] is False and "token" in reply["error"].lower()
+    assert _queued == [], "the prompt reached ComfyUI without the token"
+
+
+def test_a_remote_bridge_queues_with_the_token(monkeypatch, _queued):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", False)
+    assert _queue("s3cret-token")["ok"] is True
+    assert len(_queued) == 1
+
+
+def test_a_loopback_bridge_still_queues_without_a_token(monkeypatch, _queued):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", True)
+    assert _queue()["ok"] is True
+    assert len(_queued) == 1
