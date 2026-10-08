@@ -3868,6 +3868,8 @@ class RadianceViewer {
         try {
             if (typeof RadianceWebGLRenderer !== 'undefined') {
                 this.renderer = new RadianceWebGLRenderer(this.glCanvas);
+                this.renderer.onContextLost = () => this._onGLContextLost();
+                this.renderer.onContextRestored = () => this._onGLContextRestored();
                 if (this.renderer.init()) {
                     console.log('[Radiance] WebGL Renderer Initialized');
                     this._gpuBackend = 'webgl';
@@ -6856,7 +6858,7 @@ else:
                 this._queueCacheMarks();
             },
             onError: (err, idx) => {
-                console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+                if (this.generationID === generation) this._onFrameLoadError(err, idx);
             },
         });
 
@@ -7049,7 +7051,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                     return npy;
                 })
                 .catch((e) => {
-                    payload.fallbackReason = `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.fallbackReason = e?.missing
+                        ? 'the float sidecar is no longer on the server (HTTP 404)'
+                        : `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.missing = !!e?.missing;
                     console.warn('[Radiance] Failed to load RHDR primary:', e);
                     return null;
                 });
@@ -7085,7 +7090,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(compareEntry),
         ]).then(([img, hdr, low, high, depth, compare]) => {
             if (this.generationID !== generation) return null;
-            if (!img && !hdr) return null;
+            if (!img && !hdr) {
+                // Neither the picture nor its proxy: say why, rather than
+                // leave the canvas blank (see _onFrameLoadError).
+                const err = new Error(payload.fallbackReason && imgData.hdr_sidecar
+                    ? `the preview and the float sidecar both failed to load (${payload.fallbackReason})`
+                    : 'the preview image failed to load');
+                // No sidecar to ask: a preview that will not load after a
+                // restart is gone as well.
+                err.missing = imgData.hdr_sidecar ? !!payload.missing : true;
+                throw err;
+            }
             payload.img = img;
             payload.hdr = hdr;
             payload.bracketLow = low;
@@ -7147,6 +7162,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.updateFrameDisplay();
             return;
         }
+        this._clearViewerMessage('frames');
 
         this._updateCompareForFrame(idx);
 
@@ -21865,8 +21881,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const writer = ds.writable.getWriter();
                 const reader = ds.readable.getReader();
 
-                writer.write(compressed);
-                writer.close();
+                // A corrupt stream rejects these two as well as the read
+                // below. The read's rejection is handled; these were not, so
+                // one bad sidecar raised six uncaught promise errors.
+                writer.write(compressed).catch(() => {});
+                writer.close().catch(() => {});
 
                 const chunks = [];
                 let totalLen = 0;
