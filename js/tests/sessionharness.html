@@ -79,11 +79,14 @@ window.__until = async (fn, ms = 10000) => {
     while (performance.now() - t0 < ms) { try { if (fn()) return true; } catch { /* not yet */ } await window.__sleep(20); }
     return false;
 };
-/** A sequence of n synthetic frames, as the node's onExecuted payload. */
-window.__frames = (n, W = 64, H = 48, extra = {}) => ({
+/**
+ * A sequence of n synthetic frames, as the node's onExecuted payload. The
+ * float sidecars are '<prefix>_WxH_i.rhdr' (see session_support.mjs).
+ */
+window.__frames = (n, W = 64, H = 48, extra = {}, prefix = 'f') => ({
     radiance_images: Array.from({ length: n }, (_, i) => ({
         filename: `f_${W}x${H}_${i}.png`, subfolder: '', type: 'temp',
-        hdr_sidecar: `f_${W}x${H}_${i}.rhdr`, hdr_filename: `f_${W}x${H}_${i}.rhdr`,
+        hdr_sidecar: `${prefix}_${W}x${H}_${i}.rhdr`, hdr_filename: `${prefix}_${W}x${H}_${i}.rhdr`,
         has_hdr: true, hdr_primary: true, frame: i, total_frames: n,
         source_width: W, source_height: H, channel_names: ['R', 'G', 'B', 'A'], ...extra,
     })),
