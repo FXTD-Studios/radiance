@@ -226,8 +226,18 @@ def resolve_architecture(
     return resolved_type, detected_type, latent_fmt
 
 
+# The ComfyUI vram_state that sequential offload replaced, or None when it has
+# not replaced one. vram_state is a process global that load_models_gpu() reads
+# while sampling, after the Loader has returned, so it cannot be put back when
+# the Loader finishes; the next Loader run without "sequential" restores it.
+# Without this, one sequential run left every later load in the session, in any
+# workflow, on LOW_VRAM until ComfyUI restarted.
+_VRAM_STATE_BEFORE_SEQUENTIAL = None
+
+
 def setup_offload_mode(offload_mode: str, info_lines: list[str]) -> torch.device | None:
     """Apply the offload_mode setting, returning the CLIP load_device override (if any)."""
+    global _VRAM_STATE_BEFORE_SEQUENTIAL
     if offload_mode == "sequential":
         # ComfyUI has never shipped set_lowvram_mode(); the call raised
         # AttributeError inside this try and logged "Could not enable
@@ -238,11 +248,22 @@ def setup_offload_mode(offload_mode: str, info_lines: list[str]) -> torch.device
         try:
             mm = comfy.model_management
             if mm.vram_state not in (mm.VRAMState.LOW_VRAM, mm.VRAMState.NO_VRAM):
+                _VRAM_STATE_BEFORE_SEQUENTIAL = mm.vram_state
                 mm.vram_state = mm.VRAMState.LOW_VRAM
             logger.info("Sequential CPU offload enabled (ComfyUI LOW_VRAM state)")
             info_lines.append("Offload: sequential")
         except Exception as e:
             logger.warning(f"Could not enable sequential offload: {e}")
+    elif _VRAM_STATE_BEFORE_SEQUENTIAL is not None:
+        try:
+            mm = comfy.model_management
+            if mm.vram_state == mm.VRAMState.LOW_VRAM:
+                mm.vram_state = _VRAM_STATE_BEFORE_SEQUENTIAL
+                logger.info("Sequential offload off: ComfyUI VRAM state restored")
+                info_lines.append("Offload: restored ComfyUI VRAM state")
+        except Exception as e:
+            logger.warning(f"Could not restore the ComfyUI VRAM state: {e}")
+        _VRAM_STATE_BEFORE_SEQUENTIAL = None
 
     # FIX 6: ComfyUI model_options["load_device"] expects torch.device, not str.
     return torch.device("cpu") if offload_mode == "cpu_offload" else None
