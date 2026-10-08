@@ -39,9 +39,12 @@ node, io, or delivery layers.
   decided per batch (`color/viewer_space.py`).
 - **OCIO is optional everywhere** (`HAS_OCIO` guards). Exceptions: the `OCIOColorTransform`
   node raises without it, and `aces2_ocio` needs OCIO 2.5 or newer.
-- **Each consumer resolves its OCIO config differently.** There are five resolvers:
-  `ocio_setup`, `radiance_ocio._OCIO_SEARCH_PATHS`, `hdr/ocio._resolve_config`, `hdr/aces2_ocio`
-  (pinned), and `encodings.ocio_config`. A change to config handling must check all five.
+- **One default OCIO config (4.0).** `ocio_setup.active_config_path()` / `active_config()`
+  decide it ($OCIO when it loads, else the config `configure_ocio` set up), and
+  `encodings.ocio_config`, `hdr/ocio._resolve_config` and `radiance_ocio.discover_ocio_config`
+  ask them; an explicit path still wins in each. Pinned on purpose: `hdr/aces2_ocio` and
+  `color/display_preview` (studio v4.0.0, the ACES 2.0 reference). `ACESConfigManager._find_existing_config`
+  is a disk search for its own action. Tests: `tests/test_ocio_single_resolver.py`.
 
 ## Tests
 
