@@ -563,7 +563,8 @@ class RadianceFlipbookGIF:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] "
-                               "and quantised to a 256-colour palette, so display-encoded input is expected."}),
+                               "and quantised to a 256-colour palette, so display-encoded input is expected. "
+                               "Alpha is not shown (the passthrough keeps it)."}),
                 "save_path": ("STRING", {
                     "default": "preview/flipbook.gif",
                     "tooltip": (
@@ -1052,7 +1053,8 @@ class RadiancePreviewServer:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frames to publish, returned unchanged on passthrough. Only the last frame "
-                               "is served, clamped to [0, 1] as an 8-bit JPEG."}),
+                               "is served, clamped to [0, 1] as an 8-bit JPEG. Alpha is not shown (the "
+                               "passthrough keeps it)."}),
                 "port": ("INT", {
                     "default": 8765, "min": 1024, "max": 65535,
                     "tooltip": "TCP port for the preview HTTP server.",
