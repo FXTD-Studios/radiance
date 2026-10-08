@@ -61,7 +61,9 @@ class RadianceViewer {
         ['aces2', 'ACES 2.0 SDR (OCIO)'],
         ['aces13', 'ACES 1.3 SDR (OCIO)'],
         ['srgb', 'sRGB (no tone map)'],
-        ['rec709', 'Rec.709 (BT.1886)'],
+        // Encodes for a BT.1886 (gamma 2.4) monitor. The canvas is decoded as
+        // sRGB, so on this screen it looks lighter; it is for an external display.
+        ['rec709', 'Rec.709 BT.1886 (external display)'],
         ['filmic', 'Filmic (approx.)'],
         ['manual', 'Custom (Output Transform)'],
     ];
@@ -1850,9 +1852,10 @@ class RadianceViewer {
         const meta = this.hdrData.metadata || {};
         const metaCS = (meta.colorSpace || meta.ColorSpace || '').toLowerCase();
         // LogC4 first: "arri" matches both, and LogC4 metadata was read as LogC3.
+        // L5: "arri" alone is not LogC ("ARRI Wide Gamut 3 linear" is linear).
         if (metaCS.includes('logc4')) {
             detected = 'IDT: LogC4 → Linear'; method = 'EXR metadata';
-        } else if (metaCS.includes('logc3') || metaCS.includes('arri')) {
+        } else if (metaCS.includes('logc3') || (metaCS.includes('arri') && metaCS.includes('logc'))) {
             detected = 'IDT: LogC3 → Linear'; method = 'EXR metadata';
         } else if (metaCS.includes('s-log3') || metaCS.includes('slog3')) {
             detected = 'IDT: S-Log3 → Linear' ; method = 'EXR metadata'; // future IDT
@@ -1865,10 +1868,14 @@ class RadianceViewer {
         }
 
         // ── Tier 2: Filename keyword scan ─────────────────────────────────────
+        // L5: whole words only. Separators were stripped and keywords matched
+        // anywhere, so "david" read as DaVinci ("davi") and "dinterm..." as
+        // anything that contained it. Names are split on separators and a
+        // keyword must be one word, or a run of whole words.
         if (!detected) {
-            const fname = (this.hdrData.filename || this._lastFilename || '').toLowerCase().replace(/[-_ .]/g, '');
+            const words = `_${(this.hdrData.filename || this._lastFilename || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('_')}_`;
             for (const p of PROFILES) {
-                if (p.kwds.some(k => fname.includes(k.replace(/[-_ ]/g,'')))) {
+                if (p.kwds.some(k => words.includes(`_${k.replace(/[-_ ]/g, '_')}_`))) {
                     detected = p.key; method = 'filename pattern';
                     break;
                 }
@@ -14737,9 +14744,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 printerEVBadge.textContent = '±0';
                 printerEVBadge.style.color = '#555';
             } else {
-                const evR = (r / 50).toFixed(2);
-                const evG = (g / 50).toFixed(2);
-                const evB = (b / 50).toFixed(2);
+                const evR = (r / 12).toFixed(2);
+                const evG = (g / 12).toFixed(2);
+                const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
                 printerEVBadge.style.color = '#00a8ff';
             }
@@ -14822,7 +14829,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             const evLbl = document.createElement('span');
             evLbl.style.cssText = 'font-size: 7.5px; color: #444; width: 34px; text-align: left; font-family: monospace;';
             const _updateEV = (v) => {
-                const ev = (v / 50);
+                const ev = (v / 12);      // 12 printer points to the stop (see applyPrinterLights)
                 evLbl.textContent = ev === 0 ? '' : `${ev>0?'+':''}${ev.toFixed(2)}EV`;
                 evLbl.style.color = ev !== 0 ? hexColor + 'bb' : '#333';
             };
@@ -16935,7 +16942,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         srcGroup.appendChild(heading('Values'));
         srcGroup.appendChild(segmented([
             { id: 'source', label: 'Source', hint: 'The pixels as loaded, before the viewer grade.' },
-            { id: 'rendered', label: 'Rendered', hint: 'The pixels as displayed, after the grade and view transform.' },
+            { id: 'rendered', label: 'Rendered', hint: 'The graded pixels, scene-linear, before the view transform (what the 32-bit graded EXR holds).' },
         ], this.probeSource, (id) => {
             this.probeSource = id;
             this._probeStats = null;
