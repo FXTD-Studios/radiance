@@ -438,6 +438,38 @@ if (!skip) {
             });
         });
 
+        // H11 and M16: labels for a Linear Rec.709 source, and the File Info.
+        await guard('h11', async () => {
+            await load(msg(entry('c_0.18_0.18_0.18.rhdr', LIN)), {});
+            return ev(() => {
+                const v = window.__lastViewer;
+                v.updateBottomBar?.();
+                v._updateProMetadata?.();
+                const insp = document.createElement('div'); document.body.appendChild(insp);
+                v._renderReferenceInspector(insp);
+                const kv = {};
+                insp.querySelectorAll('.radiance-ref-kv').forEach((box) => {
+                    const ks = box.querySelectorAll('.k');
+                    ks.forEach((k) => { kv[k.textContent] = k.nextElementSibling?.textContent; });
+                });
+                const grade = document.createElement('div'); document.body.appendChild(grade);
+                v._renderReferenceGrade?.(grade);
+                const opts = [...grade.querySelectorAll('select')].flatMap((s) => [...s.options].map((o) => o.textContent));
+                const out = { header: v._proColor?.textContent, inspector: kv, gradeOptions: opts,
+                    html: insp.textContent + ' ' + grade.textContent };
+                insp.remove(); grade.remove();
+                return out;
+            });
+        });
+        await guard('h11_acescg', async () => {
+            await load(msg(entry('c_0.18_0.18_0.18.rhdr', { encoding: 'linear', colorspace: 'ACEScg' })), {});
+            return ev(() => {
+                const v = window.__lastViewer;
+                v._updateProMetadata?.();
+                return { header: v._proColor?.textContent };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -624,6 +656,25 @@ test('H10: Fit averages fine detail in light, not in code values', { skip: skip 
 });
 
 // ── H11 / M16 ───────────────────────────────────────────────────────────────
+
+test('H11: a Linear Rec.709 source is not labelled ACEScg anywhere', { skip: skip || ok(R.h11) }, () => {
+    const { header, inspector, gradeOptions, html } = R.h11;
+    assert.match(header, /Rec\.709/, `header: ${header}`);
+    assert.match(inspector['Input Transform'], /Rec\.709/, `inspector: ${inspector['Input Transform']}`);
+    assert.ok(gradeOptions.some((o) => /Rec\.709 \(sRGB\)/.test(o)), `grade options: ${gradeOptions}`);
+    assert.doesNotMatch(`${header} ${html} ${gradeOptions.join(' ')}`, /ACEScg/);
+});
+
+test('H11: an ACEScg source still says ACEScg', { skip: skip || ok(R.h11_acescg) }, () => {
+    assert.match(R.h11_acescg.header, /ACEScg/);
+});
+
+test('M16: File Info names the frame, its resolution and its real format', { skip: skip || ok(R.h11) }, () => {
+    const kv = R.h11.inspector;
+    assert.doesNotMatch(kv['File Name'], /\.png$/, `file name: ${kv['File Name']}`);
+    assert.equal(kv.Resolution, '64 x 48');
+    assert.match(kv.Format, /RHDR/, `format: ${kv.Format}`);
+});
 
 // ── H17 ─────────────────────────────────────────────────────────────────────
 
