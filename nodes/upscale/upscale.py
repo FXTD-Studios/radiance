@@ -1254,7 +1254,9 @@ def _build_upscale_fn(
     if upscale_model is not None:
         def _fn_ext(tile: torch.Tensor) -> torch.Tensor:
             import comfy.utils  # type: ignore
-            t_bchw = tile.permute(0, 3, 1, 2).to(device)
+            # The model is an RGB network: alpha is resized, not inferred, as
+            # on Tier 2. Until 4.0 an RGBA tile reached it with four channels.
+            t_bchw = tile[..., :3].permute(0, 3, 1, 2).to(device)
             up = comfy.utils.tiled_scale(
                 t_bchw, upscale_model,
                 tile_x=tile_size, tile_y=tile_size,
@@ -1262,7 +1264,7 @@ def _build_upscale_fn(
                 upscale_amount=scale_int,
                 pbar=None,
             )
-            return up.permute(0, 2, 3, 1)
+            return _with_resized_alpha(tile, up)
         return _fn_ext, "external UPSCALE_MODEL"
 
     tier = model_tier.lower()

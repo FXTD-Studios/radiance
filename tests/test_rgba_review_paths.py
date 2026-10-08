@@ -184,3 +184,74 @@ class TestFaceRestoreAlpha:
         assert out.shape == imgs.shape
         assert torch.equal(out[..., 3], imgs[..., 3])
         assert "Faces restored    : 2" in info
+
+
+# ── Focus Peaking, Split View, Contact Sheet, Video Assembler (TEN-007) ─────
+# KNOWN_ISSUES listed these as raising on 4-channel input until 4.0.
+
+def _rgba4(b=2, h=16, w=24):
+    import torch
+    return torch.rand(b, h, w, 4, generator=torch.Generator().manual_seed(0))
+
+
+def test_focus_peaking_takes_rgba_and_keeps_its_alpha():
+    import torch
+    from radiance.nodes.monitor.realtime import RadianceFocusPeaking
+    x = _rgba4()
+    passthrough, peak = RadianceFocusPeaking().peak(x, 0.2, "Red", 0.85)
+    assert passthrough is x
+    assert peak.shape == x.shape
+    assert torch.equal(peak[..., 3], x[..., 3])
+
+
+@pytest.mark.parametrize("b_channels", [3, 4])
+@pytest.mark.parametrize("mode", ["wipe_h", "wipe_v", "side_by_side", "diff"])
+def test_split_view_compares_the_colour_of_rgba_input(mode, b_channels):
+    from radiance.nodes.monitor.realtime import RadianceSplitView
+    a = _rgba4()
+    b = _rgba4()[..., :b_channels]
+    (out,) = RadianceSplitView().compare(a, b, mode, 0.5)
+    assert out.shape == (2, 16, 24, 3)
+
+
+def test_contact_sheet_takes_rgba4():
+    from radiance.nodes.monitor.realtime import RadianceContactSheet
+    sheet, cols, rows = RadianceContactSheet().sheet(_rgba4(b=3), 32, 2)
+    assert sheet.shape[-1] == 3 and (cols, rows) == (2, 2)
+
+
+def test_video_assembler_joins_rgb_and_rgba_frames():
+    import torch
+    from radiance.nodes.video.hdr import RadianceVideoAssembler
+    node = RadianceVideoAssembler()
+    rgb = torch.rand(1, 16, 24, 3)
+    rgba = _rgba4(b=1)
+    node.assemble(rgb, "ten007", 2, reset=True)
+    video, n, complete = node.assemble(rgba, "ten007", 2)
+    assert complete and n == 2 and video.shape == (2, 16, 24, 4)
+    assert torch.equal(video[0, ..., :3], rgb[0]) and torch.all(video[0, ..., 3] == 1)
+    assert torch.equal(video[1], rgba[0])
+
+
+def test_an_external_upscale_model_sees_rgb_and_alpha_is_carried(monkeypatch):
+    # A ComfyUI UPSCALE_MODEL is an RGB network. Every channel was passed to
+    # comfy.utils.tiled_scale, so an RGBA plate reached the model with 4.
+    import torch
+    import torch.nn.functional as F
+    import comfy.utils
+    from radiance.nodes.upscale import upscale as up
+
+    seen = []
+
+    def fake_tiled_scale(x, model, tile_x, tile_y, overlap, upscale_amount, pbar=None):
+        seen.append(x.shape[1])
+        return F.interpolate(x, scale_factor=upscale_amount, mode="nearest")
+
+    monkeypatch.setattr(comfy.utils, "tiled_scale", fake_tiled_scale, raising=False)
+    fn, _ = up._build_upscale_fn("auto", 2, torch.device("cpu"), upscale_model=object())
+    tile = _rgba4(b=1, h=8, w=12)
+    out = fn(tile)
+    assert seen == [3]
+    assert out.shape == (1, 16, 24, 4)
+    assert torch.equal(out[..., :3], F.interpolate(tile[..., :3].permute(0, 3, 1, 2), scale_factor=2,
+                                                   mode="nearest").permute(0, 2, 3, 1))
