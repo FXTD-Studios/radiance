@@ -177,8 +177,9 @@ def test_bracketing_multiplies_the_write_volume_by_one_file_not_four(temp_out):
     files = _listdir(temp_out)
     main = [f for f in files if "bracket" not in f]
     brackets = [f for f in files if "bracket" in f]
-    # 5 frames x 4 artefacts for the main pass, 5 x 2 PNGs for the brackets.
-    assert len(main) == 20, main
+    # 5 frames x 3 artefacts for the main pass (PNG, .rhdr, .exr; the .rpick
+    # nothing read is gone), 5 x 2 PNGs for the brackets.
+    assert len(main) == 15, main
     assert len(brackets) == 10, brackets
 
 

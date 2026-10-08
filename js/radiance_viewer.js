@@ -7200,6 +7200,69 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.activeTab === 'scopes') this.renderScopesTab(this.tabContentContainer);
     }
 
+    /**
+     * The workflow's copy of a result: the file token and, for each kind of
+     * frame (main, brackets, compare, depth), one entry as a template and a
+     * count. Every name the node writes is <prefix>_<token>_<index>..., so
+     * the entries are rebuilt from those. Per-frame statistics are left out
+     * (the viewer measures each frame as it loads). Returns null when the
+     * result does not rebuild exactly, and the caller keeps it whole.
+     */
+    static _compactResult(message) {
+        const token = message?.file_token?.[0];
+        const images = message?.radiance_images;
+        if (!token || !Array.isArray(images) || !images.length) return null;
+        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_compare ? 'compare'
+            : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
+        const groups = new Map();
+        for (const e of images) {
+            if (!groups.has(kindOf(e))) groups.set(kindOf(e), []);
+            groups.get(kindOf(e)).push(e);
+        }
+        const mark = `_${token}_`;
+        const saved = { v: 1, token, groups: [], message: {} };
+        for (const [kind, list] of groups) {
+            const first = list[0];
+            const index = Number.isInteger(first.frame) ? first.frame : 0;
+            const template = {};
+            for (const [k, v] of Object.entries(first)) {
+                if (PER_FRAME.includes(k)) continue;
+                template[k] = typeof v === 'string' ? v.split(`${mark}${index}`).join(`${mark}{i}`) : v;
+            }
+            saved.groups.push({ kind, count: list.length, template });
+        }
+        for (const [k, v] of Object.entries(message)) {
+            if (k === 'radiance_images' || k === 'warnings') continue;
+            saved.message[k] = k === 'flicker_data' && Array.isArray(v) ? v.map((x) => Math.round(x * 1000) / 1000) : v;
+        }
+        // Only if it rebuilds every entry exactly.
+        const rebuilt = RadianceViewer._expandResult(saved)?.radiance_images || [];
+        const strip = (e) => JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !PER_FRAME.includes(k))));
+        const original = [...groups.values()].flat();
+        if (rebuilt.length !== original.length) return null;
+        for (let i = 0; i < original.length; i++) if (strip(rebuilt[i]) !== strip(original[i])) return null;
+        return saved;
+    }
+
+    /** The result a _compactResult() copy stands for, or null. */
+    static _expandResult(saved) {
+        if (!saved || saved.v !== 1 || !saved.token || !Array.isArray(saved.groups)) return null;
+        const mark = `_${saved.token}_`;
+        const images = [];
+        for (const { count, template } of saved.groups) {
+            for (let i = 0; i < count; i++) {
+                const entry = {};
+                for (const [k, v] of Object.entries(template)) {
+                    entry[k] = typeof v === 'string' ? v.split(`${mark}{i}`).join(`${mark}${i}`) : v;
+                }
+                if ('frame' in template) entry.frame = i;
+                images.push(entry);
+            }
+        }
+        return { ...saved.message, radiance_images: images };
+    }
+
     /** Record why a frame has no float data, for the status-bar badge. */
     _noteHDRFallback(idx, reason) {
         if (!this._hdrFallbackReasons) this._hdrFallbackReasons = [];
@@ -10498,6 +10561,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.node.properties ||= {};
         this.node.properties.radiance_viewer_video = fileOrUrl;
         delete this.node.properties.radiance_viewer_result;
+        delete this.node.properties.radiance_viewer_saved;
         this._sequenceAudio?.pause();
         // The video replaces any sequence: its frames must not stay in the
         // paging window or in the dock's frame count.
@@ -22382,9 +22446,13 @@ app.registerExtension({
             const saved = info?.properties?.radiance_viewer_mode;
             this.radianceViewer?.setUIMode?.(saved || 'advanced');
             const video = info?.properties?.radiance_viewer_video;
+            const savedResult = RadianceViewer._expandResult(info?.properties?.radiance_viewer_saved);
             if (typeof video === 'string' && video.startsWith(api.apiURL('/view?'))) {
                 this.radianceViewer?.loadVideo(video);
+            } else if (savedResult?.radiance_images?.length) {
+                this.onExecuted(savedResult);
             } else if (info?.properties?.radiance_viewer_result?.radiance_images?.length) {
+                // A workflow saved before the compact form: the whole list.
                 this.onExecuted(info.properties.radiance_viewer_result);
             }
             return result;
@@ -22434,7 +22502,23 @@ app.registerExtension({
             if (!viewer) return;
             viewer.unloadVideo();
             this.properties ||= {};
-            this.properties.radiance_viewer_result = message;
+            // What the workflow keeps to show this again after a reload: the
+            // run's file token and frame counts, not the whole result list
+            // (about 1.4 KB a frame, so 6 MB for a 5,000-frame shot, copied into
+            // every saved PNG, every prompt and the clipboard). A result that
+            // cannot be rebuilt from its token is kept whole, as before.
+            const compact = RadianceViewer._compactResult(message);
+            if (compact) {
+                this.properties.radiance_viewer_saved = compact;
+                delete this.properties.radiance_viewer_result;
+            } else {
+                this.properties.radiance_viewer_result = message;
+                delete this.properties.radiance_viewer_saved;
+            }
+            if (message.warnings?.length) {
+                for (const w of message.warnings) viewer._termLog?.('warn', `[Viewer] ${w}`);
+                viewer._showToast?.(message.warnings.join(' '), 'warn');
+            }
             if (viewer._sequenceAudio) {
                 viewer._sequenceAudio.pause();
                 viewer._sequenceAudio.removeAttribute('src');
