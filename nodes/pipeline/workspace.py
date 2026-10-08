@@ -1877,6 +1877,22 @@ async def asset_thumb(request):
     return web.json_response({"error": "not previewable"}, status=415)
 
 
+def _claim_upload_path(dest_dir: Path, name: str):
+    """Create a new, empty file for ``name`` in dest_dir and return (path, handle).
+
+    Never replaces a file: a taken name becomes stem_1.ext, stem_2.ext, ...
+    Exclusive creation ("xb") also holds against a concurrent upload.
+    """
+    stem, suffix = Path(name).stem, Path(name).suffix
+    for n in range(10000):
+        candidate = dest_dir / (name if n == 0 else f"{stem}_{n}{suffix}")
+        try:
+            return candidate, open(candidate, "xb")
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"No free name for {name} in {dest_dir}")
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1887,20 +1903,33 @@ async def upload_asset(request):
         dest_dir.mkdir(parents=True, exist_ok=True)
         reader = await request.multipart()
         saved = []
+        renamed = {}
         async for part in reader:
             if part.filename:
                 safe_name = os.path.basename(part.filename)
                 if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
                     continue
-                dest = dest_dir / safe_name
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = await part.read_chunk()
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-                saved.append(safe_name)
-        return web.json_response({"success": True, "saved": saved})
+                # Opening with "wb" replaced an existing file of the same name,
+                # so a workflow that referenced it silently read the new one.
+                dest, fh = _claim_upload_path(dest_dir, safe_name)
+                try:
+                    with fh:
+                        while True:
+                            chunk = await part.read_chunk()
+                            if not chunk:
+                                break
+                            fh.write(chunk)
+                except BaseException:
+                    # An aborted upload must not leave a truncated file behind.
+                    dest.unlink(missing_ok=True)
+                    raise
+                saved.append(dest.name)
+                if dest.name != safe_name:
+                    renamed[safe_name] = dest.name
+        result = {"success": True, "saved": saved}
+        if renamed:
+            result["renamed"] = renamed
+        return web.json_response(result)
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")
         return web.json_response({"error": str(e)}, status=500)
