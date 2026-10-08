@@ -1918,28 +1918,32 @@ async def upload_asset(request):
         reader = await request.multipart()
         saved = []
         renamed = {}
-        async for part in reader:
-            if part.filename:
-                safe_name = os.path.basename(part.filename)
-                if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
-                    continue
-                # Opening with "wb" replaced an existing file of the same name,
-                # so a workflow that referenced it silently read the new one.
-                dest, fh = _claim_upload_path(dest_dir, safe_name)
-                try:
+        claimed: list[Path] = []
+        try:
+            async for part in reader:
+                if part.filename:
+                    safe_name = os.path.basename(part.filename)
+                    if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
+                        continue
+                    # Opening with "wb" replaced an existing file of the same
+                    # name, so a workflow that referenced it read the new one.
+                    dest, fh = _claim_upload_path(dest_dir, safe_name)
+                    claimed.append(dest)
                     with fh:
                         while True:
                             chunk = await part.read_chunk()
                             if not chunk:
                                 break
                             fh.write(chunk)
-                except BaseException:
-                    # An aborted upload must not leave a truncated file behind.
-                    dest.unlink(missing_ok=True)
-                    raise
-                saved.append(dest.name)
-                if dest.name != safe_name:
-                    renamed[safe_name] = dest.name
+                    saved.append(dest.name)
+                    if dest.name != safe_name:
+                        renamed[safe_name] = dest.name
+        except BaseException:
+            # All or nothing: the client gets an error and no list of what was
+            # saved, so no truncated file and no orphan from an earlier part.
+            for path in claimed:
+                path.unlink(missing_ok=True)
+            raise
         result = {"success": True, "saved": saved}
         if renamed:
             result["renamed"] = renamed
