@@ -720,6 +720,14 @@ class RadianceVideoAssembler:
         n = len(bucket)
         complete = n >= expected_total_frames or flush
 
+        if HAS_TORCH and any(f.shape[-1] != bucket[0].shape[-1] for f in bucket):
+            # RGB and RGBA frames in one buffer: opaque alpha for the RGB ones.
+            # Until 4.0 the join raised on the channel mismatch (TEN-007).
+            ch = max(f.shape[-1] for f in bucket)
+            bucket[:] = [f if f.shape[-1] == ch else torch.cat(
+                [f, torch.ones(*f.shape[:-1], ch - f.shape[-1], dtype=f.dtype)], dim=-1)
+                for f in bucket]
+
         if complete and HAS_TORCH:
             video = torch.cat(bucket, dim=0)
             self._STORE[session_key] = []  # reset after flush
