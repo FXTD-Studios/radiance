@@ -6,7 +6,7 @@ All notable changes to FXTD Radiance will be documented in this file.
 
 A major release because saved graphs and studio scripts can see it: four
 hidden placeholder nodes are gone, delivered file names change, a remote DCC
-bridge needs a token, and three controls that did nothing now work. Everything
+bridge needs signed requests, and three controls that did nothing now work. Everything
 else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Upgrade notes
@@ -21,9 +21,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   same folder. Smart versioning off writes `Shot_v0001`. The reported version
   is four digits too (`v0002`).
 - **DCC bridge on a network address** (`RADIANCE_ALLOW_REMOTE_BRIDGE=1`):
-  `queue` must carry `"token"`, the shared DCC token from
+  `queue` must be signed with the shared DCC token from
   `RADIANCE_DCC_AUTH_TOKEN` or `~/.radiance/dcc_token` (the one the Nuke
-  listener already uses). Loopback, `ping` and `status` are unchanged.
+  listener already uses): `ts`, a single-use `nonce` and `sig`, as
+  `radiance.core.dcc_auth.sign_queue` builds them. The token itself is never
+  sent. Loopback, `ping` and `status` are unchanged.
+- **The DCC bridge refuses HTTP.** A connection whose first line is an HTTP
+  request is closed, so a web page can no longer queue a prompt through a
+  loopback bridge with `fetch()`.
 - **Controls that now act:** Bit Depth Degrade `restore_from_quantized`,
   Sampler CFG++ (Perpendicular), and Denoise `motion_compensation` (only with
   `temporal_blend` above 0, which is not the default). A saved graph that set
@@ -34,7 +39,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   CG config, whose colour space names differ.
 - **Downloads.** The ACES config manager's download needs download consent
   (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
-  SHA-256. Whisper model downloads ask for consent too.
+  SHA-256. Whisper model downloads ask for consent too (weights already in
+  whisper's cache, including `large` as `large-v3.pt`, need none).
 
 ### Removed
 
@@ -46,13 +52,15 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
   orthogonal to the conditional prediction, per batch item (projected
   guidance). It used to be only a cosine cfg schedule per stage, which stays.
-  A cfg function another patch set (LTX-AV `audio_cfg`) is left in place.
+  It applies on the refiner's steps too. A cfg function another patch set
+  (LTX-AV `audio_cfg`) is left in place.
 - **Bit Depth Degrade `restore_from_quantized`** dequantises: eight 3x3
   smoothing passes, each clamped to the values the pixel could have come
   from. The other outputs and the metrics then measure the restored image.
 - **Denoise `motion_compensation`** is hierarchical block matching (8x8
-  blocks, about ±30 px per frame) with an edge-repeating warp, instead of the
-  best of nine 1-pixel offsets with wrap-around.
+  blocks, ±4 at the coarsest level, about ±30 px per frame on large frames)
+  with an edge-repeating warp, instead of the best of nine 1-pixel offsets
+  with wrap-around.
 - **Relabelled, by design:** ACES Compliance `peak_nits` and the Legacy
   output transform's `creative_white_scale` say exactly what they do. Sampler
   `conditioning_clip_target`, Color Space Info `scene_referred` and
@@ -89,10 +97,12 @@ else is fixes. Read the upgrade notes before moving a production setup.
   depth sidecar wrote inf), and the VAE export's path guard works again.
 - **MoGe-2** is checked against its pinned SHA-256 after download, and each
   **Marigold** file against the Hub's hash at the pinned commit; a mismatch
-  deletes the file.
-- **OCIO:** a broken `$OCIO` falls back the same way everywhere, a config set
-  after the first use reaches the writer, and the OCIO manager accepts an
-  `ocio://` URI (used when the package folder is read-only).
+  deletes the file. A Marigold download whose check could not run (rate
+  limit, network) is checked again on the next run instead of being used.
+- **OCIO:** a broken `$OCIO` falls back the same way everywhere (the ACES
+  Config Manager's Detect included), a config set after the first use reaches
+  the writer, an edited config file is read again, and the OCIO manager
+  accepts an `ocio://` URI (used when the package folder is read-only).
 
 ### Known limits
 
