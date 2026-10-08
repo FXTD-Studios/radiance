@@ -95,8 +95,6 @@ import torch.nn.functional as F
 import json
 import math
 import logging
-import struct
-import zlib
 import os
 import uuid
 from typing import Tuple, Dict, Any, Optional
@@ -111,6 +109,7 @@ logger = logging.getLogger("radiance")
 
 # Local imports
 from .utils import tensor_srgb_to_linear, tensor_linear_to_srgb
+from radiance.core import rhdr as _rhdr
 
 # Log curve imports from canonical color package
 _HAS_LOG_CURVES = True
@@ -2680,7 +2679,6 @@ class RadianceVAE4KDecode:
         """
         try:
             h, w = img_np.shape[:2]
-            c = img_np.shape[2] if img_np.ndim == 3 else 1
 
             # V-9 FIX: Guard against uint16 header overflow
             if w > 65535 or h > 65535:
@@ -2701,26 +2699,15 @@ class RadianceVAE4KDecode:
                 filepath = os.path.join(output_dir, filename)
 
             # BUG-F FIX: Support fp32 for scenes with linear values > 65504.
-            # Header precision flag: 0 = fp16 (legacy), 1 = fp32.
-            if precision == "f32":
-                payload = img_np.astype("float32").tobytes()
-                prec_flag = 1
-            else:
-                payload = img_np.astype("float16").tobytes()
-                prec_flag = 0
+            # BUG-G FIX: the header flag says which (0 = fp16, 1 = fp32).
+            # Layout in radiance/core/rhdr.py; zlib level 6, not clamped yet.
+            fp32 = precision == "f32"
+            size = _rhdr.write(filepath, img_np, fp32=fp32, clamp_f16=False, level=6)
 
-            compressed = zlib.compress(payload, level=6)
-
-            # BUG-G FIX: Precision flag stored in the reserved header byte (was 0).
-            header = struct.pack("<4sHHHH", b"RHDR", w, h, c, prec_flag)
-
-            with open(filepath, "wb") as f:
-                f.write(header)
-                f.write(compressed)
-
-            ratio = len(compressed) / len(payload) * 100
-            size_mb = (len(header) + len(compressed)) / (1024 * 1024)
-            dtype_str = "fp32" if precision == "f32" else "fp16"
+            raw = img_np.size * (4 if fp32 else 2)
+            ratio = (size - _rhdr.HEADER.size) / raw * 100 if raw else 0
+            size_mb = size / (1024 * 1024)
+            dtype_str = "fp32" if fp32 else "fp16"
             logger.info(
                 f"[Radiance 4K] RHDR export: {filename} "
                 f"({w}×{h}, {dtype_str}, {size_mb:.1f}MB, {ratio:.0f}% ratio)"
