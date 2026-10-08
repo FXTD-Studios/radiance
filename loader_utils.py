@@ -239,7 +239,11 @@ def setup_offload_mode(offload_mode: str, info_lines: list[str]) -> torch.device
             mm = comfy.model_management
             if mm.vram_state not in (mm.VRAMState.LOW_VRAM, mm.VRAMState.NO_VRAM):
                 mm.vram_state = mm.VRAMState.LOW_VRAM
-            logger.info("Sequential CPU offload enabled (ComfyUI LOW_VRAM state)")
+            # vram_state is a process global read while sampling, after the
+            # Loader returns, so it is not put back: it stays LOW_VRAM for every
+            # later load until ComfyUI restarts (code review P2-4, open).
+            logger.info("Sequential CPU offload enabled: ComfyUI is on LOW_VRAM "
+                        "for the rest of this session, for every workflow")
             info_lines.append("Offload: sequential")
         except Exception as e:
             logger.warning(f"Could not enable sequential offload: {e}")
