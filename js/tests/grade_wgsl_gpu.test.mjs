@@ -89,6 +89,14 @@ if (!skip) {
 // let a real formula difference through; tighter is float noise.
 const TOLERANCE = 2e-6;
 
+// Contrast is a power curve, and a float32 pow() is exp2(k * log2(x)): its
+// relative error grows with the size of that exponent, about one part in 2^23
+// per unit of log2 of the result. Up to 2^16 the flat tolerance covers it; past
+// that (contrast 5 on a value far above the pivot lands near 2^39) the bound
+// grows in proportion, which is the format's precision and not a difference
+// in the formula.
+const tolerance = (cpu) => TOLERANCE * Math.max(1, ...cpu.map((v) => Math.abs(Math.log2(Math.abs(v) || 1)) / 16));
+
 test('the emitted WGSL compiles on a real device', { skip }, () => {
     assert.ok(report, 'no report came back from the harness');
     assert.ok(report.ok, report.error);
@@ -109,7 +117,7 @@ test('the emitted WGSL computes what the JS computes', { skip }, () => {
     for (const c of comparable) {
         assert.ok(c.gpu.every(Number.isFinite),
             `${JSON.stringify(c.grade)} at ${JSON.stringify(c.in)} → ${JSON.stringify(c.gpu)}`);
-        assert.ok(c.delta <= TOLERANCE,
+        assert.ok(c.delta <= tolerance(c.cpu),
             `${JSON.stringify(c.grade)} at ${JSON.stringify(c.in)}: `
             + `GPU ${JSON.stringify(c.gpu)} vs JS ${JSON.stringify(c.cpu)} (Δ ${c.delta})`);
     }

@@ -1953,9 +1953,13 @@ ${this._ocioShaderSource || '            vec4 OCIODisplay(vec4 inPixel) { return
                 // Sample only the 0..1 range from the LUT
                 vec3 c = clamp(color, 0.0, 1.0);
 
-                float r = texture(u_curveLut, vec2(c.r, 0.5)).r;
-                float g = texture(u_curveLut, vec2(c.g, 0.5)).g;
-                float b = texture(u_curveLut, vec2(c.b, 0.5)).b;
+                // Texel centres: entry i of the 256-entry table sits at
+                // (i + 0.5) / 256, so input c reads entry c * 255. Sampling at c
+                // itself was half a texel off at both ends.
+                vec3 t = (c * 255.0 + 0.5) / 256.0;
+                float r = texture(u_curveLut, vec2(t.r, 0.5)).r;
+                float g = texture(u_curveLut, vec2(t.g, 0.5)).g;
+                float b = texture(u_curveLut, vec2(t.b, 0.5)).b;
                 vec3 curved = vec3(r, g, b);
 
                 // FIX 6: Ratio-preserving HDR extrapolation for values > 1.0.
@@ -1973,6 +1977,11 @@ ${this._ocioShaderSource || '            vec4 OCIODisplay(vec4 inPixel) { return
                 // instead of three separate fetches at the same coordinate.
                 vec3 topVal = texture(u_curveLut, vec2(1.0, 0.5)).rgb;
                 curved = mix(curved, color * max(topVal, vec3(0.0)), step(vec3(1.0), color));
+                // Below 0 the clamp read entry 0 for every value, so an identity
+                // curve zeroed negative scene values. They keep their distance
+                // below the curve's black instead.
+                vec3 botVal = texture(u_curveLut, vec2(0.5 / 256.0, 0.5)).rgb;
+                curved = mix(curved, color + botVal, vec3(lessThan(color, vec3(0.0))));
 
                 return mix(color, curved, u_curveMix);
             }
@@ -1987,7 +1996,7 @@ ${this._ocioShaderSource || '            vec4 OCIODisplay(vec4 inPixel) { return
 
                 // Texture lookup based on Hue (x coordinate)
                 // R = HueVsHue, G = HueVsSat, B = HueVsLuma
-                vec3 lookup = texture(u_secondaryCurveLut, vec2(hsv.x, 0.5)).rgb;
+                vec3 lookup = texture(u_secondaryCurveLut, vec2((clamp(hsv.x, 0.0, 1.0) * 255.0 + 0.5) / 256.0, 0.5)).rgb;
 
                 // R: HueVsHue — 0.5 = no change. Range: +/-0.5 = +/-180 deg hue rotation.
                 // fract() wraps the hue into [0.0, 1.0) and correctly handles
@@ -2676,15 +2685,9 @@ const float GOLDEN_ANGLE = 2.39996323;
             // Advanced Grading Ops
             // ----------------------------------------------------------------
 
-            vec3 applyTempTint(vec3 color, float temp, float tint) {
-                vec3 shift = vec3(0.0);
-                // Temp: Warm (Orange) / Cool (Blue)
-                shift.r += temp;
-                shift.b -= temp;
-                // Tint: Magenta / Green
-                shift.g -= tint;
-                return clamp(color + shift, 0.0, 65504.0);
-            }
+            // White balance is radWhiteBalance(), in the shared grade maths below:
+            // per-channel gains that keep a neutral's luminance. It was an added
+            // offset clamped at zero, which tinted black and cut negatives.
 
             vec4 rgb2cmyk(vec3 rgb) {
                 float k = 1.0 - max(max(rgb.r, rgb.g), rgb.b);
@@ -2694,42 +2697,11 @@ const float GOLDEN_ANGLE = 2.39996323;
                 return vec4(c, m, y, k);
             }
 
-            // ── ACEScct COLOR SCIENCE TRANSFORMS ──
-            const mat3 LIN_SRGB_TO_ACESCG = mat3(
-                0.59719, 0.07600, 0.02840,
-                0.35458, 0.90834, 0.13383,
-                0.04823, 0.01566, 0.83777
-            );
-
-            const mat3 ACESCG_TO_LIN_SRGB = mat3(
-                 1.60475, -0.10208, -0.00327,
-                -0.53108,  1.10813, -0.07276,
-                -0.07367, -0.00605,  1.07602
-            );
-
-            float lin_to_ACEScct(float in_val) {
-                if (in_val <= 0.0078125) {
-                    return 10.5402377416545 * in_val + 0.0729055341958355;
-                } else {
-                    return (log2(in_val) + 9.72) / 17.52;
-                }
-            }
-
-            vec3 lin_to_ACEScct_vec3(vec3 v) {
-                return vec3(lin_to_ACEScct(v.r), lin_to_ACEScct(v.g), lin_to_ACEScct(v.b));
-            }
-
-            float ACEScct_to_lin(float in_val) {
-                if (in_val > 0.155251141552511) {
-                    return exp2(in_val * 17.52 - 9.72);
-                } else {
-                    return (in_val - 0.0729055341958355) / 10.5402377416545;
-                }
-            }
-
-            vec3 ACEScct_to_lin_vec3(vec3 v) {
-                return vec3(ACEScct_to_lin(v.r), ACEScct_to_lin(v.g), ACEScct_to_lin(v.b));
-            }
+            // ── ACEScct grade space ──
+            // radToAP1 / radLinToACEScct and their inverses come from the shared
+            // grade maths (js/radiance_grade.js). The matrices here used to be
+            // tone-mapper fit matrices, not sRGB to AP1, and not inverses of each
+            // other, so ACEScct mode changed the picture with nothing graded.
 
 ${GRADE_GLSL}
             vec3 applyGrading(vec3 color, vec3 lift, vec3 gamma, vec3 gain, vec3 offset) {
@@ -2976,18 +2948,15 @@ vec3 getDenoiseColor(vec2 uv) {
         color *= pow(2.0, clamp(u_exposure, -12.0, 12.0));
 
         // 3. White Balance
-        if (u_temperature != 0.0 || u_tint != 0.0) {
-            color = applyTempTint(color, u_temperature, u_tint);
-        }
+        color = radWhiteBalance(color, u_temperature, u_tint);
 
         // 4. Grading (Resolve Style)
         if (u_colorScience == 1) {
-            // ACEScct Pipeline
-            vec3 acescg = LIN_SRGB_TO_ACESCG * color;
-            vec3 cct = lin_to_ACEScct_vec3(acescg);
+            // ACEScct: source gamut to AP1 (skipped for an ACEScg source), log
+            // encode, grade, and the exact inverse back.
+            vec3 cct = radLinToACEScct(radToAP1(color, u_sourceGamut));
             cct = applyGrading(cct, u_lift, u_gamma, u_gain, u_offset);
-            acescg = ACEScct_to_lin_vec3(cct);
-            color = ACESCG_TO_LIN_SRGB * acescg;
+            color = radFromAP1(radACEScctToLin(cct), u_sourceGamut);
         } else {
             // Standard Linear Processing
             color = applyGrading(color, u_lift, u_gamma, u_gain, u_offset);
@@ -3020,6 +2989,10 @@ vec3 getDenoiseColor(vec2 uv) {
         // 5b. Custom Curves
         color = applyCurves(color);
 
+        // Luma Mix holds the luminance from here: after exposure, gain,
+        // contrast and curves, before the saturation and hue moves below.
+        float primaryLuma = radLuma(color);
+
         // 5c. Secondary Curves (Hue vs X)
         color = applySecondaryCurves(color);
 
@@ -3032,24 +3005,11 @@ vec3 getDenoiseColor(vec2 uv) {
             color = applyHueShift(color, u_hueShift);
         }
 
-        // v3.0: Luma Mix
-        if (u_lumaMix != 1.0) {
-            float currentLuma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-            // Restore original luma? Or mix color back to original luma?
-            // Resolve Luma Mix: 100% means Luma is coupled with RGB.
-            // 0% means Luma is independent? actually usually it controls how much Y channel is affected.
-            // Simplified: Mix between current result and (OriginalLuma + ColorDiff)
-            // Or just mix luma channel back to pre-graded luma.
-            // Let's stick to standard mix:
-            // If Luma Mix is 0, we output color but with original luma.
-            // If Luma Mix is 1, we output color as is.
-
-            // Re-calculate original luma from preGrade (linearized input)
-            // Pre-grade is 'preGrade' variable
-            float origLuma = dot(preGrade, vec3(0.2126, 0.7152, 0.0722));
-            vec3 colorWithOrigLuma = color * (origLuma / (currentLuma + 0.0001));
-            color = mix(colorWithOrigLuma, color, u_lumaMix);
-        }
+        // v3.0: Luma Mix. 0 keeps the luminance the primaries produced, so
+        // saturation and hue cannot brighten or darken; it used to restore the
+        // ungraded source luminance, which cancelled exposure, gain, contrast
+        // and curves at 0.
+        color = radLumaMix(color, primaryLuma, u_lumaMix);
 
         // ── FINAL MASK / QUALIFIER MIX ──
         float finalMatte = 1.0;
