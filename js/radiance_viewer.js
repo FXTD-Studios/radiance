@@ -23,7 +23,7 @@ import {
     formatValue as _probeFormat,
     HDR_REFERENCE_WHITE_NITS as _PROBE_REF_WHITE,
 } from "./radiance_probe.js";
-import { gradePixel as _gradePixel } from "./radiance_grade.js";
+import { gradePixel as _gradePixel, PIVOT_DEFAULT as _PIVOT_DEFAULT } from "./radiance_grade.js";
 // The bounded paging window for sequence playback. Lives in its own module so
 // the memory bound can be measured in a test rather than reasoned about.
 import {
@@ -1083,7 +1083,7 @@ class RadianceViewer {
         this.temperature = 0.0;
         this.tint = 0.0;
         this.contrast = 1.0;
-        this.pivot = 0.5;
+        this.pivot = _PIVOT_DEFAULT;   // 18% grey, as the node-side grade
         this.saturation = 1.0;
         this.shadows = 0.0;
         this.highlights = 0.0;
@@ -2120,7 +2120,7 @@ class RadianceViewer {
             temperature: 0.0,
             tint: 0.0,
             contrast: 1.0,
-            pivot: 0.5,
+            pivot: _PIVOT_DEFAULT,
             saturation: 1.0,
             lift: [0, 0, 0],
             gamma: [1, 1, 1],
@@ -5371,7 +5371,7 @@ else:
                     // Replicate the same reset logic as RESET ALL button
                     this._pushUndo();
                     this.exposure = 0.0; this.lift = [0, 0, 0]; this.gamma = [1, 1, 1]; this.gain = [1, 1, 1];
-                    this.temperature = 0.0; this.tint = 0.0; this.contrast = 1.0; this.pivot = 0.5; this.saturation = 1.0;
+                    this.temperature = 0.0; this.tint = 0.0; this.contrast = 1.0; this.pivot = _PIVOT_DEFAULT; this.saturation = 1.0;
                     this.grain = 0.0; this.denoise = 0.0;
                     this.printerR = 0; this.printerG = 0; this.printerB = 0; this.softClip = 0.0;
                     this.bloom = 0.0; this.halation = 0.0; this.diffusion = 0.0;
@@ -5384,7 +5384,7 @@ else:
                     if (this.refCurveEditor) this.refCurveEditor.resetAllChannels?.();
                     if (this.renderer) {
                         this.renderer.setExposure(0); this.renderer.setLift(0, 0, 0); this.renderer.setGamma(1, 1, 1); this.renderer.setGain(1, 1, 1);
-                        this.renderer.setTemperature(0); this.renderer.setTint(0); this.renderer.setContrast(1); this.renderer.setPivot(0.5);
+                        this.renderer.setTemperature(0); this.renderer.setTint(0); this.renderer.setContrast(1); this.renderer.setPivot(_PIVOT_DEFAULT);
                         this.renderer.setSaturation(1); this.renderer.setGrain(0); this.renderer.setGrainSize(1.0); this.renderer.setGrainColor(0.0); this.renderer.setGrainAnimate(false);
                         this.renderer.setDenoise(0); this.renderer.setBloom(0); this.renderer.setHalation(0); this.renderer.setDiffusion(0);
                         this.renderer.setLensDistortion(0, 0); this.renderer.setVignette(0, 0.5);
@@ -5414,7 +5414,7 @@ else:
                     const g = this._captureGradingState();
                     this._termLog('grade', `  Exposure   : ${(g.exposure || 0).toFixed(3)}`);
                     this._termLog('grade', `  Temp/Tint  : ${(g.temperature || 0).toFixed(3)} / ${(g.tint || 0).toFixed(3)}`);
-                    this._termLog('grade', `  Contrast   : ${(g.contrast || 1).toFixed(3)}  Pivot: ${(g.pivot || 0.5).toFixed(3)}`);
+                    this._termLog('grade', `  Contrast   : ${(g.contrast || 1).toFixed(3)}  Pivot: ${(g.pivot ?? _PIVOT_DEFAULT).toFixed(3)}`);
                     this._termLog('grade', `  Saturation : ${(g.saturation || 1).toFixed(3)}`);
                     this._termLog('grade', `  Lift       : ${(g.lift || [0, 0, 0]).map(v => v.toFixed(3)).join('  ')}`);
                     this._termLog('grade', `  Gamma      : ${(g.gamma || [1, 1, 1]).map(v => v.toFixed(3)).join('  ')}`);
@@ -7354,7 +7354,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.saturation = 1.0;
         this.temperature = 0.0;
         this.tint = 0.0;
-        this.pivot = 0.5;
+        this.pivot = _PIVOT_DEFAULT;
         this.shadows = 0.0;
         this.highlights = 0.0;
         this.midDetail = 0.0;
@@ -11120,7 +11120,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.renderer.setTemperature?.(this.temperature || 0.0);
             this.renderer.setTint?.(this.tint || 0.0);
             this.renderer.setContrast?.(finalContrast);
-            this.renderer.setPivot?.(this.pivot !== undefined ? this.pivot : 0.5);
+            this.renderer.setPivot?.(this.pivot ?? _PIVOT_DEFAULT);
             this.renderer.setHighlights?.(this.highlights || 0.0);
             this.renderer.setShadows?.(this.shadows || 0.0);
             this.renderer.setMidDetail?.(this.midDetail || 0.0);
@@ -12896,7 +12896,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const exposure = this._renderReferenceSection(parent, 'EXPOSURE');
         slider(exposure, 'Exposure', -10, 10, this.exposure || 0, 0.1, v => { this.exposure = v; this.renderer?.setExposure(v); });
         slider(exposure, 'Contrast', 0.2, 3, this.contrast || 1, 0.01, v => { this.contrast = v; this.renderer?.setContrast(v); });
-        slider(exposure, 'Pivot', 0, 1, this.pivot || 0.5, 0.01, v => { this.pivot = v; this.renderer?.setPivot(v); });
+        slider(exposure, 'Pivot', 0, 1, this.pivot ?? _PIVOT_DEFAULT, 0.01, v => { this.pivot = v; this.renderer?.setPivot(v); });
 
         const tone = this._renderReferenceSection(parent, 'TONE');
         slider(tone, 'Highlights', -1, 1, this.highlights || 0, 0.01, v => { this.highlights = v; this.renderer?.setHighlights?.(v); });
@@ -19359,7 +19359,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             temperature: this.temperature || 0.0,
             tint: this.tint || 0.0,
             contrast: this.contrast || 1.0,
-            pivot: this.pivot ?? 0.5,
+            pivot: this.pivot ?? _PIVOT_DEFAULT,
             saturation: this.saturation || 1.0,
             grain: this.grain || 0.0,
             grainSize: this.grainSize || 1.0,
