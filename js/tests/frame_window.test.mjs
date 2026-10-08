@@ -520,3 +520,8 @@ test('measureFramePayload does not decode an fp16 frame to weigh it', () => {
     assert.equal(measureFramePayload({ hdr }), 200, 'an fp16 frame is its half floats');
     assert.equal(decoded, 0, 'weighing the frame decoded it');
 });
+
+test('a paged float B is charged to its frame', () => {
+    const hdr = { fp16data: new Uint16Array(100) };
+    assert.equal(measureFramePayload({ hdr, compareHdr: { fp16data: new Uint16Array(50) } }), 200 + 100);
+});
