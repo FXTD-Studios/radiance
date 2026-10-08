@@ -4,6 +4,22 @@ import { RadianceRenderer } from "./radiance_renderer.js";
 // paths. See js/radiance_grade.js for what used to be four implementations.
 import { GLSL as GRADE_GLSL } from "./radiance_grade.js";
 
+/**
+ * The GPU frame-texture budget, for the whole page.
+ *
+ * It was per renderer, so every viewer got up to 3 GB of cached frame
+ * textures on a 16 GB machine, and three viewers playing at once asked the
+ * GPU for about 8 GB. The limits are now the page's, scaled to (an
+ * approximation of) machine size, and each live renderer gets an equal share.
+ */
+const _DEVICE_MEMORY_GB = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
+export const _SHARED_FRAME_CACHE = {
+    maxFrames: _DEVICE_MEMORY_GB >= 16 ? 24 : _DEVICE_MEMORY_GB >= 8 ? 16 : _DEVICE_MEMORY_GB >= 4 ? 8 : 4,
+    maxBytes: (_DEVICE_MEMORY_GB >= 16 ? 3.0 : _DEVICE_MEMORY_GB >= 8 ? 2.0 : _DEVICE_MEMORY_GB >= 4 ? 1.0 : 0.5)
+        * 1024 * 1024 * 1024,
+    renderers: new Set(),
+};
+
 class RadianceWebGLRenderer extends RadianceRenderer {
     constructor(canvas) {
         super(canvas);
@@ -47,18 +63,25 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this._bilateralProgram = null;
 
         this._frameCache = new Map();
-        const _devMem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 4;
-        this._frameCacheMaxSize = _devMem >= 16 ? 24 : _devMem >= 8 ? 16 : _devMem >= 4 ? 8 : 4;
         // AUDIT-FIX (2026-08): count-based eviction alone is resolution-blind.
         // 24 cached frames is 400 MB at 1080p fp16 but 6.8 GB at 8K fp16 --
-        // OOM long before the count limit is reached. Evict by BYTES as well,
-        // budget scaled to (an approximation of) machine size. Both limits
-        // apply; whichever is hit first evicts.
+        // OOM long before the count limit is reached. Evict by BYTES as well.
+        // Both limits apply; whichever is hit first evicts. The limits are the
+        // page's, shared by every renderer (see _SHARED_FRAME_CACHE).
         this._frameCacheBytes = 0;
-        this._frameCacheByteBudget =
-            (_devMem >= 16 ? 3.0 : _devMem >= 8 ? 2.0 : _devMem >= 4 ? 1.0 : 0.5) * 1024 * 1024 * 1024;
+        _SHARED_FRAME_CACHE.renderers.add(this);
 
         this.init();
+    }
+
+    /** This renderer's share of the page-wide frame texture count. */
+    get _frameCacheMaxSize() {
+        return Math.max(2, Math.floor(_SHARED_FRAME_CACHE.maxFrames / _SHARED_FRAME_CACHE.renderers.size));
+    }
+
+    /** This renderer's share of the page-wide frame texture bytes. */
+    get _frameCacheByteBudget() {
+        return Math.floor(_SHARED_FRAME_CACHE.maxBytes / Math.max(1, _SHARED_FRAME_CACHE.renderers.size));
     }
 
 
@@ -897,6 +920,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     loadCompareTexture(img) {
         const gl = this.gl;
         if (!img) return null;
+        this._clearCompareSource();             // a raw still (a pin) is used as it is
         if (this._compareTex) gl.deleteTexture(this._compareTex);
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -910,6 +934,190 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this.textures.reference = tex;
         this.wipeRefEnabled = true;
         return tex;
+    }
+
+    // ── B for compare: the same view as A, placed by pixel size ───────────
+    //
+    // B used to be the node's 8-bit preview PNG, stretched over A, while A
+    // was live float through the current view: Difference lit up on the
+    // view transform and the resampling rather than on content. B is now
+    // B's own float frame when the node sent one, drawn through this
+    // renderer's pipeline (grade and view, no overlays) at its own size,
+    // then placed on A's pixel grid: 1:1 and centred, or fitted. Without a
+    // float frame the preview PNG is placed the same way.
+
+    /**
+     * src: null, { kind: 'float', hdr: {fp16data|data, width, height,
+     * channels}, encoding }, or { kind: 'display', image, width, height }
+     * where width/height are the source's pixel size (a proxy PNG can be
+     * smaller than the frame it stands for).
+     */
+    setCompareSource(src) {
+        const gl = this.gl;
+        this._clearCompareSource();
+        if (!src || !gl) return;
+        let tex = null, w = src.width, h = src.height;
+        if (src.kind === 'float' && src.hdr) {
+            w = src.hdr.width; h = src.hdr.height;
+            tex = this._uploadFloatAside(src.hdr);
+        } else if (src.kind === 'display' && src.image) {
+            tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src.image);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            w = w || src.image.width; h = h || src.image.height;
+        }
+        if (!tex || !w || !h) return;
+        this._compareSrc = { kind: src.kind, tex, width: w, height: h, encoding: src.encoding };
+        this.wipeRefEnabled = true;
+    }
+
+    /** 'pixel' (1:1, centred, the default) or 'fit' (scaled to fit inside A). */
+    setCompareFit(mode) {
+        this.compareFit = mode === 'fit' ? 'fit' : 'pixel';
+    }
+
+    _clearCompareSource() {
+        const gl = this.gl;
+        const src = this._compareSrc;
+        if (!src) return;
+        if (gl && src.tex) gl.deleteTexture(src.tex);
+        this._compareSrc = null;
+        if (this.textures.reference === this._compareRef?.tex) this.textures.reference = null;
+    }
+
+    /** Upload a float frame to a texture of its own, leaving the picture's texture alone. */
+    _uploadFloatAside(hdr) {
+        const kept = {
+            image: this.textures.image, w: this.imageWidth, h: this.imageHeight,
+            linear: this._texIsLinear, isFloat: this._imageIsFloat,
+        };
+        this.textures.image = null;              // so the upload releases nothing
+        const ch = hdr.channels || hdr.shape?.[2] || 4;
+        let tex = null;
+        try {
+            tex = hdr.fp16data
+                ? this.loadFloat16Texture(hdr.fp16data, hdr.width, hdr.height, ch)
+                : this.loadFloat32Texture(hdr.data, hdr.width, hdr.height, ch);
+        } finally {
+            this.textures.image = kept.image;
+            this.imageWidth = kept.w;
+            this.imageHeight = kept.h;
+            this._texIsLinear = kept.linear;
+            this._imageIsFloat = kept.isFloat;
+        }
+        return tex;
+    }
+
+    /** An RGBA8 render target of w x h, reused while the size holds. */
+    _compareTarget(slot, w, h) {
+        const gl = this.gl;
+        let t = this[slot];
+        if (t && t.width === w && t.height === h) return t;
+        if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this[slot] = t = { tex, fbo, width: w, height: h };
+        return t;
+    }
+
+    /**
+     * Draw B for this frame into textures.reference, on A's pixel grid.
+     * Called from render() while a compare mode shows B.
+     */
+    _renderCompareReference() {
+        const gl = this.gl;
+        const src = this._compareSrc;
+        const A = { w: this.imageWidth, h: this.imageHeight };
+        if (!src || !A.w || !A.h) return;
+        let view = src.tex, viewIsRendered = false;
+        if (src.kind === 'float') {
+            // B through this pipeline, at B's size: same grade, same view,
+            // none of the overlays (scopeSignal), no compare of its own.
+            const target = this._compareTarget('_compareView', src.width, src.height);
+            const kept = {
+                image: this.textures.image, w: this.imageWidth, h: this.imageHeight,
+                linear: this._texIsLinear, display: this.sourceDisplayEncoded,
+                show: this.compareShow, wipe: this.wipeEnabled, ref: this.wipeRefEnabled,
+                signal: this.scopeSignal, fbo: this._exportFBO,
+            };
+            this.textures.image = src.tex;
+            this.imageWidth = src.width; this.imageHeight = src.height;
+            this._texIsLinear = true;
+            if (src.encoding) this.sourceDisplayEncoded = src.encoding === 'srgb';
+            this.compareShow = 0; this.wipeEnabled = false; this.wipeRefEnabled = false;
+            this.scopeSignal = true;
+            this._exportFBO = { fbo: target.fbo, width: target.width, height: target.height };
+            this._renderingCompare = true;
+            try {
+                this.render();
+            } finally {
+                this._renderingCompare = false;
+                this.textures.image = kept.image;
+                this.imageWidth = kept.w; this.imageHeight = kept.h;
+                this._texIsLinear = kept.linear; this.sourceDisplayEncoded = kept.display;
+                this.compareShow = kept.show; this.wipeEnabled = kept.wipe; this.wipeRefEnabled = kept.ref;
+                this.scopeSignal = kept.signal; this._exportFBO = kept.fbo;
+            }
+            view = target.tex;
+            viewIsRendered = true;
+        }
+
+        // Place it on A's grid. Coordinates are top-origin image space;
+        // render targets hold their bottom row first (see createQuad).
+        if (!this.programs.comparePlace) {
+            this.programs.comparePlace = this.createProgram(this.getBasicVertexShader(), `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord;
+                out vec4 fragColor;
+                uniform sampler2D u_src;
+                uniform vec2 u_scale;
+                uniform vec2 u_offset;
+                uniform bool u_srcRendered;
+                void main() {
+                    vec2 a = vec2(v_texcoord.x, 1.0 - v_texcoord.y);
+                    vec2 b = a * u_scale - u_offset;
+                    if (any(lessThan(b, vec2(0.0))) || any(greaterThan(b, vec2(1.0)))) {
+                        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                        return;
+                    }
+                    if (u_srcRendered) b.y = 1.0 - b.y;
+                    fragColor = vec4(texture(u_src, b).rgb, 1.0);
+                }`);
+        }
+        const program = this.programs.comparePlace;
+        if (!program) return;
+        const B = { w: src.width, h: src.height };
+        const s = this.compareFit === 'fit' ? Math.min(A.w / B.w, A.h / B.h) : 1;
+        const scale = [A.w / (B.w * s), A.h / (B.h * s)];
+        const offset = [(A.w - B.w * s) / (2 * B.w * s), (A.h - B.h * s) / (2 * B.h * s)];
+        const ref = this._compareTarget('_compareRef', A.w, A.h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, ref.fbo);
+        gl.viewport(0, 0, A.w, A.h);
+        gl.useProgram(program);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, view);
+        gl.uniform1i(this.getUniform(program, 'u_src'), 0);
+        gl.uniform2f(this.getUniform(program, 'u_scale'), scale[0], scale[1]);
+        gl.uniform2f(this.getUniform(program, 'u_offset'), offset[0], offset[1]);
+        gl.uniform1i(this.getUniform(program, 'u_srcRendered'), viewIsRendered ? 1 : 0);
+        this.drawQuad(program);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this.textures.reference = ref.tex;
+        this.wipeRefEnabled = true;
     }
 
     loadFloat16TextureCached(frameId, fp16data, width, height, channels) {
@@ -1073,6 +1281,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             return;
         }
         this.activeShelfIndex = index;
+        this._clearCompareSource();              // a pinned still replaces the compare input
         this.textures.reference = tex;
         this.wipeRefEnabled = true;
         console.log(`[Radiance] Reference shelf → slot ${index} activated`);
@@ -1157,6 +1366,18 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     }
 
     init() {
+        // Once per renderer. The constructor runs it and the viewer called it
+        // again, which compiled every shader twice (104 of 199 ms of building
+        // a viewer), leaked the first set of programs and registered the
+        // context-loss handlers twice.
+        if (this._initResult !== undefined) return this._initResult;
+        this._initResult = this._init();
+        // A renderer without a context caches nothing, so it takes no share.
+        if (!this._initResult) _SHARED_FRAME_CACHE.renderers.delete(this);
+        return this._initResult;
+    }
+
+    _init() {
         // B-7 FIX: Use Display-P3 colorSpace if detected by initDisplayP3()
         const colorSpace = this.canvas._radianceColorSpace || 'srgb';
         const ctxAttrs = {
@@ -1258,12 +1479,16 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             if (this._destroyed) return;
             e.preventDefault(); // Required to allow restoration
             console.error('[Radiance] WebGL context lost — renderer paused. Waiting for recovery...');
+            // The viewer shows that the picture is gone, rather than a black frame.
+            try { this.onContextLost?.(); } catch (err) { console.warn('[Radiance] onContextLost failed:', err); }
         }, false);
 
         this.canvas.addEventListener('webglcontextrestored', () => {
+            if (this._destroyed) return;
             console.log('[Radiance] WebGL context restored — reinitializing...');
             this._contextLost = false;
-            // Clear all caches that hold stale GL object references
+            // Clear all caches that hold stale GL object references. Every
+            // handle from the lost context is dead; none may be deleted or bound.
             this._uniformCache.clear();
             this._attribCache.clear();
             this._uniformValueCache.clear();
@@ -1272,6 +1497,17 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             this.programs = {};
             this.textures = {};
             this.framebuffers = {};
+            this.scopeFBO = null; this.scopeTex = null;
+            this.curveLutTexture = null; this.secondaryCurveLutTexture = null;
+            this._compareTex = null;
+            this._compareSrc = null; this._compareView = null; this._compareRef = null;
+            this._bilateralFBO = null;
+            this._bloomFBOs = null; this._bloomSrcW = 0; this._bloomSrcH = 0;
+            this._exportFBO = null;
+            this.referenceShelf = [];
+            const ocio = this._ocioInfo;
+            this._ocio = null;
+            this.ocioEnabled = false;
 
             // Re-acquire extensions
             if (this.isWebGL2 && this.gl.getExtension) {
@@ -1281,14 +1517,20 @@ class RadianceWebGLRenderer extends RadianceRenderer {
                 this.extColorHalfFloatLinear = this.gl.getExtension('OES_texture_half_float_linear');
                 this.extColorBufferFloat = this.gl.getExtension('EXT_color_buffer_float');
             }
+            this._ocioFloatLinear = undefined;
 
             // Recreate GPU resources
             this._nextProgId = 0;
             this.createPrograms();
             this.createQuad();
             this.createScopeBuffers();
+            // What the renderer itself was given: the 3D LUT and the OCIO view.
+            if (this._lutSource) this.loadLUT(this._lutSource.lutData, this._lutSource.size);
+            if (ocio) this.setOCIODisplay(ocio);
 
-            console.log('[Radiance] WebGL context recovery complete. Reload image to resume.');
+            console.log('[Radiance] WebGL context recovery complete.');
+            // The frame, compare and depth textures come from the viewer.
+            try { this.onContextRestored?.(); } catch (err) { console.warn('[Radiance] onContextRestored failed:', err); }
         }, false);
 
         console.log("[Radiance] Renderer initialized");
@@ -1752,6 +1994,7 @@ ${GRADE_GLSL}
             uniform bool u_wipeEnabled;
             uniform bool u_exportSceneLinear;  // 3.5.0: graded EXR = scene-linear, no view, no overlays
             uniform bool u_scopeSignal;        // 3.5.0: the displayed picture only, for the scopes
+            uniform bool u_compareSignal;      // the same, for compare B: keeps the viewer f-stop
             uniform float u_viewExposure;      // 3.5.0: viewer-only f-stops (never rendered out)
             uniform float u_viewGamma;         // 3.5.0: viewer-only display gamma
             uniform bool u_dither;             // 3.5.0: +-1/2 LSB triangular dither on the 8-bit output
@@ -3170,7 +3413,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // 3.5.0: viewer f-stop, Nuke-style: a look at the picture, not part of
         // it. Applied after the grade and after the scene values the heatmap,
         // false colour, gamut warning and graded EXR read, so none of them move.
-        bool viewerOnly = !u_scopeSignal && !u_exportSceneLinear;
+        bool viewerOnly = (!u_scopeSignal || u_compareSignal) && !u_exportSceneLinear;
         if (viewerOnly && u_viewExposure != 0.0) color *= exp2(u_viewExposure);
 
         // 6 & 7. Display transform.
@@ -4028,6 +4271,8 @@ vec3 getDenoiseColor(vec2 uv) {
     // Load 3D LUT from .cube file data (WebGL2: float32, WebGL1: fallback)
     loadLUT(lutData, size = 33) {
         const gl = this.gl;
+        // Kept so a restored context can upload it again (webglcontextrestored).
+        this._lutSource = { lutData, size };
 
         if (this.textures.lut) {
             gl.deleteTexture(this.textures.lut);
@@ -4206,6 +4451,12 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // I-10: Skip rendering when WebGL context is lost
         if (this._contextLost || !program || !this.textures.image) return;
+
+        // B for compare, drawn through this same pipeline (see setCompareSource).
+        if (this._compareSrc && !this._renderingCompare && !this.scopeSignal && !this.exportSceneLinear
+            && this.wipeRefEnabled && (this.compareShow > 0 || this.wipeEnabled)) {
+            this._renderCompareReference();
+        }
 
         // ── v4.0: Run multi-pass bloom chain before composite ────────────────
         // This renders to offscreen FBOs and does NOT touch the display framebuffer.
@@ -4402,6 +4653,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_gridMode', this.gridMode);
         this._ui1(program, 'u_exportSceneLinear', this.exportSceneLinear ? 1 : 0);
         this._ui1(program, 'u_scopeSignal', this.scopeSignal ? 1 : 0);
+        this._ui1(program, 'u_compareSignal', this._renderingCompare ? 1 : 0);
         this._uf1(program, 'u_viewExposure', this.viewExposure || 0.0);
         this._uf1(program, 'u_viewGamma', this.viewGamma || 1.0);
         this._ui1(program, 'u_dither', this.dither === false ? 0 : 1);
@@ -4586,6 +4838,8 @@ vec3 getDenoiseColor(vec2 uv) {
 
     setOCIODisplay(info) {
         const gl = this.gl;
+        // Kept so a restored context can rebuild the view (webglcontextrestored).
+        this._ocioInfo = info && info.shaderText ? info : null;
         this._releaseOCIOTextures();
 
         if (!info || !info.shaderText) {
@@ -4773,6 +5027,13 @@ vec3 getDenoiseColor(vec2 uv) {
         // v4.3: LRU frame texture cache
         this.clearFrameCache();
 
+        // Compare B and its render targets
+        this._clearCompareSource();
+        for (const slot of ['_compareView', '_compareRef']) {
+            const t = this[slot];
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); this[slot] = null; }
+        }
+
         // Main texture map (image, reference, lut3d, depth, etc.)
         for (const tex of Object.values(this.textures)) {
             if (tex) gl.deleteTexture(tex);
@@ -4803,6 +5064,11 @@ vec3 getDenoiseColor(vec2 uv) {
         // only reclaimed on GC, which browsers do lazily; ~16 add/delete cycles
         // hit Chrome's context limit and it starts killing the OLDEST context,
         // which may be the live viewer or ComfyUI's own canvas.
+        _SHARED_FRAME_CACHE.renderers.delete(this);
+        this.onContextLost = null;
+        this.onContextRestored = null;
+        this._lutSource = null;
+        this._ocioInfo = null;
         this._destroyed = true;
         try { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (e) { /* best effort */ }
 

@@ -188,6 +188,55 @@ def _viewer_fingerprint(image: Any, other: Dict[str, Any]) -> str:
     return repr(parts)
 
 
+def _viewer_graph_id(prompt: Any, extra_pnginfo: Any) -> str:
+    """What identifies the graph a node runs in: the workflow id, when ComfyUI sends one.
+
+    Node ids are only unique within one graph. The prompt id changes on every
+    run, so it cannot key anything that must find the previous run.
+    """
+    try:
+        if isinstance(extra_pnginfo, dict):
+            workflow = extra_pnginfo.get("workflow") or {}
+            if isinstance(workflow, dict) and workflow.get("id"):
+                return str(workflow["id"])
+    except Exception:  # noqa: BLE001 - an odd payload must not stop the viewer
+        pass
+    return ""
+
+
+#: Above this many frames the viewer warns before writing (it still writes).
+_VIEWER_FRAME_WARN = 2000
+
+
+def _viewer_space_warning(output_dir: str, image: Any, use_32bit: bool, batch_size: int) -> Optional[str]:
+    """A warning when this run may not fit on the temp disk, or is very long.
+
+    Per frame the viewer writes an uncompressed float sidecar, a float32 EXR
+    and an 8-bit PNG of up to 2048 px. The estimate is made before writing and
+    only warns: a full disk then shows up as frames that fail, with this
+    message to say why.
+    """
+    import shutil
+    try:
+        h, w = int(image.shape[-3]), int(image.shape[-2])
+    except Exception:  # noqa: BLE001
+        return None
+    per_frame = h * w * 4 * (4 if use_32bit else 2) + h * w * 3 * 4 // 2 + min(h * w, 2048 * 2048) * 3
+    needed = per_frame * batch_size
+    parts = []
+    if batch_size > _VIEWER_FRAME_WARN:
+        parts.append(f"{batch_size} frames is a long shot for the viewer")
+    try:
+        free = shutil.disk_usage(output_dir).free
+        if needed > 0.9 * free:
+            parts.append(
+                f"about {needed / 1e9:.1f} GB of preview files is needed and the temp disk has "
+                f"{free / 1e9:.1f} GB free; frames that do not fit will not show")
+    except OSError:
+        pass
+    return "; ".join(parts) or None
+
+
 # ── Viewer temp-file bookkeeping ───────────────────────────────────────────────
 # Every execution wrote a fresh uuid4-named set of .rhdr/.exr/.png/.rpick files
 # and nothing ever removed them: there was no unlink/rmtree for viewer temp files
@@ -198,20 +247,32 @@ _VIEWER_TEMP_FILES: Dict[str, List[str]] = {}
 _VIEWER_TEMP_LOCK = threading.Lock()
 
 
-def _viewer_track_temp(instance_key: str, paths: List[str]) -> None:
-    """Record the files written for this instance's current generation."""
+def _viewer_track_temp(instance_key: str, paths: List[str]) -> List[str]:
+    """Record the files written for this instance's current generation.
+
+    Returns the previous generation's files that the new one does not reuse,
+    for the caller to delete once the new frames are on disk.
+    """
     if not instance_key:
-        return
+        return []
     with _VIEWER_TEMP_LOCK:
+        previous = _VIEWER_TEMP_FILES.get(instance_key, [])
         _VIEWER_TEMP_FILES[instance_key] = list(paths)
+    keep = set(paths)
+    return [p for p in previous if p not in keep]
 
 
 def _viewer_purge_temp(instance_key: str) -> int:
-    """Delete the previous generation's files for this instance. Returns the count."""
+    """Delete the files recorded for this instance. Returns the count."""
     if not instance_key:
         return 0
     with _VIEWER_TEMP_LOCK:
         stale = _VIEWER_TEMP_FILES.pop(instance_key, [])
+    return _viewer_unlink(stale, instance_key)
+
+
+def _viewer_unlink(stale: List[str], instance_key: str = "") -> int:
+    """Delete these viewer temp files, quietly skipping any already gone."""
     removed = 0
     for path in stale:
         try:
@@ -227,6 +288,7 @@ def _viewer_purge_temp(instance_key: str) -> int:
     if removed:
         logger.debug("[Radiance] Purged %d stale viewer temp file(s) for %s", removed, instance_key)
     return removed
+
 
 
 class RadianceViewer:
@@ -472,10 +534,23 @@ class RadianceViewer:
 
             images_list: List[Dict[str, Any]] = []
 
-            # Purge the previous generation's temp files for this viewer before
-            # writing a new one, so repeated re-queues don't accumulate.
-            _purge_key = str(unique_id).strip() if unique_id and str(unique_id).strip() else str(id(self))
-            _viewer_purge_temp(_purge_key)
+            # The previous generation's temp files are deleted after this one
+            # is written (see _viewer_track_temp below), keyed by graph AND
+            # node. They were purged first and by node id alone: a second
+            # workflow with a viewer at the same id wiped this one's frames,
+            # and a re-run deleted frames the open viewer had not loaded yet.
+            _node_key = str(unique_id).strip() if unique_id and str(unique_id).strip() else str(id(self))
+            _graph_id = _viewer_graph_id(prompt, extra_pnginfo)
+            _purge_key = f"{_graph_id}:{_node_key}" if _graph_id else _node_key
+
+            # One token names every file of this run, so the viewer can save
+            # just the token and count in the workflow and rebuild the names.
+            file_token = uuid.uuid4().hex[:12]
+            warnings: List[str] = []
+            space = _viewer_space_warning(output_dir, image, use_32bit, batch_size)
+            if space:
+                logger.warning("[Viewer] %s", space)
+                warnings.append(space)
 
             view_space = (source_encoding, source_colorspace)
 
@@ -491,6 +566,7 @@ class RadianceViewer:
                         save_hdr_sidecar=save_hdr_sidecar,
                         prefix="Radiance_viewer",
                         view_space=view_space,
+                        file_token=file_token,
                     )
                     if frame_result is not None:
                         frame_result["frame"] = frame_idx
@@ -517,7 +593,8 @@ class RadianceViewer:
                         low_res = self._process_frame(
                             image[frame_idx:frame_idx + 1] * 0.25, 0, output_dir,
                             use_16bit=use_16bit, use_32bit=use_32bit, save_hdr_sidecar=save_hdr_sidecar,
-                            prefix="Radiance_bracket_low", preview_only=True, view_space=view_space
+                            prefix="Radiance_bracket_low", preview_only=True, view_space=view_space,
+                            file_token=file_token, name_index=frame_idx,
                         )
                         if low_res:
                             # v4.5 FIX: type must be "temp" — ComfyUI /api/view only
@@ -536,7 +613,8 @@ class RadianceViewer:
                         high_res = self._process_frame(
                             image[frame_idx:frame_idx + 1] * 4.0, 0, output_dir,
                             use_16bit=use_16bit, use_32bit=use_32bit, save_hdr_sidecar=save_hdr_sidecar,
-                            prefix="Radiance_bracket_high", preview_only=True, view_space=view_space
+                            prefix="Radiance_bracket_high", preview_only=True, view_space=view_space,
+                            file_token=file_token, name_index=frame_idx,
                         )
                         if high_res:
                             high_res["type"] = "temp"
@@ -561,6 +639,7 @@ class RadianceViewer:
                     use_32bit=use_32bit,          # BUG-FIX (BUG-2): was omitted — compare always saved fp16
                     save_hdr_sidecar=save_hdr_sidecar,
                     view_space=resolve_viewer_input_space(input_space, compare_image),
+                    file_token=file_token,
                 )
                 images_list.extend(compare_list)
 
@@ -572,6 +651,7 @@ class RadianceViewer:
                     use_16bit=use_16bit,
                     use_32bit=use_32bit,          # BUG-FIX (BUG-3): was omitted — depth sidecar always fp16
                     save_hdr_sidecar=save_hdr_sidecar,
+                    file_token=file_token,
                 )
                 images_list.extend(zdepth_list)
 
@@ -607,8 +687,7 @@ class RadianceViewer:
             for _entry in images_list:
                 if not isinstance(_entry, dict):
                     continue
-                for _k in ("filename", "hdr_filename", "hdr_sidecar",
-                           "pick_filename", "exr_filename"):
+                for _k in ("filename", "hdr_filename", "hdr_sidecar", "exr_filename"):
                     _fn = _entry.get(_k)
                     if _fn and str(_fn) not in _seen:
                         _seen.add(str(_fn))
@@ -616,7 +695,7 @@ class RadianceViewer:
             audio_filename = _save_preview_audio(source_audio, output_dir)
             if audio_filename:
                 _written.append(os.path.join(output_dir, audio_filename))
-            _viewer_track_temp(_purge_key, _written)
+            _viewer_unlink(_viewer_track_temp(_purge_key, _written), _purge_key)
 
             # ── v4.2: Delivery Cache (Update node frames) ───────────
             # Use ComfyUI's unique_id (stable graph node ID) as the cache key.
@@ -709,7 +788,10 @@ class RadianceViewer:
                 "bit_depth": [depth_label],
                 "flicker_data": flicker_data,
                 "cut_indices": cut_indices,
+                "file_token": [file_token],
             }
+            if warnings:
+                ui_payload["warnings"] = warnings
 
             return {
                 "ui": ui_payload,
@@ -762,6 +844,8 @@ class RadianceViewer:
         prefix: str = "Radiance_viewer",
         preview_only: bool = False,
         view_space: Tuple[str, str] = ("srgb", SRGB_COLORSPACE),
+        file_token: Optional[str] = None,
+        name_index: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Process a single frame: grade → LUT → save at selected bit depth.
@@ -799,7 +883,12 @@ class RadianceViewer:
         # precision, comparable to EXR DWAA at quality ~85.
         # Compression: ~5-15% of raw → similar file sizes to DWAA EXR.
 
-        unique_id = uuid.uuid4().hex[:12]
+        # One token per run (view() passes it), so every name is
+        # {prefix}_{token}_{index}: the viewer saves the token and the count in
+        # the workflow instead of every entry. name_index is the timeline frame
+        # for passes that process a one-frame slice (the brackets).
+        unique_id = file_token or uuid.uuid4().hex[:12]
+        frame_idx_name = frame_idx if name_index is None else name_index
 
         # ── Data Prep ──
         h_frame, w_frame = frame.shape[:2]
@@ -829,7 +918,7 @@ class RadianceViewer:
         # +inf. Both stored (zlib level 0): level 1 cost 264 ms here and ~50 ms
         # of the browser's main thread per 1080p frame. The layout lives in
         # radiance/core/rhdr.py.
-        rhdr_filename = f"{prefix}_{unique_id}_{frame_idx}.rhdr"
+        rhdr_filename = f"{prefix}_{unique_id}_{frame_idx_name}.rhdr"
         rhdr_saved = False
 
         if preview_only:
@@ -853,7 +942,7 @@ class RadianceViewer:
 
         # ── 2. SECONDARY: Save .exr (OpenEXR 32-bit float) for external use ──
         # Requested by users for "Save Image" to export true HDR.
-        exr_filename = f"{prefix}_{unique_id}_{frame_idx}.exr"
+        exr_filename = f"{prefix}_{unique_id}_{frame_idx_name}.exr"
         exr_saved = False
         
         if write_exr_robust and not preview_only:
@@ -935,7 +1024,7 @@ class RadianceViewer:
         else:
             preview_thumb = preview_image
 
-        png_filename = f"{prefix}_{unique_id}_{frame_idx}_thumb.png"
+        png_filename = f"{prefix}_{unique_id}_{frame_idx_name}_thumb.png"
         try:
             png_filepath = safe_join(output_dir, png_filename)
             pil_img = self._frame_to_pil_8bit(preview_thumb)
@@ -1004,18 +1093,8 @@ class RadianceViewer:
             # loadFloat16Texture — full pipeline precision end-to-end
             result["hdr_fp32"] = use_32bit
 
-        # v3.0 Feature #5: fp32 picking buffer — true scene-linear HDR color picker
-        pick_filename = f"{prefix}_{unique_id}_{frame_idx}.rpick"
-        if preview_only:
-            return result
-        try:
-            pick_filepath = safe_join(output_dir, pick_filename)
-            if _save_pick_buffer(frame, pick_filepath):
-                result["pick_filename"] = pick_filename
-                logger.debug(f"[Radiance] Pick buffer saved: {pick_filename}")
-        except ValueError as e:
-            logger.debug(f"[Radiance] Pick buffer path error: {e}")
-
+        # No .rpick picking buffer: nothing in the viewer ever fetched it (the
+        # probe reads the .rhdr), and it was one more full float file per frame.
         return result
 
 
@@ -1053,6 +1132,7 @@ class RadianceViewer:
         use_32bit: bool = False,          # BUG-FIX (BUG-2): was missing — compare always saved fp16
         save_hdr_sidecar: bool = False,
         view_space: Tuple[str, str] = ("srgb", SRGB_COLORSPACE),
+        file_token: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Process comparison image. Returns list of image metadata."""
         result: List[Dict[str, Any]] = []
@@ -1076,6 +1156,7 @@ class RadianceViewer:
                     save_hdr_sidecar=save_hdr_sidecar,
                     prefix="Radiance_compare",
                     view_space=view_space,
+                    file_token=file_token,
                 )
                 if frame_result is not None:
                     frame_result["is_compare"] = True
@@ -1101,6 +1182,7 @@ class RadianceViewer:
         use_16bit: bool = True,
         use_32bit: bool = False,          # BUG-FIX (BUG-3): was missing — depth sidecar always wrote fp16
         save_hdr_sidecar: bool = False,
+        file_token: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Process Z-depth map. 16-bit = 65536 depth levels via cv2."""
         result: List[Dict[str, Any]] = []
@@ -1149,7 +1231,7 @@ class RadianceViewer:
                 else:
                     depth_normalized = np.zeros_like(depth_np)
 
-                unique_id = uuid.uuid4().hex[:12]
+                unique_id = file_token or uuid.uuid4().hex[:12]
                 # ALBABIT-FIX: ASCII names only. On Windows cv2.imwrite wrote "◎" as
                 # "â—Ž", so the Viewer never found its depth map ("No Depth Map").
                 depth_filename = f"Radiance_zdepth_{unique_id}_{depth_idx}.png"
