@@ -1347,6 +1347,28 @@ def apply_cfg_plus_plus(cfg: float, sigma: torch.Tensor, sigma_max: float) -> fl
 
     return effective_cfg
 
+
+def perpendicular_cfg_function(args):
+    """ComfyUI sampler_cfg_function for CFG++ (Perpendicular), since 4.0.
+
+    Plain CFG is ``cond + (s - 1) * (cond - uncond)`` on the denoised
+    predictions. This keeps only the part of ``cond - uncond`` orthogonal to
+    ``cond``, per batch item (projected guidance, as in APG), so a high cfg
+    adds less saturation and contrast. ``cond_scale`` is the stage cfg after
+    ``apply_cfg_plus_plus``. Returns noise space (x minus the guided
+    prediction), as comfy/samplers.py:cfg_function expects.
+    """
+    x = args["input"]
+    cond = args["cond_denoised"]
+    uncond = args["uncond_denoised"]
+    scale = args["cond_scale"]
+    diff = cond - uncond
+    dims = tuple(range(1, cond.ndim))
+    dot = (diff * cond).sum(dim=dims, keepdim=True)
+    norm = (cond * cond).sum(dim=dims, keepdim=True).clamp_min(1e-12)
+    perpendicular = diff - (dot / norm) * cond
+    return x - (cond + (scale - 1.0) * perpendicular)
+
 def build_sigma_report(
     detected_type: str,
     steps: int,
