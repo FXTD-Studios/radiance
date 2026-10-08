@@ -873,6 +873,10 @@ class RadianceViewer {
         // the status-bar badge so it cannot claim FP32 over a tonemapped PNG.
         this._hdrFallbackReasons = [];
         this.frameCompareImages = [];
+        this.frameCompareHDR = [];          // B's float frames, when the node sent them
+        this.compareFit = (() => {
+            try { return localStorage.getItem('radiance_compare_fit') === 'fit' ? 'fit' : 'pixel'; } catch { return 'pixel'; }
+        })();
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
@@ -2066,8 +2070,7 @@ class RadianceViewer {
         } else if (this.image) {
             r.loadImageTexture(this.image);
         }
-        if (this.compareHDR) this._uploadCompareHDR?.(this.compareHDR);
-        else if (this.compareImage) r.loadCompareTexture?.(this.compareImage);
+        if (this.compareSource === 'input') this._updateCompareForFrame(this.currentFrame || 0, true);
         if (this.zdepthImage) r.loadDepthTexture(this.zdepthImage);
         // The curve tables live in textures too; the editors hold the curves.
         this.refCurveEditor?.notifyChange?.();
@@ -2540,8 +2543,12 @@ class RadianceViewer {
             else { this.pinReference(); if (this.compareMode === 'none') this.setCompareMode('wipe'); else this.render(); }
             this._syncCompareUI();
         }, 'rsb-pin');
+        // How B sits on A when their sizes differ: pixel for pixel and
+        // centred, or scaled to fit. It used to be stretched over A.
+        this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
+            () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
         const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbPin, fit);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
         return bar;
     }
 
@@ -2565,6 +2572,15 @@ class RadianceViewer {
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
             if (cm === 'blink') this._sbBLabel.textContent += this._blinkB ? '  [B]' : '  [A]';
+        }
+        if (this._sbBFit) {
+            const fitted = this.compareFit === 'fit';
+            this._sbBFit.textContent = fitted ? 'B fit' : 'B 1:1';
+            this._sbBFit.title = fitted
+                ? 'B scaled to fit inside A. Click for B pixel for pixel, centred'
+                : 'B pixel for pixel, centred on A. Click to fit B inside A instead';
+            this._sbBFit.setAttribute('aria-pressed', String(fitted));
+            this._sbBFit.disabled = this.compareSource !== 'input';
         }
         if (this._sbPin) {
             this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
@@ -6833,6 +6849,7 @@ else:
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
+                if (payload.compareHdr) this.frameCompareHDR[idx] = payload.compareHdr;
                 if (payload.compare) {
                     this.frameCompareImages[idx] = payload.compare;
                     if (idx === this.currentFrame) {
@@ -6860,7 +6877,10 @@ else:
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
-                if (this._compareEntries.length) this.frameCompareImages[idx] = null;
+                if (this._compareEntries.length) {
+                    this.frameCompareImages[idx] = null;
+                    if (this.frameCompareHDR) this.frameCompareHDR[idx] = null;
+                }
                 this._queueCacheMarks();
             },
             onError: (err, idx) => {
@@ -6983,6 +7003,24 @@ self.onmessage = async ({ data: { id, url } }) => {
         return this._parseHDRBuffer(await response.arrayBuffer());
     }
 
+    /** B's float sidecar for compare, or null (no sidecar, or it failed). */
+    _loadCompareFloat(entry) {
+        if (!entry?.hdr_sidecar) return Promise.resolve(null);
+        const url = api.apiURL(`/view?filename=${encodeURIComponent(entry.hdr_sidecar)}`
+            + `&subfolder=${encodeURIComponent(entry.subfolder || '')}&type=${entry.type || 'temp'}`);
+        return this._fetchSidecar(url).then((npy) => {
+            if (!npy) return null;
+            npy.height = npy.shape[0];
+            npy.width = npy.shape[1];
+            npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+            npy.source_encoding = entry.source_encoding;
+            return npy;
+        }).catch((e) => {
+            console.warn('[Radiance] Compare float sidecar failed, B uses the preview:', e?.message || e);
+            return null;
+        });
+    }
+
     _loadSequenceFrame(imgData, idx, generation) {
         if (!imgData) return Promise.resolve(null);
 
@@ -7094,7 +7132,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(brackets && brackets.high),
             loadBracket(depthEntry),
             loadBracket(compareEntry),
-        ]).then(([img, hdr, low, high, depth, compare]) => {
+            this._loadCompareFloat(compareEntry),
+        ]).then(([img, hdr, low, high, depth, compare, compareHdr]) => {
             if (this.generationID !== generation) return null;
             if (!img && !hdr) {
                 // Neither the picture nor its proxy: say why, rather than
@@ -7113,6 +7152,11 @@ self.onmessage = async ({ data: { id, url } }) => {
             payload.bracketHigh = high;
             payload.zdepth = depth;
             payload.compare = compare;
+            if (compare && compareEntry) {
+                compare.source_width = compareEntry.source_width;
+                compare.source_height = compareEntry.source_height;
+            }
+            payload.compareHdr = compareHdr;
             return payload;
         });
     }
@@ -8533,7 +8577,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** True when a B picture is available to compare against. */
     _hasCompareB() {
-        if (this.renderer?.textures) return !!this.renderer.textures.reference;
+        if (this.renderer?.textures) return !!(this.renderer.textures.reference || this.renderer._compareSrc);
         return !!this.compareImage;
     }
 
@@ -10317,17 +10361,51 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** 3.5.0: the compare sequence follows the playhead (it stayed on frame 0). */
     _updateCompareForFrame(idx, force = false) {
-        const list = this.frameCompareImages;
-        if (!list || !list.length) return;
+        const list = this.frameCompareImages || [];
+        const floats = this.frameCompareHDR || [];
+        const n = Math.max(list.length, floats.length);
+        if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const img = list[Math.min(idx, list.length - 1)];
-        if (!img || (img === this.compareImage && !force)) return;
+        const i = Math.min(idx, n - 1);
+        const img = list[i] || null, hdr = floats[i] || null;
+        if (!img && !hdr) return;
+        if (img === this.compareImage && hdr === this.compareHDR && !force) return;
         this.compareSource = 'input';
-        this.compareImage = img;
+        if (img) this.compareImage = img;
+        this.compareHDR = hdr;
         this.diffCanvas = null;
-        if (this.renderer?.loadCompareTexture) {
-            try { this.renderer.loadCompareTexture(img); } catch (e) { /* backend without compare */ }
+        try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /**
+     * B to the renderer: its float frame when the node sent one, drawn
+     * through the same view as A, else the preview PNG; placed by pixel size
+     * either way (see RadianceWebGLRenderer.setCompareSource).
+     */
+    _pushCompareToRenderer(img, hdr) {
+        const r = this.renderer;
+        if (!r) return;
+        if (!r.setCompareSource) {            // WebGPU: the preview, as before
+            if (img) r.loadCompareTexture?.(img);
+            return;
         }
+        r.setCompareFit?.(this.compareFit);
+        if (hdr) {
+            r.setCompareSource({ kind: 'float', hdr, encoding: hdr.source_encoding });
+        } else if (img) {
+            r.setCompareSource({ kind: 'display', image: img,
+                width: img.source_width || img.naturalWidth || img.width,
+                height: img.source_height || img.naturalHeight || img.height });
+        }
+    }
+
+    /** B at 1:1 and centred ('pixel', the default) or scaled to fit A ('fit'). */
+    setCompareFit(mode) {
+        this.compareFit = mode === 'fit' ? 'fit' : 'pixel';
+        try { localStorage.setItem('radiance_compare_fit', this.compareFit); } catch { /* storage is optional */ }
+        this.renderer?.setCompareFit?.(this.compareFit);
+        this._syncCompareUI?.();
+        this.render();
     }
 
     setCompareImage(img) {
@@ -10336,9 +10414,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.compareImage = img;
         this.compareSource = img ? 'input' : null;
         this.diffCanvas = null; // Clear difference cache
-        if (this.renderer && this.renderer.loadCompareTexture && img) {
+        if (this.renderer && img) {
             try {
-                this.renderer.loadCompareTexture(img);
+                this._pushCompareToRenderer(img, this.frameCompareHDR?.[0] || null);
             } catch (e) {
                 this._termLog?.('warn', `[Compare] This renderer cannot show a compare image: ${e.message}`);
             }
@@ -22168,6 +22246,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.image = null;
         this.compareImage = null;
         this.compareHDR = null;
+        this.frameCompareHDR = null;
         this.zdepthImage = null;
         this._placeholder = null;
         this._hdrZoneStats = null;
@@ -22549,6 +22628,8 @@ app.registerExtension({
             // Reset frame arrays
             viewer.frameImages = [];
             viewer.frameCompareImages = [];
+            viewer.frameCompareHDR = [];
+            viewer.compareHDR = null;
             viewer.frameZdepthImages = [];
             viewer.frameBracketImages = { low: [], high: [] };
             viewer.frameHDRData = [];
@@ -22636,6 +22717,16 @@ app.registerExtension({
             if (!pageCompare) compareImages.forEach((imgData, idx) => {
                 const cmp = new Image();
                 cmp.crossOrigin = 'anonymous';
+                cmp.source_width = imgData.source_width;
+                cmp.source_height = imgData.source_height;
+                // B's float frame, when the node wrote one: shown through
+                // the same view as A instead of the preview.
+                const float = viewer._loadCompareFloat(imgData).then((hdr) => {
+                    if (viewer.generationID !== currentGen || !hdr) return;
+                    viewer.frameCompareHDR[idx] = hdr;
+                    if (cmp.complete && viewer.frameCompareImages[idx]) viewer._updateCompareForFrame(viewer.currentFrame || 0, true);
+                });
+                void float;
                 cmp.onload = () => {
                     if (viewer.generationID !== currentGen) return;
                     viewer.frameCompareImages[idx] = cmp;

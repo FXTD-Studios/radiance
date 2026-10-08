@@ -920,6 +920,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     loadCompareTexture(img) {
         const gl = this.gl;
         if (!img) return null;
+        this._clearCompareSource();             // a raw still (a pin) is used as it is
         if (this._compareTex) gl.deleteTexture(this._compareTex);
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -933,6 +934,190 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this.textures.reference = tex;
         this.wipeRefEnabled = true;
         return tex;
+    }
+
+    // ── B for compare: the same view as A, placed by pixel size ───────────
+    //
+    // B used to be the node's 8-bit preview PNG, stretched over A, while A
+    // was live float through the current view: Difference lit up on the
+    // view transform and the resampling rather than on content. B is now
+    // B's own float frame when the node sent one, drawn through this
+    // renderer's pipeline (grade and view, no overlays) at its own size,
+    // then placed on A's pixel grid: 1:1 and centred, or fitted. Without a
+    // float frame the preview PNG is placed the same way.
+
+    /**
+     * src: null, { kind: 'float', hdr: {fp16data|data, width, height,
+     * channels}, encoding }, or { kind: 'display', image, width, height }
+     * where width/height are the source's pixel size (a proxy PNG can be
+     * smaller than the frame it stands for).
+     */
+    setCompareSource(src) {
+        const gl = this.gl;
+        this._clearCompareSource();
+        if (!src || !gl) return;
+        let tex = null, w = src.width, h = src.height;
+        if (src.kind === 'float' && src.hdr) {
+            w = src.hdr.width; h = src.hdr.height;
+            tex = this._uploadFloatAside(src.hdr);
+        } else if (src.kind === 'display' && src.image) {
+            tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src.image);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            w = w || src.image.width; h = h || src.image.height;
+        }
+        if (!tex || !w || !h) return;
+        this._compareSrc = { kind: src.kind, tex, width: w, height: h, encoding: src.encoding };
+        this.wipeRefEnabled = true;
+    }
+
+    /** 'pixel' (1:1, centred, the default) or 'fit' (scaled to fit inside A). */
+    setCompareFit(mode) {
+        this.compareFit = mode === 'fit' ? 'fit' : 'pixel';
+    }
+
+    _clearCompareSource() {
+        const gl = this.gl;
+        const src = this._compareSrc;
+        if (!src) return;
+        if (gl && src.tex) gl.deleteTexture(src.tex);
+        this._compareSrc = null;
+        if (this.textures.reference === this._compareRef?.tex) this.textures.reference = null;
+    }
+
+    /** Upload a float frame to a texture of its own, leaving the picture's texture alone. */
+    _uploadFloatAside(hdr) {
+        const kept = {
+            image: this.textures.image, w: this.imageWidth, h: this.imageHeight,
+            linear: this._texIsLinear, isFloat: this._imageIsFloat,
+        };
+        this.textures.image = null;              // so the upload releases nothing
+        const ch = hdr.channels || hdr.shape?.[2] || 4;
+        let tex = null;
+        try {
+            tex = hdr.fp16data
+                ? this.loadFloat16Texture(hdr.fp16data, hdr.width, hdr.height, ch)
+                : this.loadFloat32Texture(hdr.data, hdr.width, hdr.height, ch);
+        } finally {
+            this.textures.image = kept.image;
+            this.imageWidth = kept.w;
+            this.imageHeight = kept.h;
+            this._texIsLinear = kept.linear;
+            this._imageIsFloat = kept.isFloat;
+        }
+        return tex;
+    }
+
+    /** An RGBA8 render target of w x h, reused while the size holds. */
+    _compareTarget(slot, w, h) {
+        const gl = this.gl;
+        let t = this[slot];
+        if (t && t.width === w && t.height === h) return t;
+        if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this[slot] = t = { tex, fbo, width: w, height: h };
+        return t;
+    }
+
+    /**
+     * Draw B for this frame into textures.reference, on A's pixel grid.
+     * Called from render() while a compare mode shows B.
+     */
+    _renderCompareReference() {
+        const gl = this.gl;
+        const src = this._compareSrc;
+        const A = { w: this.imageWidth, h: this.imageHeight };
+        if (!src || !A.w || !A.h) return;
+        let view = src.tex, viewIsRendered = false;
+        if (src.kind === 'float') {
+            // B through this pipeline, at B's size: same grade, same view,
+            // none of the overlays (scopeSignal), no compare of its own.
+            const target = this._compareTarget('_compareView', src.width, src.height);
+            const kept = {
+                image: this.textures.image, w: this.imageWidth, h: this.imageHeight,
+                linear: this._texIsLinear, display: this.sourceDisplayEncoded,
+                show: this.compareShow, wipe: this.wipeEnabled, ref: this.wipeRefEnabled,
+                signal: this.scopeSignal, fbo: this._exportFBO,
+            };
+            this.textures.image = src.tex;
+            this.imageWidth = src.width; this.imageHeight = src.height;
+            this._texIsLinear = true;
+            if (src.encoding) this.sourceDisplayEncoded = src.encoding === 'srgb';
+            this.compareShow = 0; this.wipeEnabled = false; this.wipeRefEnabled = false;
+            this.scopeSignal = true;
+            this._exportFBO = { fbo: target.fbo, width: target.width, height: target.height };
+            this._renderingCompare = true;
+            try {
+                this.render();
+            } finally {
+                this._renderingCompare = false;
+                this.textures.image = kept.image;
+                this.imageWidth = kept.w; this.imageHeight = kept.h;
+                this._texIsLinear = kept.linear; this.sourceDisplayEncoded = kept.display;
+                this.compareShow = kept.show; this.wipeEnabled = kept.wipe; this.wipeRefEnabled = kept.ref;
+                this.scopeSignal = kept.signal; this._exportFBO = kept.fbo;
+            }
+            view = target.tex;
+            viewIsRendered = true;
+        }
+
+        // Place it on A's grid. Coordinates are top-origin image space;
+        // render targets hold their bottom row first (see createQuad).
+        if (!this.programs.comparePlace) {
+            this.programs.comparePlace = this.createProgram(this.getBasicVertexShader(), `#version 300 es
+                precision highp float;
+                in vec2 v_texcoord;
+                out vec4 fragColor;
+                uniform sampler2D u_src;
+                uniform vec2 u_scale;
+                uniform vec2 u_offset;
+                uniform bool u_srcRendered;
+                void main() {
+                    vec2 a = vec2(v_texcoord.x, 1.0 - v_texcoord.y);
+                    vec2 b = a * u_scale - u_offset;
+                    if (any(lessThan(b, vec2(0.0))) || any(greaterThan(b, vec2(1.0)))) {
+                        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                        return;
+                    }
+                    if (u_srcRendered) b.y = 1.0 - b.y;
+                    fragColor = vec4(texture(u_src, b).rgb, 1.0);
+                }`);
+        }
+        const program = this.programs.comparePlace;
+        if (!program) return;
+        const B = { w: src.width, h: src.height };
+        const s = this.compareFit === 'fit' ? Math.min(A.w / B.w, A.h / B.h) : 1;
+        const scale = [A.w / (B.w * s), A.h / (B.h * s)];
+        const offset = [(A.w - B.w * s) / (2 * B.w * s), (A.h - B.h * s) / (2 * B.h * s)];
+        const ref = this._compareTarget('_compareRef', A.w, A.h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, ref.fbo);
+        gl.viewport(0, 0, A.w, A.h);
+        gl.useProgram(program);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, view);
+        gl.uniform1i(this.getUniform(program, 'u_src'), 0);
+        gl.uniform2f(this.getUniform(program, 'u_scale'), scale[0], scale[1]);
+        gl.uniform2f(this.getUniform(program, 'u_offset'), offset[0], offset[1]);
+        gl.uniform1i(this.getUniform(program, 'u_srcRendered'), viewIsRendered ? 1 : 0);
+        this.drawQuad(program);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this.textures.reference = ref.tex;
+        this.wipeRefEnabled = true;
     }
 
     loadFloat16TextureCached(frameId, fp16data, width, height, channels) {
@@ -1096,6 +1281,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             return;
         }
         this.activeShelfIndex = index;
+        this._clearCompareSource();              // a pinned still replaces the compare input
         this.textures.reference = tex;
         this.wipeRefEnabled = true;
         console.log(`[Radiance] Reference shelf → slot ${index} activated`);
@@ -1314,6 +1500,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             this.scopeFBO = null; this.scopeTex = null;
             this.curveLutTexture = null; this.secondaryCurveLutTexture = null;
             this._compareTex = null;
+            this._compareSrc = null; this._compareView = null; this._compareRef = null;
             this._bilateralFBO = null;
             this._bloomFBOs = null; this._bloomSrcW = 0; this._bloomSrcH = 0;
             this._exportFBO = null;
@@ -1807,6 +1994,7 @@ ${GRADE_GLSL}
             uniform bool u_wipeEnabled;
             uniform bool u_exportSceneLinear;  // 3.5.0: graded EXR = scene-linear, no view, no overlays
             uniform bool u_scopeSignal;        // 3.5.0: the displayed picture only, for the scopes
+            uniform bool u_compareSignal;      // the same, for compare B: keeps the viewer f-stop
             uniform float u_viewExposure;      // 3.5.0: viewer-only f-stops (never rendered out)
             uniform float u_viewGamma;         // 3.5.0: viewer-only display gamma
             uniform bool u_dither;             // 3.5.0: +-1/2 LSB triangular dither on the 8-bit output
@@ -3265,7 +3453,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // 3.5.0: viewer f-stop, Nuke-style: a look at the picture, not part of
         // it. Applied after the grade and after the scene values the heatmap,
         // false colour, gamut warning and graded EXR read, so none of them move.
-        bool viewerOnly = !u_scopeSignal && !u_exportSceneLinear;
+        bool viewerOnly = (!u_scopeSignal || u_compareSignal) && !u_exportSceneLinear;
         if (viewerOnly && u_viewExposure != 0.0) color *= exp2(u_viewExposure);
 
         // 6 & 7. Display transform.
@@ -4304,6 +4492,12 @@ vec3 getDenoiseColor(vec2 uv) {
         // I-10: Skip rendering when WebGL context is lost
         if (this._contextLost || !program || !this.textures.image) return;
 
+        // B for compare, drawn through this same pipeline (see setCompareSource).
+        if (this._compareSrc && !this._renderingCompare && !this.scopeSignal && !this.exportSceneLinear
+            && this.wipeRefEnabled && (this.compareShow > 0 || this.wipeEnabled)) {
+            this._renderCompareReference();
+        }
+
         // ── v4.0: Run multi-pass bloom chain before composite ────────────────
         // This renders to offscreen FBOs and does NOT touch the display framebuffer.
         const bloomTex = this._renderBloomChain();
@@ -4499,6 +4693,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_gridMode', this.gridMode);
         this._ui1(program, 'u_exportSceneLinear', this.exportSceneLinear ? 1 : 0);
         this._ui1(program, 'u_scopeSignal', this.scopeSignal ? 1 : 0);
+        this._ui1(program, 'u_compareSignal', this._renderingCompare ? 1 : 0);
         this._uf1(program, 'u_viewExposure', this.viewExposure || 0.0);
         this._uf1(program, 'u_viewGamma', this.viewGamma || 1.0);
         this._ui1(program, 'u_dither', this.dither === false ? 0 : 1);
@@ -4871,6 +5066,13 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // v4.3: LRU frame texture cache
         this.clearFrameCache();
+
+        // Compare B and its render targets
+        this._clearCompareSource();
+        for (const slot of ['_compareView', '_compareRef']) {
+            const t = this[slot];
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); this[slot] = null; }
+        }
 
         // Main texture map (image, reference, lut3d, depth, etc.)
         for (const tex of Object.values(this.textures)) {

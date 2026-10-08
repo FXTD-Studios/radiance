@@ -58,6 +58,13 @@ export function measureFramePayload(payload) {
         if (data && typeof data.byteLength === 'number') bytes += data.byteLength;
         if (hdr.fp16data && typeof hdr.fp16data.byteLength === 'number') bytes += hdr.fp16data.byteLength;
     }
+    // B's float frame, when compare pages with the clip.
+    const cmp = payload.compareHdr;
+    if (cmp && cmp.fp16data && typeof cmp.fp16data.byteLength === 'number') bytes += cmp.fp16data.byteLength;
+    else if (cmp) {
+        const own = Object.getOwnPropertyDescriptor(cmp, 'data');
+        if (own && 'value' in own && own.value && typeof own.value.byteLength === 'number') bytes += own.value.byteLength;
+    }
     for (const key of ['img', 'bracketLow', 'bracketHigh', 'compare']) {
         const img = payload[key];
         if (img && img.width && img.height) bytes += img.width * img.height * 4;
