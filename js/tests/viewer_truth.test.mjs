@@ -411,6 +411,12 @@ if (!skip) {
             });
         });
 
+        // H9: the built-in filmic view and ACES 2.0 on 18 % grey.
+        await guard('h9', async () => {
+            await load(msg(entry('c_0.18_0.18_0.18.rhdr', LIN)), { view: 'filmic' });
+            return ev(() => ({ filmic: window.__sample(window.__lastViewer)[0] }));
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -585,6 +591,10 @@ test('C3: the status bar Disp is the rendered display value', { skip: skip || ok
 });
 
 // ── H9 / H10 ────────────────────────────────────────────────────────────────
+
+test('H9: the built-in filmic view puts 18% grey near ACES 2.0 (89)', { skip: skip || ok(R.h9) }, () => {
+    near(R.h9.filmic, 89, 4, 'filmic 18% grey');
+});
 
 // ── H11 / M16 ───────────────────────────────────────────────────────────────
 

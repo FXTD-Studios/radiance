@@ -183,13 +183,19 @@ fn linear_to_rec709(c: vec3f) -> vec3f {
     return select(higher, lower, c < cutoff);
 }
 
+// Hill's ACES RRT + sRGB ODT fit, as the WebGL backend (radiance_webgl.js toneMapACES).
 fn tone_map_aces(c: vec3f) -> vec3f {
-    let a = 2.51;
-    let b = 0.03;
-    let cc = 2.43;
-    let d = 0.59;
-    let e = 0.14;
-    return clamp((c * (a * c + b)) / (c * (cc * c + d) + e), vec3f(0.0), vec3f(1.0));
+    let aces_in = mat3x3f(
+        vec3f(0.59719, 0.07600, 0.02840),
+        vec3f(0.35458, 0.90834, 0.13383),
+        vec3f(0.04823, 0.01566, 0.83777));
+    let aces_out = mat3x3f(
+        vec3f( 1.60475, -0.10208, -0.00327),
+        vec3f(-0.53108,  1.10813, -0.07276),
+        vec3f(-0.07367, -0.00605,  1.07602));
+    var v = aces_in * c;
+    v = (v * (v + vec3f(0.0245786)) - vec3f(0.000090537)) / (v * (0.983729 * v + vec3f(0.4329510)) + vec3f(0.238081));
+    return clamp(aces_out * v, vec3f(0.0), vec3f(1.0));
 }
 
 fn tone_map_filmic(c: vec3f) -> vec3f {
