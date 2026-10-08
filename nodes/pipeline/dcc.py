@@ -1,3 +1,4 @@
+import atexit
 import hmac
 import os
 import json
@@ -33,6 +34,12 @@ _SERVER_RUNNING = False
 _BOUND_LOOPBACK = True  # set at bind time; a remote bind requires the token on `queue`
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+#: Most connections served at once. Each one has its own thread and may idle
+#: for its 15 s read timeout; until 4.0 there was no limit, so a client could
+#: pile up threads by opening connections. Extra ones get a JSON error.
+_MAX_CONNECTIONS = 16
+_ATEXIT_REGISTERED = False
 
 #: An HTTP request line. A web page can fetch() to a loopback port; the bridge
 #: used to skip the request line and headers as bad JSON and run the body.
@@ -184,14 +191,42 @@ def _handle(conn, addr=None):
         conn.close()
 
 
+def _refuse_busy(conn, addr=None) -> None:
+    """Answer a connection over the cap with a JSON error and close it."""
+    logger.warning("DCC Bridge: refusing %s, %d connections already open", addr, _MAX_CONNECTIONS)
+    try:
+        conn.settimeout(1.0)
+        conn.sendall((json.dumps({
+            "ok": False,
+            "error": f"DCC Bridge busy: {_MAX_CONNECTIONS} connections already open; "
+                     "close one and retry.",
+        }) + "\n").encode())
+    except OSError as _exc:
+        logger.debug("[Radiance] _refuse_busy(): %s: %s", type(_exc).__name__, _exc)
+    finally:
+        conn.close()
+
+
 def start_server(port: int = None, host: str = None) -> str:
-    global _SERVER, _SERVER_THREAD, _SERVER_RUNNING
+    global _SERVER, _SERVER_THREAD, _SERVER_RUNNING, _ATEXIT_REGISTERED
     from radiance.config.env import get_mcp_port, get_mcp_host
     if port is None: port = get_mcp_port()
     if host is None: host = get_mcp_host()
     if _SERVER_THREAD and _SERVER_THREAD.is_alive():
         return f"Bridge already running on {host}:{port}"
     _SERVER_RUNNING = True
+    if not _ATEXIT_REGISTERED:
+        # Nothing else stops the bridge: close the listener and join its
+        # thread on interpreter exit rather than leaving both to teardown.
+        atexit.register(stop_server)
+        _ATEXIT_REGISTERED = True
+    slots = threading.BoundedSemaphore(_MAX_CONNECTIONS)
+
+    def _serve(conn, addr):
+        try:
+            _handle(conn, addr)
+        finally:
+            slots.release()
 
     def _run():
         global _SERVER, _BOUND_LOOPBACK
@@ -216,7 +251,15 @@ def start_server(port: int = None, host: str = None) -> str:
                 try:
                     conn, addr = _SERVER.accept()
                     logger.debug(f"DCC Bridge connection from {addr}")
-                    threading.Thread(target=_handle, args=(conn, addr), daemon=True).start()
+                    if not slots.acquire(blocking=False):
+                        _refuse_busy(conn, addr)
+                        continue
+                    try:
+                        threading.Thread(target=_serve, args=(conn, addr), daemon=True).start()
+                    except Exception:
+                        slots.release()
+                        conn.close()
+                        raise
                 except socket.timeout:
                     continue
                 except Exception as e:
