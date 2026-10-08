@@ -310,12 +310,26 @@ def _resolve_ocio_path(path: str = "") -> str:
     return active_config_path() or "ocio://studio-config-latest"
 
 
+def _config_mtime(p: str) -> float:
+    import os
+    try:
+        return os.path.getmtime(p)
+    except OSError:
+        return 0.0      # an ocio:// URI, or gone: the load decides
+
+
 @lru_cache(maxsize=8)
-def _ocio_config_at(p: str):
+def _ocio_config_loaded(p: str, mtime: float):
     import os
     if not p.startswith("ocio://") and not os.path.isfile(p):
         raise FileNotFoundError(f"OCIO config not found: {p}")
     return _OCIO.Config.CreateFromFile(p)
+
+
+def _ocio_config_at(p: str):
+    """The config at `p`, cached per path and modification time (as
+    ocio_setup does), so an edited config is read again."""
+    return _ocio_config_loaded(p, _config_mtime(p))
 
 
 def ocio_config(path: str = ""):
@@ -335,9 +349,13 @@ def ocio_config_name(path: str = "") -> str:
 
 
 @lru_cache(maxsize=128)
-def _ocio_processor(src: str, dst: str, path: str):
-    cfg = _ocio_config_at(path)
+def _ocio_processor_for(src: str, dst: str, path: str, mtime: float):
+    cfg = _ocio_config_loaded(path, mtime)
     return cfg.getProcessor(src, dst).getDefaultCPUProcessor()
+
+
+def _ocio_processor(src: str, dst: str, path: str):
+    return _ocio_processor_for(src, dst, path, _config_mtime(path))
 
 
 def ocio_apply(arr: np.ndarray, src: str, dst: str, config_path: str = "") -> np.ndarray:
