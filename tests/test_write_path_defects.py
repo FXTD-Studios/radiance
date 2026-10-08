@@ -231,6 +231,40 @@ def test_a_failed_overwrite_keeps_the_previous_master(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == [target], "the partial encode was left behind"
 
 
+class _SomeoneTakesTheName(_ExitsWithAnError):
+    """ffmpeg succeeds, but a file appears at the final name meanwhile."""
+    def __init__(self, cmd, *a, **k):
+        super().__init__(cmd, *a, **k)
+        self.returncode = 0
+        part = Path(cmd[-1])
+        (part.parent / part.name.split(".partial-")[0].lstrip(".")).with_suffix(
+            part.suffix).write_bytes(b"someone else's file")
+
+
+def test_overwrite_off_never_replaces_a_file_that_appeared_during_the_encode(tmp_path, monkeypatch):
+    _fake_ffmpeg(monkeypatch, _SomeoneTakesTheName)
+    with pytest.raises(FileExistsError):
+        W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
+                             "MP4 (H.264)", 24.0, 30, "", overwrite=False)
+    target = tmp_path / "shot.mp4"
+    assert target.read_bytes() == b"someone else's file"
+    assert list(tmp_path.iterdir()) == [target], "the partial encode was left behind"
+
+
+@needs_ffmpeg
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_a_master_gets_the_normal_file_mode(tmp_path, overwrite):
+    """The partial was first made with mkstemp, which creates files 0600, and
+    the move kept that mode: other users could not read the master."""
+    import os
+    mask = os.umask(0)
+    os.umask(mask)
+    out = W._save_video_ffmpeg(iter(frames(2)), str(tmp_path / "shot"),
+                               "MP4 (H.264)", 24.0, 30, "", overwrite=overwrite)
+    assert Path(out).stat().st_mode & 0o777 == 0o666 & ~mask
+
+
 @needs_ffmpeg
 def test_a_real_failed_encode_leaves_nothing_behind(tmp_path):
     with pytest.raises(RuntimeError):

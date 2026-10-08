@@ -23,7 +23,6 @@ the tests at the end of this file).
 import os
 import re
 import struct
-import tempfile
 import zlib
 
 import numpy as np
@@ -32,8 +31,8 @@ import pytest
 torch = pytest.importorskip("torch")
 RADIANCE_TORCH_GATED = True
 
-ZLIB_STORED = b"\x78\x01"   # zlib header written by level 0
-ZLIB_DEFAULT = b"\x78\x9c"  # zlib header written by levels 2-6
+ZLIB_STORED = b"\x78\x01"   # zlib header written by levels 0 and 1
+ZLIB_DEFAULT = b"\x78\x9c"  # zlib header written by level 6 (2-5 write 78 5e)
 
 # One row of RGB samples: negative, mid-grey, a bright HDR value, and a value
 # past the fp16 maximum (65504), which an fp16 write clamps.
@@ -70,10 +69,10 @@ def _real_shared_modules():
 
 
 @pytest.fixture
-def temp_out(monkeypatch):
+def temp_out(tmp_path, monkeypatch):
     import folder_paths
     from radiance.nodes.monitor import viewer as _viewer
-    d = tempfile.mkdtemp()
+    d = str(tmp_path)
     seen = set()
     for mod in (folder_paths, _viewer.folder_paths):
         if id(mod) in seen:
@@ -181,9 +180,9 @@ def _vae_frame():
     ("f32", 1, np.float32),
     ("anything else", 0, np.float16),   # only "f32" selects fp32
 ])
-def test_vae_export_header_payload_and_name(precision, flags, dtype):
+def test_vae_export_header_payload_and_name(tmp_path, precision, flags, dtype):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    d = tempfile.mkdtemp()
+    d = str(tmp_path)
     frame = _vae_frame()
     name = RadianceVAE4KDecode._save_rhdr(frame, d, prefix="radiance_4k_f0007", precision=precision)
     assert re.fullmatch(r"radiance_4k_f0007_[0-9a-f]{12}\.rhdr", name)
@@ -195,26 +194,26 @@ def test_vae_export_header_payload_and_name(precision, flags, dtype):
 
 
 @pytest.mark.real_torch
-def test_vae_export_default_prefix_and_precision():
+def test_vae_export_default_prefix_and_precision(tmp_path):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    d = tempfile.mkdtemp()
+    d = str(tmp_path)
     name = RadianceVAE4KDecode._save_rhdr(_vae_frame(), d)
     assert re.fullmatch(r"radiance_4k_[0-9a-f]{12}\.rhdr", name)
     assert _read(os.path.join(d, name))[0][3] == 0
 
 
 @pytest.mark.real_torch
-def test_vae_export_skips_frames_wider_than_the_uint16_header():
+def test_vae_export_skips_frames_wider_than_the_uint16_header(tmp_path):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    d = tempfile.mkdtemp()
+    d = str(tmp_path)
     assert RadianceVAE4KDecode._save_rhdr(np.zeros((1, 65536, 3), np.float32), d) is None
     assert os.listdir(d) == []
 
 
 @pytest.mark.real_torch
-def test_vae_export_returns_none_instead_of_raising():
+def test_vae_export_returns_none_instead_of_raising(tmp_path):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    missing = os.path.join(tempfile.mkdtemp(), "does-not-exist")
+    missing = str(tmp_path / "does-not-exist")
     assert RadianceVAE4KDecode._save_rhdr(_vae_frame(), missing) is None
 
 
@@ -225,9 +224,9 @@ def test_vae_export_returns_none_instead_of_raising():
 # does not exist, so its traversal guard never ran.
 
 @pytest.mark.real_torch
-def test_vae_half_export_clamps_instead_of_writing_inf():
+def test_vae_half_export_clamps_instead_of_writing_inf(tmp_path):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    d = tempfile.mkdtemp()
+    d = str(tmp_path)
     frame = np.array([[[1e5, -1e5, 0.5]]], dtype=np.float32)
     name = RadianceVAE4KDecode._save_rhdr(frame, d, precision="f16")
     _, _, px = _read(os.path.join(d, name))
@@ -247,9 +246,9 @@ def test_viewer_half_depth_sidecar_clamps_instead_of_writing_inf(temp_out):
 
 
 @pytest.mark.real_torch
-def test_vae_export_refuses_a_prefix_that_leaves_the_output_folder():
+def test_vae_export_refuses_a_prefix_that_leaves_the_output_folder(tmp_path):
     from radiance.hdr.vae import RadianceVAE4KDecode
-    root = tempfile.mkdtemp()
+    root = str(tmp_path)
     out = os.path.join(root, "out")
     os.mkdir(out)
     assert RadianceVAE4KDecode._save_rhdr(_vae_frame(), out, prefix="../escaped") is None
