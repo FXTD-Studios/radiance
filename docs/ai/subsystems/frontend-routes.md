@@ -48,7 +48,8 @@ Run `grep -n "routes\.\(get\|post\)\|_route(" <file>` to find a route again.
   `/view?type=temp`. There are **no `send_sync` events**.
 - **`.rhdr` format:** a header of `"RHDR"` followed by w, h, channels, and flags as uint16, then
   stored zlib data. Flag 0 means fp16 (RGBA16F) and flag 1 means fp32. Frames are padded to RGBA
-  and decoded in Web Workers.
+  and decoded in Web Workers. Encoded by `core/rhdr.py` (fix pass); the zdepth `.rhdr` is written but
+  the JS loads the zdepth PNG.
 - **Where colour happens:** the realtime view transform and grade run in shaders. Python only
   tags the source encoding and builds a display-referred PNG preview
   (`color/display_preview.py`).

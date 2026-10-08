@@ -12,6 +12,32 @@ non-default setup. **P3** minor, cosmetic, or defence-in-depth.
 No P0 was found. The P0 class from 3.5.3 (bridge `exec`, OCIO path oracle, deliver containment) is
 closed in the code that was re-read.
 
+## Fix status
+
+A fix pass on `version-4-Beta` after `b645400` fixed the findings below. Each fix has a regression test
+that failed on the old code and passes now. The finding text further down describes the code as it was
+reviewed and is kept as the record.
+
+| ID | Status | Commit | Regression test |
+| --- | --- | --- | --- |
+| P1-1 | Fixed. Tensor or dict from `vae.encode`; RGB only; first frame of a video VAE latent. The test fake now returns a bare tensor, as ComfyUI does | `3314513` | `tests/test_sdr_conditioning.py::TestEncodeSDRReference` |
+| P1-2 | Fixed. `RadianceAIUpscale.used_fallback`; Delivery reports status "partial" with a warning. The fallback is bicubic, not Lanczos as written below | `b242fdf` | `tests/test_delivery_endpoints.py::test_a_silent_bicubic_fallback_is_reported_too` |
+| P2-1 | Fixed. Longest pattern first | `1766a81` | `tests/test_detect_by_config.py` |
+| P2-2 | Fixed. Stores `extra_pnginfo["workflow"]`; API graphs get stats; old API-format saves open through `app.loadApiJson` (`js/radiance_graph_format.js`) | `16afaf6` | `tests/test_workspace_api.py`, `js/tests/graph_format.test.mjs` |
+| P2-3 | Fixed. Boundaries are any non-alphanumeric character | `16afaf6` | `tests/test_workspace_api.py::test_shot_from_name`, `test_version_from_name` |
+| P2-4 | Fixed. The replaced `vram_state` is restored by the next Loader run without "sequential"; a launch state (`--lowvram`) is never touched. It cannot be restored when the Loader returns, because ComfyUI loads weights while sampling | `6b5bd9c` | `tests/test_loader_utils.py::TestSetupOffloadMode` |
+| P2-5 | Fixed. A taken name becomes `name_1.ext`, created exclusively; an aborted upload removes its partial file | `fb88615` | `tests/test_workspace_api.py::test_uploading_a_taken_name_keeps_both_files` |
+| P3-1 | **Open.** Changing the delivery filename is a naming decision for the studio | | |
+| P3-2 | Fixed. Containment before existence | `c4492a8` | `tests/test_read_surface.py::test_outside_the_roots_a_file_and_a_missing_path_look_the_same` |
+| P3-3 | Fixed. `_resolve_safe_path`; the route answers 400 | `945458a` | `tests/test_workspace_api.py::test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library` |
+| P3-4 | Fixed. One encoder, `core/rhdr.py`, always clamps fp16; the VAE uses the real `safe_join` | `e8c0e4d`, `7705193`, `2af342b` | `tests/test_rhdr_writers.py`, `tests/test_rhdr_format.py` |
+| P3-5 | **Open.** Needs a design choice: a shared token, or refusing `queue` on a non-loopback bind | | |
+| B12 | Fixed. A non-zero ffmpeg exit removes the output only if this encode created or changed it | `e4f084c` | `tests/test_write_path_defects.py::test_a_failed_encode_removes_the_partial_file` |
+
+Validation for the pass: the full Python suite with real torch, OpenEXR, OCIO and ffmpeg, the no-torch
+suite, the CI ruff command and the JS tests, all run locally. Structural debt and optional improvements
+below are unchanged.
+
 ---
 
 ## 1. Defects
@@ -123,8 +149,8 @@ closed in the code that was re-read.
 - **Every dashboard API call re-reads every `.rad`.** `_read_workflow_records` (`workspace.py:678-735`) reads each v3 file
   twice (`read_bytes` plus `ZipFile`) per request, and `/projects`, `/versions`, `/outputs`, `/notes` each call it. Cost grows with library size.
 - **Five OCIO resolvers and several download paths** with different integrity rules (OPEN_QUESTIONS B17, P1, P2).
-- **`hdr/vae.py` is 3.6k lines**, with two `.rhdr` writers plus one in `viewer.py` and one JS reader. The format has no single writer.
-- **Test doubles that encode the wrong contract** (`_FakeVAE` in P1-1) give false confidence. Audit other fakes against the real ComfyUI return types.
+- **`hdr/vae.py` is 3.6k lines.** (The `.rhdr` part of this item is resolved: all writers now go through `core/rhdr.py`.)
+- **Test doubles that encode the wrong contract** (`_FakeVAE` in P1-1, now corrected) give false confidence. Audit other fakes against the real ComfyUI return types.
 - **Error JSON returned with HTTP 200** by `/radiance/ocio/*` and `/radiance/media/info`, so the JS cannot tell a failure from a success by status code.
 
 ## 3. Optional improvements
