@@ -2132,14 +2132,18 @@ class RadianceSamplerPro:
         # nothing was perpendicular. The guidance now keeps only the part of
         # (cond - uncond) orthogonal to cond. A cfg function another patch
         # already set (LTX-AV dual CFG) is kept: the slot holds one function.
+        # Both models are clones by now, so the inputs stay unpatched.
         if is_cfg_plus_plus:
-            if "sampler_cfg_function" in model.model_options:
-                logger.warning(
-                    "[Radiance] CFG++ (Perpendicular): another cfg function is already "
-                    "set on this model (e.g. LTX-AV audio_cfg); keeping it, so only the "
-                    "per-stage cfg scale applies.")
-            else:
-                model.set_model_sampler_cfg_function(perpendicular_cfg_function)
+            for _cm, _what in ((model, "model"), (refiner_model, "refiner_model")):
+                if _cm is None:
+                    continue
+                if "sampler_cfg_function" in _cm.model_options:
+                    logger.warning(
+                        "[Radiance] CFG++ (Perpendicular): another cfg function is already "
+                        "set on %s (e.g. LTX-AV audio_cfg); keeping it, so only the "
+                        "per-stage cfg scale applies there.", _what)
+                else:
+                    _cm.set_model_sampler_cfg_function(perpendicular_cfg_function)
 
         if SamplerMode.is_phase_shift(sampler_mode) and detected_type in VIDEO_MODEL_TYPES:
             logger.warning(
