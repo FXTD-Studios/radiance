@@ -101,7 +101,7 @@ class RadianceDenoise:
                 "motion_compensation": (
                     "BOOLEAN",
                     {"default": True,
-                     "tooltip": "Before temporal blending, aligns each neighbour frame to this one: motion is estimated coarse to fine with a 7x7 block search (up to about 30 pixels per frame on large frames, less on small ones) and the neighbour is warped, edges repeating. Off blends neighbours where they are."}
+                     "tooltip": "Before temporal blending, aligns each neighbour frame to this one: motion is estimated coarse to fine by 8x8 block matching (up to about 30 pixels per frame on large frames, less on small ones) and the neighbour is warped, edges repeating. Off blends neighbours where they are."}
                 ),
                 "detail_recovery": (
                     "FLOAT",
@@ -266,8 +266,10 @@ class RadianceDenoise:
             return 0.015
         return float(valid.min().item())
 
-    #: Motion search: offsets tried per pyramid level, block size, pyramid
-    #: depth. 3 halvings with +-2 per level reach about +-30 px.
+    #: Motion search: offsets tried at the coarsest pyramid level and at each
+    #: finer one, block size, pyramid depth. +-4 at 1/8 scale locks onto
+    #: motion of about +-36 px; each finer level refines by +-2.
+    _MC_COARSE_SEARCH = 4
     _MC_SEARCH = 2
     _MC_BLOCK = 8
     _MC_LEVELS = 3
@@ -286,6 +288,15 @@ class RadianceDenoise:
         return F.grid_sample(img, grid, mode="bilinear", padding_mode="border", align_corners=True)
 
     @staticmethod
+    def _mc_shift(img: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
+        """_mc_warp for a whole-pixel flow, as a gather: (1, 1, H, W) only."""
+        _, _, H, W = img.shape
+        fy, fx = flow[0, 0].long(), flow[0, 1].long()
+        ys = (torch.arange(H, device=img.device).view(H, 1) + fy).clamp_(0, H - 1)
+        xs = (torch.arange(W, device=img.device).view(1, W) + fx).clamp_(0, W - 1)
+        return img.reshape(-1)[ys * W + xs].view(1, 1, H, W)
+
+    @staticmethod
     def _mc_per_pixel(block_flow: torch.Tensor, block: int, h: int, w: int) -> torch.Tensor:
         return block_flow.repeat_interleave(block, 2).repeat_interleave(block, 3)[..., :h, :w]
 
@@ -296,9 +307,9 @@ class RadianceDenoise:
         3.x picked the best of the nine 1-pixel offsets per pixel, so only
         motion of about a pixel per frame was followed. Since 4.0 this is
         hierarchical block matching: one motion vector per 8x8 block, found on
-        a pyramid from coarse to fine, each level trying the vectors within
-        +-2 of the coarser estimate by the mean absolute difference over the
-        block (no move wins ties). The neighbour is then warped with edge
+        a pyramid from coarse to fine. The coarsest level tries every vector
+        within +-4, each finer level those within +-2 of the coarser estimate,
+        by the mean absolute difference over the block (no move wins ties). The neighbour is then warped with edge
         repeat, so nothing wraps around from the far side as torch.roll did.
         """
         f = frame[..., :3].float().mean(-1)[None, None]
@@ -309,23 +320,28 @@ class RadianceDenoise:
             pf, pn = pyramid[-1]
             pyramid.append((F.avg_pool2d(pf, 2), F.avg_pool2d(pn, 2)))
 
-        r, b = cls._MC_SEARCH, cls._MC_BLOCK
-        offsets = [(0, 0)] + [(dy, dx) for dy in range(-r, r + 1) for dx in range(-r, r + 1)
-                              if (dy, dx) != (0, 0)]
+        b = cls._MC_BLOCK
         block_flow = None
         for lf, ln in reversed(pyramid):
             h, w = lf.shape[-2:]
             hb, wb = -(-h // b), -(-w // b)
             if block_flow is None:
                 block_flow = lf.new_zeros(1, 2, hb, wb)
+                r = cls._MC_COARSE_SEARCH
             else:
                 # One level up is half the size: vectors double.
                 block_flow = F.interpolate(block_flow, size=(hb, wb), mode="nearest") * 2.0
+                r = cls._MC_SEARCH
+            # The flow stays whole pixels, so trials are gathers, not resamples.
+            base = cls._mc_per_pixel(block_flow, b, h, w)
+            offsets = [(0, 0)] + [(dy, dx) for dy in range(-r, r + 1)
+                                  for dx in range(-r, r + 1) if (dy, dx) != (0, 0)]
             best_cost = best = None
             for dy, dx in offsets:
-                trial = block_flow + block_flow.new_tensor([dy, dx]).view(1, 2, 1, 1)
-                diff = (lf - cls._mc_warp(ln, cls._mc_per_pixel(trial, b, h, w))).abs()
+                off = base.new_tensor([dy, dx]).view(1, 2, 1, 1)
+                diff = (lf - cls._mc_shift(ln, base + off)).abs()
                 cost = F.avg_pool2d(diff, b, stride=b, ceil_mode=True)
+                trial = block_flow + off
                 if best_cost is None:
                     best_cost, best = cost, trial
                     continue
