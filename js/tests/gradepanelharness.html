@@ -145,10 +145,16 @@ window.__run = async () => {
         ptr(s, 'pointerdown', 0, 0);
         for (const x of ['0.1', '0.2', '0.3']) { s.value = x; fire(s, 'input'); }
         const afterDrag = { highlights: v.highlights, steps: v._undoStack.length };
-        v.undo();
+        // Ctrl+Z with the slider still focused after the drag, as a user does it.
+        v.container = c;
+        v._installUndoShortcuts();
+        s.focus();
+        s.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
         const afterUndo = v.highlights;
-        v.redo();
+        // Undo redraws the panel, so the slider is a new element now.
+        q(c, 'highlights').dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true }));
         const afterRedo = v.highlights;
+        window.removeEventListener('keydown', v._undoKeyHandler);
 
         const keys = Object.keys(v._captureGradingState());
 
