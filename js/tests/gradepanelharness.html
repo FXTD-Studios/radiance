@@ -1,0 +1,236 @@
+<!doctype html>
+<!--
+  DOM harness for the Grade and Effects tabs.
+
+  Builds the live Grade and Effects tabs (_renderReferenceGrade and
+  _renderReferenceEffects) for an instance made with Object.create, the way
+  panelharness.html does, with a renderer stub that records what it was sent.
+  Then it operates them the way a user does: pointer events on the wheels and
+  sliders, typed readouts, double-clicks, the Reset buttons, undo.
+
+  Driven by js/tests/grade_panel_dom.test.mjs.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance — grade panel harness</title>
+<style>body{margin:0;background:#111} .col{width:420px}</style>
+</head>
+<body>
+<script type="module">
+import "../radiance_viewer.js";
+
+const V = window.RadianceViewer;
+const THEME = new Proxy({}, { get: (_, k) => (k === 'font' || k === 'mono' ? 'monospace' : '#888') });
+
+function stubRenderer() {
+    const calls = {};
+    return new Proxy({ calls, textures: {}, isLinearTexture: true, sourceGamut: 0 }, {
+        get(t, k) {
+            if (k in t) return t[k];
+            return (...a) => { calls[k] = a; };
+        },
+    });
+}
+
+function makeInstance() {
+    const v = Object.create(V.prototype);
+    Object.assign(v, {
+        theme: THEME, node: { id: 1, properties: {} },
+        exposure: 0, contrast: 1, pivot: 0.18, saturation: 1, temperature: 0, tint: 0,
+        highlights: 0, shadows: 0, midDetail: 0, softClip: 0, lumaMix: 1, colorBoost: 0, hueShift: 0,
+        lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1], offset: [0, 0, 0],
+        logShadow: [0, 0, 0], logMidtone: [0, 0, 0], logHighlight: [0, 0, 0],
+        printerR: 0, printerG: 0, printerB: 0, colorScience: 0, lutIntensity: 1,
+        grain: 0, grainSize: 1, grainColor: 0, grainAnimate: false, bloom: 0, halation: 0, diffusion: 0,
+        lensFringe: 0, lensDistortion: 0, vignetteIntensity: 0, vignetteFalloff: 0.5,
+        maskState: { type: 0, center: [0.5, 0.5], scale: [0.3, 0.3], feather: 0.2, rotation: 0, invert: false, showOverlay: false },
+        qualifierState: { enabled: false, showMask: false, h: 0, hW: 0.1, hS: 0.05, s: 0.5, sW: 0.5, sS: 0.1, l: 0.5, lW: 0.5, lS: 0.1 },
+        inputSpace: 'None', viewMode: 'auto', displayLut: 'sRGB (Display)', sourceTag: { encoding: 'srgb' },
+        lutOptions: ['None', 'sRGB (Display)', 'Rec.709 (Broadcast)', 'ACES Filmic'],
+        _undoStack: [], _redoStack: [], _undoMaxSize: 50,
+        renderer: stubRenderer(),
+        image: null, imageWidth: 0, imageHeight: 0, currentFrame: 0,
+        hdrData: (() => {
+            const W = 16, H = 16, data = new Float32Array(W * H * 3);
+            for (let i = 0; i < W * H; i++) { const x = (i % W) / (W - 1); data.set([x, x, x], i * 3); }
+            return { data, width: W, height: H, channels: 3 };
+        })(),
+        requestRender() {}, requestScopeUpdate() {}, render() {}, renderOverlay() {},
+        _showToast(msg, tone) { (this._toasts ||= []).push({ msg, tone }); },
+    });
+    return v;
+}
+
+function build(v, tab = 'grade') {
+    const c = document.createElement('div');
+    c.className = 'col';
+    document.body.appendChild(c);
+    const draw = () => {
+        c.innerHTML = '';
+        if (tab === 'grade') v._renderReferenceGrade(c); else v._renderReferenceEffects(c);
+    };
+    v.controlsPanel = c;
+    v._lastRenderContent = draw;
+    draw();
+    return c;
+}
+
+const q = (c, p) => c.querySelector(`input[type="range"][data-radiance-param="${p}"]`);
+const readout = (c, p) => c.querySelector(`input[data-radiance-readout="${p}"]`);
+const fire = (el, type, init = {}) => el.dispatchEvent(new Event(type, { bubbles: true, ...init }));
+const ptr = (el, type, x, y, buttons = 1) => el.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: y, buttons, pointerId: 1, bubbles: true }));
+const mean = (a) => (a[0] + a[1] + a[2]) / 3;
+const r4 = (x) => Math.round(x * 1e4) / 1e4;
+
+window.__run = async () => {
+    const out = {};
+    const errors = [];
+    const run = async (name, fn) => { try { out[name] = await fn(); } catch (e) { errors.push(`${name}: ${e && e.stack || e}`); } };
+
+    // H1: holding a wheel puck still keeps the level.
+    await run('wheels', () => {
+        const v = makeInstance(); const c = build(v);
+        const res = {};
+        for (const item of c.querySelectorAll('.radiance-ref-wheel')) {
+            const prop = item.dataset.radianceParam;
+            const inner = item.querySelector('.radiance-ref-wheel-inner');
+            const rect = inner.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2, R = rect.width / 2 - 4;
+            const before = v._undoStack.length;
+            const means = [];
+            ptr(inner, 'pointerdown', cx + R, cy); means.push(r4(mean(v[prop])));
+            for (let i = 0; i < 8; i++) { ptr(inner, 'pointermove', cx + R, cy + (i % 2)); means.push(r4(mean(v[prop]))); }
+            ptr(inner, 'pointerup', cx + R, cy, 0);
+            res[prop] = { means, final: v[prop].map(r4), undoSteps: v._undoStack.length - before,
+                redWins: v[prop][0] > v[prop][1] && v[prop][0] > v[prop][2] };
+        }
+        return res;
+    });
+
+    // M1: readouts and initial values.
+    await run('readouts', () => {
+        const v = makeInstance();
+        Object.assign(v, { saturation: 0, pivot: 0, exposure: 0.25, temperature: 0.05, tint: -0.15 });
+        let c = build(v);
+        const r = {
+            saturation: [q(c, 'saturation').value, readout(c, 'saturation').value],
+            pivot: [q(c, 'pivot').value, readout(c, 'pivot').value],
+            exposure: [q(c, 'exposure').value, readout(c, 'exposure').value],
+            temperature: readout(c, 'temperature').value, tint: readout(c, 'tint').value,
+            exposureRange: [q(c, 'exposure').min, q(c, 'exposure').max],
+        };
+        v.exposure = 12; c = build(v);
+        r.exposure12 = [q(c, 'exposure').value, readout(c, 'exposure').value];
+        // adjustEV keeps the slider in step
+        v.exposure = 0; c = build(v);
+        v.adjustEV(0.25);
+        r.adjustEV = { state: v.exposure, slider: q(c, 'exposure').value, readout: readout(c, 'exposure').value };
+        v.adjustEV(100);
+        r.adjustEVClamp = { state: v.exposure, slider: q(c, 'exposure').value };
+        // Typing a value
+        const ro = readout(c, 'contrast');
+        ro.value = '1.37'; fire(ro, 'change');
+        r.typed = { state: v.contrast, slider: q(c, 'contrast').value, readout: ro.value, undo: v._undoStack.length };
+        ro.value = '99'; fire(ro, 'change');
+        r.typedClamped = v.contrast;
+        // Effects tab: grain Size 0.05 steps read 2 decimals
+        const fx = makeInstance(); fx.grainSize = 1.15; const fc = build(fx, 'effects');
+        r.grainSize = readout(fc, 'size').value;
+        return r;
+    });
+
+    // H5: an undo step per drag, a complete state, 0 kept, reset then undo.
+    await run('undo', () => {
+        const v = makeInstance(); const c = build(v);
+        const s = q(c, 'highlights');
+        ptr(s, 'pointerdown', 0, 0);
+        for (const x of ['0.1', '0.2', '0.3']) { s.value = x; fire(s, 'input'); }
+        const afterDrag = { highlights: v.highlights, steps: v._undoStack.length };
+        v.undo();
+        const afterUndo = v.highlights;
+        v.redo();
+        const afterRedo = v.highlights;
+
+        const keys = Object.keys(v._captureGradingState());
+
+        const w = makeInstance(); build(w);
+        Object.assign(w, {
+            saturation: 0, exposure: 1.5, highlights: 0.4, shadows: -0.3, midDetail: 0.2, colorBoost: 0.4, lumaMix: 0,
+            offset: [0.1, 0, -0.05], printerR: 7, logShadow: [0.05, 0, 0], grain: 0.3, lensFringe: 0.5,
+            inputSpace: 'IDT: LogC3 → Linear',
+        });
+        w._setManualDisplayLut('Rec.709 (Broadcast)');
+        const ed = w._ensureCurveEditor();
+        ed.curves.RGB = [{ x: 0, y: 0 }, { x: 0.5, y: 0.6 }, { x: 1, y: 1 }];
+        ed.notifyChange();
+        const before = JSON.stringify(w._captureGradingState());
+        w.resetGradeAll();
+        const afterReset = w._captureGradingState();
+        w.undo();
+        const restored = JSON.stringify(w._captureGradingState());
+        return {
+            afterDrag, afterUndo, afterRedo, keys,
+            resetSat: afterReset.saturation, resetCurves: afterReset.curves, resetInput: afterReset.inputSpace,
+            resetLut: afterReset.manualLut, resetViewMode: w.viewMode === 'manual' ? 'manual' : 'auto-ish',
+            restoredEqual: restored === before, restoredSat: w.saturation, restoredCurve: w.refCurveEditor.curves.RGB.length,
+            restoredLut: [w.viewMode, w.displayLut],
+        };
+    });
+
+    // M2: Reset and Reset All differ; section resets; double-click; Reset Effects takes Fringe.
+    await run('reset', () => {
+        const set = (v) => Object.assign(v, { exposure: 1, contrast: 1.4, highlights: 0.3, temperature: 0.4,
+            gain: [1.2, 1, 1], printerR: 9, grain: 0.4, bloom: 0.2, lensFringe: 0.6, inputSpace: 'IDT: S-Log3 → Linear' });
+        const v = makeInstance(); let c = build(v); set(v); c = build(v);
+        // The tab's own action row is the last one (presets and the eyedropper have theirs).
+        const mainActions = (el) => [...el.querySelectorAll(':scope > .radiance-ref-actions')].pop();
+        const buttons = [...mainActions(c).querySelectorAll('button')].map(b => b.textContent);
+        [...mainActions(c).querySelectorAll('button')].find(b => b.textContent === 'Reset').click();
+        const afterReset = { exposure: v.exposure, gain: v.gain, temperature: v.temperature, printerR: v.printerR,
+            grain: v.grain, inputSpace: v.inputSpace };
+        set(v); c = build(v);
+        [...mainActions(c).querySelectorAll('button')].find(b => b.textContent === 'Reset All').click();
+        const afterResetAll = { exposure: v.exposure, gain: v.gain, printerR: v.printerR, grain: v.grain,
+            bloom: v.bloom, lensFringe: v.lensFringe, inputSpace: v.inputSpace };
+
+        set(v); c = build(v);
+        const sectionResets = [...c.querySelectorAll('.radiance-ref-section-reset')].map(b => b.dataset.radianceReset);
+        c.querySelector('.radiance-ref-section-reset[data-radiance-reset="exposure"]').click();
+        const afterSection = { exposure: v.exposure, contrast: v.contrast, highlights: v.highlights, temperature: v.temperature };
+
+        set(v); c = build(v);
+        fire(q(c, 'temperature'), 'dblclick');
+        const dbl = { temperature: v.temperature, exposure: v.exposure };
+
+        const fx = makeInstance(); set(fx); const fc = build(fx, 'effects');
+        [...fc.querySelectorAll('.radiance-ref-actions button')].find(b => b.textContent === 'Reset Effects').click();
+        const fxAfter = { lensFringe: fx.lensFringe, grain: fx.grain, bloom: fx.bloom, exposure: fx.exposure };
+        set(fx); const fc2 = build(fx, 'effects');
+        fire(q(fc2, 'fringe'), 'dblclick');
+        return { buttons, afterReset, afterResetAll, sectionResets, afterSection, dbl, fxAfter, fringeDbl: fx.lensFringe };
+    });
+
+    // H6: presets in the live Grade tab, and the grade written to the node.
+    await run('presets', async () => {
+        localStorage.removeItem('radiance_presets');
+        const v = makeInstance(); let c = build(v);
+        const actionsBefore = [...c.querySelectorAll('[data-radiance-action]')].map(b => b.dataset.radianceAction);
+        v.saturation = 0; v.contrast = 1.3; v.offset = [0.02, 0, 0];
+        await v.saveGrade('bw');
+        c = v.controlsPanel;
+        const options = [...c.querySelectorAll('select[data-radiance-param="grade_preset"] option')].map(o => o.value);
+        v.saturation = 1; v.contrast = 1; v.offset = [0, 0, 0];
+        c.querySelector('[data-radiance-action="load"]').click();
+        const loaded = { saturation: v.saturation, contrast: v.contrast, offset: v.offset };
+        v._persistGrade();
+        return { actionsBefore, options, loaded, persisted: v.node.properties.radiance_grade?.saturation,
+            persistedKeys: Object.keys(v.node.properties.radiance_grade || {}).length };
+    });
+
+    out.errors = errors;
+    out.ok = errors.length === 0;
+    return out;
+};
+window.__ready = true;
+</script>
+</body>
+</html>
