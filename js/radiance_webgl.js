@@ -3,6 +3,13 @@ import { RadianceRenderer } from "./radiance_renderer.js";
 // The grade maths, emitted from one file for both backends and both CPU
 // paths. See js/radiance_grade.js for what used to be four implementations.
 import { GLSL as GRADE_GLSL } from "./radiance_grade.js";
+// The scopes' shared axis, so the GPU traces and every graticule agree.
+import {
+    SCOPE_PLOT_MARGIN, LOG_ASSIST_C, plotPos as _plotPos, logAssistPos as _logAssistPos, scaleTicks,
+} from "./radiance_scope_units.js";
+
+/** The default scope graticule: 10-bit code value, full range. */
+const _cvTicks = () => scaleTicks('cv10');
 
 /**
  * The GPU frame-texture budget, for the whole page.
@@ -21,6 +28,9 @@ export const _SHARED_FRAME_CACHE = {
 };
 
 class RadianceWebGLRenderer extends RadianceRenderer {
+    /** One scope draw slower than this cuts the point budget (see _scopePointBudgetNow). */
+    static SCOPE_SLOW_MS = 60;
+
     constructor(canvas) {
         super(canvas);
         this.gl = null;
@@ -169,169 +179,374 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     setLogMidtone(r, g, b) { this.logMidtone = (g === undefined) ? [r, r, r] : [r, g, b]; }
     setLogHighlight(r, g, b) { this.logHighlight = (g === undefined) ? [r, r, r] : [r, g, b]; }
 
-    // v2.5: High-speed GPU Scope Rendering
-    renderScope(mode, targetCanvas, sourceTexture, isLinear, parade = false) {
-        if (!this.gl || !this.programs[mode]) return;
+    /**
+     * Accumulation target for the scopes, grown to the largest plot asked for
+     * and drawn into a w x h corner of it, so the sidebar's differently sized
+     * scopes do not reallocate it on every update.
+     *
+     * Float when the GPU can blend into float: each point adds 1, so the
+     * target holds a count per plot position. RGBA32F counts exactly;
+     * RGBA16F stops counting near 2048 per position, which only caps the
+     * brightest part of the trace. RGBA8 is the last resort.
+     */
+    _scopeTarget(w, h) {
         const gl = this.gl;
-        const program = this.programs[mode];
-
-        // Setup specialized viewport for scope (Square 512x512 internally)
-        const size = 512;
-        if (!this.scopeFBO) {
-            // v4.1: Scope FBO precision tracks pipelinePrecision so HDR waveforms
-            // and vectorscopes accumulate in float rather than clamping to 8-bit.
-            const precFmt = this._glPrecFmt();
+        const needW = Math.max(w, this._scopeTexW || 0), needH = Math.max(h, this._scopeTexH || 0);
+        if (this.scopeFBO && needW === this._scopeTexW && needH === this._scopeTexH) return true;
+        if (this.scopeFBO) { gl.deleteFramebuffer(this.scopeFBO); gl.deleteTexture(this.scopeTex); }
+        if (this._scopeFloatBlend === undefined) {
+            this._scopeFloatBlend = !!(this.isWebGL2 && this.extColorBufferFloat && gl.getExtension('EXT_float_blend'));
+        }
+        const formats = [];
+        if (this.isWebGL2 && this.extColorBufferFloat) {
+            if (this._scopeFloatBlend) formats.push([gl.RGBA32F, gl.FLOAT]);
+            formats.push([gl.RGBA16F, gl.HALF_FLOAT]);
+        }
+        formats.push([gl.RGBA, gl.UNSIGNED_BYTE]);
+        for (const [internal, type] of formats) {
             this.scopeFBO = gl.createFramebuffer();
             this.scopeTex = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, this.scopeTex);
-            gl.texImage2D(gl.TEXTURE_2D, 0, precFmt.internalFmt, size, size, 0, gl.RGBA, precFmt.type, null);
+            gl.texImage2D(gl.TEXTURE_2D, 0, internal, needW, needH, 0, gl.RGBA, type, null);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.scopeFBO);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.scopeTex, 0);
-            // Validate FBO — fall back to RGBA/UNSIGNED_BYTE if float FBO not supported
-            const fboStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
-            if (fboStatus !== gl.FRAMEBUFFER_COMPLETE) {
-                console.warn(`[Radiance] Scope FBO at ${precFmt.label} failed (${fboStatus}), falling back to RGBA8`);
-                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-                gl.deleteTexture(this.scopeTex);
-                gl.deleteFramebuffer(this.scopeFBO);
-                // Recreate at safe RGBA8
-                this.scopeFBO = gl.createFramebuffer();
-                this.scopeTex = gl.createTexture();
-                gl.bindTexture(gl.TEXTURE_2D, this.scopeTex);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-                gl.bindFramebuffer(gl.FRAMEBUFFER, this.scopeFBO);
-                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.scopeTex, 0);
-                this._scopeFBOType = gl.UNSIGNED_BYTE;
-            } else {
-                this._scopeFBOType = precFmt.type;
+            const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            if (ok) {
+                this._scopeFBOType = type;
+                this._scopeTexW = needW; this._scopeTexH = needH;
+                return true;
             }
+            gl.deleteFramebuffer(this.scopeFBO); gl.deleteTexture(this.scopeTex);
+            this.scopeFBO = null; this.scopeTex = null;
         }
+        return false;
+    }
 
-        // Render scope into offscreen FBO — never touch the display framebuffer
+    /**
+     * How many points one scope draw may plot. Every pixel of a 4K frame
+     * fits the default; a software rasteriser (SwiftShader, llvmpipe) starts
+     * at 128K, and any GPU that takes longer than SCOPE_SLOW_MS for one draw
+     * has its budget cut for the next, so the scopes cannot stall the viewer.
+     */
+    _scopePointBudgetNow() {
+        if (this.scopePointBudget === undefined) {
+            let software = false;
+            try {
+                const ext = this.gl.getExtension('WEBGL_debug_renderer_info');
+                const name = ext ? this.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '';
+                software = /SwiftShader|llvmpipe|Software|Basic Render/i.test(name || '');
+            } catch { /* unknown: the timing below adapts */ }
+            this.scopePointBudget = software ? 131072 : 8.9e6;
+        }
+        return this.scopePointBudget;
+    }
+
+    /**
+     * Above the point budget, the frame is reduced before it is plotted, in a
+     * way that keeps its extremes: each k x k block becomes two texels, its
+     * lowest and its highest by the scope's own measure. Luma for the
+     * waveform, chroma for the vectorscope (actual pixels, so a colour is
+     * never invented), and per channel for the parade and the histogram. A
+     * one-pixel line, a lone clipped pixel and a single saturated pixel all
+     * survive; only the spread of in-between values is approximated.
+     * Returns { tex, width, height } or null.
+     */
+    _scopeReduce(sourceTexture, srcW, srcH, isLinear, k, key) {
+        const gl = this.gl;
+        if (!this.programs.scopeReduce) {
+            this.programs.scopeReduce = this.createProgram(this.getBasicVertexShader(), `#version 300 es
+                precision highp float;
+                precision highp int;
+                uniform highp sampler2D u_src;
+                uniform ivec2 u_srcSize;
+                uniform int u_k;
+                uniform int u_key;      // 0 luma, 1 chroma, 2 per channel
+                uniform bool u_isLinear;
+                in vec2 v_texcoord;     // unused; keeps the quad's attributes live
+                out vec4 fragColor;
+                vec3 encodeSRGB(vec3 c) {
+                    vec3 a = abs(c);
+                    return sign(c) * mix(1.055 * pow(a, vec3(1.0 / 2.4)) - 0.055, a * 12.92, vec3(lessThan(a, vec3(0.0031308))));
+                }
+                float measure(vec3 code) {
+                    float y = dot(code, vec3(0.2126, 0.7152, 0.0722));
+                    if (u_key == 0) return y;
+                    return length(vec2((code.b - y) / 1.8556, (code.r - y) / 1.5748));
+                }
+                void main() {
+                    if (v_texcoord.x < -1.0) discard;
+                    ivec2 o = ivec2(gl_FragCoord.xy);
+                    bool high = (o.x & 1) == 1;
+                    ivec2 b0 = ivec2(o.x >> 1, o.y) * u_k;
+                    vec3 best = vec3(0.0), lo = vec3(1e30), hi = vec3(-1e30);
+                    float bm = high ? -1e30 : 1e30;
+                    bool found = false;
+                    for (int j = 0; j < 16; j++) {
+                        if (j >= u_k) break;
+                        for (int i = 0; i < 16; i++) {
+                            if (i >= u_k) break;
+                            ivec2 p = b0 + ivec2(i, j);
+                            if (p.x >= u_srcSize.x || p.y >= u_srcSize.y) continue;
+                            vec3 c = texelFetch(u_src, p, 0).rgb;
+                            if (any(isnan(c)) || any(isinf(c))) continue;
+                            vec3 code = u_isLinear ? encodeSRGB(c) : c;
+                            lo = min(lo, c); hi = max(hi, c);
+                            float m = measure(code);
+                            if (high ? m > bm : m < bm) { bm = m; best = c; }
+                            found = true;
+                        }
+                    }
+                    // An empty block (the frame edge) is NaN, which the scope skips.
+                    if (!found) { fragColor = vec4(uintBitsToFloat(0x7fc00000u)); return; }
+                    fragColor = vec4(u_key == 2 ? (high ? hi : lo) : best, 1.0);
+                }`);
+        }
+        const program = this.programs.scopeReduce;
+        if (!program) return null;
+        const w = Math.ceil(srcW / k) * 2, h = Math.ceil(srcH / k);
+        const slot = `scopeReduced${key}`;
+        let r = this._scopeReduced?.[key];
+        if (!r || r.w !== w || r.h !== h) {
+            if (r) { gl.deleteFramebuffer(r.fbo); gl.deleteTexture(this.textures[slot]); }
+            const tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            const fbo = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+            const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            if (!ok) { gl.deleteFramebuffer(fbo); gl.deleteTexture(tex); return null; }
+            this.textures[slot] = tex;        // freed with the other textures in destroy()
+            r = { fbo, w, h };
+            (this._scopeReduced ||= {})[key] = r;
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, r.fbo);
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(program);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
+        gl.uniform1i(this.getUniform(program, 'u_src'), 0);
+        gl.uniform2i(this.getUniform(program, 'u_srcSize'), srcW, srcH);
+        gl.uniform1i(this.getUniform(program, 'u_k'), k);
+        gl.uniform1i(this.getUniform(program, 'u_key'), key);
+        gl.uniform1i(this.getUniform(program, 'u_isLinear'), isLinear ? 1 : 0);
+        this.drawQuad(program);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { tex: this.textures[slot], width: w, height: h };
+    }
+
+    /**
+     * Draw one point per source pixel into the scope target and read the
+     * w x h result back as floats (counts, when the target is float).
+     *
+     * 'instances' repeats the frame, once per channel, for the parade and
+     * the histogram. Above the point budget the frame is first reduced with
+     * _scopeReduce, which keeps every extreme. Returns null when the scope
+     * cannot be drawn.
+     */
+    _scopeAccumulate(mode, w, h, sourceTexture, srcW, srcH, isLinear, { parade = false, logAssist = false, instances = 1 } = {}) {
+        const gl = this.gl;
+        if (!this.programs[mode]) {
+            this.programs[mode] = this.createProgram(this.getScopePointVertexShader(mode), this.getScopePointFragmentShader());
+        }
+        const program = this.programs[mode];
+        if (!program || !sourceTexture || !this._scopeTarget(w, h)) return null;
+        const floatTarget = this._scopeFBOType !== gl.UNSIGNED_BYTE;
+        const t0 = performance.now();
+
+        const budget = this._scopePointBudgetNow();
+        let k = 1;
+        while (k < 16 && (k === 1 ? srcW * srcH : 2 * Math.ceil(srcW / k) * Math.ceil(srcH / k)) > budget) k *= 2;
+        this.scopeReduction = k;
+        if (k > 1 && this.extColorBufferFloat) {
+            const key = mode === 'waveform' && !parade ? 0 : mode === 'vectorscope' ? 1 : 2;
+            const red = this._scopeReduce(sourceTexture, srcW, srcH, isLinear, k, key);
+            if (red) { sourceTexture = red.tex; srcW = red.width; srcH = red.height; }
+            else this.scopeReduction = 1;
+        } else {
+            this.scopeReduction = 1;
+        }
+        const points = srcW * srcH;
+
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.scopeFBO);
-        gl.viewport(0, 0, size, size);
-        gl.clearColor(0.02, 0.02, 0.04, 1.0);
+        gl.viewport(0, 0, w, h);
+        gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-
-        // Additive blending for density accumulation
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 
-        // v3.2: Initialize programs if they don't exist
-        if (!this.programs.chromaticity) {
-            this.programs.chromaticity = this.createProgram(
-                this.getScopePointVertexShader('chromaticity'),
-                this.getScopePointFragmentShader()
-            );
-        }
-
         gl.useProgram(program);
-        gl.uniform1i(this.getUniform(program, 'u_image'), 0);
-        gl.uniform1i(this.getUniform(program, 'u_isLinear'), isLinear ? 1 : 0);
-        gl.uniform1f(this.getUniform(program, 'u_intensity'), mode === 'waveform' ? 0.04 : 0.02);
-
-        // v3.1: Waveform Parade control
-        if (mode === 'waveform') {
-            gl.uniform1i(this.getUniform(program, 'u_parade'), parade ? 1 : 0);
-        }
-
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
+        gl.uniform1i(this.getUniform(program, 'u_image'), 0);
+        gl.uniform2i(this.getUniform(program, 'u_srcSize'), srcW, srcH);
+        gl.uniform2f(this.getUniform(program, 'u_targetSize'), w, h);
+        gl.uniform1i(this.getUniform(program, 'u_isLinear'), isLinear ? 1 : 0);
+        gl.uniform1i(this.getUniform(program, 'u_logAssist'), logAssist ? 1 : 0);
+        gl.uniform1i(this.getUniform(program, 'u_parade'), parade ? 1 : 0);
+        // A float target counts; an 8-bit one can only take small steps.
+        gl.uniform1f(this.getUniform(program, 'u_intensity'), floatTarget ? 1.0 : 4.0 / 255.0);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.scopeBuffer);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-        gl.drawArrays(gl.POINTS, 0, this.scopePointCount);
+        // No attributes: every point finds its pixel from gl_VertexID.
+        if (!this._scopeVAO || !gl.isVertexArray(this._scopeVAO)) this._scopeVAO = gl.createVertexArray();
+        gl.bindVertexArray(this._scopeVAO);
+        if (instances > 1) gl.drawArraysInstanced(gl.POINTS, 0, points, instances);
+        else gl.drawArrays(gl.POINTS, 0, points);
+        gl.bindVertexArray(null);
         gl.disable(gl.BLEND);
 
-        // Read pixels — reuse pre-allocated buffers to avoid GC pressure (v3.1 PERF)
-        //
-        // The type must match the colour attachment. This was hard-coded to
-        // UNSIGNED_BYTE while the scope FBO is created at pipelinePrecision,
-        // which defaults to f32 -> RGBA32F. Per WebGL2, RGBA/UNSIGNED_BYTE is
-        // only a valid ReadPixels pair for a NORMALIZED FIXED-POINT buffer, so
-        // on every GPU with EXT_color_buffer_float (i.e. all desktop GPUs) the
-        // call raised INVALID_OPERATION and left the buffer untouched --
-        // waveform, vectorscope, histogram, parade and chromaticity all stayed
-        // black or stale. The RGBA8 fallback above never fired because a float
-        // FBO *is* FRAMEBUFFER_COMPLETE.
-        const pixels = this._scopePixels;
-        const fboType = this._scopeFBOType || gl.UNSIGNED_BYTE;
-        if (fboType === gl.UNSIGNED_BYTE) {
-            gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        // The type must match the colour attachment: RGBA/UNSIGNED_BYTE is not
+        // a valid read of a float buffer (it raised INVALID_OPERATION and left
+        // every scope black on GPUs with EXT_color_buffer_float).
+        const n = w * h * 4;
+        if (!this._scopePixelsF32 || this._scopePixelsF32.length < n) this._scopePixelsF32 = new Float32Array(n);
+        const out = this._scopePixelsF32.subarray(0, n);
+        if (floatTarget) {
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, out);
         } else {
-            if (!this._scopePixelsF32 || this._scopePixelsF32.length !== size * size * 4) {
-                this._scopePixelsF32 = new Float32Array(size * size * 4);
-            }
-            const fpix = this._scopePixelsF32;
-            gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT, fpix);
-            // Scope points are additively blended in [0,1]; saturate to 8-bit
-            // for the ImageData copy below.
-            for (let i = 0; i < fpix.length; i++) {
-                const v = fpix[i];
-                pixels[i] = v <= 0 ? 0 : (v >= 1 ? 255 : (v * 255) | 0);
-            }
+            if (this._scopePixels.length < n) this._scopePixels = new Uint8Array(n);
+            const pixels = this._scopePixels.subarray(0, n);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            for (let i = 0; i < n; i++) out[i] = pixels[i] / 255;
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        // The read above waited for the draw, so this is the draw's real cost.
+        const ms = performance.now() - t0;
+        if (ms > RadianceWebGLRenderer.SCOPE_SLOW_MS && points > 65536) {
+            this.scopePointBudget = Math.max(65536, Math.floor(points / 4));
+        }
+        return { data: out, floatTarget, points };
+    }
 
-        // Copy to target 2D canvas
+    /**
+     * Waveform, RGB parade and vectorscope, from every pixel of the source.
+     *
+     * 'sourceTexture' is normally the display signal (readDisplaySignal):
+     * code values, unclamped, at full resolution. One point per pixel is
+     * counted into a float target the size of the plot and the counts are
+     * shown on a log ramp, so a single clipped pixel is visible beside a
+     * whole frame of mid grey. The old path drew 65 536 bilinear taps of a
+     * 512 px, 8-bit, clamped copy: a one-pixel line, a lone specular, and
+     * anything above 1.0 or below 0 never reached the scope.
+     *
+     * The waveform and parade plot code values directly (C1). They used to
+     * convert the display signal back to light, call 1.0 "203 nits" and put
+     * it on a PQ axis, so white sat at 58 % and the top of the scope was
+     * always empty. The vertical axis is the shared one in
+     * radiance_scope_units.js: plotPos(), with footroom and headroom.
+     *
+     * opts: width, height  source size in pixels (default: the loaded image)
+     *       ticks          [{ at, label, emphasis }] in normalised code value;
+     *                      default the 10-bit code value scale
+     *       logAssist      plot through the LogC assist curve (Scopes tab)
+     *       graticule      false to leave the graticule to the caller
+     */
+    renderScope(mode, targetCanvas, sourceTexture, isLinear, parade = false, opts = {}) {
+        if (!this.gl || !this.isWebGL2 || !targetCanvas) return;
+        if (mode !== 'waveform' && mode !== 'vectorscope' && mode !== 'chromaticity') return;
+        const tw = targetCanvas.width, th = targetCanvas.height;
+        const w = Math.min(tw, 2048), h = Math.min(th, 2048);
+        const srcW = opts.width || this.imageWidth, srcH = opts.height || this.imageHeight;
+        if (!srcW || !srcH) return;
+        const acc = this._scopeAccumulate(mode, w, h, sourceTexture, srcW, srcH, isLinear,
+            { parade: mode === 'waveform' && parade, logAssist: !!opts.logAssist, instances: mode === 'waveform' && parade ? 3 : 1 });
+        if (!acc) return;
+
+        // Counts to brightness on a log ramp. 'full' is the count a flat
+        // frame puts on one plot position: every row of a column (waveform),
+        // or the whole frame on one spot (vectorscope, eased so typical
+        // pictures are not dim). The 0.75 power lifts the faint end, where a
+        // lone pixel sits.
+        const cols = mode === 'waveform' ? (parade ? w / 3 : w) : 1;
+        let full = mode === 'waveform' ? acc.points / cols : acc.points / 64;
+        if (this._scopeFBOType === this.gl.HALF_FLOAT) full = Math.min(full, 2048);
+        const norm = 1 / Math.log2(1 + Math.max(full, 2));
+        const d = acc.data;
+        const img = new ImageData(w, h);
+        const px = img.data;
+        const bg = [5, 5, 10];
+        for (let y = 0; y < h; y++) {
+            const src = (h - 1 - y) * w * 4, dst = y * w * 4;
+            for (let x = 0; x < w * 4; x += 4) {
+                for (let c = 0; c < 3; c++) {
+                    const a = d[src + x + c];
+                    const t = acc.floatTarget
+                        ? (a > 0 ? Math.min(1, Math.pow(Math.log2(1 + a) * norm, 0.75)) : 0)
+                        : Math.min(1, a);
+                    px[dst + x + c] = bg[c] + t * (255 - bg[c]);
+                }
+                px[dst + x + 3] = 255;
+            }
+        }
         const ctx = targetCanvas.getContext('2d');
-        const tw = targetCanvas.width;
-        const th = targetCanvas.height;
         ctx.clearRect(0, 0, tw, th);
-
-        const imgData = new ImageData(size, size);
-        for (let y = 0; y < size; y++) {
-            const srcRow = (size - 1 - y) * size * 4;
-            const dstRow = y * size * 4;
-            imgData.data.set(pixels.subarray(srcRow, srcRow + size * 4), dstRow);
+        if (w === tw && h === th) {
+            ctx.putImageData(img, 0, 0);
+        } else {
+            const tmp = document.createElement('canvas');
+            tmp.width = w; tmp.height = h;
+            tmp.getContext('2d').putImageData(img, 0, 0);
+            ctx.drawImage(tmp, 0, 0, tw, th);
         }
 
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = size;
-        tmpCanvas.height = size;
-        tmpCanvas.getContext('2d').putImageData(imgData, 0, 0);
-        ctx.drawImage(tmpCanvas, 0, 0, tw, th);
-
-        // ── v3.2: HDR Graticules & Labels ────────────────────────────────────
-        ctx.font = '10px "Inter", sans-serif';
-        ctx.textAlign = 'right';
-
-        if (mode === 'waveform') {
-            // Draws PQ-based nit scale lines
-            const nits = [100, 400, 1000, 4000];
-            const colors = ['#666', '#555', '#bb4444', '#ccaa44'];
-
-            nits.forEach((n, i) => {
-                // PQ formula approx for labels
-                const L = n / 10000;
-                const m1 = 2610 / 4096 * (1/4);
-                const m2 = 2523 / 4096 * 128;
-                const c1 = 3424 / 4096;
-                const c2 = 2413 / 4096 * 32;
-                const c3 = 2392 / 4096 * 32;
-                const y_pq = Math.pow((c1 + c2 * Math.pow(L, m1)) / (1 + c3 * Math.pow(L, m1)), m2);
-                const py = th - (y_pq * th);
-
-                ctx.strokeStyle = colors[i];
-                ctx.globalAlpha = 0.5;
+        if (mode === 'waveform' && opts.graticule !== false) {
+            this._drawScopeAxis(ctx, tw, th, opts.ticks || _cvTicks(), 'y', opts.logAssist);
+            if (parade) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+                ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(0, py);
-                ctx.lineTo(tw, py);
+                for (const f of [1 / 3, 2 / 3]) { ctx.moveTo(Math.round(f * tw) + 0.5, 0); ctx.lineTo(Math.round(f * tw) + 0.5, th); }
                 ctx.stroke();
-
-                ctx.fillStyle = colors[i];
-                ctx.globalAlpha = 1.0;
-                ctx.fillText(n + (n>=1000 ? ' nit' : ''), tw - 5, py - 2);
-            });
+            }
         }
         ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Graticule for the GPU scopes, on the shared plot axis: a line and a
+     * label per tick, the 0 and 100 % lines emphasised, and the footroom and
+     * headroom bands shaded so a value outside 0-1 reads as outside.
+     */
+    _drawScopeAxis(ctx, w, h, ticks, axis = 'y', logAssist = false) {
+        const at = (v) => _plotPos(logAssist ? _logAssistPos(v) : v);
+        ctx.save();
+        ctx.font = '10px "Inter", sans-serif';
+        // Headroom and footroom: outside the legal 0-1 code range.
+        ctx.fillStyle = 'rgba(255,90,60,0.06)';
+        if (axis === 'y') {
+            ctx.fillRect(0, 0, w, h - at(1) * h);
+            ctx.fillRect(0, h - at(0) * h, w, at(0) * h);
+        } else {
+            ctx.fillRect(at(1) * w, 0, w - at(1) * w, h);
+            ctx.fillRect(0, 0, at(0) * w, h);
+        }
+        ctx.lineWidth = 1;
+        for (const t of ticks) {
+            const p = at(t.at);
+            const edge = t.at <= 0 || t.at >= 1;
+            ctx.strokeStyle = t.emphasis ? 'rgba(255,200,80,0.55)' : (edge ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)');
+            ctx.fillStyle = t.emphasis ? '#ffc844' : 'rgba(255,255,255,0.5)';
+            ctx.beginPath();
+            if (axis === 'y') {
+                const y = Math.round(h - p * h) + 0.5;
+                ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+                ctx.textAlign = 'left';
+                ctx.fillText(t.label, 3, Math.max(10, y - 2));
+            } else {
+                const x = Math.round(p * w) + 0.5;
+                ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+                ctx.textAlign = 'center';
+                ctx.fillText(t.label, Math.min(Math.max(x, 12), w - 12), h - 3);
+            }
+        }
+        ctx.restore();
     }
 
     setOffset(r, g, b) { this.offset = (g === undefined) ? [r, r, r] : [r, g, b]; }
@@ -828,51 +1043,85 @@ class RadianceWebGLRenderer extends RadianceRenderer {
      *  giving exposure-accurate stop thresholds. Default: true. */
     setLinearFalseColor(v) { this.linearFalseColor = v; }
 
+    /**
+     * Per-channel counts of code values from every pixel: 'bins' bins across
+     * the shared plot axis (footroom and headroom included, through the LogC
+     * assist curve when opts.logAssist). Returns [R, G, B] Float32Arrays, or
+     * null when the GPU cannot count.
+     */
+    scopeHistogramBins(bins, sourceTexture, isLinear, opts = {}) {
+        const srcW = opts.width || this.imageWidth, srcH = opts.height || this.imageHeight;
+        if (!this.isWebGL2 || !sourceTexture || !srcW || !srcH) return null;
+        const acc = this._scopeAccumulate('histogram', bins, 1, sourceTexture, srcW, srcH, isLinear,
+            { logAssist: !!opts.logAssist, instances: 3 });
+        if (!acc) return null;
+        return [0, 1, 2].map((c) => {
+            const a = new Float32Array(bins);
+            for (let i = 0; i < bins; i++) a[i] = acc.data[i * 4 + c];
+            return a;
+        });
+    }
+
     // ── v3.0 #6: GPU Histogram HUD ───────────────────────────────────────────
     /**
-     * Render a 256-bin per-channel histogram to a target canvas.
-     * Uses the existing scope-point GPU pipeline at full 512-px scatter density.
-     * R/G/B histograms are drawn as additive colored lines on a dark background.
+     * Per-channel histogram of code values, from every pixel (M9).
      *
-     * @param {HTMLCanvasElement} targetCanvas  – destination 2D canvas (histogram HUD)
-     * @param {boolean}           logScale      – if true, use log2 Y-axis for HDR content
+     * Each pixel adds one count per channel to a bin on the shared plot axis,
+     * the axis the waveform uses vertically, so a value reads at the same
+     * place on both. It used to scatter linear-light luma, which put mid grey
+     * at 22 % of the width, and "log" moved the grid lines and nothing else.
+     * Log now plots through the LogC assist curve, bins and graticule
+     * together, as the Scopes tab does.
+     *
+     * @param {HTMLCanvasElement} targetCanvas  destination 2D canvas
+     * @param {boolean}           logScale      plot through the LogC assist curve
+     * @param {object}            opts          width, height (source size), ticks
      */
-    renderHistogram(targetCanvas, logScale = false, sourceTexture = null, isLinear = null) {
-        if (!this.textures.image) return;
-        // Use the existing histogram scope-point program (scatter by luma/channel)
-        this.renderScope('histogram', targetCanvas, sourceTexture || this.textures.image,
-            isLinear ?? this.isLinearTexture);
+    renderHistogram(targetCanvas, logScale = false, sourceTexture = null, isLinear = null, opts = {}) {
+        if (!this.textures.image || !this.isWebGL2 || !targetCanvas) return;
+        const tw = targetCanvas.width, th = targetCanvas.height;
+        const binned = this.scopeHistogramBins(Math.min(tw, 2048), sourceTexture || this.textures.image,
+            isLinear ?? this.isLinearTexture, { ...opts, logAssist: !!logScale });
+        if (!binned) return;
+        const bins = binned[0].length;
+        let max = 1e-9;
+        for (const ch of binned) for (let i = 0; i < bins; i++) if (ch[i] > max) max = ch[i];
 
-        // Overlay colored channel lines on top of the luma scatter
         const ctx = targetCanvas.getContext('2d');
-        const w = targetCanvas.width;
-        const h = targetCanvas.height;
+        ctx.clearRect(0, 0, tw, th);
+        ctx.fillStyle = '#05050a';
+        ctx.fillRect(0, 0, tw, th);
+        this._drawScopeAxis(ctx, tw, th, opts.ticks || _cvTicks(), 'x', !!logScale);
 
-        // Draw grid lines (log or linear)
-        ctx.globalAlpha = 0.25;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        const gridStops = logScale ? [0.01, 0.1, 0.5, 1.0, 2.0, 6.0] : [0.25, 0.5, 0.75, 1.0];
-        gridStops.forEach(v => {
-            const x = Math.min(w - 1, Math.round(Math.min(v, 1.0) * (w - 1)));
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-        });
-
-        // HDR indicator: dotted line at x=1.0
-        ctx.globalAlpha = 0.5;
-        ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = '#ffcc00';
-        ctx.beginPath(); ctx.moveTo(w - 1, 0); ctx.lineTo(w - 1, h); ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Labels
-        ctx.globalAlpha = 0.7;
-        ctx.font = '9px monospace';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText('0', 2, h - 2);
-        ctx.fillText('1.0', w - 22, h - 2);
-        if (logScale) ctx.fillText('HDR', w - 30, 12);
-        ctx.globalAlpha = 1.0;
+        const xs = tw / bins;
+        const colours = ['#ff4444', '#44ff44', '#4488ff'];
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let c = 0; c < 3; c++) {
+            const yOf = (i) => th - (binned[c][i] / max) * th * 0.92;
+            ctx.beginPath();
+            ctx.moveTo(0, th);
+            for (let i = 0; i < bins; i++) ctx.lineTo((i + 0.5) * xs, yOf(i));
+            ctx.lineTo(tw, th);
+            ctx.closePath();
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = colours[c];
+            ctx.fill();
+            ctx.beginPath();
+            for (let i = 0; i < bins; i++) {
+                if (i === 0) ctx.moveTo((i + 0.5) * xs, yOf(i)); else ctx.lineTo((i + 0.5) * xs, yOf(i));
+            }
+            ctx.globalAlpha = 0.9;
+            ctx.strokeStyle = colours[c];
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        ctx.restore();
+        if (logScale) {
+            ctx.fillStyle = 'rgba(255,200,80,0.8)';
+            ctx.font = '9px monospace';
+            ctx.fillText('LOG', tw - 26, 12);
+        }
     }
 
     // ── v3.0 #8: LRU GPU Frame Texture Cache ─────────────────────────────────
@@ -1227,11 +1476,26 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     grabReferenceStill() {
         const gl = this.gl;
 
-        // Read current framebuffer pixels
-        const w = this.canvas.width;
-        const h = this.canvas.height;
+        // The picture as shown, at full size. H10: the canvas is the size it
+        // is displayed at below 100 %, so the still is rendered off-screen at
+        // the frame's own size rather than read from the canvas.
+        const w = this.imageWidth || this.canvas.width;
+        const h = this.imageHeight || this.canvas.height;
         const pixels = new Uint8Array(w * h * 4);
+        const stillTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, stillTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        const stillFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, stillFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stillTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this._exportFBO = { fbo: stillFbo, width: w, height: h };
+        try { this.render(this._lastLutStrength ?? 1.0); } finally { this._exportFBO = null; }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, stillFbo);
         gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(stillFbo);
+        gl.deleteTexture(stillTex);
 
         // Release previous texture at this slot
         const slot = this.activeShelfIndex;
@@ -1360,9 +1624,28 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     setDisplayColorSpace(cs) {
         const gl = this.gl;
         if (!gl || !('drawingBufferColorSpace' in gl)) return false;
-        try { gl.drawingBufferColorSpace = cs; } catch { return false; }
-        this.displayColorSpace = gl.drawingBufferColorSpace;
+        this._wantColorSpace = cs;
+        this._syncDisplayColorSpace();
         return this.displayColorSpace === cs;
+    }
+
+    /**
+     * M19: tag the drawing buffer with what the shader is actually writing.
+     * The view asks for Display P3 only through OCIO; a frame that falls back
+     * to the 8-bit sRGB preview (displayReferredTexture) skips OCIO and
+     * writes sRGB, and leaving the canvas tagged P3 then oversaturated it.
+     * Checked on every draw to the screen, never during an off-screen render
+     * (changing the tag reallocates the visible drawing buffer).
+     */
+    _syncDisplayColorSpace() {
+        const gl = this.gl;
+        if (!gl || !('drawingBufferColorSpace' in gl) || this._exportFBO) return;
+        const p3 = this._wantColorSpace === 'display-p3' && this.ocioEnabled && !this.displayReferredTexture;
+        const cs = p3 ? 'display-p3' : 'srgb';
+        if (gl.drawingBufferColorSpace !== cs) {
+            try { gl.drawingBufferColorSpace = cs; } catch { /* unsupported: stays as it was */ }
+        }
+        this.displayColorSpace = gl.drawingBufferColorSpace;
     }
 
     init() {
@@ -1988,6 +2271,8 @@ ${GRADE_GLSL}
             uniform int u_displayLutMode;
             uniform int u_inputLutMode;
             uniform int u_sourceGamut;
+            uniform bool u_displayP3;          // M6: the canvas is tagged Display P3
+            uniform float u_minify;            // H10: source pixels per output pixel (>= 1)
             uniform float u_displayLutStrength;
 
             // v2.2 Pro Comparison
@@ -2522,14 +2807,73 @@ const float GOLDEN_ANGLE = 2.39996323;
                 return vec3(1.0, 0.0, 1.0);
             }
 
-            // ACES Tone Mapping (Approx)
+            // ACES Tone Mapping (Approx): Stephen Hill's fit of the ACES RRT +
+            // sRGB ODT, with its AP1 input and output matrices (RRT and ODT
+            // saturation included). It holds the picture until OCIO is up and
+            // is the "Filmic (approx.)" view. It was Narkowicz's curve with no
+            // 0.6 input scale: 18 % grey showed at 141 against ACES 2.0's 89,
+            // so the frame jumped darker when OCIO took over. Even with the
+            // 0.6 scale Narkowicz gives 105; this fit gives 91.
             vec3 toneMapACES(vec3 color) {
-                const float a = 2.51;
-                const float b = 0.03;
-                const float c = 2.43;
-                const float d = 0.59;
-                const float e = 0.14;
-                return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+                const mat3 ACES_IN = mat3(
+                    0.59719, 0.07600, 0.02840,
+                    0.35458, 0.90834, 0.13383,
+                    0.04823, 0.01566, 0.83777);
+                const mat3 ACES_OUT = mat3(
+                     1.60475, -0.10208, -0.00327,
+                    -0.53108,  1.10813, -0.07276,
+                    -0.07367, -0.00605,  1.07602);
+                vec3 v = ACES_IN * color;
+                v = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081);
+                return clamp(ACES_OUT * v, 0.0, 1.0);
+            }
+
+            // Source gamut (u_sourceGamut) to linear Rec.709, the built-in
+            // display curves' gamut. OCIO does this itself; with an input
+            // transform the gamut is the IDT's and is left alone.
+            vec3 sourceToRec709(vec3 c) {
+                if (u_inputLutMode != 0) return c;
+                if (u_sourceGamut == 1) return mat3( // ACEScg, OCIO ACES studio
+                    1.7050509453, -0.1302564144, -0.0240033567,
+                    -0.6217921376, 1.1408047676, -0.1289689690,
+                    -0.0832588747, -0.0105483187, 1.1529723406) * c;
+                if (u_sourceGamut == 2) return mat3( // ACES2065-1, OCIO ACES studio
+                    2.5216860771, -0.2764798999, -0.0153780654,
+                    -1.1341309547, 1.3727190495, -0.1529753357,
+                    -0.3875552118, -0.0962391719, 1.1683534384) * c;
+                if (u_sourceGamut == 3) return mat3( // Linear Rec.2020, OCIO ACES studio
+                    1.6604909897, -0.1245504767, -0.0181507636,
+                    -0.5876411200, 1.1328998804, -0.1005788967,
+                    -0.0728498623, -0.0083494224, 1.1187297106) * c;
+                if (u_sourceGamut == 4) return mat3( // Linear P3-D65, OCIO ACES studio
+                    1.2249401808, -0.0420569554, -0.0196375549,
+                    -0.2249401808, 1.0420569181, -0.0786360428,
+                    0.0000000000, 0.0000000000, 1.0982736349) * c;
+                return c;
+            }
+
+            // M6: luminance weights of the source gamut (the Y row of its
+            // RGB to XYZ matrix). Everything used Rec.709's for every source.
+            vec3 sourceLumaWeights() {
+                if (u_inputLutMode != 0) return vec3(0.2126, 0.7152, 0.0722);
+                if (u_sourceGamut == 1) return vec3(0.2722287168, 0.6740817658, 0.0536895174);   // AP1
+                if (u_sourceGamut == 2) return vec3(0.3439664498, 0.7281660966, -0.0721325464);  // AP0
+                if (u_sourceGamut == 3) return vec3(0.2627002120, 0.6779980715, 0.0593017165);   // Rec.2020
+                if (u_sourceGamut == 4) return vec3(0.2289745641, 0.6917385218, 0.0792869141);   // P3-D65
+                return vec3(0.2126, 0.7152, 0.0722);
+            }
+
+            // M6: a colour outside the gamut the display can show is one with
+            // a negative component after conversion to that gamut. The
+            // warning tested the source gamut, so ACEScg pure green (inside
+            // AP1, far outside Rec.709) clipped on screen without a flag.
+            bool outsideDisplayGamut(vec3 sceneLinear) {
+                vec3 d = sourceToRec709(sceneLinear);
+                if (u_displayP3) d = mat3(
+                    0.8224621, 0.0331941, 0.0170827,
+                    0.1775380, 0.9668058, 0.0723974,
+                    0.0000000, 0.0000000, 0.9105199) * d;
+                return any(lessThan(d, vec3(-1e-4)));
             }
 
             // Simple Reinhard Tone Mapping
@@ -2551,6 +2895,26 @@ const float GOLDEN_ANGLE = 2.39996323;
                 vec3 higher = pow((srgb + vec3(0.055)) / vec3(1.055), vec3(2.4));
                 vec3 lower = srgb / vec3(12.92);
                 return mix(higher, lower, vec3(cutoff));
+            }
+
+            // H10: an output pixel smaller than a source pixel's footprint
+            // averages the footprint in linear light, before the view
+            // transform: a box of up to 8 x 8 taps, each decoded first. At
+            // 1/2 and 1/4 the taps land on texel centres, so the box is exact.
+            vec3 sampleFootprintLinear(vec2 uv) {
+                float n = clamp(ceil(u_minify - 1e-3), 1.0, 8.0);
+                vec2 span = u_minify / u_texSize;
+                vec3 acc = vec3(0.0);
+                for (int j = 0; j < 8; j++) {
+                    if (float(j) >= n) break;
+                    for (int i = 0; i < 8; i++) {
+                        if (float(i) >= n) break;
+                        vec2 o = (vec2(float(i), float(j)) + 0.5) / n - 0.5;
+                        vec3 s = texture(u_image, uv + o * span).rgb;
+                        acc += u_isLinear ? s : sRGBToLinear(s);
+                    }
+                }
+                return acc / (n * n);
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -2604,7 +2968,7 @@ const float GOLDEN_ANGLE = 2.39996323;
                 case 8: { // Reinhard global tonemap
                     return c / (c + vec3(1.0));
                 }
-                case 9: { // ACES Filmic (Narkowicz fit)
+                case 9: { // ACES Filmic (Hill fit, see toneMapACES)
                     return toneMapACES(c);
                 }
 
@@ -2799,10 +3163,12 @@ const float GOLDEN_ANGLE = 2.39996323;
                 }
 
                 case 30: { // IDT V-Log → Linear
+                    // Panasonic V-Log: linear segment 5.6 * x + 0.125 below
+                    // x = 0.01, so code 0.181 is the cut (the spec's cut2).
                     const float vl_b=0.00873, vl_c=0.241514, vl_d=0.598206;
-                    float vl_cut_cv = 5.625 * 0.01 + 0.125; // 0.18125
+                    float vl_cut_cv = 0.181;
                     vec3 logBranch = pow(vec3(10.0), (c - vl_d) / vl_c) - vl_b;
-                    vec3 linBranch = (c - 0.125) / 5.625;
+                    vec3 linBranch = (c - 0.125) / 5.6;
                     return mix(linBranch, logBranch, vec3(greaterThanEqual(c, vec3(vl_cut_cv))));
                 }
 
@@ -3008,13 +3374,14 @@ ${GRADE_GLSL}
             }
 
             // ── v3.4: Printer Lights ─────────────────────────────────────────
-            // Each channel is multiplied by 2^(offset/50), mirroring how a
-            // film printer light step modulates per-channel density.
+            // Printer points: one point is 0.025 log exposure, so 12 points
+            // make a stop (0.30 log E) and each channel is multiplied by
+            // 2^(points/12). It was 50 points per stop.
             vec3 applyPrinterLights(vec3 color, float r, float g, float b) {
                 if (r == 0.0 && g == 0.0 && b == 0.0) return color;
-                color.r *= pow(2.0, r / 50.0);
-                color.g *= pow(2.0, g / 50.0);
-                color.b *= pow(2.0, b / 50.0);
+                color.r *= pow(2.0, r / 12.0);
+                color.g *= pow(2.0, g / 12.0);
+                color.b *= pow(2.0, b / 12.0);
                 return color;
             }
 
@@ -3161,19 +3528,36 @@ vec3 getDenoiseColor(vec2 uv) {
             // But we can call it with radius 0.0 to get CA
             if (u_lensFringe > 0.0) {
                 color = getBokehColor(uv, 0.0);
+            } else if (u_minify > 1.0) {
+                color = sampleFootprintLinear(uv);     // H10: already linear
             } else {
                 color = texture(u_image, uv).rgb;
             }
+        }
+        bool preLinear = !u_dofEnabled && u_lensFringe <= 0.0 && u_minify > 1.0;
+
+        // M7: NaN and Inf in the source get their own colour (below) rather
+        // than whatever the maths makes of them: NaN was drawn black. The
+        // texel is fetched, not filtered: a filter weights an Inf neighbour
+        // by zero and makes NaN of it.
+        vec3 rawSample = texelFetch(u_image, clamp(ivec2(uv * u_texSize), ivec2(0), ivec2(u_texSize) - 1), 0).rgb;
+        bool srcNaN = any(isnan(rawSample)) || any(notEqual(rawSample, rawSample));
+        bool srcInf = !srcNaN && any(isinf(rawSample));
+        if (preLinear && !srcNaN && !srcInf) {
+            // Below 100 %: a fault anywhere in the footprint (H10).
+            srcInf = any(isinf(color));
+            srcNaN = !srcInf && (any(isnan(color)) || any(notEqual(color, color)));
         }
 
         // 1a. Denoise
         if (u_denoise > 0.0) {
             vec3 smoothColor = getDenoiseColor(uv);
+            if (preLinear && !u_isLinear) smoothColor = sRGBToLinear(smoothColor);
             color = mix(color, smoothColor, u_denoise);
         }
 
         // 1b. Linearize
-        if (!u_isLinear) {
+        if (!u_isLinear && !preLinear) {
             color = sRGBToLinear(color);
         }
 
@@ -3239,8 +3623,8 @@ vec3 getDenoiseColor(vec2 uv) {
         // 5c. Secondary Curves (Hue vs X)
         color = applySecondaryCurves(color);
 
-        // 6. Saturation
-        float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        // 6. Saturation (about the source gamut's own luminance, M6)
+        float luma = dot(color, sourceLumaWeights());
         color = mix(vec3(luma), color, u_saturation);
 
         // v3.0: Hue Shift
@@ -3409,6 +3793,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // information is gone -- color from here on is display-referred.
         vec3 sceneLinearForHeatmap = color;
         vec3 displayPreClamp = color;   // set after the view, before any clamp
+        vec3 scopeUnder = vec3(0.0);    // below-black the view's OETF clamps, for the scopes
 
         // 3.5.0: viewer f-stop, Nuke-style: a look at the picture, not part of
         // it. Applied after the grade and after the scene values the heatmap,
@@ -3448,22 +3833,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // Built-in display curves expect Rec.709. OCIO performs this
         // conversion itself; scene-linear EXR export keeps the source gamut.
         if (!u_lutIsDisplayTransform && u_inputLutMode == 0) {
-            if (u_sourceGamut == 1) color = mat3( // ACEScg, OCIO ACES studio
-                1.7050509453, -0.1302564144, -0.0240033567,
-                -0.6217921376, 1.1408047676, -0.1289689690,
-                -0.0832588747, -0.0105483187, 1.1529723406) * color;
-            if (u_sourceGamut == 2) color = mat3( // ACES2065-1, OCIO ACES studio
-                2.5216860771, -0.2764798999, -0.0153780654,
-                -1.1341309547, 1.3727190495, -0.1529753357,
-                -0.3875552118, -0.0962391719, 1.1683534384) * color;
-            if (u_sourceGamut == 3) color = mat3( // Linear Rec.2020, OCIO ACES studio
-                1.6604909897, -0.1245504767, -0.0181507636,
-                -0.5876411200, 1.1328998804, -0.1005788967,
-                -0.0728498623, -0.0083494224, 1.1187297106) * color;
-            if (u_sourceGamut == 4) color = mat3( // Linear P3-D65, OCIO ACES studio
-                1.2249401808, -0.0420569554, -0.0196375549,
-                -0.2249401808, 1.0420569181, -0.0786360428,
-                0.0000000000, 0.0000000000, 1.0982736349) * color;
+            color = sourceToRec709(color);
         }
 
         // 6. Display LUT / Tonemap  (runs after 5. LUT)
@@ -3486,6 +3856,7 @@ vec3 getDenoiseColor(vec2 uv) {
         if (!u_lutIsDisplayTransform && !displayModeEncodes(u_displayLutMode)) {
             color = applySoftClip(color, u_softClip);
             displayPreClamp = linearToSRGB(max(color, vec3(0.0))) + min(color, vec3(0.0));
+            scopeUnder = -linearToSRGB(max(-color, vec3(0.0)));
             color = linearToSRGB(max(color, vec3(0.0)));
         } else {
             displayPreClamp = color;
@@ -3577,8 +3948,11 @@ vec3 getDenoiseColor(vec2 uv) {
         // through the view, and nothing drawn on top of it. They used to read
         // the finished canvas (false colour, zebra, wipe and grids included)
         // or the ungraded source texture.
+        // C2: unclamped, into a float target, so super-white and below-black
+        // reach the scopes. scopeUnder carries the negatives the sRGB OETF
+        // step zeroes, encoded with the mirrored curve.
         if (u_scopeSignal) {
-            fragColor = vec4(clamp(sanitize(color), 0.0, 1.0), 1.0);
+            fragColor = vec4(sanitize(color + scopeUnder), 1.0);
             return;
         }
 
@@ -3598,13 +3972,13 @@ vec3 getDenoiseColor(vec2 uv) {
         float lumaDisplay = dot(color, vec3(0.2126, 0.7152, 0.0722));
 
         if (u_falseColor) {
-            color = getFalseColorMap(arriSignal(dot(sceneLinearForHeatmap, vec3(0.2126, 0.7152, 0.0722))));
+            color = getFalseColorMap(arriSignal(dot(sceneLinearForHeatmap, sourceLumaWeights())));
         }
 
         // Reads scene luminance, not display luma: the whole point is absolute
         // cd/m2, which the display transform has already thrown away.
         if (u_hdrHeatmap) {
-            color = getHDRHeatmap(dot(sceneLinearForHeatmap, vec3(0.2126, 0.7152, 0.0722)));
+            color = getHDRHeatmap(dot(sceneLinearForHeatmap, sourceLumaWeights()));
         }
 
         if (u_zebra) {
@@ -3626,12 +4000,16 @@ vec3 getDenoiseColor(vec2 uv) {
         }
 
         if (u_gamutWarning) {
-            // A negative component in scene-linear is a colour outside the
-            // working gamut's triangle: it cannot be displayed without mapping.
-            if (any(lessThan(sceneLinearForHeatmap, vec3(-1e-4)))) {
+            // Outside the display's gamut: it cannot be shown without mapping.
+            if (outsideDisplayGamut(sceneLinearForHeatmap)) {
                 color = vec3(1.0, 0.0, 1.0); // Solid Magenta
             }
         }
+
+        // M7: flagged on the picture, under the compare and the grids. Never
+        // in exports or scopes, which have returned above.
+        if (srcNaN) color = vec3(0.0, 1.0, 1.0);          // NaN: cyan
+        else if (srcInf) color = vec3(1.0, 0.45, 0.0);    // Inf: orange
 
         // 8. Compare. B is the reference texture in display values, like color here.
         if (u_wipeRefEnabled && u_compareShow == 1) {
@@ -3740,105 +4118,94 @@ vec3 getDenoiseColor(vec2 uv) {
         `;
     }
 
-    // v2.5: GPU Point-based Scopes
+    // GPU point scopes: one point per source pixel (see renderScope).
     getScopePointVertexShader(mode) {
         return `#version 300 es
-            layout(location = 0) in vec2 a_uv;
-            uniform sampler2D u_image;
+            precision highp float;
+            precision highp int;
+            uniform highp sampler2D u_image;
+            uniform ivec2 u_srcSize;
+            uniform vec2 u_targetSize;
             uniform bool u_isLinear;
-            uniform float u_intensity;
+            uniform bool u_logAssist;
             uniform bool u_parade;
+            uniform float u_intensity;
             out vec4 v_color;
 
+            // The shared plot axis (radiance_scope_units.js plotPos): code
+            // value 0-1 with footroom and headroom, optionally through the
+            // LogC assist curve first, as the Scopes tab draws it.
+            float plotPos(float v) {
+                if (u_logAssist) v = log(1.0 + clamp(v, 0.0, 1.0) * ${LOG_ASSIST_C.toFixed(1)}) / log(${(1 + LOG_ASSIST_C).toFixed(1)});
+                return (v + ${SCOPE_PLOT_MARGIN.toFixed(6)}) / ${(1 + 2 * SCOPE_PLOT_MARGIN).toFixed(6)};
+            }
+            // A value off the plot is pinned to its edge, so it still shows.
+            float toClip(float pos, float size) {
+                return clamp(pos, 0.5 / size, 1.0 - 0.5 / size) * 2.0 - 1.0;
+            }
+            // Extended sRGB OETF: sign-preserving, unclamped above 1.0.
+            vec3 encodeSRGB(vec3 c) {
+                vec3 a = abs(c);
+                vec3 e = mix(1.055 * pow(a, vec3(1.0 / 2.4)) - 0.055, a * 12.92, vec3(lessThan(a, vec3(0.0031308))));
+                return sign(c) * e;
+            }
+
             void main() {
-                vec4 pixel = texture(u_image, a_uv);
-                vec3 color = pixel.rgb;
-
-                // Linearize if sRGB
-                if (!u_isLinear) {
-                    bvec3 cutoff = lessThan(color, vec3(0.04045));
-                    vec3 higher = pow((color + vec3(0.055)) / vec3(1.055), vec3(2.4));
-                    vec3 lower = color / vec3(12.92);
-                    color = mix(higher, lower, vec3(cutoff));
+                gl_PointSize = 1.0;
+                ivec2 p = ivec2(gl_VertexID % u_srcSize.x, gl_VertexID / u_srcSize.x);
+                vec3 c = texelFetch(u_image, p, 0).rgb;
+                if (any(isnan(c)) || any(isinf(c))) {
+                    gl_Position = vec4(2.0, 2.0, 0.0, 1.0);   // off target: NaN/Inf have their own flag
+                    v_color = vec4(0.0);
+                    return;
                 }
+                // Code values: the display signal as is; a linear texture
+                // through the sRGB OETF (what the Source measurement shows).
+                vec3 code = u_isLinear ? encodeSRGB(c) : c;
+                float x = (float(p.x) + 0.5) / float(u_srcSize.x);
 
-                float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-
-                if (${mode === 'vectorscope' ? 'true' : 'false'}) {
-                    // 3.5.0: BT.709 Cb/Cr of the ENCODED signal (see
-                    // radiance_vectorscope.js). It used linear light with PAL
-                    // U/V weights. 0.5 chroma reaches SCOPE_RADIUS (0.9).
-                    vec3 enc = pixel.rgb;
-                    if (u_isLinear) {
-                        vec3 lc = max(enc, vec3(0.0));
-                        enc = mix(1.055 * pow(lc, vec3(1.0 / 2.4)) - 0.055, lc * 12.92,
-                                  vec3(lessThan(lc, vec3(0.0031308))));
-                    }
-                    float ey = dot(enc, vec3(0.2126, 0.7152, 0.0722));
-                    float cb = (enc.b - ey) / 1.8556;
-                    float cr = (enc.r - ey) / 1.5748;
-                    v_color = vec4(clamp(enc, 0.0, 1.0), u_intensity);
-                    gl_Position = vec4(cb * 2.0 * 0.9, cr * 2.0 * 0.9, 0.0, 1.0);
-                } else if (${mode === 'waveform' ? 'true' : 'false'}) {
-                    // Waveform (X/Luma) or RGB Parade
-
-                    // HDR: Use ST.2084 (PQ) non-linear mapping for the Y axis
-                    // This allows seeing values from 0.001 to 10000 nits
-                    // 3.5.0: ST.2084 takes luminance / 10000 nits. Linear 1.0 is
-                    // 203 nits (BT.2408); it used to be fed as 10000 nits, so the
-                    // trace sat ~49x too high against a correct graticule.
-                    float L = luma * (203.0 / 10000.0);
-                    float m1 = 2610.0 / 4096.0 / 4.0;
-                    float m2 = 2523.0 / 4096.0 * 128.0;
-                    float c1 = 3424.0 / 4096.0;
-                    float c2 = 2413.0 / 4096.0 * 32.0;
-                    float c3 = 2392.0 / 4096.0 * 32.0;
-                    float y_pq = pow((c1 + c2 * pow(max(L, 1e-7), m1)) / (1.0 + c3 * pow(max(L, 1e-7), m1)), m2);
-
+                if (${mode === 'waveform' ? 'true' : 'false'}) {
                     if (u_parade) {
-                        float chanIdx = floor(a_uv.y * 3.0);
-                        float val = (chanIdx < 1.0) ? color.r : (chanIdx < 2.0 ? color.g : color.b);
-
-                        // Apply PQ to channel value too
-                        float valN = val * (203.0 / 10000.0);
-                        float val_pq = pow((c1 + c2 * pow(max(valN, 1e-7), m1)) / (1.0 + c3 * pow(max(valN, 1e-7), m1)), m2);
-
-                        vec3 chanCol = (chanIdx < 1.0) ? vec3(1.0, 0.1, 0.1) : (chanIdx < 2.0 ? vec3(0.1, 1.0, 0.1) : vec3(0.1, 0.4, 1.0));
-                        float x_base = -1.0 + chanIdx * (2.0/3.0);
-                        float x_local = a_uv.x * (2.0/3.0);
-
-                        gl_Position = vec4(x_base + x_local, val_pq * 1.96 - 0.98, 0.0, 1.0);
-                        v_color = vec4(chanCol, u_intensity * 3.0);
+                        int ch = gl_InstanceID;
+                        float px = (float(ch) + x) / 3.0;
+                        gl_Position = vec4(px * 2.0 - 1.0, toClip(plotPos(code[ch]), u_targetSize.y), 0.0, 1.0);
+                        vec3 chanCol = ch == 0 ? vec3(1.0, 0.25, 0.25) : (ch == 1 ? vec3(0.25, 1.0, 0.25) : vec3(0.3, 0.5, 1.0));
+                        v_color = vec4(chanCol, u_intensity);
                     } else {
-                        gl_Position = vec4(a_uv.x * 1.96 - 0.98, y_pq * 1.96 - 0.98, 0.0, 1.0);
-                        v_color = vec4(vec3(0.6, 1.0, 0.6), u_intensity * 1.5);
+                        float luma = dot(code, vec3(0.2126, 0.7152, 0.0722));
+                        gl_Position = vec4(x * 2.0 - 1.0, toClip(plotPos(luma), u_targetSize.y), 0.0, 1.0);
+                        v_color = vec4(0.6, 1.0, 0.6, u_intensity);
                     }
-                } else if (${mode === 'chromaticity' ? 'true' : 'false'}) {
-                    // CIE 1931 xy Chromaticity
-                    mat3 m = mat3(
-                        0.4124, 0.2126, 0.0193,
-                        0.3576, 0.7152, 0.1192,
-                        0.1805, 0.0722, 0.9505
-                    );
-                    vec3 xyz = m * color;
+                } else if (${mode === 'vectorscope' ? 'true' : 'false'}) {
+                    // BT.709 Cb/Cr of the ENCODED signal (radiance_vectorscope.js):
+                    // 0.5 chroma reaches SCOPE_RADIUS (0.9) of the half-size.
+                    float ey = dot(code, vec3(0.2126, 0.7152, 0.0722));
+                    float cb = (code.b - ey) / 1.8556;
+                    float cr = (code.r - ey) / 1.5748;
+                    float s = min(u_targetSize.x, u_targetSize.y);
+                    gl_Position = vec4((cb / 0.5) * 0.9 * s / u_targetSize.x, (cr / 0.5) * 0.9 * s / u_targetSize.y, 0.0, 1.0);
+                    // The point's hue at full brightness, so dark colours show.
+                    vec3 cc = clamp(code, 0.0, 1.0);
+                    float m = max(max(cc.r, cc.g), cc.b);
+                    v_color = vec4(0.35 + 0.65 * (m > 1e-4 ? cc / m : vec3(1.0)), u_intensity);
+                } else if (${mode === 'histogram' ? 'true' : 'false'}) {
+                    // One count per channel (instance) in a bins x 1 target.
+                    int ch = gl_InstanceID;
+                    gl_Position = vec4(toClip(plotPos(code[ch]), u_targetSize.x), 0.0, 0.0, 1.0);
+                    v_color = vec4(ch == 0 ? 1.0 : 0.0, ch == 1 ? 1.0 : 0.0, ch == 2 ? 1.0 : 0.0, u_intensity);
+                } else {
+                    // CIE 1931 xy of linear Rec.709 light.
+                    vec3 lin = u_isLinear ? c : mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThan(c, vec3(0.04045))));
+                    vec3 xyz = mat3(0.4124, 0.2126, 0.0193, 0.3576, 0.7152, 0.1192, 0.1805, 0.0722, 0.9505) * lin;
                     float sum = xyz.x + xyz.y + xyz.z;
                     if (sum > 1e-6) {
-                        float x = xyz.x / sum;
-                        float y = xyz.y / sum;
-                        // Map x [0, 0.8] -> [-1, 1], y [0, 0.9] -> [-1, 1]
-                        gl_Position = vec4((x / 0.8) * 2.0 - 1.0, (y / 0.9) * 2.0 - 1.0, 0.0, 1.0);
-                        v_color = vec4(color, u_intensity * 3.0);
+                        gl_Position = vec4((xyz.x / sum / 0.8) * 2.0 - 1.0, (xyz.y / sum / 0.9) * 2.0 - 1.0, 0.0, 1.0);
+                        v_color = vec4(clamp(code, 0.0, 1.0), u_intensity);
                     } else {
-                        gl_Position = vec4(-2.0, -2.0, 0.0, 1.0); // Discard blacks
+                        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+                        v_color = vec4(0.0);
                     }
-                } else {
-                    // Histogram (Luma)
-                    float x = clamp(luma, 0.0, 1.0) * 1.96 - 0.98;
-                    float y = (a_uv.y * 2.0 - 1.0) * 0.8;
-                    v_color = vec4(vec3(0.8), u_intensity);
-                    gl_Position = vec4(x, y, 0.0, 1.0);
                 }
-                gl_PointSize = 1.0;
             }
         `;
     }
@@ -4109,7 +4476,10 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // CONDITIONAL FILTERING: Linear only if extension supported
         // Prefer HalfFloatLinear for half-float textures, fallback to FloatLinear or NEAREST
-        const canFilter = this.extColorHalfFloatLinear || this.extColorFloatLinear;
+        // RGBA16F filters linearly in core WebGL2; OES_texture_half_float_linear
+        // is a WebGL1 extension and is never present there, so asking for it
+        // alone forced NEAREST on GPUs without the float32 extension.
+        const canFilter = this.isWebGL2 || this.extColorHalfFloatLinear || this.extColorFloatLinear;
         const filter = canFilter ? gl.LINEAR : gl.NEAREST;
 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -4138,26 +4508,38 @@ vec3 getDenoiseColor(vec2 uv) {
 
     /**
      * 3.5.0: the displayed picture (graded, through the view, no overlays) at
-     * w x h, rendered off-screen into an RGBA8 target. What the scopes measure.
-     * Also leaves it in this.textures.scopeSignal for the GPU scopes.
-     * @returns {{data: Uint8ClampedArray, width: number, height: number}|null}
+     * w x h, rendered off-screen. What the scopes measure. Also leaves it in
+     * this.textures.scopeSignal for the GPU scopes.
+     *
+     * The target is RGBA16F where the GPU can render to it, and the shader
+     * does not clamp in this mode, so a super-white or below-black display
+     * value reaches the scopes as itself (C2). It was RGBA8: everything
+     * outside 0-1 arrived as a clean 0 or 255 and could not be told apart
+     * from legal black and white.
+     *
+     * @returns {{data: Uint8ClampedArray, float: Float32Array|null, width: number,
+     *            height: number, texture: WebGLTexture, isFloat: boolean}|null}
+     *          'data' is the signal clamped to 8 bits, top-down; 'float' the
+     *          unclamped values when the target is float.
      */
     readDisplaySignal(w, h, lutStrength = 1.0, read = true) {
         const gl = this.gl;
         if (!gl || !this.textures.image) return null;
         w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+        const isFloat = !!(this.isWebGL2 && this.extColorBufferFloat);
         let tex = this.textures.scopeSignal;
-        if (!tex || this._scopeSignalW !== w || this._scopeSignalH !== h) {
+        if (!tex || this._scopeSignalW !== w || this._scopeSignalH !== h || this._scopeSignalFloat !== isFloat) {
             if (tex) gl.deleteTexture(tex);
             tex = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, tex);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            if (isFloat) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+            else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             this.textures.scopeSignal = tex;
-            this._scopeSignalW = w; this._scopeSignalH = h;
+            this._scopeSignalW = w; this._scopeSignalH = h; this._scopeSignalFloat = isFloat;
         }
         const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
@@ -4178,18 +4560,65 @@ vec3 getDenoiseColor(vec2 uv) {
         }
         if (!read) {
             gl.deleteFramebuffer(fbo);
-            return { data: null, width: w, height: h, texture: tex };
+            return { data: null, float: null, width: w, height: h, texture: tex, isFloat };
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        const px = new Uint8Array(w * h * 4);
-        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.deleteFramebuffer(fbo);
+        const out = new Uint8ClampedArray(w * h * 4);
+        let flt = null;
         // Bottom-up -> top-down, as the CPU scopes index rows. The canvas
         // (default framebuffer) was never touched, so nothing needs redrawing.
-        const out = new Uint8ClampedArray(w * h * 4);
-        for (let y = 0; y < h; y++) out.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
-        return { data: out, width: w, height: h, texture: tex };
+        if (isFloat) {
+            const px = new Float32Array(w * h * 4);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, px);
+            flt = new Float32Array(w * h * 4);
+            for (let y = 0; y < h; y++) flt.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+            for (let i = 0; i < flt.length; i++) out[i] = Math.round(flt[i] * 255);   // clamped by the array
+        } else {
+            const px = new Uint8Array(w * h * 4);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            for (let y = 0; y < h; y++) out.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fbo);
+        return { data: out, float: flt, width: w, height: h, texture: tex, isFloat };
+    }
+
+    /**
+     * One pixel of the display signal (the scopes' picture: graded, through
+     * the view, no overlays), as 8-bit code values like the screen's.
+     *
+     * Renders the composite into a 1 x 1 target with the viewport offset so
+     * only image pixel (x, y), top-down, is shaded, which is cheap enough for
+     * a pointer readout. The status bar used to read the placeholder canvas
+     * behind a float frame, so it showed #000000 over a grey picture.
+     */
+    readDisplayPixel(x, y, lutStrength = 1.0) {
+        const gl = this.gl;
+        const W = this.imageWidth, H = this.imageHeight;
+        if (!gl || !this.textures.image || !W || !H) return null;
+        if (!this._pixelTex) {
+            this._pixelTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, this._pixelTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            this.textures.pixelProbe = this._pixelTex;
+            this._pixelFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this._pixelFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._pixelTex, 0);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        this._exportFBO = { fbo: this._pixelFBO, width: 1, height: 1, x, y: H - 1 - y, fullW: W, fullH: H };
+        this.scopeSignal = true;
+        try {
+            this.render(lutStrength);
+        } finally {
+            this.scopeSignal = false;
+            this._exportFBO = null;
+        }
+        const px = new Uint8Array(4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._pixelFBO);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return px;
     }
 
     // ── v4.0: Read pixels as Float32 for 32-bit EXR export ──────────────────
@@ -4452,6 +4881,9 @@ vec3 getDenoiseColor(vec2 uv) {
         // I-10: Skip rendering when WebGL context is lost
         if (this._contextLost || !program || !this.textures.image) return;
 
+        this._syncDisplayColorSpace();   // M19
+        this._lastLutStrength = lutStrength;
+
         // B for compare, drawn through this same pipeline (see setCompareSource).
         if (this._compareSrc && !this._renderingCompare && !this.scopeSignal && !this.exportSceneLinear
             && this.wipeRefEnabled && (this.compareShow > 0 || this.wipeEnabled)) {
@@ -4466,7 +4898,10 @@ vec3 getDenoiseColor(vec2 uv) {
         const exportTarget = this._exportFBO;
         if (exportTarget) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, exportTarget.fbo);
-            gl.viewport(0, 0, exportTarget.width, exportTarget.height);
+            // A window onto a full-size render (readDisplayPixel): offset so
+            // the target covers just that part of the frame.
+            gl.viewport(-(exportTarget.x || 0), -(exportTarget.y || 0),
+                exportTarget.fullW || exportTarget.width, exportTarget.fullH || exportTarget.height);
         } else {
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -4571,6 +5006,11 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_maskShowOverlay', this.maskShowOverlay ? 1 : 0);
 
         this._uf2(program, 'u_texSize', this.imageWidth, this.imageHeight);
+        // H10: how many source pixels each output pixel covers, from the
+        // target's own width (the canvas shrinks below 100 %; exports and the
+        // scopes render at full size and get 1).
+        const outW = exportTarget ? (exportTarget.fullW || exportTarget.width) : this.canvas.width;
+        this._uf1(program, 'u_minify', Math.max(1, (this.imageWidth || outW) / Math.max(1, outW)));
 
         // Bind Image (Unit 0)
         gl.activeTexture(gl.TEXTURE0);
@@ -4635,6 +5075,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_displayLutMode', this.displayReferredTexture ? 0 : this.displayLutMode);
         this._ui1(program, 'u_inputLutMode', this.inputLutMode);
         this._ui1(program, 'u_sourceGamut', this.displayReferredTexture || this.sourceDisplayEncoded ? 0 : this.sourceGamut);
+        this._ui1(program, 'u_displayP3', this.displayColorSpace === 'display-p3' ? 1 : 0);
         this._uf1(program, 'u_displayLutStrength', this.displayLutStrength);
         this._ui1(program, 'u_lutIsDisplayTransform', this.lutIsDisplayTransform ? 1 : 0);
 
