@@ -1375,8 +1375,8 @@ class RadianceGradeApply:
                 }),
                 # Tone
                 "contrast": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.01,
-                    "tooltip": "Linear contrast around pivot: (x - pivot) x contrast + pivot, per channel. "
-                               "Not an S-curve, so values can go negative or above 1.0."
+                    "tooltip": "Contrast as a power curve about the pivot: pivot x (x / pivot)^contrast, per channel, "
+                               "the same maths as the Viewer. Negative values pass through unchanged; 1.0 is neutral."
                 }),
                 "pivot": ("FLOAT", {"default": 0.18, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Value left unchanged by contrast. 0.18 = 18% grey in linear light."
