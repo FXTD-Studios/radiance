@@ -276,7 +276,9 @@ class RadianceUnifiedLoader:
                     {"default": "none",
                      "tooltip": "none = GPU only. "
                                 "cpu_offload = CLIP loaded to CPU RAM. "
-                                "sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs)."},
+                                "sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). "
+                                "This switches ComfyUI to LOW_VRAM for the rest of the session, "
+                                "for every workflow; restart ComfyUI to undo it."},
                 ),
                 # ── LoRA (external stack input) ──
                 "lora_stack":      ("LORA_STACK", {"default": None,
