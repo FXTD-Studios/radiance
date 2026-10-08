@@ -32,7 +32,7 @@ reviewed and is kept as the record.
 | P3-2 | Fixed. Containment before existence | `c4492a8` | `tests/test_read_surface.py::test_outside_the_roots_a_file_and_a_missing_path_look_the_same` |
 | P3-3 | Fixed. A lexical containment check; the route answers 400 | `945458a`, `77075f5` | `tests/test_workspace_api.py::test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library` |
 | P3-4 | Fixed. One encoder, `core/rhdr.py`, always clamps fp16; the VAE uses the real `safe_join` | `e8c0e4d`, `7705193`, `2af342b` | `tests/test_rhdr_writers.py`, `tests/test_rhdr_format.py` |
-| B12 | Fixed. A non-zero ffmpeg exit removes the output only if this encode created or changed it | `e4f084c` | `tests/test_write_path_defects.py::test_a_failed_encode_removes_the_partial_file` |
+| B12 | Fixed. ffmpeg now encodes to a hidden sibling that replaces the output only on success, so a failure, timeout or cancel removes the partial encode and leaves any previous master intact | `e4f084c`, `619f0ae` | `tests/test_write_path_defects.py::test_a_failed_encode_removes_the_partial_file` |
 
 Validation for the pass: the full Python suite with real torch, OpenEXR, OCIO and ffmpeg, the no-torch
 suite, the CI ruff command and the JS tests, all run locally. An independent review of the whole diff
