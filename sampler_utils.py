@@ -601,8 +601,12 @@ def detect_by_config(model) -> Optional[str]:
             # ALBABIT-FIX: without it, detect_by_sampling reported Qwen-Image 2.1 as "flux".
             "QwenImage21": "qwen_image21",
         }
-        for pattern, mtype in config_map.items():
-            if pattern in config_cls: return mtype
+        # Substring match, because ComfyUI's classes carry suffixes (WAN21_T2V),
+        # longest pattern first: in table order "Flux" matched "Flux2" before
+        # "Flux2" was reached, so Flux.2 was detected as Flux.1.
+        for pattern in sorted(config_map, key=len, reverse=True):
+            if pattern in config_cls:
+                return config_map[pattern]
     except Exception as exc:
         logger.warning("[nodes_sampler] detect_by_config: %s", exc)
     return None
