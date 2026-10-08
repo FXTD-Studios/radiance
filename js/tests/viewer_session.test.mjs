@@ -309,9 +309,10 @@ test('during playback the scopes update a few times a second, not twice a frame'
     });
     assert.deepEqual(errors, []);
     assert.ok(out.frames >= 24, `playback only advanced ${out.frames} frames`);
-    // Two a frame before: one from render(), one from setFrame. Now one at
-    // most, and no more than about six a second.
-    assert.ok(out.scopes <= out.frames + 1, `${out.scopes} scope redraws for ${out.frames} frames`);
+    // Two a frame before: one from render(), one from setFrame. Now about
+    // one at most (a frame landing redraws too), and no more than about six
+    // a second.
+    assert.ok(out.scopes <= Math.ceil(out.frames * 1.25) + 2, `${out.scopes} scope redraws for ${out.frames} frames`);
     assert.ok(out.scopes <= out.seconds * 6.5 + 2,
         `${out.scopes} scope redraws in ${out.seconds.toFixed(1)} s of playback (${out.frames} frames)`);
 });
@@ -516,4 +517,49 @@ test('the grain ticker runs only while animated grain is on', { skip }, async ()
     assert.equal(out.animated, true, 'animated grain did not start the ticker');
     assert.equal(out.timeMoves, true, 'the grain does not move');
     assert.equal(out.stoppedAfterOff, true, 'the ticker kept running after grain was turned off');
+});
+
+// ── H16: B is B's float frame, through the same view, placed by pixel size ──
+
+test('compare B uses its float frame through the same view, placed 1:1 or fitted', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        // A: 64x48 at 0.18. B: 32x24, its float frame also 0.18 with a bright
+        // top-left pixel (9.0, to check B is the right way up), its preview
+        // PNG a different grey (46), so the test can tell which one is drawn.
+        const msg = __frames(4, 64, 48);
+        for (let i = 0; i < 4; i++) {
+            msg.radiance_images.push({ filename: 'b_32x24_46.png', subfolder: '', type: 'temp', is_compare: true,
+                hdr_sidecar: 'f_32x24_9.rhdr', has_hdr: true, frame: i, source_width: 32, source_height: 24 });
+        }
+        n.onExecuted(msg);
+        await __until(() => v.hdrData && v.compareHDR, 15000);
+        const gl = v.renderer.gl;
+        const read = (x, y) => {
+            v.render();
+            const px = new Uint8Array(4);
+            gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            return px[0];
+        };
+        const r = { floatB: !!v.compareHDR };
+        v.setCompareMode('none'); r.a = read(32, 24);
+        // Rows are read bottom-up: B's top-left pixel, 1:1 and centred, is A's
+        // pixel (16, 12) from the top, row 48 - 1 - 12 = 35 from the bottom.
+        v.setCompareMode('b'); r.bCentre = read(32, 24); r.bCorner = read(2, 2);
+        r.bTopLeft = read(16, 35); r.bBelowTopLeft = read(16, 33);
+        v.setCompareMode('difference'); r.diffCentre = read(32, 24); r.diffCorner = read(2, 2);
+        v.setCompareMode('b'); v.setCompareFit('fit'); r.fitCorner = read(2, 2);
+        v.setCompareFit('pixel');
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.floatB, "B's float sidecar was not loaded");
+    assert.ok(out.a > 20, `test premise: A shows ${out.a}`);
+    assert.ok(Math.abs(out.bCentre - out.a) <= 2, `B (${out.bCentre}) is not drawn through A's view (${out.a})`);
+    assert.ok(out.diffCentre <= 3, `difference where A and B match is ${out.diffCentre}`);
+    assert.ok(out.bCorner <= 2, `a smaller B was stretched over A instead of placed 1:1 (${out.bCorner})`);
+    assert.ok(out.diffCorner > 20, 'outside B the difference should show A');
+    assert.ok(Math.abs(out.fitCorner - out.a) <= 2, `fitted, B should cover the corner (${out.fitCorner})`);
+    assert.ok(out.bTopLeft > out.bBelowTopLeft + 30, `B is upside down or misplaced: ${out.bTopLeft} vs ${out.bBelowTopLeft}`);
 });
