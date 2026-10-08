@@ -362,9 +362,9 @@ def apply_grading(
         mw = 1.0 - sw - hw
         c = c * (1.0 + v_ls * sw[..., None] + v_lm * mw[..., None] + v_lh * hw[..., None])
 
-    # Printer lights: 2^(points / 50) per channel.
+    # Printer lights: 2^(points / 12) per channel; 12 points make a stop.
     if v_pl.any():
-        c = c * np.power(2.0, v_pl / 50.0)
+        c = c * np.power(2.0, v_pl / 12.0)
 
     # Shadows / highlights.
     if shadows or highlights:
