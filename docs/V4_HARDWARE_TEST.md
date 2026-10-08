@@ -40,7 +40,8 @@ anything that fails.
       Flipbook GIF and Preview Server: none raise, alpha survives where the changelog says.
 - [ ] **First run after upgrading** hashes each installed upscale and face model once
       (log: "checking ... against its pinned SHA-256"); the second run does not.
-      A `.radiance-sha256` file sits next to each.
+      A `.radiance-sha256` file sits next to each. A model of your own saved under a
+      registry name is moved to `<name>.radiance-mismatch`, not overwritten.
 
 ## 3. Read and Write
 
@@ -68,9 +69,10 @@ anything that fails.
 
 ## 5. DCC
 
-- [ ] **Push to Nuke** (Nuke 17.1, listener from `scripts/start_nuke_server.py`): Read
-      node created, scene-linear 0.18 / 1.0 / 4.0 preserved. Stop the listener mid-push:
-      status reads `UNCONFIRMED`, not `OK`.
+- [ ] **Push to Nuke** (Nuke 17.1, listener from this branch's
+      `scripts/start_nuke_server.py`): Read node created, scene-linear 0.18 / 1.0 / 4.0
+      preserved. Stop the listener mid-push, and push while Nuke is busy for over 10 s
+      (a long render): both read `UNCONFIRMED`, not `OK` or `FAILED`.
 - [ ] **CDL** `.cdl`, `.cc`, `.ccc` from CDL Export load in Nuke (OCIOCDLTransform) and
       Resolve with the same grade (FIX-006).
 - [ ] **Resolve import** of one EXR still and an EXR sequence (Media Pool frame counts).
