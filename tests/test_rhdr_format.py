@@ -185,6 +185,7 @@ def test_decode_reads_the_fp32_bit_like_the_js_parser():
     (lambda d: b"XHDR" + d[4:], "not an RHDR"),
     (lambda d: d[:11], "shorter than"),
     (lambda d: d[:10] + struct.pack("<H", 1) + d[12:], "header says"),   # fp16 data, fp32 flag
+    (lambda d: d[:12] + b"not zlib", "not a zlib stream"),
 ])
 def test_decode_rejects_what_the_parser_rejects(corrupt, message):
     with pytest.raises(ValueError, match=message):
