@@ -110,8 +110,10 @@ def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
       2. color/ocio_setup.active_config(): $OCIO when it loads, else the
          ACES studio config set up at startup (or the bundled CG config on
          OpenColorIO < 2.2)
-      3. ComfyUI models/ACES/config.ocio, which the Download ACES 2.0 action
-         installs, only when there is no active config at all
+      3. ComfyUI models/ACES/config.ocio, only when there is no active
+         config at all (the ACES Config Manager's Download action puts the
+         config there when its install_path is that folder; by default it
+         installs to the package's ACES folder)
 
     Returns an OCIO.Config object, or None if nothing is found.
 
@@ -637,11 +639,20 @@ class ACESConfigManager:
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _find_existing_config(self) -> Tuple[str, str]:
-        """Find existing ACES config on the system."""
+        """The session's active config first (color/ocio_setup), as every other
+        consumer uses; until 4.0 this read $OCIO raw and returned a broken one
+        the rest had fallen back from. Then the usual install locations."""
         try:
-            env_config = os.environ.get("OCIO", "")
-            if env_config and os.path.exists(env_config):
-                return env_config, f"Found config from OCIO environment: {env_config}"
+            try:
+                from radiance.color.ocio_setup import active_config_path
+                active = active_config_path()
+            except Exception as _exc:  # noqa: BLE001 - no OpenColorIO
+                logger.debug("[Radiance] _find_existing_config(): no active config: %s", _exc)
+                active = ""
+            if active and os.path.isfile(active):
+                source = "OCIO environment" if active == os.environ.get("OCIO", "").strip() \
+                    else "the session's active config"
+                return active, f"Found config from {source}: {active}"
 
             for path in self.COMMON_PATHS:
                 expanded = os.path.expanduser(path)

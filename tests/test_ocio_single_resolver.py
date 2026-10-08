@@ -86,3 +86,27 @@ def test_an_explicit_path_still_wins(monkeypatch, raw_config):
     monkeypatch.delenv("OCIO", raising=False)
     assert encodings.ocio_config(raw_config).getName() == "radiance-test-raw"
     assert hdr_ocio._resolve_config(raw_config).getName() == "radiance-test-raw"
+
+
+def test_the_aces_config_manager_detects_the_same_config(monkeypatch, tmp_path, raw_config):
+    # 4.0 beta: "Detect Config" still read $OCIO raw, so it returned a broken
+    # one that every other consumer had already fallen back from.
+    mgr = hdr_ocio.ACESConfigManager()
+    bad = tmp_path / "broken.ocio"
+    bad.write_text("not: [a config", encoding="utf-8")
+    monkeypatch.setenv("OCIO", str(bad))
+    path, _ = mgr._find_existing_config()
+    assert path != str(bad) and path == setup.active_config_path()
+    monkeypatch.setenv("OCIO", raw_config)
+    assert mgr._find_existing_config()[0] == raw_config
+
+
+def test_the_writer_reads_an_edited_explicit_config_again(raw_config):
+    assert encodings.ocio_config(raw_config).getName() == "radiance-test-raw"
+    cfg = OCIO.Config.CreateRaw()
+    cfg.setName("radiance-test-edited")
+    with open(raw_config, "w", encoding="utf-8") as f:
+        f.write(cfg.serialize())
+    st = os.stat(raw_config)
+    os.utime(raw_config, (st.st_atime, st.st_mtime + 5))
+    assert encodings.ocio_config(raw_config).getName() == "radiance-test-edited"
