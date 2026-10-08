@@ -778,6 +778,7 @@ def _read_video(
     start_frame: int = 0,
     end_frame: int = 0,
     frame_step: int = 1,
+    raw: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], float, int, int, int, str]:
     """Decode a video file to a batched IMAGE tensor, plus its alpha if it has one.
 
@@ -826,8 +827,15 @@ def _read_video(
         alpha_np = np.ascontiguousarray(arr[..., 3])
         arr = np.ascontiguousarray(arr[..., :3])
 
-    resolved_cs = _resolve_video_colorspace(input_cs, info, path)
-    arr = _apply_input_colorspace(arr, resolved_cs)
+    if raw:
+        # The file's values, as for an image. Until 4.0 raw only reset
+        # color_space to Auto, and Auto follows the tags, so a Rec.709-tagged
+        # clip was still decoded (and an ocio_colorspace still applied).
+        # ffmpeg's YUV to RGB conversion is the one step raw cannot skip.
+        resolved_cs = "raw (untransformed)"
+    else:
+        resolved_cs = _resolve_video_colorspace(input_cs, info, path)
+        arr = _apply_input_colorspace(arr, resolved_cs)
 
     batch = torch.from_numpy(np.ascontiguousarray(arr))
     alpha_t = torch.from_numpy(alpha_np) if alpha_np is not None else None
@@ -1271,9 +1279,8 @@ def _read_resolved(
     if kind == "video":
         v_start, v_end = _video_frame_range(path, start_frame, end_frame)
         batch, alpha, _fps, _w, _h, _n, meta = _read_video(
-            path, max_video_frames, "Auto / Linear (pass-through)" if raw
-            else color_space,
-            start_frame=v_start, end_frame=v_end, frame_step=frame_step,
+            path, max_video_frames, color_space,
+            start_frame=v_start, end_frame=v_end, frame_step=frame_step, raw=raw,
         )
         return batch, alpha, json.loads(meta)
 

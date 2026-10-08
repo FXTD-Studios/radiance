@@ -139,3 +139,30 @@ def test_b9_banner_without_video_stream_raises():
     text = "  Stream #0:0: Audio: pcm_s16le, 44100 Hz, 1 channels, s16, 705 kb/s\n"
     with pytest.raises(V.VideoDecodeError, match="no video stream"):
         V._info_from_banner("x.wav", text)
+
+
+# ── B10: raw video bypasses the colour tags ───────────────────────────────
+
+@pytest.mark.real_torch
+@needs_ffmpeg
+def test_b10_raw_video_is_the_decoded_file_values(tagged_mp4):
+    from radiance.io.reader import read_frames
+
+    expected, _ = V.decode(tagged_mp4)
+    image, _mask, info = read_frames(path=tagged_mp4, start_frame=0, raw=True)
+    np.testing.assert_array_equal(image.numpy(), expected)
+    assert info["colour_transform"] == []
+
+    managed, _m, _i = read_frames(path=tagged_mp4, start_frame=0)
+    assert not np.allclose(managed.numpy(), expected), "the tag decode should run when not raw"
+
+
+@pytest.mark.real_torch
+@needs_ffmpeg
+def test_b10_raw_video_ignores_an_ocio_override(tagged_mp4):
+    from radiance.io.reader import read_frames
+
+    expected, _ = V.decode(tagged_mp4)
+    image, _mask, _info = read_frames(path=tagged_mp4, start_frame=0, raw=True,
+                                      ocio_colorspace="ARRI LogC4")
+    np.testing.assert_array_equal(image.numpy(), expected)
