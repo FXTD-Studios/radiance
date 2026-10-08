@@ -252,11 +252,11 @@
     },
     {
       "path": "delivery/handler.py",
-      "sha256": "d6210074779d8d8519dc99330f2c785e7dd449365a29d385a559a2f3cf1526ef"
+      "sha256": "c2c62fec7bb307145dccfd663db2d9753a8c1cfbebb667b2512e8442d6a25948"
     },
     {
       "path": "cache.py",
-      "sha256": "965531357ac45b0248fdb545a9450ef26e4125c30032de59b544dde29a5ba85d"
+      "sha256": "4b787439078cfe68c95a517a222aa11c4e215e0c35350a4b4b06cc15b07241f2"
     },
     {
       "path": "loader_utils.py",
@@ -296,7 +296,7 @@
     },
     {
       "path": "nodes/monitor/viewer.py",
-      "sha256": "4b03dc850ae7997b487df2293bfb48f54274f232953be5766217aa8de0529dc0"
+      "sha256": "d23891d4111b51e0c0580895a6da56b0eba3127c7c73284726775122a1cd0552"
     },
     {
       "path": "nodes/pipeline/workspace.py",
@@ -304,7 +304,7 @@
     },
     {
       "path": "js/radiance_viewer.js",
-      "sha256": "7decbddb15bc625fd7de057a1a873bf49f99a442f102f5662577599762e0646a"
+      "sha256": "d4099a4201c83bc374aac935387df210e6dd1ea6d30cff70221970fe8c9245ec"
     },
     {
       "path": "js/radiance_renderer.js",
@@ -468,7 +468,7 @@
     },
     {
       "path": "core/rhdr.py",
-      "sha256": "4994c8fd21a3a86e80d9b977bf670247060e884d9a504f1302a72d3ef81b6821"
+      "sha256": "9447a224aaf343435c9f46cd597b79baa8c2903bebb2a1e73e12cf8dd3ee6c0b"
     },
     {
       "path": "js/radiance_graph_format.js",
