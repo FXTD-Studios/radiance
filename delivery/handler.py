@@ -704,12 +704,18 @@ async def radiance_deliver_endpoint(request):
                     # submodule loads from disk.
                     from radiance.image.upscale import RadianceAIUpscale
                     upscaler = RadianceAIUpscale()
-                    graded_tensor, _ = upscaler.upscale(
+                    graded_tensor, upscale_info = upscaler.upscale(
                         image=graded_tensor,
                         model_name="RealESRGAN_x2plus",
                         mode="Refine (HDR)",
                         tile_size=512
                     )
+                    # A missing model, failed download or failed inference does
+                    # not raise: upscale() returns a bicubic resize instead.
+                    if getattr(upscaler, "used_fallback", False):
+                        _note(warnings,
+                              f"AI upscale did not run, the master was resampled "
+                              f"(bicubic), not AI-upscaled: {upscale_info}")
                 except Exception as e:
                     logger.error(f"AI Upscale failed, continuing with original: {e}")
                     _note(warnings,
