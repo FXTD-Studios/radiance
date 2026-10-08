@@ -593,6 +593,60 @@ if (!skip) {
             });
         });
 
+        // L5: V-Log decode slope, BT.1886 label, printer points, auto-detect, probe hint, half-float filter.
+        await guard('l5', async () => {
+            await load(msg(entry('c_0.1_0.1_0.1.rhdr', LIN)), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                const r = v.renderer;
+                const read = () => { const e = r.readPixelsFloat32(64, 48, 1.0); return e.data[(24 * 64 + 32) * 4]; };
+                // Through the viewer's own state, as the menus set it.
+                // V-Log code 0.1 is on the linear segment: (0.1 - 0.125) / 5.6.
+                v.inputSpace = 'IDT: V-Log → Linear'; v.render();
+                const vlog = read();
+                v.inputSpace = 'None'; v.render();
+                // Printer lights: +12 points is one stop on a printer.
+                v.printerR = 12; v.render();
+                const printer = read();
+                v.printerR = 0; v.render();
+                // Auto-detect must not read a camera log curve into a name.
+                v.inputSpace = 'None'; v._userSetIDT = false;
+                v.hdrData.metadata = {}; v._lastFilename = 'david_portrait_v002.exr';
+                v._inferInputColorspace();
+                const fromName = v.inputSpace;
+                v.inputSpace = 'None'; r.setInputLutMode(0);
+                v.hdrData.metadata = { colorSpace: 'ARRI Wide Gamut 3 linear' }; v._lastFilename = '';
+                v._inferInputColorspace();
+                const fromMeta = v.inputSpace;
+                v.inputSpace = 'None'; r.setInputLutMode(0); v.hdrData.metadata = {};
+                document.getElementById('radiance-idt-toast')?.remove();
+                const host = document.createElement('div'); document.body.appendChild(host);
+                v.renderProbeTab(host);
+                const hints = [...host.querySelectorAll('[title]')].map((e) => e.title).join(' | ');
+                host.remove();
+                const views = (window.RadianceViewer.VIEW_MODES || []).map((m) => m[1]);
+                return { vlog, printer, fromName, fromMeta, hints, views, webgl2: r.isWebGL2,
+                    halfLinear: !!(r.isWebGL2 || r.extColorHalfFloatLinear) };
+            });
+        });
+        await guard('l5_half', async () => {
+            await load(msg(entry('stripes.rhdr', { ...SRGB, w: 512, h: 256 })), {});
+            return ev(() => {
+                // fp16 sidecar upload: filtering on WebGL2 is linear. RGBA16F
+                // is filterable in core WebGL2; OES_texture_half_float_linear
+                // is a WebGL1 extension and is absent there, so on a GPU
+                // without the float32 linear extension either, the image
+                // must not fall back to NEAREST.
+                const r = window.__lastViewer.renderer;
+                const gl = r.gl;
+                r.extColorHalfFloatLinear = null;
+                r.extColorFloatLinear = null;
+                const data = new Uint16Array(4 * 4 * 4).fill(0x3c00);
+                const tex = r.loadFloat16Texture(data, 4, 4, 4);
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                return { min: gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER) === gl.LINEAR };
+            });
+        });
     } finally {
         await browser.close();
         server.close();
@@ -863,6 +917,33 @@ test('M19: the Display P3 tag does not outlive the P3 output', { skip: skip || o
 });
 
 // ── L5 ──────────────────────────────────────────────────────────────────────
+
+test('L5: V-Log decodes with the published 5.6 slope', { skip: skip || ok(R.l5) }, () => {
+    // Source 0.1 is read as V-Log code 0.1 here (below the 0.181 cut).
+    near(R.l5.vlog, (0.1 - 0.125) / 5.6, 1e-5, 'V-Log linear segment');
+});
+
+test('L5: printer lights are 12 points per stop', { skip: skip || ok(R.l5) }, () => {
+    near(R.l5.printer, 0.2, 1e-4, 'red after +12 points');
+});
+
+test('L5: auto-detect needs a whole word, and ARRI linear is not LogC', { skip: skip || ok(R.l5) }, () => {
+    assert.equal(R.l5.fromName, 'None', `"david" read as ${R.l5.fromName}`);
+    assert.equal(R.l5.fromMeta, 'None', `ARRI linear read as ${R.l5.fromMeta}`);
+});
+
+test('L5: the BT.1886 view says it is for an external display', { skip: skip || ok(R.l5) }, () => {
+    assert.ok(R.l5.views.some((l) => /BT\.1886/.test(l) && /external/i.test(l)), R.l5.views.join(' | '));
+});
+
+test('L5: the probe Rendered hint says where it reads', { skip: skip || ok(R.l5) }, () => {
+    assert.doesNotMatch(R.l5.hints, /after the grade and view transform/);
+    assert.match(R.l5.hints, /before the view transform/);
+});
+
+test('L5: half-float sidecars filter linearly on WebGL2', { skip: skip || ok(R.l5_half) }, () => {
+    assert.ok(R.l5_half.min, 'fp16 texture is NEAREST on WebGL2');
+});
 
 test('measured values, for the record', { skip }, (t) => {
     const pick = {
