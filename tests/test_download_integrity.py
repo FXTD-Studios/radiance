@@ -114,6 +114,48 @@ def test_ensure_marigold_verifies_after_downloading(tmp_path, monkeypatch):
     verify.assert_called_once_with(tmp_path, NAME)
 
 
+def test_a_marigold_download_whose_check_failed_is_checked_again_next_time(tmp_path, monkeypatch):
+    # 4.0 beta: when the hash lookup failed (rate limit, network blip) the
+    # files stayed and the next queue found them complete and used them
+    # without ever checking them.
+    monkeypatch.setenv("RADIANCE_ALLOW_DOWNLOADS", "1")
+    contents = _contents()
+
+    def fake_snapshot(repo_id, revision, allow_patterns, local_dir):
+        _install(tmp_path, contents)
+
+    with mock.patch.object(em, "_marigold_dirs", return_value=[tmp_path]), \
+         mock.patch.object(huggingface_hub, "snapshot_download", fake_snapshot):
+        with mock.patch.object(huggingface_hub.HfApi, "get_paths_info", side_effect=OSError("429")):
+            with pytest.raises(em.EstimateModelError, match="could not read the file hashes"):
+                em.ensure_marigold(NAME, True)
+        assert em.find_marigold(NAME) is None
+        with mock.patch.object(huggingface_hub, "snapshot_download") as again, \
+             mock.patch.object(huggingface_hub.HfApi, "get_paths_info",
+                               return_value=_hub_infos(contents, LFS)) as info:
+            assert em.ensure_marigold(NAME, True) == tmp_path
+        again.assert_not_called()          # the files are there, only the check reruns
+        info.assert_called_once()
+        assert em.find_marigold(NAME) == tmp_path
+
+
+def test_a_hand_installed_marigold_is_used_without_a_check(tmp_path):
+    _install(tmp_path, _contents())
+    with mock.patch.object(em, "_marigold_dirs", return_value=[tmp_path]), \
+         mock.patch.object(huggingface_hub.HfApi, "get_paths_info") as info:
+        assert em.ensure_marigold(NAME, False) == tmp_path
+    info.assert_not_called()
+
+
+def test_an_unchecked_marigold_with_downloads_off_says_how_to_proceed(tmp_path, monkeypatch):
+    monkeypatch.setenv("RADIANCE_ALLOW_DOWNLOADS", "0")
+    _install(tmp_path, _contents())
+    (tmp_path / em.MARIGOLD_UNVERIFIED).write_text("")
+    with mock.patch.object(em, "_marigold_dirs", return_value=[tmp_path]):
+        with pytest.raises(em.EstimateModelError, match=em.MARIGOLD_UNVERIFIED.replace(".", r"\.")):
+            em.ensure_marigold(NAME, False)
+
+
 # ── ACES config manager ─────────────────────────────────────────────────────
 
 def _aces():
@@ -196,4 +238,16 @@ def test_cached_whisper_weights_need_no_consent(tmp_path, monkeypatch):
 def test_whisper_downloads_by_default(tmp_path, monkeypatch):
     audio, ran = _whisper_cli(tmp_path, monkeypatch, allow=True, cached=False)
     audio._transcribe_whisper_cli("a.wav", "base", "auto")
+    assert len(ran) == 1
+
+
+@pytest.mark.parametrize("size, cached_as", [("large", "large-v3.pt"), ("large-v3", "large-v3.pt"),
+                                             ("medium", "medium.pt")])
+def test_whisper_cli_finds_cached_weights_under_their_release_name(tmp_path, monkeypatch, size, cached_as):
+    # whisper caches "large" as large-v3.pt; 4.0 beta looked for large.pt
+    # when only the CLI was installed and refused a model it already had.
+    audio, ran = _whisper_cli(tmp_path, monkeypatch, allow=False, cached=False)
+    (tmp_path / "whisper").mkdir()
+    (tmp_path / "whisper" / cached_as).write_bytes(b"w")
+    audio._transcribe_whisper_cli("a.wav", size, "auto")
     assert len(ran) == 1
