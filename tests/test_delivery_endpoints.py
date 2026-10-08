@@ -541,18 +541,23 @@ def test_exposure_is_applied_in_stops(h):
         "+1 stop must double a linear value")
 
 
-def test_temperature_and_tint_are_the_viewers_additive_sliders(h):
+def test_temperature_and_tint_are_the_viewers_white_balance_gains(h):
     """The shipped bug fabricated Kelvin from the slider and dropped tint.
 
-    The viewer's shader is `shift.r += temp; shift.b -= temp; shift.g -= tint`,
-    so temp=+1 tint=+1 on a flat 0.25 plate is R 1.25, G 0 (clamped), B 0.
+    The viewer's Temperature and Tint are gains in stops that keep a neutral's
+    luminance (js/radiance_grade.js whiteBalanceGains): temp=+1 is one stop of
+    red against blue, tint=+1 one stop of magenta against green. This test
+    used to pin the additive shift `shift.r += temp; shift.g -= tint`, which
+    clamped G to 0 here; that was the viewer's bug, and the master copied it.
     """
+    import math
+
     h.put(flat(0.25))
     assert h.run(grading={"temperature": 1.0, "tint": 1.0}).status == 200
     r, g, b = h.pixel(h.exrs()[0])[:3]
-    assert r == pytest.approx(1.25, abs=1e-4), f"temperature did not lift R: {r}"
-    assert g == pytest.approx(0.0, abs=1e-4), f"tint did not touch G: {g}"
-    assert b == pytest.approx(0.0, abs=1e-4), f"temperature did not drop B: {b}"
+    assert math.log2(r / b) == pytest.approx(1.0, abs=1e-4), f"temperature: R/B {r / b}"
+    assert math.log2(math.sqrt(r * b) / g) == pytest.approx(1.0, abs=1e-4), f"tint: G {g}"
+    assert 0.2126 * r + 0.7152 * g + 0.0722 * b == pytest.approx(0.25, abs=1e-4)
 
 
 def test_a_temperature_of_zero_leaves_the_channels_alone(h):
@@ -585,13 +590,17 @@ def test_a_nonsense_grade_value_falls_back_to_the_default_instead_of_500(h):
 
 
 def test_the_colour_science_switch_changes_the_result(h):
-    """`colorScience` 'ACEScct' selects a different saturation math path."""
+    """`colorScience` 'ACEScct' grades the wheels in ACEScct.
+
+    Saturation is applied in linear in both modes, so the switch only shows on
+    the wheels; at neutral ACEScct is the identity (viewer review H4).
+    """
     plate = torch.zeros((1, 4, 4, 3))
     plate[..., 0], plate[..., 1], plate[..., 2] = 0.6, 0.3, 0.1
     h.put(plate)
-    h.run(grading={"saturation": 1.5, "colorScience": "0"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "0"},
           settings={"filename": "SDR"})
-    h.run(grading={"saturation": 1.5, "colorScience": "ACEScct"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "ACEScct"},
           settings={"filename": "ACES"})
     sdr = h.pixel([p for p in h.exrs() if "SDR" in str(p)][0])
     aces = h.pixel([p for p in h.exrs() if "ACES" in str(p)][0])
