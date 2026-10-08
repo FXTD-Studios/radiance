@@ -49,7 +49,13 @@ export function measureFramePayload(payload) {
     let bytes = 0;
     const hdr = payload.hdr || payload;
     if (hdr) {
-        if (hdr.data && typeof hdr.data.byteLength === 'number') bytes += hdr.data.byteLength;
+        // Only a 'data' the frame really holds. An fp16 frame's 'data' is a
+        // getter that decodes on first read (radiance_viewer.js
+        // _lazyHalfFloats): reading it here would decode every frame just to
+        // weigh it, and the floats it returns are not the frame's to carry.
+        const own = Object.getOwnPropertyDescriptor(hdr, 'data');
+        const data = own && 'value' in own ? own.value : null;
+        if (data && typeof data.byteLength === 'number') bytes += data.byteLength;
         if (hdr.fp16data && typeof hdr.fp16data.byteLength === 'number') bytes += hdr.fp16data.byteLength;
     }
     for (const key of ['img', 'bracketLow', 'bracketHigh', 'compare']) {
@@ -57,6 +63,27 @@ export function measureFramePayload(payload) {
         if (img && img.width && img.height) bytes += img.width * img.height * 4;
     }
     return bytes;
+}
+
+/**
+ * Windows holding a sequence, for the whole page.
+ *
+ * The byte bound was per window, and so per viewer: three viewers each kept
+ * 768 MB of decoded frames. `maxBytes` is now the page's, shared equally by
+ * every window that has a sequence (see byteAllowance), so the total stays
+ * at the bound however many viewers are open.
+ */
+const ACTIVE_WINDOWS = new Set();
+
+function rebalanceWindows(changed) {
+    for (const w of ACTIVE_WINDOWS) {
+        if (w === changed) continue;
+        // Its share changed: what it trimmed under the old share may fit now.
+        w._trimmed.clear();
+        w._trim();
+        w._dropQueuedOutsideSpan();
+        w._refill();
+    }
 }
 
 export class RadianceFrameWindow {
@@ -94,6 +121,13 @@ export class RadianceFrameWindow {
         this._queued = new Set();
         this._inFlight = 0;
         this._generation = 0;
+        // Frames _trim evicted at this playhead. They are not queued again
+        // until the playhead moves: queueing them was the 4K thrash, where
+        // every step fetched 13 frames and threw 12 of them straight back out.
+        this._trimmed = new Set();
+        // Measured frame size, which turns the byte bound into a frame count.
+        this._measuredBytes = 0;
+        this._measuredFrames = 0;
 
         // Diagnostics. peakInFlight and peakResident are what the memory
         // bound is measured against, so they are counted rather than asserted.
@@ -113,8 +147,33 @@ export class RadianceFrameWindow {
         this.clear();
         this.entries = Array.isArray(entries) ? entries : [];
         this.playhead = this._clamp(playhead);
+        if (this.entries.length) {
+            ACTIVE_WINDOWS.add(this);
+            rebalanceWindows(this);
+        }
         this._refill();
         return this;
+    }
+
+    /** This window's share of the page-wide byte bound. */
+    get byteAllowance() {
+        if (!ACTIVE_WINDOWS.has(this)) return this.maxBytes;
+        return Math.max(1, Math.floor(this.maxBytes / ACTIVE_WINDOWS.size));
+    }
+
+    /**
+     * How many frames the window tries to hold: windowSize, until the first
+     * frame lands and its size is known, then as many as fit the byte
+     * allowance. Sizing by count alone queued 16 frames whatever they
+     * weighed and evicted most of them on arrival.
+     */
+    _spanSize() {
+        let size = Math.min(this.windowSize, this.entries.length);
+        if (this._measuredFrames > 0) {
+            const avg = this._measuredBytes / this._measuredFrames;
+            if (avg > 0) size = Math.min(size, Math.max(1, Math.floor(this.byteAllowance / avg)));
+        }
+        return size;
     }
 
     get length() {
@@ -151,7 +210,7 @@ export class RadianceFrameWindow {
     span() {
         const n = this.entries.length;
         if (n === 0) return { start: 0, end: -1 };
-        const size = Math.min(this.windowSize, n);
+        const size = this._spanSize();
         // Biased forward: playback and scrubbing both move forward far more
         // often than back, so reading ahead hits more often than reading behind.
         const behind = Math.floor((size - 1) / 3);
@@ -170,7 +229,7 @@ export class RadianceFrameWindow {
         const wanted = new Map();
         const loop = this.loop;
         if (loop && this.playhead >= loop.start && this.playhead <= loop.end) {
-            const size = Math.min(this.windowSize, this.entries.length);
+            const size = this._spanSize();
             const behind = Math.floor((size - 1) / 3);
             const length = loop.end - loop.start + 1;
             for (let d = -behind; d < size - behind; d++) {
@@ -196,7 +255,9 @@ export class RadianceFrameWindow {
      * Returns the payload for `idx` when it is already resident.
      */
     setPlayhead(idx) {
-        this.playhead = this._clamp(idx);
+        const next = this._clamp(idx);
+        if (next !== this.playhead) this._trimmed.clear();
+        this.playhead = next;
         this._evictOutsideSpan();
         this._dropQueuedOutsideSpan();
         this._refill();
@@ -246,9 +307,11 @@ export class RadianceFrameWindow {
         this._queue = [];
         this._queued.clear();
         this._pending.clear();
+        this._trimmed.clear();
         this.retainedBytes = 0;
         this._generation++;
         this.entries = [];
+        if (ACTIVE_WINDOWS.delete(this)) rebalanceWindows(this);
     }
 
     // ── internals ───────────────────────────────────────────────────────────
@@ -263,7 +326,8 @@ export class RadianceFrameWindow {
     _refill() {
         // Nearest to the playhead first, so a scrub shows something quickly.
         const wanted = [...this._wanted()]
-            .filter(([i]) => !(this._resident.has(i) || this._pending.has(i) || this._queued.has(i)))
+            .filter(([i]) => !(this._resident.has(i) || this._pending.has(i) || this._queued.has(i)
+                || this._trimmed.has(i)))
             .sort((a, b) => a[1] - b[1]);
         for (const [i] of wanted) {
             this._queue.push(i);
@@ -313,10 +377,21 @@ export class RadianceFrameWindow {
     _insert(idx, payload) {
         if (this._resident.has(idx)) this._release(idx);
         const size = Math.max(0, Number(this._measure(payload)) || 0);
+        const spanBefore = this._spanSize();
+        if (size > 0) {
+            this._measuredBytes += size;
+            this._measuredFrames++;
+        }
         this._resident.set(idx, payload);
         this._bytes.set(idx, size);
         this.retainedBytes += size;
         this._trim();
+        // The first frames set the real span: stop asking for what cannot fit.
+        if (this._spanSize() !== spanBefore) {
+            this._evictOutsideSpan(true);
+            this._dropQueuedOutsideSpan();
+            this._refill();
+        }
         if (!this._resident.has(idx)) return;  // trimmed straight back out
         if (this._resident.size > this.peakResident) this.peakResident = this._resident.size;
         if (this.retainedBytes > this.peakBytes) this.peakBytes = this.retainedBytes;
@@ -329,7 +404,7 @@ export class RadianceFrameWindow {
     _trim() {
         while (
             this._resident.size > 1 &&
-            (this._resident.size > this.windowSize || this.retainedBytes > this.maxBytes)
+            (this._resident.size > this.windowSize || this.retainedBytes > this.byteAllowance)
         ) {
             let victim = null;
             let worst = -1;
@@ -341,16 +416,20 @@ export class RadianceFrameWindow {
             }
             if (victim === null) break;
             this._release(victim);
+            this._trimmed.add(victim);
             this.evictCount++;
         }
     }
 
-    _evictOutsideSpan() {
+    _evictOutsideSpan(byBytes = false) {
         const wanted = this._wanted();
         for (const idx of [...this._resident.keys()]) {
             if (idx === this.playhead) continue;
             if (!wanted.has(idx)) {
                 this._release(idx);
+                // Evicted because the frames weigh more than the span assumed:
+                // the same rule as _trim, do not ask for it again here.
+                if (byBytes) this._trimmed.add(idx);
                 this.evictCount++;
             }
         }
