@@ -443,7 +443,7 @@ Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stop
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | HDR image before compression, encoded as set by colorspace. Metrics treat linear 1.0 as 203 nits. |
-| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Must match the value used in HDR Turbo Encoder. |
+| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Soft-knee compression ratio to evaluate; the PSNR estimate round-trips the image through it. Use the value from Auto Log Select. |
 | `model_preset_used` (optional) | string |  |  | Resolved model key from AutoLogSelect. |
 | `stats_json` (optional) | string |  |  | JSON from HDR Per-Channel Norm (optional). |
 | `coherence_map` (optional) | IMAGE |  |  | Optional coherence map (0 to 1). Only its mean is reported, as coherence_mean in the JSON. |

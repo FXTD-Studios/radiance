@@ -25,10 +25,6 @@ Hidden from the menu. They still load so saved graphs open; the changelog says w
 
 - ACES 2.0 Output Transform (Legacy) (`RadianceACES2OutputTransform`)
 - Control (`RadianceControlApply`)
-- HDR Latent Encoder (Legacy) (`RadianceHDRLatentEncoder`)
-- HDR Turbo Encoder (Legacy) (`RadianceHDRTurboEncoder`)
-- Keyer (SAM, not shipped) (`RadianceSAMGenerator`)
 - Multipass Extract (Legacy) (`RadianceMultipassMaster`)
 - Project Manager (`RadianceWorkspace`)
 - Read Image (`RadianceImageLoader`)
-- SAM Loader (not shipped) (`RadianceSAMModelLoader`)
