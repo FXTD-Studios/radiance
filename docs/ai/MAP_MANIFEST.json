@@ -4,9 +4,9 @@
   "generated_at_utc": "2026-10-05T07:28:49Z",
   "scope": "full: every first-party node group and implementation package of the radiance ComfyUI package, js/ frontend, tests, CI and release tooling; static source analysis only",
   "revision": {
-    "commit": "77075f508d1a6b2b21a710fd240ad03060bd129b",
+    "commit": "7f3c0a501febe8e2b5b9e1f29e9b8f9401768862",
     "branch": "version-4-Beta",
-    "worktree_state": "clean; source includes the fix pass recorded in CODE_REVIEW.md; descriptions of fixed items keep their pre-fix line numbers"
+    "worktree_state": "clean; source includes the fix pass recorded in CODE_REVIEW.md and main up to 0174a58 (3.5.4); descriptions of fixed items keep their pre-fix line numbers"
   },
   "coverage": {
     "inventory_count": 483,
@@ -72,11 +72,11 @@
   "source_files": [
     {
       "path": "__init__.py",
-      "sha256": "d508866a6e2ae66943fbebfa57caece4b599ef7645f4e78001a6db230a987c70"
+      "sha256": "23de2f396ca258492cc2f9f4bda14bf3c24d48bf441024f3f554ce702f71ed9e"
     },
     {
       "path": "config/constants.py",
-      "sha256": "92ff25e9af8da9bace1e78e64b5a5623d55a71df381c793a97d24b5cf9ed6ac4"
+      "sha256": "8f080f8789389c5f95e5aaa212d89037c2a90513ba82a0d3ff4084282cc31d79"
     },
     {
       "path": "config/env.py",
@@ -188,7 +188,7 @@
     },
     {
       "path": "hdr/ocio.py",
-      "sha256": "418829fe002f6b0298c0cbf62762804b90f88fe6feb8b517cae1b0879a619e84"
+      "sha256": "7f74f3bb2c9d698b9d3463b862e56c5031ba906c7a4f0ebb84879aeae4c8a181"
     },
     {
       "path": "hdr/aces2_ocio.py",
@@ -244,7 +244,7 @@
     },
     {
       "path": "io/writer.py",
-      "sha256": "c56a5d6d27143336bf5b53bce7a2a2c499aa413fde283b1f9a02c42b56d08862"
+      "sha256": "01d85913093d22ee88e31dbba09a573ef59cadaba6441360476cfe7b91596521"
     },
     {
       "path": "nodes/io/write.py",
@@ -280,11 +280,11 @@
     },
     {
       "path": "nodes/generate/sampler.py",
-      "sha256": "7c612305f95f5f1107e22cad08310184a7bdb571a801edba06e9c616420d13c2"
+      "sha256": "f52006133ac6aa19fc90e2cb4b96ee500b6b1d2a1bdf566deb9c2dea04dfdca3"
     },
     {
       "path": "nodes/generate/engine.py",
-      "sha256": "d9ff5312f71a2765c8c1e7f30dd8e0824e7b4d44ceaf3f7af083d54f932e511b"
+      "sha256": "c2157e22b39ad606dbd74b6ca693096359acd3148b1edb5d36f3f7778323d701"
     },
     {
       "path": "nodes/generate/loader.py",
@@ -296,7 +296,7 @@
     },
     {
       "path": "nodes/monitor/viewer.py",
-      "sha256": "be2d85693d1a287b296593e8e3389c2878e23910286ea143ad75d469e03c532b"
+      "sha256": "4b03dc850ae7997b487df2293bfb48f54274f232953be5766217aa8de0529dc0"
     },
     {
       "path": "nodes/pipeline/workspace.py",
@@ -304,7 +304,7 @@
     },
     {
       "path": "js/radiance_viewer.js",
-      "sha256": "2e0ac743ba5dac51547568c14af01f1071b6f28cb04d1063cd63cb164de06ef3"
+      "sha256": "d233b43bdb4e4b251dae29f4e0e7688314bc314bbd3517d0ac8128a1cee93d30"
     },
     {
       "path": "js/radiance_renderer.js",
@@ -324,15 +324,15 @@
     },
     {
       "path": "pyproject.toml",
-      "sha256": "d32e663ec053662e05655c5e46e05678792217c352d57c2360c1ca088986dd74"
+      "sha256": "03fdce294f35f96c8dc5f0be8a7cfa1d10975536cf35d7218869707c27667c1c"
     },
     {
       "path": "package.json",
-      "sha256": "a8a9986b10a2392a9074ecb28426876fde6740f0f9b9621038c2c222de9dad6e"
+      "sha256": "8ad01c007801dfd34839513d3fd7cb2b68ea3b51ab56ea65c78db683c8e66627"
     },
     {
       "path": "README.md",
-      "sha256": "8d874870cb75093a4ddf8c08958bfd342b77fa2f6e1a9cb54547ddaf3dece0a6"
+      "sha256": "8218a5dbc0570aa2d21ca6fd726ed2bada861242831ea12d6b03b7a8e29d7d58"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -364,7 +364,7 @@
     },
     {
       "path": "nodes/vfx/multipass/core.py",
-      "sha256": "e1a3ee9e0f6ea071171325793269ef0ec02a67c2641dd2c2fc9ce4a63e726f39"
+      "sha256": "97f18537beb42d790a839284a7a0f3ae69ce279616d08995da49fdec3861adaa"
     },
     {
       "path": "nodes/vfx/multipass/estimate.py",
@@ -392,11 +392,11 @@
     },
     {
       "path": "nodes/upscale/upscale.py",
-      "sha256": "4767553cfe1d72519d46e36cd322bc3bfe81960c5da102d68fc1eee767700310"
+      "sha256": "1b8b3f5016ea7bba11cda77a5042bb6decd6000274ae8c324da7178d614975ca"
     },
     {
       "path": "image/upscale.py",
-      "sha256": "e65f791b87f06656e9ce7e6a7b8f916dc17d392daa33823ddf57f3ae73abbaff"
+      "sha256": "8dd81bbe5780988f5800004792bb8844dd1b34c127e2d21f406fb3888c8ef028"
     },
     {
       "path": "image/defects.py",
@@ -440,15 +440,15 @@
     },
     {
       "path": "nodes/pipeline/studio_integrations.py",
-      "sha256": "df651ed6683baac6a5e170f0f8ef09a630996e37db4560a4bf46897ce4b36737"
+      "sha256": "b3206e83865b0ce33a864c8f9cf9cfb93ca2512112061c7cd5d46a4b49ca42c5"
     },
     {
       "path": "tools/nuke_connector.py",
-      "sha256": "48f0a60a3cceb1cca941c2de6c25f07a765bc1b3041fa5e9917ce9eb5cef4186"
+      "sha256": "7950b193d09142b8ec56e8dba4a18e21439d40801a5d88aab8ad8ad02c1cda05"
     },
     {
       "path": "tools/resolve_import.py",
-      "sha256": "4cb2a92390913112853d14635352769fe09ab17e8ca49ba2cd530b741bf82f67"
+      "sha256": "733581e6f1d61904f0d94511dbb75fe438ff845230371f9f89f48c504ff418f1"
     },
     {
       "path": "scripts/start_nuke_server.py",
@@ -512,6 +512,7 @@
     "2026-10-05 full-scope pass: added vfx-multipass, upscale-qc-monitor, video-temporal, dcc-pipeline notes, workflows W9-W12 and per-workflow flowcharts; earlier review corrections retained.",
     "Mermaid files were not parsed or rendered: no renderer is installed and none was installed.",
     "2026-10-05: OPEN_QUESTIONS reconciled with CODE_REVIEW.md (review IDs cross-referenced; B20 withdrawn, B25 reclassified, B27b/B30-B32 added; CODE_REVIEW B12 verdict corrected).",
-    "Fix pass after b645400: source fingerprints refreshed for delivery/handler.py, hdr/vae.py, image/upscale.py, io/writer.py, loader_utils.py, nodes/generate/loader.py, nodes/generate/sampler.py, nodes/io/write.py, nodes/monitor/viewer.py, nodes/pipeline/workspace.py, sampler_utils.py; core/rhdr.py and js/radiance_graph_format.js added. Subsystem notes were not re-mapped; see CODE_REVIEW.md Fix status."
+    "Fix pass after b645400: source fingerprints refreshed for delivery/handler.py, hdr/vae.py, image/upscale.py, io/writer.py, loader_utils.py, nodes/generate/loader.py, nodes/generate/sampler.py, nodes/io/write.py, nodes/monitor/viewer.py, nodes/pipeline/workspace.py, sampler_utils.py; core/rhdr.py and js/radiance_graph_format.js added. Subsystem notes were not re-mapped; see CODE_REVIEW.md Fix status.",
+    "Merged main (3.5.4, PRs #61-#64) in 7f3c0a5: fingerprints refreshed for README.md, __init__.py, config/constants.py, hdr/ocio.py, image/upscale.py, io/writer.py, js/radiance_viewer.js, nodes/generate/engine.py, nodes/generate/sampler.py, nodes/monitor/viewer.py, nodes/pipeline/studio_integrations.py, nodes/upscale/upscale.py, nodes/vfx/multipass/core.py, package.json, pyproject.toml, tools/nuke_connector.py, tools/resolve_import.py. Only the version strings in the map were updated; main's viewer, writer, sampler, upscale, OCIO and DCC-tool changes were not re-mapped, so line numbers in those notes may have shifted."
   ]
 }

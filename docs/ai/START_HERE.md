@@ -16,7 +16,7 @@ Nothing was run, imported, or tested. This map is a navigation aid, not a substi
 
 ## Purpose and execution
 
-Radiance (v3.5.3) is a ComfyUI custom-node package for HDR, colour management, VFX, review,
+Radiance (v3.5.4) is a ComfyUI custom-node package for HDR, colour management, VFX, review,
 and delivery. It publishes 156 nodes and ships a browser viewer and dashboards. ComfyUI imports
 the repo root as the `radiance` package (Implemented, mapper):
 

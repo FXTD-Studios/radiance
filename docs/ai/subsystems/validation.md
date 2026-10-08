@@ -18,7 +18,7 @@ ID: validation. Snapshot: `7376f9e`. Coverage: structure inspected. No tests wer
 | `tools/check_mojibake.py` | Double-encoded UTF-8 scan. **Not run by CI** |
 | `tools/gpu_acceptance.py` | Manual on-GPU sweep that writes `gpu_acceptance_report.md` |
 | `tools/pin_models.py` | Checks model pins against Hugging Face and GitHub. Needs network |
-| `tests/test_version_sync.py` | Checks that the version (3.5.3) matches across pyproject, constants, package.json, CHANGELOG, and the README badge |
+| `tests/test_version_sync.py` | Checks that the version (3.5.4) matches across pyproject, constants, package.json, CHANGELOG, and the README badge |
 
 ## Test inventory (by filename, approximate)
 
