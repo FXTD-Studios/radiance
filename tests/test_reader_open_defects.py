@@ -166,3 +166,81 @@ def test_b10_raw_video_ignores_an_ocio_override(tagged_mp4):
     image, _mask, _info = read_frames(path=tagged_mp4, start_frame=0, raw=True,
                                       ocio_colorspace="ARRI LogC4")
     np.testing.assert_array_equal(image.numpy(), expected)
+
+
+# ── B11: OpenImageIO-only extensions ──────────────────────────────────────
+
+@pytest.mark.parametrize("ext", [".cin", ".rla", ".iff", ".ari"])
+def test_b11_oiio_only_extension_without_oiio_names_the_package(tmp_path, monkeypatch, ext):
+    from radiance.io import reader
+
+    monkeypatch.setattr(reader, "_HAS_OIIO", False)
+    path = tmp_path / f"plate{ext}"
+    path.write_bytes(b"\0" * 64)
+    with pytest.raises(ImportError, match="OpenImageIO"):
+        reader._read_image(str(path))
+
+
+def test_b11_dpx_message_is_unchanged(tmp_path, monkeypatch):
+    from radiance.io import reader
+
+    monkeypatch.setattr(reader, "_HAS_OIIO", False)
+    path = tmp_path / "plate.dpx"
+    path.write_bytes(b"\0" * 64)
+    with pytest.raises(ImportError, match="Reading DPX requires OpenImageIO"):
+        reader._read_image(str(path))
+
+
+def _oiio_write(path, pixels):
+    oiio = pytest.importorskip("OpenImageIO")
+    out = oiio.ImageOutput.create(str(path))
+    if out is None:
+        oiio.geterror()
+        pytest.skip(f"this OpenImageIO cannot write {path.suffix}")
+    h, w, c = pixels.shape
+    # 8-bit: OpenImageIO's IFF writer mis-scales a 16-bit alpha.
+    spec = oiio.ImageSpec(w, h, c, oiio.UINT8)
+    if c == 4:
+        spec.alpha_channel = 3
+    assert out.open(str(path), spec), oiio.geterror()
+    out.write_image(pixels)
+    out.close()
+
+
+@pytest.mark.real_torch
+@pytest.mark.parametrize("ext", [".rla", ".iff"])
+def test_b11_oiio_only_extension_reads_through_oiio(tmp_path, ext):
+    from radiance.io import reader
+
+    if not reader._HAS_OIIO:
+        pytest.skip("needs OpenImageIO")
+    px = np.zeros((6, 8, 4), np.float32)
+    px[..., 0] = 0.25
+    px[..., 1] = 0.5
+    px[..., 2] = 0.75
+    px[..., 3] = 1.0
+    px[:, :4, 3] = 0.5
+    path = tmp_path / f"plate{ext}"
+    _oiio_write(path, px)
+    image, mask = reader._read_image(str(path))
+    assert tuple(image.shape) == (1, 6, 8, 3)
+    assert mask is not None
+    np.testing.assert_allclose(mask[0].numpy(), px[..., 3], atol=3e-3)
+    # Compare colour where alpha is 1, so associated or not makes no odds.
+    np.testing.assert_allclose(image[0, :, 4:].numpy(), px[:, 4:, :3], atol=3e-3)
+
+
+@pytest.mark.real_torch
+def test_b11_radiance_pic_reads_as_float(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    from radiance.io import reader
+
+    rgb = np.full((4, 6, 3), 3.5, np.float32)
+    rgb[..., 1] = 0.5
+    src = tmp_path / "plate.hdr"
+    assert cv2.imwrite(str(src), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+    pic = tmp_path / "plate.pic"
+    os.replace(src, pic)
+    image, mask = reader._read_image(str(pic))
+    assert mask is None
+    np.testing.assert_allclose(image[0].numpy(), rgb, rtol=0.02)
