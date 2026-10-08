@@ -79,7 +79,9 @@ def test_scope_readback_matches_the_fbo_type():
     """
     src = _src("js/radiance_webgl.js")
     assert "_scopeFBOType" in src, "the FBO type is not recorded"
-    assert "gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT" in src, \
+    # The scope target is sized to each plot (w x h) since the scopes count
+    # every pixel; the read-back is still typed by the attachment.
+    assert "gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT" in src, \
         "no float read-back path"
     assert "_scopePixelsF32" in src, "no Float32Array staging buffer"
 
@@ -87,7 +89,7 @@ def test_scope_readback_matches_the_fbo_type():
 def test_scope_fallback_path_still_uses_bytes():
     """The RGBA8 fallback must keep its UNSIGNED_BYTE read."""
     src = _src("js/radiance_webgl.js")
-    assert "gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels)" in src
+    assert "gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels)" in src
 
 
 def test_webgl_destroy_releases_context_and_clears_maps():

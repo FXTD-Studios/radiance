@@ -40,6 +40,8 @@ import {
     describeMeasurement as _scopeDescribe,
     logAssistPos as _logAssistPos,
     logAssistInv as _logAssistInv,
+    plotPos as _plotPos,
+    plotInv as _plotInv,
 } from "./radiance_scope_units.js";
 // The façade only. It dynamic-imports the 4.7 MB WASM on first use, so nothing
 // is paid by a user who never opens a config.
@@ -64,6 +66,13 @@ class RadianceViewer {
     ];
 
     static singletonHUD = null;
+
+    /** C2: the scopes measure every pixel up to this long edge (4K DCI). */
+    static SCOPE_SIGNAL_MAX = 4096;
+    /** C2: a sidebar update slower than this halves the scope signal size. */
+    static SCOPE_SLOW_UPDATE_MS = 300;
+    /** C2: the sidebar scopes refresh at most this often. */
+    static SCOPE_MIN_INTERVAL_MS = 100;
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -8158,10 +8167,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     // v3.0 #6: Route histogram scope to renderer.renderHistogram() for GPU-based rendering
     _renderGPUHistogram() {
         if (this.renderer && this.histogramCanvas && this.showHistogram) {
-            // Use log scale for HDR images (data_range max > 1.0)
-            const isHDR = this.hdrData && this.hdrData.data_range && this.hdrData.data_range[1] > 1.05;
+            // Log is the LogC assist curve, as everywhere else the scopes draw.
             const _hs = this._scopeSource();
-            this.renderer.renderHistogram(this.histogramCanvas, isHDR, _hs.tex, _hs.isLinear);
+            this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs.tex, _hs.isLinear, this._scopeOpts(_hs));
         }
     }
 
@@ -8465,10 +8473,23 @@ self.onmessage = async ({ data: { id, url } }) => {
     _scheduleReferenceScopeUpdate() {
         if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
         if (this._referenceScopeRAF) cancelAnimationFrame(this._referenceScopeRAF);
-        this._referenceScopeRAF = requestAnimationFrame(() => {
-            this._referenceScopeRAF = null;
-            this._updateReferenceScopes?.();
-        });
+        if (this._referenceScopeTimer) return;     // a trailing update is already due
+        // C2: the scopes read every pixel now, so they refresh at most every
+        // SCOPE_MIN_INTERVAL_MS, with one trailing update so the last change
+        // is always shown. The picture itself is never held back.
+        const wait = (this._referenceScopeAt || 0) + RadianceViewer.SCOPE_MIN_INTERVAL_MS - performance.now();
+        const run = () => {
+            this._referenceScopeRAF = requestAnimationFrame(() => {
+                this._referenceScopeRAF = null;
+                this._referenceScopeAt = performance.now();
+                this._updateReferenceScopes?.();
+            });
+        };
+        if (wait > 0) {
+            this._referenceScopeTimer = setTimeout(() => { this._referenceScopeTimer = null; run(); }, wait);
+        } else {
+            run();
+        }
     }
 
     updateHistogram() {
@@ -8476,7 +8497,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Use renderHistogram() which adds log-scale grid, HDR dotted line, and labels
         const _hs2 = this._scopeSource();
-        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear);
+        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear, this._scopeOpts(_hs2));
     }
 
     toggleParadeMode() {
@@ -8525,24 +8546,73 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /**
      * 3.5.0: what every scope measures: the displayed picture, graded and
-     * through the view, without overlays, at up to 512 px. The GPU scopes
-     * used to read the ungraded source texture, so grading never moved them.
+     * through the view, without overlays. The GPU scopes used to read the
+     * ungraded source texture, so grading never moved them.
+     *
+     * C2: at the frame's own resolution (up to SCOPE_SIGNAL_MAX on the long
+     * edge), in float. It was a 512 px 8-bit copy, so a one-pixel line, a
+     * lone clipped specular and anything outside 0-1 never reached a scope.
      */
     _scopeSource() {
         const r = this.renderer;
         if (r?.readDisplaySignal && this.imageWidth && this.imageHeight) {
-            const s = Math.min(1, 512 / Math.max(this.imageWidth, this.imageHeight));
+            const s = Math.min(1, this._scopeSignalMaxNow() / Math.max(this.imageWidth, this.imageHeight));
             const res = r.readDisplaySignal(this.imageWidth * s, this.imageHeight * s, this.lutIntensity || 1.0, false);
-            if (res?.texture) return { tex: res.texture, isLinear: false };
+            if (res?.texture) return { tex: res.texture, isLinear: false, width: res.width, height: res.height };
         }
-        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture };
+        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+    }
+
+    /**
+     * The long edge the scope signal is rendered at: every pixel up to
+     * SCOPE_SIGNAL_MAX on a GPU. Rendering the full graded frame a second
+     * time is cheap on a GPU and slow on a software rasteriser, so there it
+     * starts at 1024, and any machine whose sidebar update takes longer than
+     * SCOPE_SLOW_UPDATE_MS has it halved (not below 512). Below full size the
+     * scopes average neighbouring pixels again, so this is the degraded mode.
+     */
+    _scopeSignalMaxNow() {
+        if (this.scopeSignalMax === undefined) {
+            const budget = this.renderer?._scopePointBudgetNow?.();
+            this.scopeSignalMax = budget !== undefined && budget < 1e6 ? 1024 : RadianceViewer.SCOPE_SIGNAL_MAX;
+        }
+        return this.scopeSignalMax;
+    }
+
+    /**
+     * The display encoding the viewer is putting out, for the scope scales
+     * that interpret one: 'pq', 'hlg' or 'sdr'. Only an OCIO display or view
+     * that names ST 2084 / PQ or HLG counts; every built-in view is SDR.
+     */
+    _activeDisplayEncoding() {
+        if (!this.ocioActive) return 'sdr';
+        const name = `${this.ocioDisplay || ''} ${this.ocioView || ''}`;
+        if (/ST[-._ ]?2084|\bPQ\b/i.test(name)) return 'pq';
+        if (/\bHLG\b/i.test(name)) return 'hlg';
+        return 'sdr';
+    }
+
+    /**
+     * Graticule and source size for the GPU scopes (C1): the selected scale's
+     * ticks, as the Scopes tab draws them. A nit scale is only used when the
+     * output really is PQ or HLG; otherwise the scale falls back to 10-bit
+     * code value rather than labelling an SDR signal in nits.
+     */
+    _scopeOpts(src) {
+        let scale = this.scopeScale || 'cv10';
+        const interprets = (_SCOPE_SCALES.find((x) => x.id === scale) || {}).interprets;
+        if (interprets && interprets.toLowerCase() !== this._activeDisplayEncoding()) scale = 'cv10';
+        return {
+            width: src.width, height: src.height,
+            ticks: _scopeTicks(scale, { levels: this.scopeLevels || 'data', peakNits: this.scopeHlgPeak || 1000 }),
+        };
     }
 
     updateWaveform() {
         if (!this.image || !this.renderer) return;
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('waveform', this.waveformCanvas, tex, isLinear, this.waveformParadeMode);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('waveform', this.waveformCanvas, src.tex, src.isLinear, this.waveformParadeMode, this._scopeOpts(src));
         }
     }
 
@@ -8550,9 +8620,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateVectorscope() {
         if (!this.image || !this.renderer) return;
 
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, tex, isLinear);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, src.tex, src.isLinear, false, this._scopeOpts(src));
 
             // BT.709 Cb/Cr graticule: targets from colour bars, same maths as the trace.
             _vsGraticule(this.vectorscopeCtx, this.vectorscopeCanvas.width, this.vectorscopeCanvas.height, { labels: false });
@@ -13133,11 +13203,22 @@ self.onmessage = async ({ data: { id, url } }) => {
             return;
         }
         try {
+            const t0 = performance.now();
             const src = this._scopeSource();
-            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear);
-            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false);
-            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true);
-            if (canvases.vectorscope) this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false);
+            const opts = this._scopeOpts(src);
+            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear, opts);
+            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false, opts);
+            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true, opts);
+            if (canvases.vectorscope) {
+                this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false, opts);
+                // M9: the same BT.709 targets as the Scopes tab. It drew none.
+                const vs = canvases.vectorscope;
+                _vsGraticule(vs.getContext('2d'), vs.width, vs.height, { labels: true });
+            }
+            // The read-backs above waited for the GPU, so this is the real cost.
+            if (performance.now() - t0 > RadianceViewer.SCOPE_SLOW_UPDATE_MS && this._scopeSignalMaxNow() > 512) {
+                this.scopeSignalMax = Math.max(512, this.scopeSignalMax / 2);
+            }
         } catch (err) {
             console.warn('[Radiance] Reference scopes failed:', err);
             Object.entries(canvases).forEach(([mode, canvas]) => this._drawReferenceScopeEmpty(canvas, mode.toUpperCase()));
@@ -18806,10 +18887,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             `<b style="color:rgba(255,255,255,0.6)">${_escapeHtml(desc.label)}</b> · ${_escapeHtml(desc.levels)}`
             + `<br>${_escapeHtml(desc.detail)}`
             + `<br>Measured ${_escapeHtml(desc.measuredAt)}.`
-            // The scopes read an 8-bit canvas. A 10-bit scale over that shows
-            // the right number on a 256-step signal, not 1024 steps of
-            // precision. Saying so is the difference between a scale and a claim.
-            + '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>'
+            // How the active mode is sampled. Waveform, parade, vectorscope and
+            // histogram count every pixel in float on the GPU (C2). The CPU
+            // fallback and false colour read an 8-bit canvas: a 10-bit scale
+            // over that shows the right number on a 256-step signal, not 1024
+            // steps of precision. Saying so is the difference between a scale
+            // and a claim.
+            + (this._scopeTabGPUReady(this.scopeMode)
+                ? '<br><span style="color:rgba(255,255,255,0.3)">Every pixel, in float; values outside 0 to 1023 plot in the shaded footroom and headroom.</span>'
+                : this.scopeMode === 'chromaticity' && this.hdrData?.data
+                    ? '<br><span style="color:rgba(255,255,255,0.3)">Linear source values, before the view.</span>'
+                    : '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>')
             + (this.scopeLogView ? '<br><span style="color:#ffc844">LogC assist is on — the plot is reshaped and the graticule is reshaped with it, so the labels still read true.</span>' : '')
             + (desc.warn ? `<br><span style="color:#ff9040">⚠ ${_escapeHtml(desc.warn)}</span>` : '');
         container.appendChild(measureNote);
@@ -18880,7 +18968,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const canUseGL = !!(this.glCanvas && this.glCanvas.width > 0);
         this._scopeMeasuredTransformed = this.scopeTransformed && canUseGL;
         let imgData = null;
-        if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
+        if (this._scopeTabGPUReady(this.scopeMode)) {
+            imgData = { data: new Uint8ClampedArray(4) };        // the GPU reads the frame itself
+        } else if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
             const sig = this.renderer.readDisplaySignal(sampleW, sampleH, this.lutIntensity || 1.0, true);
             if (sig?.data) imgData = { data: sig.data };
         } else if (!this.scopeTransformed && this.hdrData) {
@@ -18906,13 +18996,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         const ctx = canvas.getContext('2d');
 
         // ─── Render Based on Mode ───────────────────────────
+        // C2: the GPU counts the trace from every pixel (null pixels below
+        // tells each draw to add only its graticule and labels on top).
         const logFlag = this.scopeLogView;
+        const gpu = this._scopeTabGPU(canvas, this.scopeMode, logFlag);
+        const px = gpu ? null : pixels;
         switch (this.scopeMode) {
-            case 'parade': this._drawScopeParade(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'waveform': this._drawScopeWaveform(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag); break;
-            case 'vectorscope': this._drawScopeVectorscope(ctx, pixels, cW, cH); break;
-            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH); break;
+            case 'parade': this._drawScopeParade(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'waveform': this._drawScopeWaveform(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag, gpu || null); break;
+            case 'vectorscope': this._drawScopeVectorscope(ctx, px, cW, cH); break;
+            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH, this._scopeChromaticitySource()); break;
             case 'falsecolor': this._drawScopeFalseColor(ctx, pixels, sampleW, sampleH, cW, cH); break;
         }
     }
@@ -18963,12 +19057,39 @@ self.onmessage = async ({ data: { id, url } }) => {
      * merely warning that they are not.
      */
     _scopePlotPos(v, logView) {
-        return logView ? _logAssistPos(v) : v;
+        return _plotPos(logView ? _logAssistPos(v) : v);
     }
 
     /** Its inverse — a position on the plot back to a normalised value. */
     _scopePlotInv(p, logView) {
-        return logView ? _logAssistInv(p) : Math.min(Math.max(p, 0), 1);
+        const n = _plotInv(p);
+        return logView ? _logAssistInv(n) : n;
+    }
+
+    /** Whether the Scopes tab's current mode is drawn by the GPU counter. */
+    _scopeTabGPUReady(mode) {
+        return !!(this.renderer?.isWebGL2 && this.renderer.renderScope && this.renderer.textures?.image
+            && this.imageWidth && ['waveform', 'parade', 'vectorscope', 'histogram'].includes(mode));
+    }
+
+    /**
+     * C2: draw the Scopes tab's trace on the GPU from every pixel, in float,
+     * at the measurement point the panel shows. Returns false when it cannot
+     * (no WebGL2), and for the histogram returns its per-channel bins for the
+     * panel's own curves. The tab used to plot an 8-bit, 1000 px wide copy:
+     * a one-pixel line in a 2000 px frame was gone before it was plotted.
+     */
+    _scopeTabGPU(canvas, mode, logView) {
+        if (!this._scopeTabGPUReady(mode)) return false;
+        const r = this.renderer;
+        const src = this._scopeMeasuredTransformed
+            ? this._scopeSource()
+            : { tex: r.textures.image, isLinear: r.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+        if (!src.tex) return false;
+        const opts = { width: src.width, height: src.height, logAssist: !!logView, graticule: false };
+        if (mode === 'histogram') return r.scopeHistogramBins?.(256, src.tex, src.isLinear, opts) || false;
+        r.renderScope(mode === 'parade' ? 'waveform' : mode, canvas, src.tex, src.isLinear, mode === 'parade', opts);
+        return true;
     }
 
     /**
@@ -19004,8 +19125,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _drawScopeParade(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         const secW = Math.floor(w / 3);
         const channels = [
@@ -19019,7 +19142,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         channels.forEach(ch => {
             // Plot dots
             ctx.globalAlpha = 1.0;
-            for (let col = 0; col < imgW; col += step) {
+            for (let col = 0; data && col < imgW; col += step) {
                 const x = ch.x + Math.floor((col / imgW) * secW);
                 const hist = new Uint32Array(256);
                 for (let row = 0; row < imgH; row++) {
@@ -19030,7 +19153,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const intensity = Math.min(hist[v] / (imgH * 0.08), 1.0);
                         const alpha = intensity * 0.7 + 0.15;
                         ctx.fillStyle = ch.color + alpha + ')';
-                        ctx.fillRect(x, h - (v / 255) * h, 1, 2);
+                        ctx.fillRect(x, h - _plotPos(v / 255) * h, 1, 2);
                     }
                 }
             }
@@ -19069,8 +19192,10 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Luma Waveform ───────────────────────────────────────
     _drawScopeWaveform(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         // The graticule, in the selected scale's units. See _drawScopeParade for
         // why the old nit ruler was removed rather than kept alongside.
@@ -19079,12 +19204,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         // ── Plot luma dots ─────────────────────────────────────────────────────
         const step = Math.max(1, Math.floor(imgW / w));
         ctx.globalAlpha = 0.08;
-        for (let col = 0; col < imgW; col += step) {
+        for (let col = 0; data && col < imgW; col += step) {
             const x = Math.floor((col / imgW) * w);
             for (let row = 0; row < imgH; row += 2) {
                 const idx = (row * imgW + col) * 4;
                 const luma = data[idx] * 0.2126 + data[idx + 1] * 0.7152 + data[idx + 2] * 0.0722;
-                const y = h - (luma / 255) * h;
+                const y = h - _plotPos(luma / 255) * h;
                 const bright = Math.floor(40 + luma * 0.6);
                 ctx.fillStyle = `rgb(${bright}, ${Math.floor(bright * 1.4)}, ${bright})`;
                 ctx.fillRect(x, y, 1, 1);
@@ -19099,19 +19224,29 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     // ─── Histogram ───────────────────────────────────────────
-    _drawScopeHistogram(ctx, data, w, h, logView) {
+    _drawScopeHistogram(ctx, data, w, h, logView, gpuBins = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
-        const hR = new Uint32Array(256), hG = new Uint32Array(256), hB = new Uint32Array(256);
-        for (let i = 0; i < data.length; i += 4) {
-            hR[data[i]]++;
-            hG[data[i + 1]]++;
-            hB[data[i + 2]]++;
+        // GPU bins (every pixel, float) are already on the plot axis, log
+        // assist included. CPU bins are 8-bit codes, placed with plotPos.
+        let hR, hG, hB, xAt;
+        if (gpuBins) {
+            [hR, hG, hB] = gpuBins;
+            xAt = (i) => ((i + 0.5) / hR.length) * w;
+        } else {
+            hR = new Uint32Array(256); hG = new Uint32Array(256); hB = new Uint32Array(256);
+            for (let i = 0; i < data.length; i += 4) {
+                hR[data[i]]++;
+                hG[data[i + 1]]++;
+                hB[data[i + 2]]++;
+            }
+            xAt = (i) => _plotPos(i / 255) * w;
         }
+        const n = hR.length;
 
         let max = 1;
-        for (let i = 0; i < 256; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
+        for (let i = 0; i < n; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
 
         // Grid — the histogram's axis is horizontal, so the same ticks the
         // waveform draws as lines are drawn here as columns. It used to be four
@@ -19135,8 +19270,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
@@ -19148,8 +19283,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.moveTo(0, h);
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 ctx.lineTo(x, y);
             }
@@ -19183,6 +19318,11 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Vectorscope ─────────────────────────────────────────
     _drawScopeVectorscope(ctx, data, w, h) {
+        if (!data) {
+            // The GPU drew the trace from every pixel; the targets go on top.
+            _vsGraticule(ctx, w, h, { labels: true, lineWidth: 2 });
+            return;
+        }
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
         // 3.5.0: BT.709 Cb/Cr (see radiance_vectorscope.js). The trace used PAL
