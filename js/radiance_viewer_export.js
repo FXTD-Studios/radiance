@@ -237,27 +237,9 @@ function install(RV) {
             return;
         }
 
-        const exp = document.createElement('canvas');
-        exp.width = this.imageWidth;
-        exp.height = this.imageHeight;
-        const ctx = exp.getContext('2d');
-
-        if (this.useWebGL && this.renderer && this.renderer.textures.image) {
-            const prevW = this.glCanvas.width, prevH = this.glCanvas.height;
-            this.glCanvas.width = this.imageWidth;
-            this.glCanvas.height = this.imageHeight;
-            this.renderer.render(this.lutIntensity || 1.0);
-            ctx.drawImage(this.glCanvas, 0, 0);
-            this.glCanvas.width = prevW;
-            this.glCanvas.height = prevH;
-        } else {
-            this.renderImage(ctx, this.image);
-        }
-
-        const link = document.createElement('a');
-        link.download = `radiance_${Date.now()}.png`;
-        link.href = exp.toDataURL('image/png');
-        link.click();
+        // H17: the result without the viewer-only look or overlays, in a
+        // stated colour space (radiance_viewer.js _saveResultPNG).
+        this._saveResultPNG();
     };
 
     // 3.5.0: primaries for the EXR "chromaticities" attribute, by the OCIO

@@ -19,6 +19,7 @@ import {
     exposureValue as _probeEV,
     rgbToHsv as _probeRgbToHsv,
     srgbToLinear as _probeSrgbToLinear,
+    linearToSrgb as _probeLinearToSrgb,
     hexSwatch as _probeHexSwatch,
     formatValue as _probeFormat,
     HDR_REFERENCE_WHITE_NITS as _PROBE_REF_WHITE,
@@ -48,6 +49,8 @@ import {
     describeMeasurement as _scopeDescribe,
     logAssistPos as _logAssistPos,
     logAssistInv as _logAssistInv,
+    plotPos as _plotPos,
+    plotInv as _plotInv,
 } from "./radiance_scope_units.js";
 // The façade only. It dynamic-imports the 4.7 MB WASM on first use, so nothing
 // is paid by a user who never opens a config.
@@ -66,12 +69,20 @@ class RadianceViewer {
         ['aces2', 'ACES 2.0 SDR (OCIO)'],
         ['aces13', 'ACES 1.3 SDR (OCIO)'],
         ['srgb', 'sRGB (no tone map)'],
-        ['rec709', 'Rec.709 (BT.1886)'],
+        // Encodes for a BT.1886 (gamma 2.4) monitor. The canvas is decoded as
+        // sRGB, so on this screen it looks lighter; it is for an external display.
+        ['rec709', 'Rec.709 BT.1886 (external display)'],
         ['filmic', 'Filmic (approx.)'],
         ['manual', 'Custom (Output Transform)'],
     ];
 
     /** The viewer last pointed at: a tie-break for keyboard ownership only. */
+    /** C2: the scopes measure every pixel up to this long edge (4K DCI). */
+    static SCOPE_SIGNAL_MAX = 4096;
+    /** C2: a sidebar update slower than this halves the scope signal size. */
+    static SCOPE_SLOW_UPDATE_MS = 300;
+    /** C2: the sidebar scopes refresh at most this often. */
+    static SCOPE_MIN_INTERVAL_MS = 100;
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -1939,9 +1950,10 @@ class RadianceViewer {
         const meta = this.hdrData.metadata || {};
         const metaCS = (meta.colorSpace || meta.ColorSpace || '').toLowerCase();
         // LogC4 first: "arri" matches both, and LogC4 metadata was read as LogC3.
+        // L5: "arri" alone is not LogC ("ARRI Wide Gamut 3 linear" is linear).
         if (metaCS.includes('logc4')) {
             detected = 'IDT: LogC4 → Linear'; method = 'EXR metadata';
-        } else if (metaCS.includes('logc3') || metaCS.includes('arri')) {
+        } else if (metaCS.includes('logc3') || (metaCS.includes('arri') && metaCS.includes('logc'))) {
             detected = 'IDT: LogC3 → Linear'; method = 'EXR metadata';
         } else if (metaCS.includes('s-log3') || metaCS.includes('slog3')) {
             detected = 'IDT: S-Log3 → Linear' ; method = 'EXR metadata'; // future IDT
@@ -1954,10 +1966,14 @@ class RadianceViewer {
         }
 
         // ── Tier 2: Filename keyword scan ─────────────────────────────────────
+        // L5: whole words only. Separators were stripped and keywords matched
+        // anywhere, so "david" read as DaVinci ("davi") and "dinterm..." as
+        // anything that contained it. Names are split on separators and a
+        // keyword must be one word, or a run of whole words.
         if (!detected) {
-            const fname = (this.hdrData.filename || this._lastFilename || '').toLowerCase().replace(/[-_ .]/g, '');
+            const words = `_${(this.hdrData.filename || this._lastFilename || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('_')}_`;
             for (const p of PROFILES) {
-                if (p.kwds.some(k => fname.includes(k.replace(/[-_ ]/g,'')))) {
+                if (p.kwds.some(k => words.includes(`_${k.replace(/[-_ ]/g, '_')}_`))) {
                     detected = p.key; method = 'filename pattern';
                     break;
                 }
@@ -2868,7 +2884,7 @@ class RadianceViewer {
         this._proFps = document.createElement('span');
         this._proFps.textContent = '24.00 FPS';
         this._proColor = document.createElement('span');
-        this._proColor.textContent = 'ACEScg';
+        this._proColor.textContent = '-';     // the source tag, once a frame arrives
         this._proDepth = document.createElement('span');
         this._proDepth.textContent = '32-bit (float)';
         this._engineBadge = document.createElement('span');
@@ -3785,9 +3801,21 @@ class RadianceViewer {
             this._proAspect.textContent = w && h ? (w / h).toFixed(2) + ':1' : '—';
         }
         if (this._proFps) this._proFps.textContent = `${(this.playbackFps || 24).toFixed(2)} FPS`;
-        if (this._proColor) this._proColor.textContent = this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace.replace('IDT: ', '') : 'ACEScg';
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
         if (this._proDepth) this._proDepth.textContent = this.hdrData ? '32-bit (float)' : '8/16-bit';
         this._updateEngineBadge();
+    }
+
+    /**
+     * H11: what the pixels are, for every colour-space label: the input
+     * transform when one is set, otherwise the node's source tag. The header,
+     * the Inspector and the Grade tab all said ACEScg for every source while
+     * the rendering followed the real tag, so a Linear Rec.709 frame was
+     * labelled with the wrong primaries.
+     */
+    _inputLabel() {
+        if (this.inputSpace && this.inputSpace !== 'None') return this.inputSpace.replace('IDT: ', '');
+        return this.sourceTag?.colorspace || '-';
     }
 
     createUI() {
@@ -7108,6 +7136,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                     npy.height = npy.shape[0];
                     npy.width = npy.shape[1];
                     npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+                    // C3: what the node said these floats are. Every sidecar
+                    // was marked linear, so an sRGB-encoded ComfyUI IMAGE was
+                    // measured as light by the probe and the status bar.
+                    npy.sourceEncoding = (imgData.source_encoding || this.sourceTag?.encoding) === 'srgb' ? 'srgb' : 'linear';
+                    npy.isLinear = npy.sourceEncoding !== 'srgb';
                     npy.exr_filename = imgData.exr_filename;
                     npy.exr_subfolder = imgData.exr_subfolder ?? imgData.subfolder ?? '';
                     npy.exr_type = imgData.exr_type ?? imgData.type ?? 'temp';
@@ -8004,27 +8037,48 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Default PNG Export
+        this._saveResultPNG();
+    }
+
+    /**
+     * H17: "Save PNG (Result)": the graded picture through the view, at full
+     * size, in the colour space the view encodes for, and nothing the viewer
+     * adds for looking: no viewer f-stop or gamma, no false colour, zebra,
+     * wipe, grid or dither. That is the scopes' display signal, so it is
+     * rendered with readDisplaySignal. It used to read the live canvas, so a
+     * +2 viewer f-stop took a 127 pixel to 238 in the file and false colour
+     * was saved as the picture, and a Display P3 view was saved untagged.
+     *
+     * The canvas is created in the view's colour space, so a P3 result is
+     * written as Display P3 (the browser tags the PNG) and an sRGB one as
+     * sRGB; the file name and the log say which.
+     */
+    _saveResultPNG() {
+        const p3 = this.renderer?.displayColorSpace === 'display-p3';
+        const space = p3 ? 'display-p3' : 'srgb';
         const exp = document.createElement('canvas');
         exp.width = this.imageWidth;
         exp.height = this.imageHeight;
-        const ctx = exp.getContext('2d');
-
-        if (this.useWebGL && this.renderer && this.renderer.textures.image) {
-            const prevW = this.glCanvas.width, prevH = this.glCanvas.height;
-            this.glCanvas.width = this.imageWidth;
-            this.glCanvas.height = this.imageHeight;
-            this.renderer.render(this.lutIntensity || 1.0);
-            ctx.drawImage(this.glCanvas, 0, 0);
-            this.glCanvas.width = prevW;
-            this.glCanvas.height = prevH;
+        const ctx = exp.getContext('2d', { colorSpace: space });
+        const sig = this.useWebGL && this.renderer?.readDisplaySignal
+            ? this.renderer.readDisplaySignal(this.imageWidth, this.imageHeight, this.lutIntensity || 1.0, true)
+            : null;
+        if (sig?.data) {
+            let img;
+            try { img = new ImageData(sig.data, sig.width, sig.height, { colorSpace: space }); }
+            catch { img = new ImageData(sig.data, sig.width, sig.height); }
+            ctx.putImageData(img, 0, 0);
         } else {
             this.renderImage(ctx, this.image);
         }
-
+        const tag = p3 ? 'DisplayP3' : 'sRGB';
         const link = document.createElement('a');
-        link.download = `radiance_${Date.now()}.png`;
+        link.download = `radiance_${Date.now()}_${tag}.png`;
         link.href = exp.toDataURL('image/png');
         link.click();
+        const view = this.ocioActive ? `${this.ocioDisplay} / ${this.ocioView}` : (this.displayLut || 'no view');
+        this._termLog?.('success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
+            + `(view: ${view}; no viewer f-stop, gamma or overlays)`);
     }
 
     // ── v4.0: OpenEXR 32-bit FLOAT Encoder ───────────────────────────────────
@@ -8416,10 +8470,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     // v3.0 #6: Route histogram scope to renderer.renderHistogram() for GPU-based rendering
     _renderGPUHistogram() {
         if (this.renderer && this.histogramCanvas && this.showHistogram) {
-            // Use log scale for HDR images (data_range max > 1.0)
-            const isHDR = this.hdrData && this.hdrData.data_range && this.hdrData.data_range[1] > 1.05;
+            // Log is the LogC assist curve, as everywhere else the scopes draw.
             const _hs = this._scopeSource();
-            this.renderer.renderHistogram(this.histogramCanvas, isHDR, _hs.tex, _hs.isLinear);
+            this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs.tex, _hs.isLinear, this._scopeOpts(_hs));
         }
     }
 
@@ -8729,6 +8782,12 @@ self.onmessage = async ({ data: { id, url } }) => {
     _scheduleReferenceScopeUpdate() {
         if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
         if (this._referenceScopeRAF || this._referenceScopeTimer) return;   // one is already coming
+        // C2: the scopes read every pixel now, so they refresh at most every
+        // SCOPE_MIN_INTERVAL_MS (about six times a second while playing). A
+        // pending update reads the state when it runs, so the last change is
+        // always shown. The picture itself is never held back.
+        const interval = this.isPlaying ? 160 : RadianceViewer.SCOPE_MIN_INTERVAL_MS;
+        const wait = (this._referenceScopeAt || 0) + interval - performance.now();
         const draw = () => {
             this._referenceScopeRAF = requestAnimationFrame(() => {
                 this._referenceScopeRAF = null;
@@ -8736,7 +8795,6 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._updateReferenceScopes?.();
             });
         };
-        const wait = this.isPlaying ? 160 - (performance.now() - (this._referenceScopeAt || 0)) : 0;
         if (wait > 0) {
             this._referenceScopeTimer = setTimeout(() => { this._referenceScopeTimer = null; draw(); }, wait);
         } else {
@@ -8749,7 +8807,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Use renderHistogram() which adds log-scale grid, HDR dotted line, and labels
         const _hs2 = this._scopeSource();
-        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear);
+        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear, this._scopeOpts(_hs2));
     }
 
     toggleParadeMode() {
@@ -8798,24 +8856,73 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /**
      * 3.5.0: what every scope measures: the displayed picture, graded and
-     * through the view, without overlays, at up to 512 px. The GPU scopes
-     * used to read the ungraded source texture, so grading never moved them.
+     * through the view, without overlays. The GPU scopes used to read the
+     * ungraded source texture, so grading never moved them.
+     *
+     * C2: at the frame's own resolution (up to SCOPE_SIGNAL_MAX on the long
+     * edge), in float. It was a 512 px 8-bit copy, so a one-pixel line, a
+     * lone clipped specular and anything outside 0-1 never reached a scope.
      */
     _scopeSource() {
         const r = this.renderer;
         if (r?.readDisplaySignal && this.imageWidth && this.imageHeight) {
-            const s = Math.min(1, 512 / Math.max(this.imageWidth, this.imageHeight));
+            const s = Math.min(1, this._scopeSignalMaxNow() / Math.max(this.imageWidth, this.imageHeight));
             const res = r.readDisplaySignal(this.imageWidth * s, this.imageHeight * s, this.lutIntensity || 1.0, false);
-            if (res?.texture) return { tex: res.texture, isLinear: false };
+            if (res?.texture) return { tex: res.texture, isLinear: false, width: res.width, height: res.height };
         }
-        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture };
+        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+    }
+
+    /**
+     * The long edge the scope signal is rendered at: every pixel up to
+     * SCOPE_SIGNAL_MAX on a GPU. Rendering the full graded frame a second
+     * time is cheap on a GPU and slow on a software rasteriser, so there it
+     * starts at 1024, and any machine whose sidebar update takes longer than
+     * SCOPE_SLOW_UPDATE_MS has it halved (not below 512). Below full size the
+     * scopes average neighbouring pixels again, so this is the degraded mode.
+     */
+    _scopeSignalMaxNow() {
+        if (this.scopeSignalMax === undefined) {
+            const budget = this.renderer?._scopePointBudgetNow?.();
+            this.scopeSignalMax = budget !== undefined && budget < 1e6 ? 1024 : RadianceViewer.SCOPE_SIGNAL_MAX;
+        }
+        return this.scopeSignalMax;
+    }
+
+    /**
+     * The display encoding the viewer is putting out, for the scope scales
+     * that interpret one: 'pq', 'hlg' or 'sdr'. Only an OCIO display or view
+     * that names ST 2084 / PQ or HLG counts; every built-in view is SDR.
+     */
+    _activeDisplayEncoding() {
+        if (!this.ocioActive) return 'sdr';
+        const name = `${this.ocioDisplay || ''} ${this.ocioView || ''}`;
+        if (/ST[-._ ]?2084|\bPQ\b/i.test(name)) return 'pq';
+        if (/\bHLG\b/i.test(name)) return 'hlg';
+        return 'sdr';
+    }
+
+    /**
+     * Graticule and source size for the GPU scopes (C1): the selected scale's
+     * ticks, as the Scopes tab draws them. A nit scale is only used when the
+     * output really is PQ or HLG; otherwise the scale falls back to 10-bit
+     * code value rather than labelling an SDR signal in nits.
+     */
+    _scopeOpts(src) {
+        let scale = this.scopeScale || 'cv10';
+        const interprets = (_SCOPE_SCALES.find((x) => x.id === scale) || {}).interprets;
+        if (interprets && interprets.toLowerCase() !== this._activeDisplayEncoding()) scale = 'cv10';
+        return {
+            width: src.width, height: src.height,
+            ticks: _scopeTicks(scale, { levels: this.scopeLevels || 'data', peakNits: this.scopeHlgPeak || 1000 }),
+        };
     }
 
     updateWaveform() {
         if (!this.image || !this.renderer) return;
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('waveform', this.waveformCanvas, tex, isLinear, this.waveformParadeMode);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('waveform', this.waveformCanvas, src.tex, src.isLinear, this.waveformParadeMode, this._scopeOpts(src));
         }
     }
 
@@ -8823,9 +8930,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateVectorscope() {
         if (!this.image || !this.renderer) return;
 
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, tex, isLinear);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, src.tex, src.isLinear, false, this._scopeOpts(src));
 
             // BT.709 Cb/Cr graticule: targets from colour bars, same maths as the trace.
             _vsGraticule(this.vectorscopeCtx, this.vectorscopeCanvas.width, this.vectorscopeCanvas.height, { labels: false });
@@ -9611,6 +9718,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (imgX >= 0 && imgX < this.imageWidth && imgY >= 0 && imgY < this.imageHeight) {
             const idx = (imgY * this.imageWidth + imgX) * 4;
             let r = this.imageData[idx], g = this.imageData[idx + 1], b = this.imageData[idx + 2], a = this.imageData[idx + 3];
+            // The source as loaded, for the 8-bit readouts below.
+            const srcR = r, srcG = g, srcB = b;
+            // C3: "Disp" is what the display receives at this pixel: graded,
+            // through the view, without overlays (the scopes' signal). It read
+            // imageData, which behind a float frame is the black placeholder
+            // canvas, so it said #000000 over a grey picture.
+            const disp = this.renderer?.readDisplayPixel?.(imgX, imgY, this.lutIntensity || 1.0);
+            if (disp) { r = disp[0]; g = disp[1]; b = disp[2]; }
+            // C3: an sRGB-encoded float source is decoded before it is read as light.
+            const dec = this.hdrData?.isLinear === false ? _probeSrgbToLinear : (v) => v;
 
             // Check for HDR float data
             let floatR, floatG, floatB;
@@ -9631,21 +9748,22 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
             } else {
                 // Fallback to 8-bit normalized
-                floatR = r / 255;
-                floatG = g / 255;
-                floatB = b / 255;
+                floatR = srcR / 255;
+                floatG = srcG / 255;
+                floatB = srcB / 255;
             }
 
             let floatVals = '';
             let evVal = '';
-            const luma_f = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+            const luma_f = _probeSrgbToLinear(srcR / 255) * 0.2126 + _probeSrgbToLinear(srcG / 255) * 0.7152
+                + _probeSrgbToLinear(srcB / 255) * 0.0722;
 
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx = (imgY * this.imageWidth + imgX) * ch;
-                const fr = this.hdrData.data[hIdx];
-                const fg = ch > 1 ? this.hdrData.data[hIdx + 1] : fr;
-                const fb = ch > 2 ? this.hdrData.data[hIdx + 2] : fr;
+                const fr = dec(this.hdrData.data[hIdx]);
+                const fg = ch > 1 ? dec(this.hdrData.data[hIdx + 1]) : fr;
+                const fb = ch > 2 ? dec(this.hdrData.data[hIdx + 2]) : fr;
                 floatVals = `<span style="color:${this.theme.accent}">F: ${(fr).toFixed(4)} ${(fg).toFixed(4)} ${(fb).toFixed(4)}</span> | `;
 
                 const curLuma = fr * 0.2126 + fg * 0.7152 + fb * 0.0722;
@@ -9671,15 +9789,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx2 = (imgY * this.imageWidth + imgX) * ch;
-                linR = this.hdrData.data[hIdx2];
-                linG = ch > 1 ? this.hdrData.data[hIdx2 + 1] : linR;
-                linB = ch > 2 ? this.hdrData.data[hIdx2 + 2] : linR;
+                linR = dec(this.hdrData.data[hIdx2]);
+                linG = ch > 1 ? dec(this.hdrData.data[hIdx2 + 1]) : linR;
+                linB = ch > 2 ? dec(this.hdrData.data[hIdx2 + 2]) : linR;
             } else {
                 // sRGB → linear approximation (IEC 61966-2-1)
                 const sRGBtoLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-                linR = sRGBtoLin(r / 255);
-                linG = sRGBtoLin(g / 255);
-                linB = sRGBtoLin(b / 255);
+                linR = sRGBtoLin(srcR / 255);
+                linG = sRGBtoLin(srcG / 255);
+                linB = sRGBtoLin(srcB / 255);
             }
 
             const linStr = `${linR.toFixed(4)} ${linG.toFixed(4)} ${linB.toFixed(4)}`;
@@ -9765,12 +9883,45 @@ self.onmessage = async ({ data: { id, url } }) => {
         const zoomPct = Math.round((this.zoom || 1) * 100);
         const w = this.imageWidth || 0;
         const h = this.imageHeight || 0;
+        // M7: non-finite pixels in this frame, drawn cyan (NaN) and orange
+        // (Inf) on the picture. A single NaN is fatal downstream and was
+        // invisible: it drew black and nothing counted it.
+        const bad = this._nonFiniteCounts();
+        const badHtml = bad && (bad.nan || bad.inf)
+            ? `<span style="color:#ff5050;font-weight:700" title="Pixels with a NaN or Inf channel in this frame: NaN shows cyan, Inf orange.">⚠ ${bad.nan} NaN · ${bad.inf} Inf</span>`
+            : '';
         this.infoRight.innerHTML = `
+            ${badHtml}
             <span>CH: ${(this.channel || 'rgb').toUpperCase()}</span>
             <span>RES: ${w}x${h}</span>
             <span>ZOOM: ${zoomPct}%</span>
             <span>FRM: ${(this.currentFrame || 0) + 1}/${this.totalFrames || 1}</span>
         `;
+    }
+
+    /**
+     * M7: pixels of the current float frame with a NaN or an Inf in a colour
+     * channel, '{ nan, inf }' (a pixel with both counts as NaN), or null with
+     * no float frame. The RHDR parse counts them on the way in; other formats
+     * are counted here once and the result kept on the frame.
+     */
+    _nonFiniteCounts() {
+        const hdr = this.hdrData;
+        if (!hdr?.data) return null;
+        if (hdr.nonFinite) return hdr.nonFinite;
+        const d = hdr.data, C = hdr.channels || 3, cc = Math.min(C, 3);
+        let nan = 0, inf = 0;
+        for (let i = 0; i < d.length; i += C) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const v = d[i + k];
+                if (v !== v) n = true;
+                else if (v === Infinity || v === -Infinity) f = true;
+            }
+            if (n) nan++; else if (f) inf++;
+        }
+        hdr.nonFinite = { nan, inf };
+        return hdr.nonFinite;
     }
 
     drawLoupe(mx, my, imgX, imgY) {
@@ -11637,10 +11788,19 @@ self.onmessage = async ({ data: { id, url } }) => {
             // Ensure WebGL canvas is backend-only (hidden)
             this.glCanvas.style.visibility = 'hidden';
 
-            // 1. Resize/Init WebGL Canvas to Image Size (Texture size)
-            if (this.glCanvas.width !== this.imageWidth || this.glCanvas.height !== this.imageHeight) {
-                this.glCanvas.width = this.imageWidth;
-                this.glCanvas.height = this.imageHeight;
+            // 1. Size the WebGL canvas. H10: below 100 % it is the size it is
+            // shown at, and the shader averages each pixel's footprint in
+            // linear light before the view transform (u_minify). It was
+            // always the image size and the 2D blit below shrank the finished
+            // display image, which averages code values: one-pixel black and
+            // white stripes showed 128 at Fit instead of 188, so fine detail
+            // read about 1.3 stops dark.
+            const shown = Math.min(1, this.zoom || 1);
+            const glW = Math.max(1, Math.round(this.imageWidth * shown));
+            const glH = Math.max(1, Math.round(this.imageHeight * shown));
+            if (this.glCanvas.width !== glW || this.glCanvas.height !== glH) {
+                this.glCanvas.width = glW;
+                this.glCanvas.height = glH;
             }
 
             // 2. Update renderer state from UI controls (GPU parameters)
@@ -11837,8 +11997,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ctx.imageSmoothingEnabled = this.pixelFilter !== 'nearest';
             }
 
-            // Draw the GPU-rendered image
-            ctx.drawImage(this.glCanvas, 0, 0);
+            // Draw the GPU-rendered image (smaller than the frame below 100 %)
+            ctx.drawImage(this.glCanvas, 0, 0, this.imageWidth, this.imageHeight);
 
             ctx.restore();
 
@@ -13076,8 +13236,13 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _renderReferenceInspector(parent) {
         const current = this._getCurrentResult();
-        const fileName = current.filename || current.exr_filename || current.hdr_sidecar || 'No shot loaded';
-        const resolution = this.imageWidth && this.imageHeight ? `${this.imageWidth} x ${this.imageHeight}` : '— x —';
+        // M16: the frame, not its 8-bit thumbnail: the float sidecar the
+        // viewer shows when there is one, else the PNG. Resolution and format
+        // fall back to the frame record, so a panel drawn before the pixels
+        // land is not blank or wrong.
+        const fileName = current.hdr_sidecar || current.hdr_filename || current.filename || current.exr_filename || 'No shot loaded';
+        const resW = this.imageWidth || current.source_width, resH = this.imageHeight || current.source_height;
+        const resolution = resW && resH ? `${resW} x ${resH}` : '— x —';
         const frame = (this.currentFrame ?? current.frame ?? 0) + 1;
         const fps = this.playbackFps || 24;
         const durationFrames = Math.max(0, (this.totalFrames || 1) - 1);
@@ -13085,9 +13250,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const duration = `${String(Math.floor(durationSeconds / 60)).padStart(2, '0')}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}:${String(durationFrames % Math.round(fps)).padStart(2, '0')}`;
         const format = this.hdrData?.format === 'rhdr_f32' ? 'RHDR fp32'
             : this.hdrData?.format === 'rhdr' ? 'RHDR fp16'
-                : current.exr_filename ? 'EXR'
-                    : current.hdr_sidecar ? 'RHDR'
-                        : this.image ? 'PNG / Canvas' : '—';
+                : this.hdrData?.format ? String(this.hdrData.format).toUpperCase()
+                    : current.hdr_sidecar ? `RHDR ${current.hdr_fp32 ? 'fp32' : 'fp16'}`
+                        : this.image ? 'PNG (8-bit preview)' : '—';
         const dataRange = Array.isArray(current.data_range)
             ? `${Number(current.data_range[0]).toFixed(4)} - ${Number(current.data_range[1]).toFixed(4)}`
             : '—';
@@ -13104,7 +13269,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Frame', frame],
             ['Frame Rate', `${Number(fps).toFixed(2)} FPS`],
             ['Duration', duration],
-            ['Input Transform', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : this.inputSpace],
+            ['Input Transform', this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace : `None (source: ${this._inputLabel()})`],
             ['Display', this.displayLut || 'None'],
             ['Bit Depth', '32-bit (float)'],
             ['Data Range', dataRange],
@@ -13218,7 +13383,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const kv = document.createElement('div');
         kv.className = 'radiance-ref-kv';
         [
-            ['Input', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : (this.inputSpace || 'Scene Linear')],
+            ['Input', this._inputLabel()],
             ['Output', this.displayLut || 'None'],
             ['Texture', this.hdrData?.format === 'rhdr_f32' ? 'RGBA32F' : this.hdrData?.format === 'rhdr' ? 'RGBA16F' : this.hdrData ? 'Float HDR' : 'Canvas'],
             ['Compare', this.compareMode || 'Off'],
@@ -13479,7 +13644,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             'S-Log3 (Sony)': 'IDT: S-Log3 → Linear',
         })[this.inputSpace] || (this.inputSpace || 'None');
         field('Input Color Space', [
-            { label: 'ACEScg / Linear', value: 'None' },
+            { label: `As tagged: ${this.sourceTag?.colorspace || 'source'}`, value: 'None' },
             { label: 'sRGB', value: 'IDT: sRGB → Linear' },
             { label: 'Rec.709', value: 'IDT: Rec.709 → Linear' },
             { label: 'LogC3', value: 'IDT: LogC3 → Linear' },
@@ -13921,11 +14086,22 @@ self.onmessage = async ({ data: { id, url } }) => {
             return;
         }
         try {
+            const t0 = performance.now();
             const src = this._scopeSource();
-            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear);
-            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false);
-            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true);
-            if (canvases.vectorscope) this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false);
+            const opts = this._scopeOpts(src);
+            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear, opts);
+            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false, opts);
+            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true, opts);
+            if (canvases.vectorscope) {
+                this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false, opts);
+                // M9: the same BT.709 targets as the Scopes tab. It drew none.
+                const vs = canvases.vectorscope;
+                _vsGraticule(vs.getContext('2d'), vs.width, vs.height, { labels: true });
+            }
+            // The read-backs above waited for the GPU, so this is the real cost.
+            if (performance.now() - t0 > RadianceViewer.SCOPE_SLOW_UPDATE_MS && this._scopeSignalMaxNow() > 512) {
+                this.scopeSignalMax = Math.max(512, this.scopeSignalMax / 2);
+            }
         } catch (err) {
             console.warn('[Radiance] Reference scopes failed:', err);
             Object.entries(canvases).forEach(([mode, canvas]) => this._drawReferenceScopeEmpty(canvas, mode.toUpperCase()));
@@ -15313,9 +15489,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 printerEVBadge.textContent = '±0';
                 printerEVBadge.style.color = '#555';
             } else {
-                const evR = (r / 50).toFixed(2);
-                const evG = (g / 50).toFixed(2);
-                const evB = (b / 50).toFixed(2);
+                const evR = (r / 12).toFixed(2);
+                const evG = (g / 12).toFixed(2);
+                const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
                 printerEVBadge.style.color = '#00a8ff';
             }
@@ -15398,7 +15574,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             const evLbl = document.createElement('span');
             evLbl.style.cssText = 'font-size: 7.5px; color: #444; width: 34px; text-align: left; font-family: monospace;';
             const _updateEV = (v) => {
-                const ev = (v / 50);
+                const ev = (v / 12);      // 12 printer points to the stop (see applyPrinterLights)
                 evLbl.textContent = ev === 0 ? '' : `${ev>0?'+':''}${ev.toFixed(2)}EV`;
                 evLbl.style.color = ev !== 0 ? hexColor + 'bb' : '#333';
             };
@@ -17255,6 +17431,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         if (this.hdrData?.data) {
+            // C3: the node's tag (hdrData.isLinear). An sRGB-encoded float
+            // frame is decoded before it is measured, so Y, EV and nits are
+            // light. It used to be read as if linear: a 0.5 pixel showed
+            // EV +1.47 and 101.5 nits instead of +0.25 and 43.5.
             const isLinear = this.hdrData.isLinear !== false;
             const C = this.hdrData.channels || this.hdrData.shape?.[2] || 3;
             return {
@@ -17262,8 +17442,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 width: this.hdrData.width || this.imageWidth,
                 height: this.hdrData.height || this.imageHeight,
                 channels: C,
-                linear: isLinear,
-                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', display-encoded'}`,
+                linear: true,
+                encoded: !isLinear,
+                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', sRGB-encoded, decoded to linear light'}`,
             };
         }
 
@@ -17292,7 +17473,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const info = this._probeDescribe();
         if (info.error) return info;
         if (info.kind === 'rendered') return { ...info, data: this._probeRendered.data };
-        if (info.kind === 'hdr') return { ...info, data: this.hdrData.data };
+        if (info.kind === 'hdr') return { ...info, data: info.encoded ? this._probeLinearFromHDR(info.channels) : this.hdrData.data };
         return { ...info, data: this._probeLinearFromImageData() };
     }
 
@@ -17320,6 +17501,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this._probeLinearCache = out;
         this._probeLinearCacheFor = this.imageData;
+        return out;
+    }
+
+    /**
+     * An sRGB-encoded float frame decoded to linear, colour channels only,
+     * built for whole-frame or region statistics and cached like the 8-bit
+     * decode above (same cache, same invalidation).
+     */
+    _probeLinearFromHDR(C) {
+        const src = this.hdrData.data;
+        if (this._probeLinearCacheFor === src && this._probeLinearCache) return this._probeLinearCache;
+        const out = new Float32Array(src.length);
+        const colour = Math.min(C, 3);
+        for (let i = 0; i < src.length; i++) out[i] = (i % C) < colour ? _probeSrgbToLinear(src[i]) : src[i];
+        this._probeLinearCache = out;
+        this._probeLinearCacheFor = src;
         return out;
     }
 
@@ -17373,6 +17570,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             const p = _probePixelAt(this.hdrData.data,
                 { width: this.hdrData.width || this.imageWidth, height: this.hdrData.height || this.imageHeight, channels: C },
                 x, y);
+            if (p && this.hdrData.isLinear === false) {
+                // C3: decoded, as the caption says (see _probeDescribe).
+                p.r = _probeSrgbToLinear(p.r); p.g = _probeSrgbToLinear(p.g); p.b = _probeSrgbToLinear(p.b);
+            }
             return p ? { x, y, ...p } : null;
         }
         if (this.imageData) {
@@ -17487,7 +17688,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         srcGroup.appendChild(heading('Values'));
         srcGroup.appendChild(segmented([
             { id: 'source', label: 'Source', hint: 'The pixels as loaded, before the viewer grade.' },
-            { id: 'rendered', label: 'Rendered', hint: 'The pixels as displayed, after the grade and view transform.' },
+            { id: 'rendered', label: 'Rendered', hint: 'The graded pixels, scene-linear, before the view transform (what the 32-bit graded EXR holds).' },
         ], this.probeSource, (id) => {
             this.probeSource = id;
             this._probeStats = null;
@@ -17828,6 +18029,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             encoding: enc,
             colorspace: tag?.colorspace || (enc === 'srgb' ? 'sRGB Encoded Rec.709 (sRGB)' : 'Linear Rec.709 (sRGB)'),
         };
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
         this.renderer?.setSourceEncoding?.(enc);
         this.renderer?.setSourceColorSpace?.(this.sourceTag.colorspace);
         if (!this._userSetIDT) {
@@ -19563,10 +19765,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             `<b style="color:rgba(255,255,255,0.6)">${_escapeHtml(desc.label)}</b> · ${_escapeHtml(desc.levels)}`
             + `<br>${_escapeHtml(desc.detail)}`
             + `<br>Measured ${_escapeHtml(desc.measuredAt)}.`
-            // The scopes read an 8-bit canvas. A 10-bit scale over that shows
-            // the right number on a 256-step signal, not 1024 steps of
-            // precision. Saying so is the difference between a scale and a claim.
-            + '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>'
+            // How the active mode is sampled. Waveform, parade, vectorscope and
+            // histogram count every pixel in float on the GPU (C2). The CPU
+            // fallback and false colour read an 8-bit canvas: a 10-bit scale
+            // over that shows the right number on a 256-step signal, not 1024
+            // steps of precision. Saying so is the difference between a scale
+            // and a claim.
+            + (this._scopeTabGPUReady(this.scopeMode)
+                ? '<br><span style="color:rgba(255,255,255,0.3)">Every pixel, in float; values outside 0 to 1023 plot in the shaded footroom and headroom.</span>'
+                : this.scopeMode === 'chromaticity' && this.hdrData?.data
+                    ? '<br><span style="color:rgba(255,255,255,0.3)">Linear source values, before the view.</span>'
+                    : '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>')
             + (this.scopeLogView ? '<br><span style="color:#ffc844">LogC assist is on — the plot is reshaped and the graticule is reshaped with it, so the labels still read true.</span>' : '')
             + (desc.warn ? `<br><span style="color:#ff9040">⚠ ${_escapeHtml(desc.warn)}</span>` : '');
         container.appendChild(measureNote);
@@ -19637,7 +19846,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const canUseGL = !!(this.glCanvas && this.glCanvas.width > 0);
         this._scopeMeasuredTransformed = this.scopeTransformed && canUseGL;
         let imgData = null;
-        if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
+        if (this._scopeTabGPUReady(this.scopeMode)) {
+            imgData = { data: new Uint8ClampedArray(4) };        // the GPU reads the frame itself
+        } else if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
             const sig = this.renderer.readDisplaySignal(sampleW, sampleH, this.lutIntensity || 1.0, true);
             if (sig?.data) imgData = { data: sig.data };
         } else if (!this.scopeTransformed && this.hdrData) {
@@ -19663,13 +19874,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         const ctx = canvas.getContext('2d');
 
         // ─── Render Based on Mode ───────────────────────────
+        // C2: the GPU counts the trace from every pixel (null pixels below
+        // tells each draw to add only its graticule and labels on top).
         const logFlag = this.scopeLogView;
+        const gpu = this._scopeTabGPU(canvas, this.scopeMode, logFlag);
+        const px = gpu ? null : pixels;
         switch (this.scopeMode) {
-            case 'parade': this._drawScopeParade(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'waveform': this._drawScopeWaveform(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag); break;
-            case 'vectorscope': this._drawScopeVectorscope(ctx, pixels, cW, cH); break;
-            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH); break;
+            case 'parade': this._drawScopeParade(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'waveform': this._drawScopeWaveform(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag, gpu || null); break;
+            case 'vectorscope': this._drawScopeVectorscope(ctx, px, cW, cH); break;
+            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH, this._scopeChromaticitySource()); break;
             case 'falsecolor': this._drawScopeFalseColor(ctx, pixels, sampleW, sampleH, cW, cH); break;
         }
     }
@@ -19720,12 +19935,39 @@ self.onmessage = async ({ data: { id, url } }) => {
      * merely warning that they are not.
      */
     _scopePlotPos(v, logView) {
-        return logView ? _logAssistPos(v) : v;
+        return _plotPos(logView ? _logAssistPos(v) : v);
     }
 
     /** Its inverse — a position on the plot back to a normalised value. */
     _scopePlotInv(p, logView) {
-        return logView ? _logAssistInv(p) : Math.min(Math.max(p, 0), 1);
+        const n = _plotInv(p);
+        return logView ? _logAssistInv(n) : n;
+    }
+
+    /** Whether the Scopes tab's current mode is drawn by the GPU counter. */
+    _scopeTabGPUReady(mode) {
+        return !!(this.renderer?.isWebGL2 && this.renderer.renderScope && this.renderer.textures?.image
+            && this.imageWidth && ['waveform', 'parade', 'vectorscope', 'histogram'].includes(mode));
+    }
+
+    /**
+     * C2: draw the Scopes tab's trace on the GPU from every pixel, in float,
+     * at the measurement point the panel shows. Returns false when it cannot
+     * (no WebGL2), and for the histogram returns its per-channel bins for the
+     * panel's own curves. The tab used to plot an 8-bit, 1000 px wide copy:
+     * a one-pixel line in a 2000 px frame was gone before it was plotted.
+     */
+    _scopeTabGPU(canvas, mode, logView) {
+        if (!this._scopeTabGPUReady(mode)) return false;
+        const r = this.renderer;
+        const src = this._scopeMeasuredTransformed
+            ? this._scopeSource()
+            : { tex: r.textures.image, isLinear: r.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+        if (!src.tex) return false;
+        const opts = { width: src.width, height: src.height, logAssist: !!logView, graticule: false };
+        if (mode === 'histogram') return r.scopeHistogramBins?.(256, src.tex, src.isLinear, opts) || false;
+        r.renderScope(mode === 'parade' ? 'waveform' : mode, canvas, src.tex, src.isLinear, mode === 'parade', opts);
+        return true;
     }
 
     /**
@@ -19761,8 +20003,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _drawScopeParade(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         const secW = Math.floor(w / 3);
         const channels = [
@@ -19776,7 +20020,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         channels.forEach(ch => {
             // Plot dots
             ctx.globalAlpha = 1.0;
-            for (let col = 0; col < imgW; col += step) {
+            for (let col = 0; data && col < imgW; col += step) {
                 const x = ch.x + Math.floor((col / imgW) * secW);
                 const hist = new Uint32Array(256);
                 for (let row = 0; row < imgH; row++) {
@@ -19787,7 +20031,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const intensity = Math.min(hist[v] / (imgH * 0.08), 1.0);
                         const alpha = intensity * 0.7 + 0.15;
                         ctx.fillStyle = ch.color + alpha + ')';
-                        ctx.fillRect(x, h - (v / 255) * h, 1, 2);
+                        ctx.fillRect(x, h - _plotPos(v / 255) * h, 1, 2);
                     }
                 }
             }
@@ -19826,8 +20070,10 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Luma Waveform ───────────────────────────────────────
     _drawScopeWaveform(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         // The graticule, in the selected scale's units. See _drawScopeParade for
         // why the old nit ruler was removed rather than kept alongside.
@@ -19836,12 +20082,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         // ── Plot luma dots ─────────────────────────────────────────────────────
         const step = Math.max(1, Math.floor(imgW / w));
         ctx.globalAlpha = 0.08;
-        for (let col = 0; col < imgW; col += step) {
+        for (let col = 0; data && col < imgW; col += step) {
             const x = Math.floor((col / imgW) * w);
             for (let row = 0; row < imgH; row += 2) {
                 const idx = (row * imgW + col) * 4;
                 const luma = data[idx] * 0.2126 + data[idx + 1] * 0.7152 + data[idx + 2] * 0.0722;
-                const y = h - (luma / 255) * h;
+                const y = h - _plotPos(luma / 255) * h;
                 const bright = Math.floor(40 + luma * 0.6);
                 ctx.fillStyle = `rgb(${bright}, ${Math.floor(bright * 1.4)}, ${bright})`;
                 ctx.fillRect(x, y, 1, 1);
@@ -19856,19 +20102,29 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     // ─── Histogram ───────────────────────────────────────────
-    _drawScopeHistogram(ctx, data, w, h, logView) {
+    _drawScopeHistogram(ctx, data, w, h, logView, gpuBins = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
-        const hR = new Uint32Array(256), hG = new Uint32Array(256), hB = new Uint32Array(256);
-        for (let i = 0; i < data.length; i += 4) {
-            hR[data[i]]++;
-            hG[data[i + 1]]++;
-            hB[data[i + 2]]++;
+        // GPU bins (every pixel, float) are already on the plot axis, log
+        // assist included. CPU bins are 8-bit codes, placed with plotPos.
+        let hR, hG, hB, xAt;
+        if (gpuBins) {
+            [hR, hG, hB] = gpuBins;
+            xAt = (i) => ((i + 0.5) / hR.length) * w;
+        } else {
+            hR = new Uint32Array(256); hG = new Uint32Array(256); hB = new Uint32Array(256);
+            for (let i = 0; i < data.length; i += 4) {
+                hR[data[i]]++;
+                hG[data[i + 1]]++;
+                hB[data[i + 2]]++;
+            }
+            xAt = (i) => _plotPos(i / 255) * w;
         }
+        const n = hR.length;
 
         let max = 1;
-        for (let i = 0; i < 256; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
+        for (let i = 0; i < n; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
 
         // Grid — the histogram's axis is horizontal, so the same ticks the
         // waveform draws as lines are drawn here as columns. It used to be four
@@ -19892,8 +20148,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
@@ -19905,8 +20161,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.moveTo(0, h);
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 ctx.lineTo(x, y);
             }
@@ -19940,6 +20196,11 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Vectorscope ─────────────────────────────────────────
     _drawScopeVectorscope(ctx, data, w, h) {
+        if (!data) {
+            // The GPU drew the trace from every pixel; the targets go on top.
+            _vsGraticule(ctx, w, h, { labels: true, lineWidth: 2 });
+            return;
+        }
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
         // 3.5.0: BT.709 Cb/Cr (see radiance_vectorscope.js). The trace used PAL
@@ -19957,8 +20218,34 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.globalAlpha = 1.0;
     }
 
+    /**
+     * M8: linear light in a known gamut for the chromaticity scope: the float
+     * source, decoded when the node tagged it sRGB-encoded, with the source
+     * gamut's RGB to XYZ matrix. Null when there is no float frame or an
+     * input transform is set (the samples are then camera code values), and
+     * the scope falls back to decoding the 8-bit signal.
+     */
+    _scopeChromaticitySource() {
+        const hdr = this.hdrData;
+        if (!hdr?.data || (this.inputSpace && this.inputSpace !== 'None')) return null;
+        const M = [
+            [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041],   // Rec.709
+            [0.6624541811, 0.1340042065, 0.1561876870, 0.2722287168, 0.6740817658, 0.0536895174,
+                -0.0055746495, 0.0040607335, 1.0103391003],                                                            // AP1
+            [0.9525523959, 0.0, 0.0000936786, 0.3439664498, 0.7281660966, -0.0721325464, 0.0, 0.0, 1.0088251844],   // AP0
+            [0.6369580, 0.1446169, 0.1688810, 0.2627002, 0.6779981, 0.0593017, 0.0, 0.0280727, 1.0609851],         // Rec.2020
+            [0.4865709, 0.2656677, 0.1982173, 0.2289746, 0.6917385, 0.0792869, 0.0, 0.0451134, 1.0439444],         // P3-D65
+        ];
+        const encoded = hdr.isLinear === false;
+        const gamut = encoded ? 0 : (this.renderer?.sourceGamut || 0);
+        return {
+            data: hdr.data, channels: hdr.channels || 3, toXYZ: M[gamut] || M[0],
+            decode: encoded ? _probeSrgbToLinear : null,
+        };
+    }
+
     // ─── Chromaticity (CIE 1931 xy) ──────────────────────────
-    _drawScopeChromaticity(ctx, data, w, h) {
+    _drawScopeChromaticity(ctx, data, w, h, lin = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
@@ -20004,21 +20291,41 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.closePath();
         ctx.stroke();
 
-        // Plot pixels (CPU fallback for non-renderer mode)
+        // Plot pixels. M8: xy is a property of light, so it is computed from
+        // linear values: the float source in its own gamut when there is one,
+        // else the 8-bit signal decoded from sRGB. It used gamma-encoded,
+        // clamped display values, so orange (1, 0.5, 0) landed at
+        // (0.477, 0.460) instead of (0.544, 0.407), and nothing could ever
+        // plot outside Rec.709.
         ctx.globalAlpha = 0.08;
-        const step = Math.max(1, Math.floor(data.length / 4 / 20000));
-        for (let i = 0; i < data.length; i += 4 * step) {
-            const r = data[i]/255, g = data[i+1]/255, b = data[i+2]/255;
-            // RGB -> XYZ (D65)
-            const X = 0.4124 * r + 0.3576 * g + 0.1805 * b;
-            const Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            const Z = 0.0193 * r + 0.1192 * g + 0.9505 * b;
+        const plot = (r, g, b, M, swatch) => {
+            const X = M[0] * r + M[1] * g + M[2] * b;
+            const Y = M[3] * r + M[4] * g + M[5] * b;
+            const Z = M[6] * r + M[7] * g + M[8] * b;
             const sum = X + Y + Z;
-            if (sum > 1e-4) {
-                const x = X / sum, y = Y / sum;
-                const pt = xyToPx(x, y);
-                ctx.fillStyle = `rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`;
+            if (sum > 1e-4 && Number.isFinite(sum)) {
+                const pt = xyToPx(X / sum, Y / sum);
+                ctx.fillStyle = swatch;
                 ctx.fillRect(pt.x, pt.y, 1, 1);
+            }
+        };
+        if (lin) {
+            const { data: src, channels: C, toXYZ, decode } = lin;
+            const n = src.length / C;
+            const step = Math.max(1, Math.floor(n / 20000));
+            const enc = (v) => Math.round(255 * Math.min(1, Math.max(0, _probeLinearToSrgb(v))));
+            for (let p = 0; p < n; p += step) {
+                const i = p * C;
+                let r = src[i], g = C > 1 ? src[i + 1] : r, b = C > 2 ? src[i + 2] : r;
+                if (decode) { r = decode(r); g = decode(g); b = decode(b); }
+                plot(r, g, b, toXYZ, `rgb(${enc(r)}, ${enc(g)}, ${enc(b)})`);
+            }
+        } else {
+            const M709 = [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041];
+            const step = Math.max(1, Math.floor(data.length / 4 / 20000));
+            for (let i = 0; i < data.length; i += 4 * step) {
+                plot(_probeSrgbToLinear(data[i] / 255), _probeSrgbToLinear(data[i + 1] / 255), _probeSrgbToLinear(data[i + 2] / 255),
+                    M709, `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})`);
             }
         }
         ctx.globalAlpha = 1.0;
@@ -21648,11 +21955,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                 decompressed.byteOffset,
                 decompressed.byteLength / 4
             );
+            // M7: NaN / Inf pixels, counted here (often in a worker) so the
+            // HUD can report them without a second pass on the main thread.
+            const cc = Math.min(channels, 3);
+            let nan32 = 0, inf32 = 0;
+            for (let i = 0; i < fp32.length; i += channels) {
+                let n = false, f = false;
+                for (let k = 0; k < cc; k++) {
+                    const v = fp32[i + k];
+                    if (v !== v) n = true; else if (v === Infinity || v === -Infinity) f = true;
+                }
+                if (n) nan32++; else if (f) inf32++;
+            }
             console.log(`[Radiance] RHDR fp32 decoded: ${width}×${height}×${channels}ch (${(decompressed.byteLength / 1048576).toFixed(1)} MB)`);
             return {
                 data: fp32,   // Float32Array for CPU reads (probe, scopes)
                 fp16data: null,   // null → viewer uses loadFloat32Texture
                 shape: [height, width, channels],
+                nonFinite: { nan: nan32, inf: inf32 },
                 format: 'rhdr_f32',
                 channel_names: channelNames,
                 metadata
@@ -21666,9 +21986,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         // (see _lazyHalfFloats), which only the probe and CPU readouts need.
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
+        // M7: NaN / Inf pixels (exponent all ones; NaN has a mantissa).
+        const cc = Math.min(channels, 3);
+        let nan16 = 0, inf16 = 0;
+        for (let i = 0; i < fp16Raw.length; i += channels) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const h = fp16Raw[i + k];
+                if ((h & 0x7c00) === 0x7c00) { if (h & 0x03ff) n = true; else f = true; }
+            }
+            if (n) nan16++; else if (f) inf16++;
+        }
+
         return RadianceViewer._lazyHalfFloats({
             fp16data: fp16Raw,   // Uint16Array for GPU HALF_FLOAT upload
             shape: [height, width, channels],
+            nonFinite: { nan: nan16, inf: inf16 },
             format: 'rhdr',
             channel_names: channelNames,
             metadata

@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  Truth harness for the Viewer: the picture and the numbers.
+  Driven by viewer_truth.test.mjs.
+
+  Builds a real RadianceViewer through the node's own onExecuted path, feeds it
+  synthetic float frames and leaves the measuring to the test, which passes
+  each measurement in as a function. The harness only supplies the viewer and
+  a few readers, so a measurement reads the same code a user's click runs.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance truth harness</title>
+<style>html,body{margin:0;background:#222}.host{width:1200px;height:800px;display:flex}</style>
+</head>
+<body>
+<script type="module">
+import "../radiance_viewer.js";
+import * as units from "../radiance_scope_units.js";
+import * as vs from "../radiance_vectorscope.js";
+
+window.__units = units;
+window.__vs = vs;
+
+const ext = (globalThis.__exts || []).find((e) => e.name === 'FXTD.RadianceViewer');
+let nextId = 10;
+
+class FakeNode {
+    constructor() {
+        this.id = nextId++;
+        this.size = [1200, 800];
+        this.widgets = []; this.inputs = []; this.outputs = [];
+        this.title = 'RadianceViewer'; this.type = 'RadianceViewer'; this.comfyClass = 'RadianceViewer';
+        this.graph = { setDirtyCanvas() {} };
+        this.host = document.createElement('div');
+        this.host.className = 'host';
+        document.body.appendChild(this.host);
+    }
+    addDOMWidget(name, type, el) { this.host.appendChild(el); const w = { name, type, element: el }; this.widgets.push(w); return w; }
+    addWidget() { return { value: null }; }
+    setDirtyCanvas() {}
+    setSize(s) { this.size = s; }
+    computeSize() { return this.size; }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+window.__sleep = sleep;
+window.__errors = [];
+const _err = console.error.bind(console);
+console.error = (...a) => { window.__errors.push(a.map(String).join(' ')); _err(...a); };
+
+// Text drawn on each 2D canvas, so a test can ask what a graticule says.
+const _fillText = CanvasRenderingContext2D.prototype.fillText;
+CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+    (this.canvas.__text ||= []).push({ text: String(text), x, y });
+    return _fillText.call(this, text, x, y, ...rest);
+};
+const _strokeRect = CanvasRenderingContext2D.prototype.strokeRect;
+CanvasRenderingContext2D.prototype.strokeRect = function (...a) {
+    this.canvas.__strokeRects = (this.canvas.__strokeRects || 0) + 1;
+    return _strokeRect.apply(this, a);
+};
+
+/** Mean of a 5x5 patch of the visible canvas at a fraction of its size. */
+window.__sample = function (viewer, fx = 0.5, fy = 0.5) {
+    const src = viewer.canvas;
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    const cx = Math.floor(c.width * fx), cy = Math.floor(c.height * fy);
+    const d = ctx.getImageData(cx - 2, cy - 2, 5, 5).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const n = d.length / 4;
+    return [r / n, g / n, b / n];
+};
+
+/** The same, at an image-relative position, honouring pan and zoom. */
+window.__sampleImg = function (v, u, w) {
+    const x = v.panX + u * v.imageWidth * v.zoom, y = v.panY + w * v.imageHeight * v.zoom;
+    return window.__sample(v, x / v.canvas.width, y / v.canvas.height);
+};
+
+/** A canvas's pixels as an RGBA byte array. */
+window.__pixels = function (canvas) {
+    return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+};
+
+let ready = null;
+async function makeViewer() {
+    if (!ready) { await ext.beforeRegisterNodeDef(FakeNode, { name: 'RadianceViewer' }, window.app); ready = true; }
+    const node = new FakeNode();
+    node.onNodeCreated();
+    await sleep(300);
+    node.radianceViewer.resize?.();
+    return node;
+}
+
+window.__waitFor = async function (fn, ms) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) { if (fn()) return true; await sleep(50); }
+    return false;
+};
+
+/** A fresh viewer showing `message`, as the node delivers it. */
+window.__load = async function (message, { waitOcio = false, view = null } = {}) {
+    if (window.__lastNode) {
+        try { window.__lastNode.onRemoved?.(); } catch { /* a teardown problem is not this test's */ }
+        window.__lastNode.host.remove();
+    }
+    const node = await makeViewer();
+    const v = node.radianceViewer;
+    window.__lastNode = node;
+    window.__lastViewer = v;
+    // The scopes as a GPU runs them: every pixel up to the full signal size.
+    // SwiftShader would otherwise start in the degraded software mode (a
+    // 1024 px signal), which the test covers on its own.
+    v.scopeSignalMax = window.RadianceViewer.SCOPE_SIGNAL_MAX;
+    node.onExecuted(message);
+    const w = message.radiance_images?.[0]?.source_width;
+    await window.__waitFor(() => (v.frameHDRData?.[0] || v.frameImages?.[0]) && (!w || v.imageWidth === w), 15000);
+    if (waitOcio) await window.__waitFor(() => v.ocioActive && v._ocioAutoActive, 20000);
+    if (view) v.setViewMode(view);
+    await sleep(300);
+    v.render();
+    await sleep(100);
+    return true;
+};
+// Software GL is slow enough to trip the scopes' slow-update guard on every
+// update; the guard is tested on its own, so it is off for the rest.
+window.__slowUpdateMs = window.RadianceViewer.SCOPE_SLOW_UPDATE_MS;
+window.RadianceViewer.SCOPE_SLOW_UPDATE_MS = Infinity;
+window.__ready = true;
+</script>
+</body>
+</html>

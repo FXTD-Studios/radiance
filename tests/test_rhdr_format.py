@@ -105,6 +105,17 @@ def test_fp16_clamps_to_its_finite_range_by_default():
     np.testing.assert_array_equal(px[0, 0], np.array([65504.0, -65504.0, 65504.0, 3.0], np.float16))
 
 
+def test_fp16_keeps_a_true_inf_and_nan():
+    # The clamp is for finite overflow. A sample that is already +-inf (or
+    # NaN) is a fault in the source the Viewer flags; clamping inf to 65504
+    # made it look like a bright pixel.
+    pixels = np.array([[[np.inf, -np.inf, np.nan, 1e5]]], np.float32)
+    flags, px = rhdr.decode(rhdr.encode(pixels))
+    assert np.isposinf(px[0, 0, 0]) and np.isneginf(px[0, 0, 1])
+    assert np.isnan(px[0, 0, 2])
+    assert px[0, 0, 3] == np.float16(65504.0)
+
+
 def test_fp16_clamping_leaves_in_range_values_bit_identical():
     pixels = _ramp()
     assert zlib.decompress(rhdr.encode(pixels)[12:]) == pixels.astype(np.float16).tobytes()
