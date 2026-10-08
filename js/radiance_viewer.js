@@ -19,6 +19,7 @@ import {
     exposureValue as _probeEV,
     rgbToHsv as _probeRgbToHsv,
     srgbToLinear as _probeSrgbToLinear,
+    linearToSrgb as _probeLinearToSrgb,
     hexSwatch as _probeHexSwatch,
     formatValue as _probeFormat,
     HDR_REFERENCE_WHITE_NITS as _PROBE_REF_WHITE,
@@ -19462,8 +19463,34 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.globalAlpha = 1.0;
     }
 
+    /**
+     * M8: linear light in a known gamut for the chromaticity scope: the float
+     * source, decoded when the node tagged it sRGB-encoded, with the source
+     * gamut's RGB to XYZ matrix. Null when there is no float frame or an
+     * input transform is set (the samples are then camera code values), and
+     * the scope falls back to decoding the 8-bit signal.
+     */
+    _scopeChromaticitySource() {
+        const hdr = this.hdrData;
+        if (!hdr?.data || (this.inputSpace && this.inputSpace !== 'None')) return null;
+        const M = [
+            [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041],   // Rec.709
+            [0.6624541811, 0.1340042065, 0.1561876870, 0.2722287168, 0.6740817658, 0.0536895174,
+                -0.0055746495, 0.0040607335, 1.0103391003],                                                            // AP1
+            [0.9525523959, 0.0, 0.0000936786, 0.3439664498, 0.7281660966, -0.0721325464, 0.0, 0.0, 1.0088251844],   // AP0
+            [0.6369580, 0.1446169, 0.1688810, 0.2627002, 0.6779981, 0.0593017, 0.0, 0.0280727, 1.0609851],         // Rec.2020
+            [0.4865709, 0.2656677, 0.1982173, 0.2289746, 0.6917385, 0.0792869, 0.0, 0.0451134, 1.0439444],         // P3-D65
+        ];
+        const encoded = hdr.isLinear === false;
+        const gamut = encoded ? 0 : (this.renderer?.sourceGamut || 0);
+        return {
+            data: hdr.data, channels: hdr.channels || 3, toXYZ: M[gamut] || M[0],
+            decode: encoded ? _probeSrgbToLinear : null,
+        };
+    }
+
     // ─── Chromaticity (CIE 1931 xy) ──────────────────────────
-    _drawScopeChromaticity(ctx, data, w, h) {
+    _drawScopeChromaticity(ctx, data, w, h, lin = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
@@ -19509,21 +19536,41 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.closePath();
         ctx.stroke();
 
-        // Plot pixels (CPU fallback for non-renderer mode)
+        // Plot pixels. M8: xy is a property of light, so it is computed from
+        // linear values: the float source in its own gamut when there is one,
+        // else the 8-bit signal decoded from sRGB. It used gamma-encoded,
+        // clamped display values, so orange (1, 0.5, 0) landed at
+        // (0.477, 0.460) instead of (0.544, 0.407), and nothing could ever
+        // plot outside Rec.709.
         ctx.globalAlpha = 0.08;
-        const step = Math.max(1, Math.floor(data.length / 4 / 20000));
-        for (let i = 0; i < data.length; i += 4 * step) {
-            const r = data[i]/255, g = data[i+1]/255, b = data[i+2]/255;
-            // RGB -> XYZ (D65)
-            const X = 0.4124 * r + 0.3576 * g + 0.1805 * b;
-            const Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            const Z = 0.0193 * r + 0.1192 * g + 0.9505 * b;
+        const plot = (r, g, b, M, swatch) => {
+            const X = M[0] * r + M[1] * g + M[2] * b;
+            const Y = M[3] * r + M[4] * g + M[5] * b;
+            const Z = M[6] * r + M[7] * g + M[8] * b;
             const sum = X + Y + Z;
-            if (sum > 1e-4) {
-                const x = X / sum, y = Y / sum;
-                const pt = xyToPx(x, y);
-                ctx.fillStyle = `rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`;
+            if (sum > 1e-4 && Number.isFinite(sum)) {
+                const pt = xyToPx(X / sum, Y / sum);
+                ctx.fillStyle = swatch;
                 ctx.fillRect(pt.x, pt.y, 1, 1);
+            }
+        };
+        if (lin) {
+            const { data: src, channels: C, toXYZ, decode } = lin;
+            const n = src.length / C;
+            const step = Math.max(1, Math.floor(n / 20000));
+            const enc = (v) => Math.round(255 * Math.min(1, Math.max(0, _probeLinearToSrgb(v))));
+            for (let p = 0; p < n; p += step) {
+                const i = p * C;
+                let r = src[i], g = C > 1 ? src[i + 1] : r, b = C > 2 ? src[i + 2] : r;
+                if (decode) { r = decode(r); g = decode(g); b = decode(b); }
+                plot(r, g, b, toXYZ, `rgb(${enc(r)}, ${enc(g)}, ${enc(b)})`);
+            }
+        } else {
+            const M709 = [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041];
+            const step = Math.max(1, Math.floor(data.length / 4 / 20000));
+            for (let i = 0; i < data.length; i += 4 * step) {
+                plot(_probeSrgbToLinear(data[i] / 255), _probeSrgbToLinear(data[i + 1] / 255), _probeSrgbToLinear(data[i + 2] / 255),
+                    M709, `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})`);
             }
         }
         ctx.globalAlpha = 1.0;
