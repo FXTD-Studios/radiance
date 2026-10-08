@@ -171,10 +171,12 @@ def test_temp_file_helpers_purge_the_previous_generation():
     assert ns["_viewer_purge_temp"]("never-seen") == 0
 
 
-def test_viewer_purges_before_writing_and_tracks_after():
+def test_viewer_purges_the_previous_generation_after_writing_the_new_one():
+    """It purged first: a re-run deleted frames the open viewer had not loaded
+    yet. tests/test_viewer_session_server.py runs the node to check the order."""
     src = _src("nodes/monitor/viewer.py")
-    assert "_viewer_purge_temp(_purge_key)" in src
-    assert "_viewer_track_temp(_purge_key" in src
+    assert "_viewer_purge_temp(_purge_key)" not in src
+    assert "_viewer_unlink(_viewer_track_temp(_purge_key, _written), _purge_key)" in src
 
 
 def test_float_payloads_use_cheap_compression():
