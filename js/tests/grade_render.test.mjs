@@ -13,6 +13,7 @@
  *   M3  Luma Mix 0 keeps the exposure change
  *   C4  the composite shader computes what gradePixelFull() computes, which is
  *       what the CDL and LUT exporters are built on
+ *   M5  the bar's LUT select and the Output Transform are one control
  *   H6  the grade is saved with the workflow and restored on load
  *
  * Skips when Playwright is unavailable.
@@ -187,6 +188,17 @@ test('C4/M10: the composite shader computes what gradePixelFull computes', { ski
         const d = Math.max(...c.gpu.map((v, i) => Math.abs(v - c.cpu[i]) / Math.max(1, Math.abs(c.cpu[i]))));
         assert.ok(d <= 2e-4, `${c.cct ? 'ACEScct ' : ''}${JSON.stringify(c.in)}: GPU ${JSON.stringify(c.gpu)} vs JS ${JSON.stringify(c.cpu)} (Δ ${d})`);
     }
+});
+
+test('M5: the LUT selects route through one manual pick and stay in step', { skip }, () => {
+    const m = report.cases.m5;
+    assert.ok(m.hasBar);
+    // The bar set displayLut directly and left the view on Auto, so the next
+    // image replaced the pick.
+    assert.deepEqual(m.afterBar, { viewMode: 'manual', displayLut: 'Rec.709 (Broadcast)', gradeSelect: 'Rec.709 (Broadcast)' });
+    assert.deepEqual(m.afterGrade, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', bar: 'Reinhard Tonemap' });
+    assert.deepEqual(m.afterNextImage, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', bar: 'Reinhard Tonemap', gradeSelect: 'Reinhard Tonemap' });
+    assert.equal(m.deadKeyWritten, null, 'the bar still writes a localStorage key nothing reads');
 });
 
 test('H6: the grade is saved into the workflow and restored by onConfigure', { skip }, () => {

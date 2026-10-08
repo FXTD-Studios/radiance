@@ -155,6 +155,32 @@ window.__run = async () => {
             apply(v, { ...full, colorScience: 1 });
             out.cases.full.push({ in: px, cct: true, gpu: graded(v), cpu: gradePixelFull(px, { ...NEUTRAL, ...full, colorScience: 1 }) });
         }
+        // M5: the bar's LUT select and the Grade tab's Output Transform are one control.
+        {
+            localStorage.removeItem('radiance_hud_display_lut');
+            const { node, v } = await load([0.18, 0.18, 0.18]);
+            const bar = v._vbLutSelect;
+            const m5 = { hasBar: !!bar };
+            bar.value = 'Rec.709 (Broadcast)';
+            bar.dispatchEvent(new Event('change', { bubbles: true }));
+            v._setReferenceTab('grade');
+            const outSel = v._gradeOutputSelect;
+            m5.afterBar = { viewMode: v.viewMode, displayLut: v.displayLut, gradeSelect: outSel?.value };
+            outSel.value = 'Reinhard Tonemap';
+            outSel.dispatchEvent(new Event('change', { bubbles: true }));
+            m5.afterGrade = { viewMode: v.viewMode, displayLut: v.displayLut, bar: bar.value };
+            // The next image must not replace a manual pick.
+            node.onExecuted({ radiance_images: [{
+                filename: 'p.png', subfolder: '', type: 'temp', hdr_sidecar: 'c_0.5_0.5_0.5.rhdr', hdr_primary: true,
+                hdr_fp32: true, has_hdr: false, data_range: [0, 1], source_width: 8, source_height: 8,
+                channel_names: ['R', 'G', 'B', 'A'], source_encoding: 'srgb', source_colorspace: 'sRGB Encoded Rec.709 (sRGB)',
+            }] });
+            await waitFor(() => v.frameHDRData?.[0], 8000);
+            await sleep(150);
+            m5.afterNextImage = { viewMode: v.viewMode, displayLut: v.displayLut, bar: bar.value, gradeSelect: v._gradeOutputSelect?.value };
+            m5.deadKeyWritten = localStorage.getItem('radiance_hud_display_lut');
+            out.cases.m5 = m5;
+        }
         // H6: the grade goes out with the workflow and comes back on load.
         {
             const { node, v } = await load([0.4, 0.3, 0.2]);
