@@ -63,7 +63,7 @@ class RadianceViewer {
         ['manual', 'Custom (Output Transform)'],
     ];
 
-    static singletonHUD = null;
+    /** The viewer last pointed at: a tie-break for keyboard ownership only. */
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -7023,7 +7023,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     switchTab(tabId) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const validTabs = ['prompt', 'primaries', 'curves', 'effects', 'masks', 'view'];
         if (!validTabs.includes(tabId)) return;
 
@@ -7038,7 +7038,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     setFocusedWheel(name) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.focusedWheelName = name;
 
         const wheels = {
@@ -7059,7 +7059,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     getFocusedWheelElement() {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const name = active.focusedWheelName || 'OFFSET';
         const wheels = {
             'SHADOW': active.shadowWheel,
@@ -7074,7 +7074,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelChroma(dx, dy, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005; // Standard step size
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -7089,7 +7089,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelMaster(delta, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005;
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -13483,22 +13483,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     createHUD() {
-        // Singleton pattern: Check if HUD already exists
-        if (RadianceViewer.singletonHUD) {
-            this.controlsPanel = RadianceViewer.singletonHUD;
-            // Attach to THIS instance's rightControlPanel (not document.body)
-            if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-                if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-                this.rightControlPanel.appendChild(this.controlsPanel);
-            }
-
-            // v2.4: Sync active instance and re-render content immediately on creation if HUD already exists
-            RadianceViewer.activeInstance = this;
-            this._renderReferenceRightHUD();
-            if (typeof this._lastRenderContent === 'function') this._lastRenderContent();
-            return;
-        }
-
+        // One panel per viewer. It used to be a page-wide singleton that moved
+        // into whichever viewer was built last: viewer A's panel emptied when
+        // B was added, its controls then drove the wrong viewer, and deleting
+        // B left A with no panel until a reload.
         if (this._hudResizeListener) {
             window.removeEventListener('resize', this._hudResizeListener);
             this._hudResizeListener = null;
@@ -13507,8 +13495,6 @@ self.onmessage = async ({ data: { id, url } }) => {
         const t = this.theme;
         this.controlsPanel = document.createElement('div');
         this.controlsPanel.className = 'radiance-glass-dock radiance-panel-embedded';
-        this.controlsPanel.id = 'radiance-singleton-hud';
-        RadianceViewer.singletonHUD = this.controlsPanel;
 
         // v3.0 #15: High Contrast Mode Initialization
         // Restores accessibility preference from localStorage and applies the CSS hook.
@@ -13679,7 +13665,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             border: 1px solid transparent;
         `;
 
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.activeTab = 'primaries';
         const tabContentContainer = document.createElement('div');
         this.tabContentContainer = tabContentContainer;
@@ -13696,7 +13682,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._hudTabs = [];
 
         const renderTabs = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabsRow.innerHTML = '';
             tabs.forEach(tab => {
                 const btn = document.createElement('div');
@@ -13738,7 +13724,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
 
         const renderContent = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabContentContainer.innerHTML = '';
             tabContentContainer.style.cssText = 'display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;';
 
@@ -13789,7 +13775,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // A/B Bypass Toggle
         const bypassBtn = document.createElement('div');
         bypassBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active._gradingBypassed = !active._gradingBypassed;
             if (active._gradingBypassed) {
                 // Save current state and set identity
@@ -13846,18 +13832,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         undoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         undoBtn.onmouseenter = () => { undoBtn.style.color = this._undoStack.length > 0 ? this.theme.accent : '#555'; };
         undoBtn.onmouseleave = () => { undoBtn.style.color = '#555'; };
-        undoBtn.onclick = () => { (RadianceViewer.activeInstance || this).undo(); };
+        undoBtn.onclick = () => { this.undo(); };
 
         const redoBtn = document.createElement('div');
         redoBtn.textContent = '↷';
         redoBtn.title = 'Redo (Ctrl+Shift+Z)';
         redoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         redoBtn.onmouseenter = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             redoBtn.style.color = active._redoStack.length > 0 ? active.theme.accent : '#555';
         };
         redoBtn.onmouseleave = () => { redoBtn.style.color = '#555'; };
-        redoBtn.onclick = () => { (RadianceViewer.activeInstance || this).redo(); };
+        redoBtn.onclick = () => { this.redo(); };
 
         undoRedoGroup.appendChild(undoBtn);
         undoRedoGroup.appendChild(redoBtn);
@@ -13868,7 +13854,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         resetBtn.textContent = 'RESET ALL';
         resetBtn.style.cssText = 'font-size: 9px; color: #666; cursor: pointer; letter-spacing: 1px;';
         resetBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             // Push undo before resetting
             active._pushUndo();
             // Primaries
@@ -13923,8 +13909,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._undoKeyListener = (e) => {
                 if (!this._ownsKeyboard(e)) return;
                 // Only respond when HUD is visible and not in a text input
-                if (!RadianceViewer.singletonHUD || RadianceViewer.singletonHUD.style.opacity === '0') return;
-                const active = RadianceViewer.activeInstance;
+                if (!this.controlsPanel || this.controlsPanel.style.opacity === '0') return;
+                const active = this;
                 if (!active) return;
 
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -17860,9 +17846,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.highContrast = e.target.checked;
             localStorage.setItem('radiance_high_contrast', this.highContrast ? '1' : '0');
             if (this.highContrast) {
-                RadianceViewer.singletonHUD?.classList.add('high-contrast');
+                this.controlsPanel?.classList.add('high-contrast');
             } else {
-                RadianceViewer.singletonHUD?.classList.remove('high-contrast');
+                this.controlsPanel?.classList.remove('high-contrast');
             }
         };
         hcRow.appendChild(hcCheck);
@@ -20445,7 +20431,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Pointer click automatically requests focus
         svg.addEventListener('pointerdown', () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active.setFocusedWheel(label);
         });
 
@@ -21520,18 +21506,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.scopeUpdateTimer) { clearTimeout(this.scopeUpdateTimer); this.scopeUpdateTimer = null; }
         if (this._scopeUpdateTimer) { clearTimeout(this._scopeUpdateTimer); this._scopeUpdateTimer = null; }
 
-        // Remove control panels from DOM.
-        // The HUD is a STATIC SINGLETON shared by every viewer instance
-        // (RadianceViewer.singletonHUD). Detaching it unconditionally here meant
-        // deleting one viewer node ripped the shared control panel out of every
-        // other one, leaving them with an empty right dock -- no exposure, no
-        // curves, no scopes, no delivery -- until a full page reload, because
-        // createHUD() never rebuilds an existing singleton.
-        const _isSharedHUD = this.controlsPanel && this.controlsPanel === RadianceViewer.singletonHUD;
-        const _lastInstance = RadianceViewer.allInstances.size <= 1;
-        if (this.controlsPanel && this.controlsPanel.parentNode && (!_isSharedHUD || _lastInstance)) {
+        // Remove control panels from DOM. Each viewer owns its panel, so this
+        // touches no other viewer's.
+        if (this.controlsPanel && this.controlsPanel.parentNode) {
             this.controlsPanel.parentNode.removeChild(this.controlsPanel);
         }
+        this.controlsPanel = null;
+        this._lastRenderContent = null;
         if (this.rightControlPanel && this.rightControlPanel.parentNode) {
             this.rightControlPanel.parentNode.removeChild(this.rightControlPanel);
         }
@@ -21563,16 +21544,10 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // ── Instance & HUD Management ──
         RadianceViewer.allInstances.delete(this);
-        if (RadianceViewer.activeInstance === this) {
-            RadianceViewer.activeInstance = Array.from(RadianceViewer.allInstances)[0] || null;
-            if (RadianceViewer.activeInstance && RadianceViewer.activeInstance._lastRenderContent) {
-                RadianceViewer.activeInstance._lastRenderContent();
-            }
-        }
-        if (RadianceViewer.allInstances.size === 0 && RadianceViewer.singletonHUD) {
-            RadianceViewer.singletonHUD.remove();
-            RadianceViewer.singletonHUD = null;
-        }
+        // activeInstance only breaks a keyboard tie between selected viewers
+        // (_ownsKeyboard); it must not keep a deleted one alive.
+        if (RadianceViewer.activeInstance === this) RadianceViewer.activeInstance = null;
+        if (RadianceViewer._activeViewer === this) RadianceViewer._activeViewer = null;
     }
 }
 
@@ -21812,19 +21787,19 @@ app.registerExtension({
 
             this.radianceViewer = new RadianceViewer(this, container);
 
-            // Lifecycle hooks for singleton HUD management
+            // Lifecycle hooks. The node can outlive its viewer (undo, a
+            // graph switch), so it lets go of it once it is destroyed.
             const _prevOnRemoved = this.onRemoved;
             this.onRemoved = function () {
                 _prevOnRemoved?.apply(this, arguments);
                 if (this.radianceViewer) this.radianceViewer.destroy();
+                this.radianceViewer = null;
             };
             const _prevOnSelected = this.onSelected;
             this.onSelected = function () {
                 _prevOnSelected?.apply(this, arguments);
+                // Keyboard tie-break only: each viewer has its own panel.
                 RadianceViewer.activeInstance = this.radianceViewer;
-                if (this.radianceViewer && this.radianceViewer._lastRenderContent) {
-                    this.radianceViewer._lastRenderContent();
-                }
             };
         };
 

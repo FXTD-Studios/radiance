@@ -186,12 +186,17 @@ def test_destroy_cancels_animation_frames():
     assert body.count("cancelAnimationFrame") >= 3
 
 
-def test_destroy_preserves_the_shared_hud():
+def test_destroy_removes_only_its_own_panel():
+    """
+    The panel was a page-wide singleton that moved into the newest viewer, so
+    deleting one viewer could blank another. Each viewer now owns its panel;
+    js/tests/viewer_session.test.mjs drives two of them in a browser.
+    """
     src = _js("radiance_viewer.js")
+    assert "singletonHUD" not in src, "the shared panel singleton is back"
     start = src.index("    destroy(")
-    body = src[start:start + 6000]
-    assert "singletonHUD" in body, \
-        "destroy() detaches the shared HUD unconditionally, blanking other viewers"
+    body = src[start:start + 7000]
+    assert "this.controlsPanel.parentNode.removeChild(this.controlsPanel)" in body
 
 
 def test_webgl_destroy_clears_resource_maps():
