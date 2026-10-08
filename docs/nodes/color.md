@@ -81,7 +81,7 @@ Bakes Radiance grading math into the image tensor permanently.
 | `lift` | float | 0 | -1 to 1, step 0.001 | Shadow lift (black point raise). Raises the darkest values without affecting highlights. |
 | `gamma` | float | 1 | 0.01 to 4, step 0.01 | Mid-tone power curve, applied as x^(1/gamma) to positive values. Values > 1.0 brighten, < 1.0 darken the midtones. |
 | `gain` | float | 1 | 0 to 10, step 0.01 | RGB multiplier (slope), applied after lift. 1.0 = no change. |
-| `contrast` | float | 1 | 0 to 4, step 0.01 | Linear contrast around pivot: (x - pivot) x contrast + pivot, per channel. Not an S-curve, so values can go negative or above 1.0. |
+| `contrast` | float | 1 | 0 to 4, step 0.01 | Contrast as a power curve about the pivot: pivot x (x / pivot)^contrast, per channel, the same maths as the Viewer. Negative values pass through unchanged; 1.0 is neutral. |
 | `pivot` | float | 0.18 | 0 to 1, step 0.01 | Value left unchanged by contrast. 0.18 = 18% grey in linear light. |
 | `shadows` | float | 0 | -1 to 1, step 0.01 | Shadow brightness, no tint: RGB is scaled by 1 + 0.5 x shadows x (1 - luma)^2. Positive brightens dark areas, negative darkens them. |
 | `highlights` | float | 0 | -1 to 1, step 0.01 | Highlight brightness, no tint: RGB is scaled by 1 + 0.5 x highlights x luma^2 (luma clipped to 1). Positive brightens bright areas, negative darkens them. |
