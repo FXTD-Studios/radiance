@@ -6852,6 +6852,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                     npy.height = npy.shape[0];
                     npy.width = npy.shape[1];
                     npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+                    // C3: what the node said these floats are. Every sidecar
+                    // was marked linear, so an sRGB-encoded ComfyUI IMAGE was
+                    // measured as light by the probe and the status bar.
+                    npy.sourceEncoding = (imgData.source_encoding || this.sourceTag?.encoding) === 'srgb' ? 'srgb' : 'linear';
+                    npy.isLinear = npy.sourceEncoding !== 'srgb';
                     npy.exr_filename = imgData.exr_filename;
                     npy.exr_subfolder = imgData.exr_subfolder ?? imgData.subfolder ?? '';
                     npy.exr_type = imgData.exr_type ?? imgData.type ?? 'temp';
@@ -9408,6 +9413,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (imgX >= 0 && imgX < this.imageWidth && imgY >= 0 && imgY < this.imageHeight) {
             const idx = (imgY * this.imageWidth + imgX) * 4;
             let r = this.imageData[idx], g = this.imageData[idx + 1], b = this.imageData[idx + 2], a = this.imageData[idx + 3];
+            // The source as loaded, for the 8-bit readouts below.
+            const srcR = r, srcG = g, srcB = b;
+            // C3: "Disp" is what the display receives at this pixel: graded,
+            // through the view, without overlays (the scopes' signal). It read
+            // imageData, which behind a float frame is the black placeholder
+            // canvas, so it said #000000 over a grey picture.
+            const disp = this.renderer?.readDisplayPixel?.(imgX, imgY, this.lutIntensity || 1.0);
+            if (disp) { r = disp[0]; g = disp[1]; b = disp[2]; }
+            // C3: an sRGB-encoded float source is decoded before it is read as light.
+            const dec = this.hdrData?.isLinear === false ? _probeSrgbToLinear : (v) => v;
 
             // Check for HDR float data
             let floatR, floatG, floatB;
@@ -9428,21 +9443,22 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
             } else {
                 // Fallback to 8-bit normalized
-                floatR = r / 255;
-                floatG = g / 255;
-                floatB = b / 255;
+                floatR = srcR / 255;
+                floatG = srcG / 255;
+                floatB = srcB / 255;
             }
 
             let floatVals = '';
             let evVal = '';
-            const luma_f = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+            const luma_f = _probeSrgbToLinear(srcR / 255) * 0.2126 + _probeSrgbToLinear(srcG / 255) * 0.7152
+                + _probeSrgbToLinear(srcB / 255) * 0.0722;
 
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx = (imgY * this.imageWidth + imgX) * ch;
-                const fr = this.hdrData.data[hIdx];
-                const fg = ch > 1 ? this.hdrData.data[hIdx + 1] : fr;
-                const fb = ch > 2 ? this.hdrData.data[hIdx + 2] : fr;
+                const fr = dec(this.hdrData.data[hIdx]);
+                const fg = ch > 1 ? dec(this.hdrData.data[hIdx + 1]) : fr;
+                const fb = ch > 2 ? dec(this.hdrData.data[hIdx + 2]) : fr;
                 floatVals = `<span style="color:${this.theme.accent}">F: ${(fr).toFixed(4)} ${(fg).toFixed(4)} ${(fb).toFixed(4)}</span> | `;
 
                 const curLuma = fr * 0.2126 + fg * 0.7152 + fb * 0.0722;
@@ -9468,15 +9484,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx2 = (imgY * this.imageWidth + imgX) * ch;
-                linR = this.hdrData.data[hIdx2];
-                linG = ch > 1 ? this.hdrData.data[hIdx2 + 1] : linR;
-                linB = ch > 2 ? this.hdrData.data[hIdx2 + 2] : linR;
+                linR = dec(this.hdrData.data[hIdx2]);
+                linG = ch > 1 ? dec(this.hdrData.data[hIdx2 + 1]) : linR;
+                linB = ch > 2 ? dec(this.hdrData.data[hIdx2 + 2]) : linR;
             } else {
                 // sRGB → linear approximation (IEC 61966-2-1)
                 const sRGBtoLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-                linR = sRGBtoLin(r / 255);
-                linG = sRGBtoLin(g / 255);
-                linB = sRGBtoLin(b / 255);
+                linR = sRGBtoLin(srcR / 255);
+                linG = sRGBtoLin(srcG / 255);
+                linB = sRGBtoLin(srcB / 255);
             }
 
             const linStr = `${linR.toFixed(4)} ${linG.toFixed(4)} ${linB.toFixed(4)}`;
@@ -16581,6 +16597,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         if (this.hdrData?.data) {
+            // C3: the node's tag (hdrData.isLinear). An sRGB-encoded float
+            // frame is decoded before it is measured, so Y, EV and nits are
+            // light. It used to be read as if linear: a 0.5 pixel showed
+            // EV +1.47 and 101.5 nits instead of +0.25 and 43.5.
             const isLinear = this.hdrData.isLinear !== false;
             const C = this.hdrData.channels || this.hdrData.shape?.[2] || 3;
             return {
@@ -16588,8 +16608,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 width: this.hdrData.width || this.imageWidth,
                 height: this.hdrData.height || this.imageHeight,
                 channels: C,
-                linear: isLinear,
-                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', display-encoded'}`,
+                linear: true,
+                encoded: !isLinear,
+                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', sRGB-encoded, decoded to linear light'}`,
             };
         }
 
@@ -16618,7 +16639,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const info = this._probeDescribe();
         if (info.error) return info;
         if (info.kind === 'rendered') return { ...info, data: this._probeRendered.data };
-        if (info.kind === 'hdr') return { ...info, data: this.hdrData.data };
+        if (info.kind === 'hdr') return { ...info, data: info.encoded ? this._probeLinearFromHDR(info.channels) : this.hdrData.data };
         return { ...info, data: this._probeLinearFromImageData() };
     }
 
@@ -16646,6 +16667,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this._probeLinearCache = out;
         this._probeLinearCacheFor = this.imageData;
+        return out;
+    }
+
+    /**
+     * An sRGB-encoded float frame decoded to linear, colour channels only,
+     * built for whole-frame or region statistics and cached like the 8-bit
+     * decode above (same cache, same invalidation).
+     */
+    _probeLinearFromHDR(C) {
+        const src = this.hdrData.data;
+        if (this._probeLinearCacheFor === src && this._probeLinearCache) return this._probeLinearCache;
+        const out = new Float32Array(src.length);
+        const colour = Math.min(C, 3);
+        for (let i = 0; i < src.length; i++) out[i] = (i % C) < colour ? _probeSrgbToLinear(src[i]) : src[i];
+        this._probeLinearCache = out;
+        this._probeLinearCacheFor = src;
         return out;
     }
 
@@ -16699,6 +16736,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             const p = _probePixelAt(this.hdrData.data,
                 { width: this.hdrData.width || this.imageWidth, height: this.hdrData.height || this.imageHeight, channels: C },
                 x, y);
+            if (p && this.hdrData.isLinear === false) {
+                // C3: decoded, as the caption says (see _probeDescribe).
+                p.r = _probeSrgbToLinear(p.r); p.g = _probeSrgbToLinear(p.g); p.b = _probeSrgbToLinear(p.b);
+            }
             return p ? { x, y, ...p } : null;
         }
         if (this.imageData) {
