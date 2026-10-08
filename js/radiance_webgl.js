@@ -1415,9 +1415,28 @@ class RadianceWebGLRenderer extends RadianceRenderer {
     setDisplayColorSpace(cs) {
         const gl = this.gl;
         if (!gl || !('drawingBufferColorSpace' in gl)) return false;
-        try { gl.drawingBufferColorSpace = cs; } catch { return false; }
-        this.displayColorSpace = gl.drawingBufferColorSpace;
+        this._wantColorSpace = cs;
+        this._syncDisplayColorSpace();
         return this.displayColorSpace === cs;
+    }
+
+    /**
+     * M19: tag the drawing buffer with what the shader is actually writing.
+     * The view asks for Display P3 only through OCIO; a frame that falls back
+     * to the 8-bit sRGB preview (displayReferredTexture) skips OCIO and
+     * writes sRGB, and leaving the canvas tagged P3 then oversaturated it.
+     * Checked on every draw to the screen, never during an off-screen render
+     * (changing the tag reallocates the visible drawing buffer).
+     */
+    _syncDisplayColorSpace() {
+        const gl = this.gl;
+        if (!gl || !('drawingBufferColorSpace' in gl) || this._exportFBO) return;
+        const p3 = this._wantColorSpace === 'display-p3' && this.ocioEnabled && !this.displayReferredTexture;
+        const cs = p3 ? 'display-p3' : 'srgb';
+        if (gl.drawingBufferColorSpace !== cs) {
+            try { gl.drawingBufferColorSpace = cs; } catch { /* unsupported: stays as it was */ }
+        }
+        this.displayColorSpace = gl.drawingBufferColorSpace;
     }
 
     init() {
@@ -4651,6 +4670,7 @@ vec3 getDenoiseColor(vec2 uv) {
         // I-10: Skip rendering when WebGL context is lost
         if (this._contextLost || !program || !this.textures.image) return;
 
+        this._syncDisplayColorSpace();   // M19
         this._lastLutStrength = lutStrength;
 
         // ── v4.0: Run multi-pass bloom chain before composite ────────────────

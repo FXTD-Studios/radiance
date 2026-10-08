@@ -575,6 +575,24 @@ if (!skip) {
             });
         });
 
+        // M19: the canvas tag follows what the shader writes.
+        await guard('m19', async () => {
+            await load(msg(entry('c_0.18_0.18_0.18.rhdr', LIN)), {});
+            return ev(async () => {
+                const v = window.__lastViewer, r = v.renderer, gl = r.gl;
+                if (!('drawingBufferColorSpace' in gl)) return { unsupported: true };
+                v.setViewMode('aces2');
+                await window.__waitFor(() => v.ocioActive && v._ocioAutoActive, 20000);
+                r.setDisplayColorSpace('display-p3'); v.render();
+                const p3View = gl.drawingBufferColorSpace;
+                // The same view, but the frame fell back to the 8-bit sRGB preview.
+                const png = await new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.src = '/view?filename=png_64x48_128.png'; });
+                r.loadImageTexture(png); r.setSourceEncoding('linear'); v.render();
+                const preview = gl.drawingBufferColorSpace;
+                return { ocio: !!r.ocioEnabled, p3View, preview, reported: r.displayColorSpace };
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -836,6 +854,13 @@ test('M8: the chromaticity scope plots sRGB orange (1, 0.5, 0) at its true xy, f
 });
 
 // ── M19 ─────────────────────────────────────────────────────────────────────
+
+test('M19: the Display P3 tag does not outlive the P3 output', { skip: skip || ok(R.m19) || (R.m19?.unsupported && 'no drawingBufferColorSpace') }, () => {
+    assert.ok(R.m19.ocio, 'OCIO never became active');
+    assert.equal(R.m19.p3View, 'display-p3', 'the P3 view did not tag the canvas');
+    assert.equal(R.m19.preview, 'srgb', 'an 8-bit sRGB preview frame was left tagged Display P3');
+    assert.equal(R.m19.reported, 'srgb');
+});
 
 // ── L5 ──────────────────────────────────────────────────────────────────────
 
