@@ -255,3 +255,63 @@ def test_an_external_upscale_model_sees_rgb_and_alpha_is_carried(monkeypatch):
     assert out.shape == (1, 16, 24, 4)
     assert torch.equal(out[..., :3], F.interpolate(tile[..., :3].permute(0, 3, 1, 2), scale_factor=2,
                                                    mode="nearest").permute(0, 2, 3, 1))
+
+
+# ── review fixes ────────────────────────────────────────────────────────────
+
+def test_video_assembler_turns_grey_frames_into_grey_rgb_not_cyan():
+    import torch
+    from radiance.nodes.video.hdr import RadianceVideoAssembler
+    node = RadianceVideoAssembler()
+    grey = torch.full((1, 4, 4, 1), 0.25)
+    node.assemble(torch.rand(1, 4, 4, 3), "review-grey", 2, reset=True)
+    video, _, _ = node.assemble(grey, "review-grey", 2)
+    assert torch.allclose(video[1], torch.full((4, 4, 3), 0.25))
+
+
+def test_video_assembler_refuses_channel_counts_it_cannot_reconcile():
+    import torch
+    from radiance.nodes.video.hdr import RadianceVideoAssembler
+    node = RadianceVideoAssembler()
+    node.assemble(torch.rand(1, 4, 4, 3), "review-odd", 2, reset=True)
+    with pytest.raises(ValueError, match="channel"):
+        node.assemble(torch.rand(1, 4, 4, 2), "review-odd", 2)
+    node.assemble(torch.rand(1, 4, 4, 3), "review-odd", 1, reset=True)
+
+
+def test_face_composite_keeps_the_alpha_of_grey_plus_alpha():
+    import torch
+    from radiance.nodes.upscale import upscale as up
+    img = torch.rand(32, 32, 2)
+    face = torch.rand(16, 16, 3)
+    out = up._composite_face(img, face, (8, 8, 24, 24), blend_radius=0)
+    assert torch.equal(out[..., 1], img[..., 1])
+
+
+@pytest.mark.parametrize("native", [True, False])
+def test_seedvr2_sees_rgb_and_carries_alpha(native):
+    import numpy as np
+    import torch
+    import torch.nn.functional as F
+    from PIL import Image
+    from radiance.nodes.upscale import upscale as up
+
+    seen = []
+
+    class Native:
+        device = torch.device("cpu")
+
+        def upscale_batch(self, x, prompt, num_inference_steps):
+            seen.append(x.shape[-1])
+            return F.interpolate(x.permute(0, 3, 1, 2), scale_factor=4).permute(0, 2, 3, 1)
+
+    class Generic:
+        def __call__(self, prompt, image, num_inference_steps):
+            seen.append(len(image.getbands()))
+            w, h = image.size
+            return type("R", (), {"images": [image.resize((w * 4, h * 4), Image.NEAREST)]})()
+
+    tile = _rgba4(b=1, h=8, w=8)
+    out = up._seedvr2_infer(Native() if native else Generic(), tile)
+    assert seen == [3]
+    assert out.shape == (1, 32, 32, 4)

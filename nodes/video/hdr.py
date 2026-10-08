@@ -721,12 +721,23 @@ class RadianceVideoAssembler:
         complete = n >= expected_total_frames or flush
 
         if HAS_TORCH and any(f.shape[-1] != bucket[0].shape[-1] for f in bucket):
-            # RGB and RGBA frames in one buffer: opaque alpha for the RGB ones.
-            # Until 4.0 the join raised on the channel mismatch (TEN-007).
+            # Mixed frames in one buffer: grey becomes grey RGB, RGB gets
+            # opaque alpha when any frame has alpha. Until 4.0 the join raised
+            # on the channel mismatch (TEN-007).
             ch = max(f.shape[-1] for f in bucket)
-            bucket[:] = [f if f.shape[-1] == ch else torch.cat(
-                [f, torch.ones(*f.shape[:-1], ch - f.shape[-1], dtype=f.dtype)], dim=-1)
-                for f in bucket]
+            if ch not in (3, 4) or any(f.shape[-1] not in (1, 3, 4) for f in bucket):
+                counts = sorted({f.shape[-1] for f in bucket})
+                bucket.pop()
+                raise ValueError(f"Video Assembler: cannot join frames with {counts} channels; "
+                                 "use 1 (grey), 3 (RGB) or 4 (RGBA).")
+
+            def _match(f):
+                if f.shape[-1] == 1:
+                    f = f.expand(*f.shape[:-1], 3)
+                if f.shape[-1] < ch:
+                    f = torch.cat([f, torch.ones(*f.shape[:-1], 1, dtype=f.dtype)], dim=-1)
+                return f
+            bucket[:] = [_match(f) for f in bucket]
 
         if complete and HAS_TORCH:
             video = torch.cat(bucket, dim=0)
