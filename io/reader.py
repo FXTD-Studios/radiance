@@ -41,9 +41,11 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -623,6 +625,64 @@ def _resolve_sequence_paths(
 _SEQ_READERS = min(8, os.cpu_count() or 1)
 
 
+#: What a sequence reports when no frame of it declares a rate. PNG, TIFF and
+#: JPEG have nowhere to store one, so 24, the film default.
+_SEQUENCE_FPS_DEFAULT = 24.0
+
+#: Where OpenImageIO puts a DPX or Cineon header's frame rate.
+_OIIO_FPS_ATTRIBUTES = ("FramesPerSecond", "dpx:FrameRate", "dpx:TemporalFrameRate",
+                        "cineon:FramesPerSecond")
+
+
+def _parse_fps(value: Any) -> Optional[float]:
+    """A header frame rate as a float, or None when absent or nonsense.
+
+    EXR's `framesPerSecond` is a rational: a Fraction from OpenEXR 3, the
+    string "24000/1001" once made printable, a (num, den) pair from OIIO.
+    DPX stores a float, and an unset field is NaN or 0.
+    """
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            fps = float(Fraction(int(value[0]), int(value[1])))
+        elif isinstance(value, str):
+            fps = float(Fraction(value.strip()))
+        else:
+            fps = float(value)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return fps if math.isfinite(fps) and 0.0 < fps <= 1000.0 else None
+
+
+def _header_fps(path: str, exr_info=None) -> Optional[float]:
+    """The frame rate one frame's header declares, or None.
+
+    Never raises: a missing rate falls back to the default, and an unreadable
+    header is the decoder's error to report, not this one's.
+    """
+    if exr_info is not None:
+        return _parse_fps((exr_info.attributes or {}).get("framesPerSecond"))
+    if not (_HAS_OIIO and _needs_oiio(Path(path).suffix.lower())):
+        return None
+    try:
+        inp = _oiio.ImageInput.open(path)
+        if inp is None:
+            _oiio.geterror()
+            return None
+        try:
+            spec = inp.spec()
+            for name in _OIIO_FPS_ATTRIBUTES:
+                fps = _parse_fps(spec.getattribute(name))
+                if fps:
+                    return fps
+        finally:
+            inp.close()
+    except Exception as exc:  # noqa: BLE001 - metadata only
+        log.debug("could not read a frame rate from %s: %s", os.path.basename(path), exc)
+    return None
+
+
 def _decode_sequence_file(path: str, layer: Optional[str], raw: bool):
     """Decode one file of a sequence: (image, alpha, EXR info or None). It
     does not touch the colour context, so it can run in a reader thread."""
@@ -723,11 +783,18 @@ def _read_sequence(
     # colour decode stays here, in frame order, with the read's colour context.
     on_disk = [p for p in paths if os.path.isfile(p)]
     present = set(on_disk)
+    # Until 4.0 every sequence reported 24 fps. The first frame's header is
+    # asked now (EXR framesPerSecond, DPX and Cineon frame rate); 24 is only
+    # the fallback, and the info says which one it was.
+    header_fps: Optional[float] = None
     with ThreadPoolExecutor(max_workers=_SEQ_READERS) as pool:
         decoded = pool.map(lambda p: _decode_sequence_file(p, layer, raw), on_disk)
         for p in paths:
             if p in present:
-                img_t, mask_t = _finish_sequence_frame(next(decoded), input_cs, raw)
+                frame = next(decoded)
+                if p == on_disk[0]:
+                    header_fps = _header_fps(p, frame[2])
+                img_t, mask_t = _finish_sequence_frame(frame, input_cs, raw)
                 frames.append(img_t)
                 masks.append(mask_t)
             else:
@@ -787,8 +854,13 @@ def _read_sequence(
         "missing": [os.path.basename(m) for m in missing_paths],
         "width": w, "height": h,
         "alpha": alpha_out is not None,
+        # None, not 24, when no header says: RadianceDigitalCinemaRead copies
+        # this key into shot_metadata as the source rate.
+        "fps": header_fps,
+        "fps_source": "header" if header_fps else "default",
     })
-    return batch, alpha_out, w, h, len(frames), 24.0, meta
+    return (batch, alpha_out, w, h, len(frames),
+            header_fps or _SEQUENCE_FPS_DEFAULT, meta)
 
 
 # ── Video read ────────────────────────────────────────────────────────────
