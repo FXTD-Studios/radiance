@@ -27,11 +27,11 @@ reviewed and is kept as the record.
 | P2-3 | Fixed. Boundaries are any non-alphanumeric character | `16afaf6` | `tests/test_workspace_api.py::test_shot_from_name`, `test_version_from_name` |
 | P2-4 | **Open.** A restore-on-next-Loader fix (`6b5bd9c`) was reverted (`33a30cb`): with two Loaders in one graph, one on "sequential" and one on "none", both run before any sampler, so the second undid the first before its weights loaded. Nothing Radiance can hook is scoped to one prompt. The tooltip and log now say the effect lasts for the session (`057bab0`) | | |
 | P2-5 | Fixed. A taken name becomes `name_1.ext`, created exclusively; an aborted upload removes its partial file | `fb88615` | `tests/test_workspace_api.py::test_uploading_a_taken_name_keeps_both_files` |
+| P2-6 | **Open.** Needs a design choice: a shared token, or refusing `queue` on a non-loopback bind. Listed as P3-5 until it was regraded: a security gap that needs a non-default setting is P2 on this report's scale | | |
 | P3-1 | **Open.** Changing the delivery filename is a naming decision for the studio | | |
 | P3-2 | Fixed. Containment before existence | `c4492a8` | `tests/test_read_surface.py::test_outside_the_roots_a_file_and_a_missing_path_look_the_same` |
 | P3-3 | Fixed. A lexical containment check; the route answers 400 | `945458a`, `77075f5` | `tests/test_workspace_api.py::test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library` |
 | P3-4 | Fixed. One encoder, `core/rhdr.py`, always clamps fp16; the VAE uses the real `safe_join` | `e8c0e4d`, `7705193`, `2af342b` | `tests/test_rhdr_writers.py`, `tests/test_rhdr_format.py` |
-| P3-5 | **Open.** Needs a design choice: a shared token, or refusing `queue` on a non-loopback bind | | |
 | B12 | Fixed. A non-zero ffmpeg exit removes the output only if this encode created or changed it | `e4f084c` | `tests/test_write_path_defects.py::test_a_failed_encode_removes_the_partial_file` |
 
 Validation for the pass: the full Python suite with real torch, OpenEXR, OCIO and ffmpeg, the no-torch
@@ -135,7 +135,8 @@ Structural debt and optional improvements below are unchanged.
   applies, so specular values above 65504 become `inf` in the viewer and poison tonemap and scopes.
 - **Test to add:** `_save_rhdr` with a pixel at 1e5 and `precision="f16"` must not contain inf.
 
-### P3-5  Remote DCC bridge relays ComfyUI `/prompt` with no authentication
+### P2-6  Remote DCC bridge relays ComfyUI `/prompt` with no authentication
+- **Severity:** P2, not P3 as first listed (P3-5): it needs the non-default `RADIANCE_ALLOW_REMOTE_BRIDGE=1`, and the scale above puts a security gap behind a non-default setup at P2.
 - **Where:** `nodes/pipeline/dcc.py:86-101` (`queue`), with the bind policy at `:117-149`.
 - **Defect:** when the opt-in `RADIANCE_ALLOW_REMOTE_BRIDGE=1` is set, anyone who can reach the port can queue
   any workflow. A queued workflow can run any installed node, which is effectively code execution. Every

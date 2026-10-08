@@ -127,7 +127,10 @@ def decode(data: bytes) -> Tuple[int, np.ndarray]:
     if magic != MAGIC:
         raise ValueError(f"not an RHDR file (magic {magic!r})")
     dtype = np.float32 if flags & FLAG_FP32 else np.float16
-    raw = zlib.decompress(data[HEADER.size:])
+    try:
+        raw = zlib.decompress(data[HEADER.size:])
+    except zlib.error as exc:
+        raise ValueError(f"RHDR payload is not a zlib stream: {exc}") from exc
     expected = w * h * c * np.dtype(dtype).itemsize
     if len(raw) != expected:
         raise ValueError(f"RHDR payload is {len(raw)} bytes, the header says {expected}")

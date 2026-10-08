@@ -2,7 +2,7 @@
 %% Lifecycle overview. Legend: solid = implemented call or data; dashed = conditional, failure, or optional;
 %% [[ ]] = external process or network. Detailed flows live in diagrams/flows/*.mmd (named in each box).
 flowchart TD
-    start["ComfyUI starts, imports radiance: flows/startup.mmd"] --> nodes["156 node classes registered, routes live, js/ served"]
+    start["ComfyUI starts, imports radiance: flows/startup.mmd"] --> nodes["node classes registered (156 when every group imports; a failed group is skipped), routes live, js/ served"]
     nodes --> q{{"user queues a graph"}}
     q --> gen["Loader, prompt, SamplerPro: flows/hdr-generation.mmd"]
     q --> rd["Read node: flows/read-write.mmd"]
