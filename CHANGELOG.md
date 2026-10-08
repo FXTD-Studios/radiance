@@ -37,6 +37,21 @@ else is fixes. Read the upgrade notes before moving a production setup.
   nodes and the OCIO manager now all use `$OCIO` when it loads, else the ACES
   studio config Radiance sets up. Before, two of them fell back to the bundled
   CG config, whose colour space names differ.
+- **HDR video needs 10 bits.** PQ or HLG with "MP4 (H.264)" or "MOV (DNxHR
+  HQ)" now stops with an error naming H.265 10-bit, ProRes 422 HQ and ProRes
+  4444; before, it wrote an 8-bit file tagged as HDR. PQ H.265 files are now
+  HDR10: P3-D65 1000-nit mastering display and MaxCLL / MaxFALL measured from
+  the frames.
+- **Camera log input** (`apply_input_transform`, used by HDR Analysis on log
+  and ACEScct) now converts the camera gamut to Rec.709 primaries after the
+  curve; it decoded the curve only. Neutrals are unchanged, saturated colours
+  and the measured peak and clipping on saturated log content change.
+- **Installed upscale and face models are checked once.** The first run after
+  upgrading hashes each one against its pinned SHA-256 (records the pass in
+  `<file>.radiance-sha256`). A file that does not match is downloaded again,
+  or reported when downloads are off; it is never used silently.
+- **Nuke push** reports `UNCONFIRMED` when Nuke does not reply before the read
+  timeout or drops the connection; it reported `OK`.
 - **Downloads.** The ACES config manager's download needs download consent
   (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
   SHA-256. Whisper model downloads ask for consent too (weights already in
@@ -99,6 +114,29 @@ else is fixes. Read the upgrade notes before moving a production setup.
   **Marigold** file against the Hub's hash at the pinned commit; a mismatch
   deletes the file. A Marigold download whose check could not run (rate
   limit, network) is checked again on the next run instead of being used.
+- **Reading:**
+  - Image sequences report the frame rate their EXR, DPX or Cineon header
+    declares (24 only as a stated fallback); every sequence said 24.
+  - Video reads work with only ffmpeg installed (imageio-ffmpeg ships no
+    ffprobe): the stream is probed from ffmpeg's banner.
+  - `raw` on a video skips the colour-tag decode and any OCIO override, as it
+    does for images.
+  - Formats only OpenImageIO reads (Cineon, RLA, IFF, ARRIRAW and others) go
+    to OpenImageIO instead of failing in Pillow, with an install hint when it
+    is missing; `.pic` (Radiance RGBE) is read as float HDR.
+- **RGBA:** Tier 2 upscale carries alpha (resized to the output), Face
+  Restore keeps the input alpha (it wrote the face's red into alpha), and
+  Flipbook GIF and Preview Server accept RGBA and show RGB (the GIF's colours
+  were scrambled, the preview raised).
+- **AI Upscale** honours `RADIANCE_UPSCALE_OFFLINE` and says why a model was
+  not downloaded.
+- **DCC Bridge:** export from an image sequence works (it always failed on an
+  unknown colour space name); at most 16 connections are served at once, and
+  the server stops when ComfyUI exits.
+- **Audio Transcribe:** chunks of a split segment each get their own start
+  and end; they all started at the segment start.
+- **Startup** ends on a warning naming any missing required dependency, and
+  a failure inside the dependency check no longer stops Radiance loading.
 - **OCIO:** a broken `$OCIO` falls back the same way everywhere (the ACES
   Config Manager's Detect included), a config set after the first use reaches
   the writer, an edited config file is read again, and the OCIO manager
