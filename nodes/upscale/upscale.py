@@ -1140,7 +1140,7 @@ def _seedvr2_infer(
             out = pipe(prompt=eff_prompt, image=pil,
                        num_inference_steps=steps).images[0]
         results.append(torch.from_numpy(
-            __import__("numpy").array(out).astype("float32")
+            np.array(out).astype("float32")
         ) / 255.0)
 
     return torch.stack(results, dim=0).clamp(0, 1)
