@@ -430,10 +430,40 @@ class RadianceAudioCut:
 # Transcription helpers
 # ===========================================================================
 
+def _whisper_weights_present(model_size: str) -> bool:
+    """True when whisper would load `model_size` without downloading it.
+
+    openai-whisper keeps its weights in $XDG_CACHE_HOME/whisper (default
+    ~/.cache/whisper) under the URL's file name; a name it does not know is a
+    path, and is never downloaded.
+    """
+    try:
+        import whisper  # type: ignore
+        url = getattr(whisper, "_MODELS", {}).get(model_size)
+    except Exception:  # noqa: BLE001 - no package (the CLI alone): its names are <size>.pt
+        url = f"{model_size}.pt"
+    if not url:
+        return os.path.isfile(model_size)
+    root = os.path.join(os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache")),
+                        "whisper")
+    return os.path.isfile(model_size) or os.path.isfile(os.path.join(root, os.path.basename(url)))
+
+
+def _require_whisper_consent(model_size: str) -> None:
+    """Whisper downloads its weights on first use (and checks their SHA-256
+    itself); until 4.0 nothing asked for download consent first (B18)."""
+    if _whisper_weights_present(model_size):
+        return
+    from radiance.core.consent import downloads_allowed, refusal_message
+    if not downloads_allowed():
+        raise RuntimeError(refusal_message(f"Whisper {model_size} model"))
+
+
 def _transcribe_local_whisper(filepath: str, model_size: str,
                                language: str) -> Tuple[str, List[dict]]:
     """openai-whisper local inference."""
     import whisper  # type: ignore
+    _require_whisper_consent(model_size)
     model = whisper.load_model(model_size)
     opts = {}
     if language and language.lower() not in ("auto", ""):
@@ -515,6 +545,7 @@ def _transcribe_whisper_cli(filepath: str, model_size: str,
     Fallback: call the `whisper` CLI subprocess and parse its output.
     Returns (text, segments) — segments are approximate (no timing from CLI).
     """
+    _require_whisper_consent(model_size)
     cmd = ["whisper", filepath, "--model", model_size, "--output_format", "json"]
     if language and language.lower() not in ("auto", ""):
         cmd += ["--language", language]
