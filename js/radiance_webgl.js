@@ -3299,6 +3299,18 @@ vec3 getDenoiseColor(vec2 uv) {
         }
         bool preLinear = !u_dofEnabled && u_lensFringe <= 0.0 && u_minify > 1.0;
 
+        // M7: NaN and Inf in the source get their own colour (below) rather
+        // than whatever the maths makes of them: NaN was drawn black. The
+        // texel is fetched, not filtered: a filter weights an Inf neighbour
+        // by zero and makes NaN of it.
+        vec3 rawSample = texelFetch(u_image, clamp(ivec2(uv * u_texSize), ivec2(0), ivec2(u_texSize) - 1), 0).rgb;
+        bool srcNaN = any(isnan(rawSample)) || any(notEqual(rawSample, rawSample));
+        bool srcInf = !srcNaN && any(isinf(rawSample));
+        if (preLinear && !srcNaN && !srcInf) {
+            // Below 100 %: a fault anywhere in the footprint (H10).
+            srcInf = any(isinf(color));
+            srcNaN = !srcInf && (any(isnan(color)) || any(notEqual(color, color)));
+        }
 
         // 1a. Denoise
         if (u_denoise > 0.0) {
@@ -3768,6 +3780,11 @@ vec3 getDenoiseColor(vec2 uv) {
                 color = vec3(1.0, 0.0, 1.0); // Solid Magenta
             }
         }
+
+        // M7: flagged on the picture, under the compare and the grids. Never
+        // in exports or scopes, which have returned above.
+        if (srcNaN) color = vec3(0.0, 1.0, 1.0);          // NaN: cyan
+        else if (srcInf) color = vec3(1.0, 0.45, 0.0);    // Inf: orange
 
         // 8. Compare. B is the reference texture in display values, like color here.
         if (u_wipeRefEnabled && u_compareShow == 1) {

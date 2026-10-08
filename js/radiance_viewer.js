@@ -9611,12 +9611,45 @@ self.onmessage = async ({ data: { id, url } }) => {
         const zoomPct = Math.round((this.zoom || 1) * 100);
         const w = this.imageWidth || 0;
         const h = this.imageHeight || 0;
+        // M7: non-finite pixels in this frame, drawn cyan (NaN) and orange
+        // (Inf) on the picture. A single NaN is fatal downstream and was
+        // invisible: it drew black and nothing counted it.
+        const bad = this._nonFiniteCounts();
+        const badHtml = bad && (bad.nan || bad.inf)
+            ? `<span style="color:#ff5050;font-weight:700" title="Pixels with a NaN or Inf channel in this frame: NaN shows cyan, Inf orange.">⚠ ${bad.nan} NaN · ${bad.inf} Inf</span>`
+            : '';
         this.infoRight.innerHTML = `
+            ${badHtml}
             <span>CH: ${(this.channel || 'rgb').toUpperCase()}</span>
             <span>RES: ${w}x${h}</span>
             <span>ZOOM: ${zoomPct}%</span>
             <span>FRM: ${(this.currentFrame || 0) + 1}/${this.totalFrames || 1}</span>
         `;
+    }
+
+    /**
+     * M7: pixels of the current float frame with a NaN or an Inf in a colour
+     * channel, '{ nan, inf }' (a pixel with both counts as NaN), or null with
+     * no float frame. The RHDR parse counts them on the way in; other formats
+     * are counted here once and the result kept on the frame.
+     */
+    _nonFiniteCounts() {
+        const hdr = this.hdrData;
+        if (!hdr?.data) return null;
+        if (hdr.nonFinite) return hdr.nonFinite;
+        const d = hdr.data, C = hdr.channels || 3, cc = Math.min(C, 3);
+        let nan = 0, inf = 0;
+        for (let i = 0; i < d.length; i += C) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const v = d[i + k];
+                if (v !== v) n = true;
+                else if (v === Infinity || v === -Infinity) f = true;
+            }
+            if (n) nan++; else if (f) inf++;
+        }
+        hdr.nonFinite = { nan, inf };
+        return hdr.nonFinite;
     }
 
     drawLoupe(mx, my, imgX, imgY) {
@@ -21043,11 +21076,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                 decompressed.byteOffset,
                 decompressed.byteLength / 4
             );
+            // M7: NaN / Inf pixels, counted here (often in a worker) so the
+            // HUD can report them without a second pass on the main thread.
+            const cc = Math.min(channels, 3);
+            let nan32 = 0, inf32 = 0;
+            for (let i = 0; i < fp32.length; i += channels) {
+                let n = false, f = false;
+                for (let k = 0; k < cc; k++) {
+                    const v = fp32[i + k];
+                    if (v !== v) n = true; else if (v === Infinity || v === -Infinity) f = true;
+                }
+                if (n) nan32++; else if (f) inf32++;
+            }
             console.log(`[Radiance] RHDR fp32 decoded: ${width}×${height}×${channels}ch (${(decompressed.byteLength / 1048576).toFixed(1)} MB)`);
             return {
                 data: fp32,   // Float32Array for CPU reads (probe, scopes)
                 fp16data: null,   // null → viewer uses loadFloat32Texture
                 shape: [height, width, channels],
+                nonFinite: { nan: nan32, inf: inf32 },
                 format: 'rhdr_f32',
                 channel_names: channelNames,
                 metadata
@@ -21070,11 +21116,23 @@ self.onmessage = async ({ data: { id, url } }) => {
         for (let i = 0; i < fp16Raw.length; i++) {
             fp32[i] = table[fp16Raw[i]];
         }
+        // M7: NaN / Inf pixels (exponent all ones; NaN has a mantissa).
+        const cc = Math.min(channels, 3);
+        let nan16 = 0, inf16 = 0;
+        for (let i = 0; i < fp16Raw.length; i += channels) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const h = fp16Raw[i + k];
+                if ((h & 0x7c00) === 0x7c00) { if (h & 0x03ff) n = true; else f = true; }
+            }
+            if (n) nan16++; else if (f) inf16++;
+        }
 
         return {
             data: fp32,      // Float32Array for CPU reads
             fp16data: fp16Raw,   // Uint16Array for GPU HALF_FLOAT upload
             shape: [height, width, channels],
+            nonFinite: { nan: nan16, inf: inf16 },
             format: 'rhdr',
             channel_names: channelNames,
             metadata
