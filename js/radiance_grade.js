@@ -175,7 +175,7 @@ export function applyGamma(rgb, gamma) {
 }
 
 /**
- * Contrast — a power curve about the pivot, `pivot · (c/pivot)^k`.
+ * Contrast: a power curve about the pivot, `pivot · (c/pivot)^k`.
  *
  * In linear light this is a straight line of slope k through the pivot on a
  * log axis, so every stop above and below the pivot is spread by the same
