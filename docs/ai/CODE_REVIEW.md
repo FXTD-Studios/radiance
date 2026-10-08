@@ -150,7 +150,7 @@ Structural debt and optional improvements below are unchanged.
   not `realpath` (`delivery/handler.py:404-417`), so a symlink inside `output/` escapes it.
 - **Every dashboard API call re-reads every `.rad`.** `_read_workflow_records` (`workspace.py:678-735`) reads each v3 file
   twice (`read_bytes` plus `ZipFile`) per request, and `/projects`, `/versions`, `/outputs`, `/notes` each call it. Cost grows with library size.
-- **Five OCIO resolvers and several download paths** with different integrity rules (OPEN_QUESTIONS B17, P1, P2).
+- **Five OCIO resolvers and several download paths** with different integrity rules (OPEN_QUESTIONS B17, P1, P2). Addressed in 4.0: one active-config source, and MoGe, Marigold, the ACES config and whisper verified or consent-gated; the multipass registry pins remain.
 - **`hdr/vae.py` is 3.6k lines.** (The `.rhdr` part of this item is resolved: all writers now go through `core/rhdr.py`.)
 - **Test doubles that encode the wrong contract** (`_FakeVAE` in P1-1, now corrected) give false confidence. Audit other fakes against the real ComfyUI return types.
 - **Error JSON returned with HTTP 200** by `/radiance/ocio/*` and `/radiance/media/info`, so the JS cannot tell a failure from a success by status code.
