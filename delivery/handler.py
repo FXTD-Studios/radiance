@@ -207,9 +207,14 @@ def _note(warnings: list, message: str) -> None:
 
 
 def get_next_version(directory: str, filename_base: str) -> str:
-    """Scan directory for existing versions and returns the next one (e.g., v02)."""
+    """The next version after the highest on disk, as the writer stamps it (``v0002``).
+
+    Four digits since 4.0, matching ``write_frames``, so a delivery carries one
+    suffix (``Shot_v0002.mov``) instead of two (``Shot_v02_v0001.mov``). The scan
+    reads the first ``_v<digits>`` after the base, so 3.x names keep counting.
+    """
     if not os.path.exists(directory):
-        return "v01"
+        return "v0001"
     
     pattern = re.compile(rf"{re.escape(filename_base)}_v(\d+)")
     max_v = 0
@@ -224,7 +229,7 @@ def get_next_version(directory: str, filename_base: str) -> str:
     except Exception as exc:
         logger.warning("[radiance.delivery.handler] get_next_version: %s", exc)
         
-    return f"v{max_v + 1:02d}"
+    return f"v{max_v + 1:04d}"
 
 
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
@@ -463,11 +468,13 @@ async def radiance_deliver_endpoint(request):
 
 
         # Handle Versioning
-        version_str = "v01"
+        # One suffix: write_frames stamps `_v{version:04d}` onto filename_prefix.
+        # This used to append its own `_v02` first, giving Shot_v02_v0001.
+        version_str = "v0001"
         if smart_ver:
             base_path = output_path if output_path else folder_paths.get_output_directory()
             version_str = get_next_version(base_path, filename_prefix)
-            filename_prefix = f"{filename_prefix}_{version_str}"
+        version_num = int(version_str[1:])
 
         # ─── Process Grading ──────────────────────────────────────────
         def safe_float(v, default):
@@ -884,6 +891,7 @@ async def radiance_deliver_endpoint(request):
                 output_path=output_path,
                 format=write_format,
                 filename=filename_prefix,
+                version=version_num,
                 color_space=write_colorspace_effective,
                 working_space=write_working_space,
                 fps=fps,
