@@ -50,11 +50,11 @@ These are backed by code evidence but not reproduced. The consequence is Inferre
 | --- | --- | --- | --- |
 | B1 | **Fixed in `2af342b`.** The `.rhdr` export path-traversal guard is dead. It imports `safe_join` from a `hdr/path_utils` that doesn't exist, so it always uses `os.path.join`. **Not exploitable today:** both callers pass internal prefixes | `hdr/vae.py:~2698`; callers `:3038`, `:3387` | Implemented (mapper) [P3-4] |
 | B2 | **Fixed in `1766a81`.** Flux.2 is detected as `"flux"`: the substring test checks `"Flux"` before `"Flux2"` | `sampler_utils.py:~597, 605` | Implemented (mapper). Hidden when `model_meta` is connected [P2-1] |
-| B3 | **Fixed in `3314513`.** `_encode_sdr_reference` indexes `["samples"]` on what `comfy.sd.VAE.encode` returns, which is a plain tensor. The test double `_FakeVAE` returns a dict, so tests miss it | `nodes/generate/sampler.py:~1504`; `tests/test_sdr_conditioning.py:354-367` | Code Implemented (mapper). Runtime failure Inferred [P1-1] |
+| B3 | **Fixed in `3314513`, `55afb69`.** `_encode_sdr_reference` indexes `["samples"]` on what `comfy.sd.VAE.encode` returns, which is a plain tensor. The test double `_FakeVAE` returns a dict, so tests miss it | `nodes/generate/sampler.py:~1504`; `tests/test_sdr_conditioning.py:354-367` | Code Implemented (mapper). Runtime failure Inferred [P1-1] |
 | B4 | Delivery adds two version suffixes (`_v02`, then `_v0001`) | `delivery/handler.py:~470, 876`; `io/writer.py:1266, 1323` | Implemented (mapper) [P3-1] |
 | B5 | Image sequences always report fps 24.0 | `io/reader.py:~769` | Implemented (mapper) |
 | B6 | No HDR10 mastering/MaxCLL metadata on PQ/HLG video. PQ can go into 8-bit H.264 | grep finds no such code outside tests | Implemented (mapper, by absence) |
-| B7 | **Fixed in `6b5bd9c`.** Offload `sequential` permanently sets global `vram_state = LOW_VRAM` | `loader_utils.py:~240` | Implemented (mapper) [P2-4] |
+| B7 | **Still open:** the fix `6b5bd9c` was reverted in `33a30cb` (see CODE_REVIEW P2-4); the tooltip now says the effect lasts for the session. Offload `sequential` permanently sets global `vram_state = LOW_VRAM` | `loader_utils.py:~240` | Implemented (mapper) [P2-4] |
 | B8 | `core/errors.py` is unused by production code | grep | Implemented (mapper) |
 | B9 | Without ffprobe every video read fails | `core/video.py:~656-675` | Implemented (trace) |
 | B10 | `raw=True` on video still decodes using the colour tags | `io/reader.py:~1274, 829` | Implemented (trace) |
@@ -75,7 +75,7 @@ These are backed by code evidence but not reproduced. The consequence is Inferre
 | B26 | `AudioTranscribe` keeps the original segment start on every split chunk | `nodes/pipeline/audio.py:transcribe` | Implemented (trace) |
 | B27 | **Fixed in `16afaf6`.** `ProjectManager` packs the API-format `PROMPT`, which has no `nodes` key, so saved metadata is empty and reopening from the library probably fails | `nodes/pipeline/workspace.py:155-157, 279-281`; `js/radiance_workspace.js:855` | Code Implemented (review). Reopen failure Inferred [P2-2] |
 | B27b | **Fixed in `16afaf6`.** The shot and version regexes start with `\b`, and `_` is a word character, so the node's own names (`sh010_v002`, `comp_artist_v0003`) match neither, giving shot `GENERAL` and version `v001` | `nodes/pipeline/workspace.py:662-675`, name built at `:146` | Implemented (mapper: both patterns tested with Python `re`) [P2-3] |
-| B28 | **Fixed in `945458a`.** `.shot_status.json` path is built from file metadata `project.name` without a containment check | `workspace.py:745-753, 797-798, 815-821` | Implemented (review) [P3-3] |
+| B28 | **Fixed in `945458a`, `77075f5`.** `.shot_status.json` path is built from file metadata `project.name` without a containment check | `workspace.py:745-753, 797-798, 815-821` | Implemented (review) [P3-3] |
 | B29 | `_verify_or_report_sha256` is defined but never called; files already on disk are trusted when their size matches | `nodes/upscale/upscale.py:212`; `core/model_fetch.fetch` | Implemented (mapper) |
 | B30 | **Fixed in `2af342b`.** `.rhdr` fp16 export overflows: `hdr/vae.py` casts to float16 without the ±65504 clamp `viewer.py` applies, so values above 65504 become `inf` | `hdr/vae.py:2709`; compare `nodes/monitor/viewer.py:870` | Implemented (mapper) [P3-4] |
 | B31 | **Fixed in `c4492a8`.** `/radiance/media/*` is a file-existence oracle: `os.path.isfile` runs before the allowed-root check, so a missing path returns 404 (path echoed) and an existing one 403 | `nodes/io/write.py:1414-1422` | Implemented (mapper) [P3-2] |

@@ -20,23 +20,24 @@ reviewed and is kept as the record.
 
 | ID | Status | Commit | Regression test |
 | --- | --- | --- | --- |
-| P1-1 | Fixed. Tensor or dict from `vae.encode`; RGB only; first frame of a video VAE latent. The test fake now returns a bare tensor, as ComfyUI does | `3314513` | `tests/test_sdr_conditioning.py::TestEncodeSDRReference` |
+| P1-1 | Fixed. Tensor or dict from `vae.encode`; RGB only; first frame of a video VAE latent, with a warning when a temporal VAE drops reference frames. The test fake now returns a bare tensor, as ComfyUI does | `3314513`, `55afb69` | `tests/test_sdr_conditioning.py::TestEncodeSDRReference` |
 | P1-2 | Fixed. `RadianceAIUpscale.used_fallback`; Delivery reports status "partial" with a warning. The fallback is bicubic, not Lanczos as written below | `b242fdf` | `tests/test_delivery_endpoints.py::test_a_silent_bicubic_fallback_is_reported_too` |
 | P2-1 | Fixed. Longest pattern first | `1766a81` | `tests/test_detect_by_config.py` |
 | P2-2 | Fixed. Stores `extra_pnginfo["workflow"]`; API graphs get stats; old API-format saves open through `app.loadApiJson` (`js/radiance_graph_format.js`) | `16afaf6` | `tests/test_workspace_api.py`, `js/tests/graph_format.test.mjs` |
 | P2-3 | Fixed. Boundaries are any non-alphanumeric character | `16afaf6` | `tests/test_workspace_api.py::test_shot_from_name`, `test_version_from_name` |
-| P2-4 | Fixed. The replaced `vram_state` is restored by the next Loader run without "sequential"; a launch state (`--lowvram`) is never touched. It cannot be restored when the Loader returns, because ComfyUI loads weights while sampling | `6b5bd9c` | `tests/test_loader_utils.py::TestSetupOffloadMode` |
+| P2-4 | **Open.** A restore-on-next-Loader fix (`6b5bd9c`) was reverted (`33a30cb`): with two Loaders in one graph, one on "sequential" and one on "none", both run before any sampler, so the second undid the first before its weights loaded. Nothing Radiance can hook is scoped to one prompt. The tooltip and log now say the effect lasts for the session (`057bab0`) | | |
 | P2-5 | Fixed. A taken name becomes `name_1.ext`, created exclusively; an aborted upload removes its partial file | `fb88615` | `tests/test_workspace_api.py::test_uploading_a_taken_name_keeps_both_files` |
 | P3-1 | **Open.** Changing the delivery filename is a naming decision for the studio | | |
 | P3-2 | Fixed. Containment before existence | `c4492a8` | `tests/test_read_surface.py::test_outside_the_roots_a_file_and_a_missing_path_look_the_same` |
-| P3-3 | Fixed. `_resolve_safe_path`; the route answers 400 | `945458a` | `tests/test_workspace_api.py::test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library` |
+| P3-3 | Fixed. A lexical containment check; the route answers 400 | `945458a`, `77075f5` | `tests/test_workspace_api.py::test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library` |
 | P3-4 | Fixed. One encoder, `core/rhdr.py`, always clamps fp16; the VAE uses the real `safe_join` | `e8c0e4d`, `7705193`, `2af342b` | `tests/test_rhdr_writers.py`, `tests/test_rhdr_format.py` |
 | P3-5 | **Open.** Needs a design choice: a shared token, or refusing `queue` on a non-loopback bind | | |
 | B12 | Fixed. A non-zero ffmpeg exit removes the output only if this encode created or changed it | `e4f084c` | `tests/test_write_path_defects.py::test_a_failed_encode_removes_the_partial_file` |
 
 Validation for the pass: the full Python suite with real torch, OpenEXR, OCIO and ffmpeg, the no-torch
-suite, the CI ruff command and the JS tests, all run locally. Structural debt and optional improvements
-below are unchanged.
+suite, the CI ruff command and the JS tests, all run locally. An independent review of the whole diff
+found one regression (the P2-4 fix, reverted) and two smaller issues (fixed in `55afb69`, `77075f5`).
+Structural debt and optional improvements below are unchanged.
 
 ---
 
