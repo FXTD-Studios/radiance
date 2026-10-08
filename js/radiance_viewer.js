@@ -76,6 +76,58 @@ class RadianceViewer {
         ['manual', 'Custom (Output Transform)'],
     ];
 
+    /**
+     * M18: the one place the Advanced viewer's colours and type sizes are
+     * set. The CSS reads them as --radiance-* custom properties (see
+     * _themeVars) and inline styles read this.theme, so a colour or size
+     * changes here and nowhere else. Neutral greys with a slight cool bias
+     * and one accent, the way Resolve, Nuke and RV dress a grading tool.
+     *
+     * Every text colour is at least 4.5:1 against every surface it sits on
+     * (raised controls included); viewer_polish.test.mjs measures it.
+     */
+    static THEME = {
+        bg: '#0b0d10',              // canvas surround
+        surface: '#111317',         // rail, panel body
+        surfaceRaised: '#171a1f',   // header, tab strip, bars
+        control: '#1e2228',         // inputs, buttons, readouts
+        controlHover: '#272c34',
+        panel: 'rgba(23, 26, 31, 0.96)',
+        panelBorder: '#2a2f37',
+        borderStrong: '#3b424d',
+        accent: '#00bdff',
+        accentSoft: 'rgba(0, 189, 255, 0.14)',
+        accentGlow: 'rgba(0, 189, 255, 0.25)',
+        text: '#e6e9ee',
+        textDim: '#a7afbb',         // labels
+        textMuted: '#8b94a1',       // shortcuts and secondary readouts
+        warn: '#f5a524',
+        error: '#ff6b6b',
+        ok: '#4ade80',
+        font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
+        // 12 px for every label and value; 11 px only for uppercase,
+        // letter-spaced section headings.
+        fsBody: '12px',
+        fsHeading: '11px',
+        fsTitle: '13px',
+    };
+
+    /** M18: what high contrast changes: brighter secondary text, firmer edges. */
+    static THEME_HIGH_CONTRAST = {
+        text: '#ffffff',
+        textDim: '#d3d9e1',
+        textMuted: '#bcc4cf',
+        panelBorder: '#56606d',
+        borderStrong: '#7a8594',
+    };
+
+    /** The theme as CSS custom properties, for a rule body. */
+    static _themeVars(theme) {
+        const name = (k) => '--radiance-' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+        return Object.entries(theme).map(([k, v]) => `${name(k)}: ${v};`).join('\n');
+    }
+
     /** The viewer last pointed at: a tie-break for keyboard ownership only. */
     /** C2: the scopes measure every pixel up to this long edge (4K DCI). */
     static SCOPE_SIGNAL_MAX = 4096;
@@ -157,15 +209,16 @@ class RadianceViewer {
             style.id = 'radiance-hud-styles';
             style.innerHTML = `
                  :root {
-                    --radiance-bg: #08080c;
-                    --radiance-panel: rgba(22, 22, 29, 0.84);
-                    --radiance-panel-border: rgba(255, 255, 255, 0.08);
-                    --radiance-accent: #00bdff;
-                    --radiance-accent-glow: rgba(0, 189, 255, 0.25);
-                    --radiance-text: #f5f5f7;
-                    --radiance-text-dim: #8e8e93;
-                    --radiance-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    --radiance-mono: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+                    ${RadianceViewer._themeVars(RadianceViewer.THEME)}
+                }
+                .radiance-pro-container.radiance-high-contrast {
+                    ${RadianceViewer._themeVars(RadianceViewer.THEME_HIGH_CONTRAST)}
+                }
+                /* M15: keyboard focus is always visible, in the accent. */
+                .radiance-pro-container :is(button, input, select, textarea, [tabindex]):focus-visible,
+                .radiance-settings-popover :is(button, input, select, [tabindex]):focus-visible {
+                    outline: 2px solid var(--radiance-accent) !important;
+                    outline-offset: 1px;
                 }
                 .radiance-glass-dock {
                     position: fixed;
@@ -198,8 +251,7 @@ class RadianceViewer {
                     flex: 0 0 var(--rcp-width, 620px);
                     display: flex;
                     flex-direction: column;
-                    background: rgba(22, 22, 29, 0.85);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
+                    background: var(--radiance-surface);
                     border-left: 1px solid var(--radiance-panel-border);
                     overflow: hidden;
                     position: relative;
@@ -233,12 +285,10 @@ class RadianceViewer {
                     align-items: center;
                     gap: 24px;
                     padding: 0 20px;
-                    background: rgba(22, 22, 29, 0.72);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+                    background: var(--radiance-surface-raised);
+                    border-bottom: 1px solid var(--radiance-panel-border);
                     white-space: nowrap;
                     overflow: hidden;
-                    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
                 }
                 .radiance-pro-brand {
                     display: flex;
@@ -247,10 +297,9 @@ class RadianceViewer {
                     min-width: 210px;
                     font-family: var(--radiance-font);
                     font-weight: 700;
-                    font-size: 12.5px;
+                    font-size: var(--radiance-fs-title);
                     letter-spacing: 1.2px;
-                    color: #ffffff;
-                    text-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    color: var(--radiance-text);
                 }
                 .radiance-pro-mark {
                     width: 14px;
@@ -264,11 +313,11 @@ class RadianceViewer {
                     border-radius: 2px;
                 }
                 .radiance-pro-version {
-                    color: var(--radiance-text-dim);
-                    font-size: 9.5px;
+                    color: var(--radiance-text-muted);
+                    font-size: var(--radiance-fs-heading);
                     font-family: var(--radiance-font-mono);
-                    margin-left: 8px;
-                    opacity: 0.65;
+                    font-weight: 500;
+                    margin-left: 4px;
                     letter-spacing: 0.5px;
                 }
                 .radiance-pro-menu-items {
@@ -353,10 +402,8 @@ class RadianceViewer {
                     align-items: center;
                     gap: 16px;
                     padding: 0 20px;
-                    background: rgba(14, 14, 20, 0.72);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+                    background: var(--radiance-surface);
+                    border-bottom: 1px solid var(--radiance-panel-border);
                     overflow: hidden;
                 }
                 .radiance-pro-file-meta {
@@ -365,45 +412,43 @@ class RadianceViewer {
                     gap: 16px;
                     min-width: 0;
                     flex: 1;
-                    color: rgba(255, 255, 255, 0.45);
-                    font-size: 11px;
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
                     font-family: var(--radiance-font-mono);
                 }
+                .radiance-pro-file-meta > span:empty { display: none; }
                 .radiance-pro-file-name {
                     font-family: var(--radiance-font);
-                    font-size: 12.5px;
-                    color: #ffffff;
+                    font-size: var(--radiance-fs-title);
+                    color: var(--radiance-text);
                     font-weight: 600;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
                     max-width: 280px;
-                    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
                 }
                 .radiance-pro-chip {
-                    padding: 2.5px 7px;
-                    border-radius: 5px;
-                    border: 1px solid rgba(0, 189, 255, 0.25);
+                    padding: 3px 7px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(0, 189, 255, 0.35);
                     color: var(--radiance-accent);
-                    background: rgba(0, 189, 255, 0.08);
-                    font-size: 9.5px;
+                    background: var(--radiance-accent-soft);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     letter-spacing: 0.5px;
                     font-family: var(--radiance-font-mono);
-                    box-shadow: 0 0 8px rgba(0, 189, 255, 0.06);
                     text-transform: uppercase;
                 }
                 .radiance-pro-engine {
-                    padding: 2.5px 9px;
+                    padding: 3px 9px;
                     border-radius: 999px;
                     border: 1px solid rgba(52, 199, 89, 0.3);
                     background: rgba(52, 199, 89, 0.08);
-                    color: #34c759;
-                    font-size: 9.5px;
+                    color: var(--radiance-ok);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     font-family: var(--radiance-font-mono);
                     letter-spacing: 0.5px;
-                    box-shadow: 0 0 10px rgba(52, 199, 89, 0.08);
                 }
                 .radiance-pro-actions {
                     display: flex;
@@ -413,26 +458,30 @@ class RadianceViewer {
                 }
                 .radiance-pro-actions button {
                     min-height: 28px;
+                    min-width: 28px;
                     padding: 0 12px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(255, 255, 255, 0.07);
-                    background: rgba(255, 255, 255, 0.04);
-                    color: rgba(255, 255, 255, 0.85);
+                    border-radius: 5px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
                     font-family: var(--radiance-font);
-                    font-size: 11.5px;
+                    font-size: var(--radiance-fs-body);
                     font-weight: 500;
-                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.02);
-                    transition: all 0.18s cubic-bezier(0.25, 0.8, 0.25, 1);
+                    cursor: pointer;
                 }
                 .radiance-pro-actions button:hover {
-                    color: #ffffff;
-                    border-color: rgba(255, 255, 255, 0.15);
-                    background: rgba(255, 255, 255, 0.08);
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                    border-color: var(--radiance-border-strong);
+                    background: var(--radiance-control-hover);
+                }
+                .radiance-pro-actions button.is-active,
+                .radiance-pro-actions button[aria-expanded="true"].radiance-pro-settings-btn {
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-sidebar button:hover {
-                    color: #fff;
-                    background: rgba(255, 255, 255, 0.05);
+                    color: var(--radiance-text);
+                    background: var(--radiance-control);
                 }
                 /* Tactile Micro-Compression Physics (Apple Design) */
                 .radiance-pro-container button,
@@ -450,28 +499,34 @@ class RadianceViewer {
                     transform: scale(0.95) !important;
                 }
                 .radiance-pro-sidebar {
-                    flex: 0 0 214px;
+                    flex: 0 0 200px;
                     display: flex;
                     flex-direction: column;
                     gap: 0;
-                    background: rgba(14, 14, 18, 0.95);
+                    background: var(--radiance-surface);
                     border-right: 1px solid var(--radiance-panel-border);
                     overflow-y: auto;
+                    overscroll-behavior: contain;
                     scrollbar-width: thin;
-                    scrollbar-color: rgba(255,255,255,0.12) transparent;
+                    scrollbar-color: var(--radiance-border-strong) transparent;
+                }
+                /* M18: a rail that runs past the bottom fades out there, so
+                   it reads as "more below" rather than as the end. */
+                .radiance-pro-sidebar.has-more-below {
+                    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+                    mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
                 }
                 .radiance-pro-sidebar-section {
-                    padding: 16px 12px 14px 16px;
-                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    padding: 12px 10px 10px 12px;
+                    border-bottom: 1px solid var(--radiance-panel-border);
                 }
                 .radiance-pro-sidebar-title {
-                    color: var(--radiance-text-dim);
-                    font-size: 9px;
+                    color: var(--radiance-text-muted);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     letter-spacing: 1px;
-                    margin-bottom: 8px;
+                    margin: 0 0 6px 6px;
                     text-transform: uppercase;
-                    opacity: 0.8;
                 }
                 .radiance-pro-sidebar button {
                     width: 100%;
@@ -481,23 +536,26 @@ class RadianceViewer {
                     gap: 8px;
                     min-height: 28px;
                     padding: 0 8px;
-                    border-radius: 6px;
+                    border-radius: 5px;
                     color: var(--radiance-text-dim);
-                    font-size: 11px;
+                    font-size: var(--radiance-fs-body);
                     text-align: left;
-                    margin: 2px 0;
-                    transition: all 0.15s;
+                    margin: 1px 0;
+                    transition: background 0.12s, color 0.12s;
                 }
                 .radiance-pro-sidebar button.is-active {
                     color: var(--radiance-accent) !important;
-                    background: rgba(0, 189, 255, 0.12) !important;
+                    background: var(--radiance-accent-soft) !important;
                     font-weight: 600;
-                    box-shadow: inset 0 0 0 1px rgba(0, 189, 255, 0.12);
+                    box-shadow: inset 2px 0 0 var(--radiance-accent);
                 }
                 .radiance-pro-sidebar .shortcut {
-                    color: rgba(255,255,255,0.22);
+                    color: var(--radiance-text-muted);
                     font-family: var(--radiance-font-mono);
-                    font-size: 9px;
+                    font-size: var(--radiance-fs-body);
+                }
+                .radiance-pro-sidebar button.is-active .shortcut {
+                    color: var(--radiance-accent);
                 }
                 .radiance-pro-viewer-bar {
                     position: absolute;
@@ -527,13 +585,13 @@ class RadianceViewer {
                 }
                 .radiance-pro-viewer-bar select,
                 .radiance-pro-viewer-bar button {
-                    background: rgba(255,255,255,0.055);
-                    color: rgba(245,248,252,0.82);
-                    border: 1px solid rgba(255,255,255,0.09);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    border: 1px solid var(--radiance-panel-border);
                     border-radius: 4px;
-                    min-height: 26px;
+                    min-height: 28px;
                     padding: 0 10px;
-                    font-size: 11px;
+                    font-size: var(--radiance-fs-body);
                     flex-shrink: 0;
                     white-space: nowrap;
                     cursor: pointer;
@@ -545,18 +603,22 @@ class RadianceViewer {
                 .radiance-pro-viewer-bar select option,
                 .radiance-ref-field select option,
                 select.radiance-ocio-select option {
-                    background: #16181d;
-                    color: rgba(245, 248, 252, 0.92);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
                 }
                 .radiance-pro-viewer-bar button:hover {
-                    background: rgba(255,255,255,0.1);
-                    color: #fff;
+                    background: var(--radiance-control-hover);
+                    border-color: var(--radiance-border-strong);
                 }
                 .radiance-pro-viewer-bar button.is-active {
-                    color: #48b7ff;
-                    border-color: rgba(72,183,255,0.52);
-                    background: rgba(72,183,255,0.15);
-                    box-shadow: 0 0 0 1px rgba(72,183,255,0.18) inset;
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-pro-viewer-bar .radiance-pro-bar-label {
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
+                    font-weight: 600;
                 }
                 .radiance-viewer-frame {
                     position: absolute;
@@ -609,10 +671,9 @@ class RadianceViewer {
                     display: flex;
                     flex-direction: column;
                     border: 1px solid var(--radiance-panel-border);
-                    border-radius: 10px;
+                    border-radius: 8px;
                     background: var(--radiance-panel);
-                    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255,255,255,0.03);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
+                    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
                     z-index: 68;
                     pointer-events: auto;
                     overflow: hidden;
@@ -620,72 +681,116 @@ class RadianceViewer {
                 .radiance-pro-sequence-controls {
                     display: flex;
                     align-items: center;
-                    gap: 5px;
+                    gap: 4px;
                     flex-shrink: 0;
                 }
+                /* M15: transport and track buttons are 28 px targets. */
                 .radiance-pro-sequence-controls button {
-                    width: 23px;
-                    height: 21px;
+                    min-width: 28px;
+                    height: 28px;
+                    padding: 0;
                     border-radius: 4px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    background: rgba(255,255,255,0.045);
-                    color: rgba(238,244,251,0.82);
-                    font-size: 10px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    font-size: var(--radiance-fs-body);
                     cursor: pointer;
                 }
                 .radiance-pro-sequence-controls button:hover {
-                    color: #fff;
-                    border-color: rgba(72,183,255,0.45);
-                    background: rgba(72,183,255,0.12);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-control-hover);
                 }
+                .radiance-pro-tool-btn,
+                .radiance-pro-track-btn {
+                    height: 28px;
+                    min-width: 28px;
+                    padding: 0 8px;
+                    border: 0;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: var(--radiance-text-dim);
+                    font: 600 var(--radiance-fs-body) var(--radiance-font-ui);
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+                .radiance-pro-track-btn {
+                    font-family: var(--radiance-font-mono);
+                }
+                .radiance-pro-tool-btn:hover,
+                .radiance-pro-track-btn:hover {
+                    color: var(--radiance-text);
+                    background: var(--radiance-control-hover);
+                }
+                .radiance-pro-tool-btn.is-active,
+                .radiance-pro-track-btn.is-active {
+                    color: var(--radiance-accent);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-pro-timeline-tools {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                    padding: 2px;
+                    border-radius: 5px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-surface);
+                }
+                .radiance-pro-timeline-tools .radiance-pro-tool-sep {
+                    width: 1px;
+                    align-self: stretch;
+                    margin: 4px;
+                    background: var(--radiance-panel-border);
+                }
+                /* M15: the dock scrubber's hit area is 28 px tall; the track
+                   drawn inside it is 4 px, the thumb 14 px. */
                 .radiance-pro-sequence-range {
                     width: min(320px, 28vw);
                     -webkit-appearance: none;
                     appearance: none;
-                    height: 3px;
-                    border-radius: 2px;
-                    outline: none;
+                    height: 28px;
+                    margin: 0;
+                    background: transparent;
                     cursor: pointer;
                     vertical-align: middle;
-                    /* background is set dynamically in _refreshSequenceDock */
-                    background: rgba(255,255,255,0.14);
+                    --radiance-scrub-pct: 0%;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-runnable-track {
-                    height: 3px;
+                    height: 4px;
                     border-radius: 2px;
+                    background: linear-gradient(to right, var(--radiance-accent) var(--radiance-scrub-pct), var(--radiance-border-strong) var(--radiance-scrub-pct));
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
                     border-radius: 50%;
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     cursor: pointer;
-                    margin-top: -4.5px;
-                    box-shadow: 0 0 0 2px rgba(57,170,255,0.28);
+                    margin-top: -5px;
+                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
                     transition: box-shadow 0.15s;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb:hover {
-                    box-shadow: 0 0 0 4px rgba(57,170,255,0.38);
+                    box-shadow: 0 0 0 4px rgba(0, 189, 255, 0.38);
                 }
                 .radiance-pro-sequence-range::-moz-range-track {
-                    height: 3px;
+                    height: 4px;
                     border-radius: 2px;
-                    background: rgba(255,255,255,0.14);
+                    background: var(--radiance-border-strong);
                 }
                 .radiance-pro-sequence-range::-moz-range-thumb {
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
                     border-radius: 50%;
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     cursor: pointer;
                     border: none;
-                    box-shadow: 0 0 0 2px rgba(57,170,255,0.28);
+                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
                 }
                 .radiance-pro-sequence-range::-moz-range-progress {
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     border-radius: 2px 0 0 2px;
-                    height: 3px;
+                    height: 4px;
                 }
                 .radiance-pro-sequence-range:disabled {
                     opacity: 0.38;
@@ -701,16 +806,17 @@ class RadianceViewer {
                     gap: 6px 12px;
                     padding: 6px 10px;
                     flex-wrap: wrap;
-                    border-bottom: 1px solid rgba(255,255,255,0.06);
-                    color: rgba(222,232,244,0.74);
-                    font-size: 10px;
+                    border-bottom: 1px solid var(--radiance-panel-border);
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
                     font-family: var(--radiance-font-mono);
                 }
                 .radiance-pro-sequence-title {
-                    color: rgba(245,249,255,0.88);
-                    font: 800 10px/1 var(--radiance-font-ui);
-                    letter-spacing: .7px;
+                    color: var(--radiance-text);
+                    font: 700 var(--radiance-fs-heading)/1 var(--radiance-font-ui);
+                    letter-spacing: .8px;
                 }
+                .radiance-pro-sequence-name:empty { display: none; }
                 .radiance-pro-sequence-track {
                     flex: 1;
                     display: flex;
@@ -720,31 +826,28 @@ class RadianceViewer {
                     overflow-x: auto;
                     padding: 8px 10px 9px;
                     scrollbar-width: thin;
-                    scrollbar-color: rgba(255,255,255,.18) transparent;
+                    scrollbar-color: var(--radiance-border-strong) transparent;
                 }
                 .radiance-pro-thumb {
                     flex: 0 0 108px;
                     display: flex;
                     flex-direction: column;
                     gap: 5px;
-                    color: rgba(218,228,240,0.68);
-                    font: 10px/1 var(--radiance-font-mono);
+                    color: var(--radiance-text-dim);
+                    font: var(--radiance-fs-heading)/1 var(--radiance-font-mono);
                     text-align: center;
                 }
                 .radiance-pro-thumb-frame {
                     height: 48px;
                     border-radius: 4px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    background:
-                        linear-gradient(120deg, rgba(255,255,255,0.08), transparent 32%),
-                        radial-gradient(circle at 72% 28%, rgba(252,188,82,0.18), transparent 32%),
-                        linear-gradient(180deg, rgba(37,45,58,0.9), rgba(9,12,18,0.95));
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-surface);
                     overflow: hidden;
                     position: relative;
                 }
                 .radiance-pro-thumb.is-active .radiance-pro-thumb-frame {
-                    border-color: #0c93e8;
-                    box-shadow: 0 0 0 1px rgba(12,147,232,0.45), 0 0 18px rgba(12,147,232,0.22);
+                    border-color: var(--radiance-accent);
+                    box-shadow: 0 0 0 1px rgba(0, 189, 255, 0.45);
                 }
                 .radiance-pro-thumb canvas,
                 .radiance-pro-thumb img {
@@ -752,6 +855,30 @@ class RadianceViewer {
                     height: 100%;
                     object-fit: cover;
                     display: block;
+                }
+                /* The two status rows under the picture. */
+                .radiance-pro-infobar,
+                .radiance-pro-statusbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    padding: 0 10px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    font: var(--radiance-fs-body) var(--radiance-font-mono);
+                    color: var(--radiance-text-dim);
+                    border-top: 1px solid var(--radiance-panel-border);
+                }
+                .radiance-pro-infobar {
+                    flex: 0 0 24px;
+                    position: relative;
+                    background: var(--radiance-surface);
+                    z-index: 1000;
+                }
+                .radiance-pro-statusbar {
+                    flex: 0 0 24px;
+                    background: var(--radiance-surface-raised);
                 }
                 @media (max-width: 1180px) {
                     .radiance-pro-sidebar { flex-basis: 178px; }
@@ -821,16 +948,8 @@ class RadianceViewer {
             document.head.appendChild(style);
         }
 
-        this.theme = {
-            bg: '#0a0a0f',
-            panel: 'rgba(16, 16, 24, 0.95)',
-            panelBorder: 'rgba(60, 70, 100, 0.25)',
-            accent: '#00a8ff',
-            text: '#e8e8f0',
-            textDim: '#707088',
-            font: "'Inter', system-ui, -apple-system, sans-serif",
-            mono: "'JetBrains Mono', monospace"
-        };
+        // M18: the shared tokens (RadianceViewer.THEME), not a second palette.
+        this.theme = { ...RadianceViewer.THEME };
 
         // State
         this.image = null;
@@ -3096,7 +3215,7 @@ class RadianceViewer {
         right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
         const lutLabel = document.createElement('span');
         lutLabel.textContent = 'LUT';
-        lutLabel.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.42);font-weight:800;';
+        lutLabel.className = 'radiance-pro-bar-label';
         const lutSelect = document.createElement('select');
         this.lutOptions.slice(0, 10).forEach(label => {
             const opt = document.createElement('option');
@@ -3132,12 +3251,14 @@ class RadianceViewer {
         const title = document.createElement('span');
         title.className = 'radiance-pro-sequence-title';
         title.textContent = 'SEQUENCE';
+        // L2: the source's name when the frame carries one, else nothing
+        // (it was a fixed "A001C010"). Filled by _updateProMetadata.
         this.sequenceNameLabel = document.createElement('span');
-        this.sequenceNameLabel.textContent = 'A001C010';
-        this.sequenceNameLabel.style.cssText = 'color:rgba(232,238,247,.72);';
+        this.sequenceNameLabel.className = 'radiance-pro-sequence-name';
+        this.sequenceNameLabel.style.cssText = 'color:var(--radiance-text);';
         this.sequenceFrameLabel = document.createElement('span');
         this.sequenceFrameLabel.textContent = '— / —';
-        this.sequenceFrameLabel.style.cssText = 'color:#39aaff;';
+        this.sequenceFrameLabel.style.cssText = 'color:var(--radiance-accent);';
         left.append(title, this.sequenceNameLabel, this.sequenceFrameLabel);
 
         const right = document.createElement('div');
@@ -3148,16 +3269,19 @@ class RadianceViewer {
         prev.type = 'button';
         prev.textContent = '‹';
         prev.title = 'Previous frame';
+        prev.setAttribute('aria-label', 'Previous frame');
         prev.onclick = () => this.prevFrame();
         this.sequencePlayButton = document.createElement('button');
         this.sequencePlayButton.type = 'button';
         this.sequencePlayButton.textContent = this.isPlaying ? 'Ⅱ' : '▶';
         this.sequencePlayButton.title = 'Play / pause';
+        this.sequencePlayButton.setAttribute('aria-label', 'Play / pause');
         this.sequencePlayButton.onclick = () => this.togglePlayback();
         const next = document.createElement('button');
         next.type = 'button';
         next.textContent = '›';
         next.title = 'Next frame';
+        next.setAttribute('aria-label', 'Next frame');
         next.onclick = () => this.nextFrame();
         controls.append(prev, this.sequencePlayButton, next, this._muteButton());
         this.sequenceRange = document.createElement('input');
@@ -3167,18 +3291,20 @@ class RadianceViewer {
         this.sequenceRange.max = '0';
         this.sequenceRange.value = '0';
         this.sequenceRange.title = 'Scrub sequence';
+        this.sequenceRange.setAttribute('aria-label', 'Frame');
         this.sequenceRange.oninput = () => {
             const total = Math.max(this.totalFrames || 0, this.frameImages?.length || 0);
             if (total > 1) this.setFrame(Math.max(0, Math.min(total - 1, parseInt(this.sequenceRange.value, 10) || 0)));
         };
         this.sequenceTimecode = document.createElement('span');
         this.sequenceTimecode.textContent = '00:00:00:00';
-        this.sequenceTimecode.style.cssText = 'color:rgba(232,238,247,.72);';
+        this.sequenceTimecode.style.cssText = 'color:var(--radiance-text);';
         const mode = document.createElement('span');
         mode.textContent = 'Thumbnails';
         const dot = document.createElement('span');
         dot.textContent = '•';
-        dot.style.cssText = 'color:rgba(255,255,255,.28);';
+        dot.style.cssText = 'color:var(--radiance-text-muted);';
+        dot.setAttribute('aria-hidden', 'true');
         const fps = document.createElement('span');
         this.sequenceFpsLabel = fps;
         fps.textContent = `${this.playbackFps || 24} FPS`;
@@ -3186,7 +3312,8 @@ class RadianceViewer {
         // Setup NLE Timeline Tools center block
         const center = document.createElement('div');
         center.className = 'radiance-pro-timeline-tools';
-        center.style.cssText = 'display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px;';
+        center.setAttribute('role', 'group');
+        center.setAttribute('aria-label', 'Timeline tools');
 
         const tools = [
             { id: 'select', label: '⬈ Select', hotkey: 'KeyA' },
@@ -3203,18 +3330,12 @@ class RadianceViewer {
             btn.type = 'button';
             btn.textContent = t.label;
             btn.title = `Switch to ${t.id} tool (${t.hotkey.replace('Key', '')})`;
-            btn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.5);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;';
+            btn.className = 'radiance-pro-tool-btn';
 
             const updateVisual = () => {
-                if (this.activeTimelineTool === t.id) {
-                    btn.style.background = 'rgba(0, 189, 255, 0.16)';
-                    btn.style.color = '#00bdff';
-                    btn.style.boxShadow = '0 0 6px rgba(0, 189, 255, 0.15)';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'rgba(255,255,255,0.5)';
-                    btn.style.boxShadow = 'none';
-                }
+                const on = this.activeTimelineTool === t.id;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-pressed', String(on));
             };
 
             btn.onclick = () => {
@@ -3230,9 +3351,9 @@ class RadianceViewer {
         resetBtn.type = 'button';
         resetBtn.textContent = '↺ Reset';
         resetBtn.title = 'Merge all segments and reset timeline';
-        resetBtn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.35);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;margin-left:4px;border-left:1px solid rgba(255,255,255,0.06);';
-        resetBtn.onmouseenter = () => resetBtn.style.color = 'rgba(255,255,255,0.8)';
-        resetBtn.onmouseleave = () => resetBtn.style.color = 'rgba(255,255,255,0.35)';
+        resetBtn.className = 'radiance-pro-tool-btn';
+        const toolSep = () => { const s = document.createElement('span'); s.className = 'radiance-pro-tool-sep'; return s; };
+        center.appendChild(toolSep());
         resetBtn.onclick = async () => {
             if (await this._confirmAction('Merge all clip segments and reset the timeline?', 'Reset')) {
                 this.timelineSegments = null;
@@ -3245,7 +3366,10 @@ class RadianceViewer {
 
         // Setup V1 / V2 Track Target Selector
         const trackToggle = document.createElement('div');
-        trackToggle.style.cssText = 'display:flex;align-items:center;margin-left:8px;border-left:1px solid rgba(255,255,255,0.06);padding-left:8px;gap:2px;';
+        trackToggle.style.cssText = 'display:flex;align-items:center;gap:2px;';
+        trackToggle.setAttribute('role', 'group');
+        trackToggle.setAttribute('aria-label', 'Target track');
+        center.appendChild(toolSep());
 
         const trackButtons = {};
         ['V1', 'V2'].forEach(trk => {
@@ -3253,18 +3377,12 @@ class RadianceViewer {
             btn.type = 'button';
             btn.textContent = trk;
             btn.title = `Target active timeline edits to ${trk} track (Key V to toggle)`;
-            btn.style.cssText = 'height:20px;padding:0 6px;border:none;background:transparent;color:rgba(255,255,255,0.4);font-size:9px;font-family:var(--radiance-mono, monospace);font-weight:bold;border-radius:2px;cursor:pointer;transition:all 0.15s;';
+            btn.className = 'radiance-pro-track-btn';
 
             const updateVisual = () => {
-                if (this.activeTimelineTrack === trk) {
-                    btn.style.background = 'rgba(0, 189, 255, 0.22)';
-                    btn.style.color = '#00bdff';
-                    btn.style.boxShadow = '0 0 4px rgba(0, 189, 255, 0.1)';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'rgba(255,255,255,0.4)';
-                    btn.style.boxShadow = 'none';
-                }
+                const on = this.activeTimelineTrack === trk;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-pressed', String(on));
             };
 
             btn.onclick = () => {
@@ -3354,7 +3472,8 @@ class RadianceViewer {
             this.sequenceRange.value = String(Math.max(0, Math.min(rangeMax, this.currentFrame || 0)));
             this.sequenceRange.disabled = total <= 1;
             const pct = total > 1 ? ((this.currentFrame || 0) / (total - 1)) * 100 : 0;
-            this.sequenceRange.style.background = `linear-gradient(to right, var(--radiance-accent) ${pct}%, rgba(255,255,255,0.14) ${pct}%)`;
+            // The played part of the track (the hit area around it is 28 px).
+            this.sequenceRange.style.setProperty('--radiance-scrub-pct', `${pct}%`);
         }
 
         // 3. Initialize Multi-Clip V1 & V2 Timeline segments
@@ -3416,7 +3535,7 @@ class RadianceViewer {
             if (this.v2Segments.length === 0) {
                 const guide = document.createElement('span');
                 guide.textContent = '✚ Click with Adjust or Ref Wipe tool to place overlays on V2';
-                guide.style.cssText = 'position:absolute; left:12px; font-size:8px; font-family:var(--radiance-mono); font-weight:bold; color:rgba(255,255,255,0.18); pointer-events:none;';
+                guide.style.cssText = 'position:absolute; left:12px; font-size:var(--radiance-fs-heading); font-family:var(--radiance-font-ui); color:var(--radiance-text-muted); pointer-events:none;';
                 v2Lane.appendChild(guide);
             }
 
@@ -3553,7 +3672,7 @@ class RadianceViewer {
                 // Label
                 const label = document.createElement('div');
                 label.className = 'radiance-pro-clip-label';
-                label.style.cssText = `position:absolute; bottom:2px; left:6px; right:6px; background:rgba(10,12,18,0.72); border-radius:3px; border:1px solid rgba(255,255,255,0.05); color:#e8e8f0; font:800 7px var(--radiance-font); padding:1px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; pointer-events:none; z-index:4; border-left: 2px solid ${seg.color};`;
+                label.style.cssText = `position:absolute; bottom:2px; left:6px; right:6px; background:rgba(10,12,18,0.72); border-radius:3px; border:1px solid rgba(255,255,255,0.05); color:var(--radiance-text); font:700 10px/12px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; pointer-events:none; z-index:4; border-left: 2px solid ${seg.color};`;
                 label.textContent = `${seg.name} (${segFrames}f)`;
                 block.appendChild(label);
 
@@ -3836,12 +3955,13 @@ class RadianceViewer {
             height: 100%;
             min-height: 300px;
             contain: size;
-            background: #070a0f;
+            background: var(--radiance-bg);
+            color: var(--radiance-text);
             color-scheme: dark;
             border-radius: 6px;
             overflow: hidden;
             user-select: none;
-            border: 1px solid rgba(255,255,255,0.08);
+            border: 1px solid var(--radiance-panel-border);
             font-family: var(--radiance-font-ui);
             display: flex;
             flex-direction: column;
@@ -3870,8 +3990,7 @@ class RadianceViewer {
 
         // Canvas wrapper
         this.canvasWrapper = document.createElement('div');
-        this.canvasWrapper.style.cssText = `flex: 1 1 auto; position: relative; overflow: hidden; background:
-            radial-gradient(circle at 50% 48%, rgba(34,42,54,0.24), rgba(5,7,11,0.98) 62%);`;
+        this.canvasWrapper.style.cssText = `flex: 1 1 auto; position: relative; overflow: hidden; background: var(--radiance-bg);`;
         this.mainArea.appendChild(this.canvasWrapper);
 
         // ── Right Control Panel (HUD host) ────────────────────────────────────
@@ -4147,21 +4266,7 @@ class RadianceViewer {
 
         // Bottom Info Bar (HUD)
         this.bottomInfoBar = document.createElement('div');
-        this.bottomInfoBar.style.cssText = `
-            flex: 0 0 22px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 10px;
-            background: rgba(10, 10, 14, 0.95);
-            border-top: 1px solid ${t.panelBorder};
-            font-size: 10.5px;
-            font-family: monospace;
-            color: #aaa;
-            white-space: nowrap;
-            overflow: hidden;
-            z-index: 1000;
-        `;
+        this.bottomInfoBar.className = 'radiance-pro-infobar';
 
         this.infoLeft = document.createElement('div');
         this.infoLeft.style.cssText = 'display: flex; gap: 16px; align-items: center;';
@@ -4196,8 +4301,8 @@ class RadianceViewer {
                 <div style="width:8px;height:8px;background:${item.c};
                     border:1px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
                 <div>
-                    <span style="font-size:8.5px;color:#aaa;">${item.s}</span>
-                    <span style="font-size:7px;color:#555;margin-left:2px;">${item.sub}</span>
+                    <span style="font-size:var(--radiance-fs-heading);color:var(--radiance-text);">${item.s}</span>
+                    <span style="font-size:var(--radiance-fs-heading);color:var(--radiance-text-muted);margin-left:2px;">${item.sub}</span>
                 </div>
             `;
             this.fcLegend.appendChild(block);
@@ -4236,17 +4341,7 @@ class RadianceViewer {
 
         // Status bar
         this.statusBar = document.createElement('div');
-        this.statusBar.style.cssText = `
-            flex: 0 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 8px;
-            background: ${t.panel};
-            border-top: 1px solid ${t.panelBorder};
-            font-size: 9px;
-            color: ${t.textDim};
-        `;
+        this.statusBar.className = 'radiance-pro-statusbar';
         this.container.appendChild(this.statusBar);
 
         this.cursorInfo = document.createElement('span');
@@ -4282,7 +4377,7 @@ class RadianceViewer {
             padding: 1px 8px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: var(--radiance-fs-heading);
             letter-spacing: 0.6px;
             cursor: pointer;
             user-select: none;
@@ -4298,7 +4393,7 @@ class RadianceViewer {
             padding: 1px 8px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: var(--radiance-fs-heading);
             letter-spacing: 0.6px;
             display: none;
             cursor: default;
@@ -12892,8 +12987,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             height: 100%;
             min-height: 0;
             overflow: hidden;
-            background: linear-gradient(180deg, rgba(17,23,33,0.98), rgba(10,14,22,0.98));
-            color: rgba(232,238,247,0.86);
+            background: var(--radiance-surface);
+            color: var(--radiance-text);
             font-family: var(--radiance-font-ui, Inter, system-ui, sans-serif);
         `;
 
@@ -12903,35 +12998,35 @@ self.onmessage = async ({ data: { id, url } }) => {
             style.textContent = `
                 .radiance-ref-hud { container-type:inline-size; font-family: var(--radiance-font); }
                 .radiance-ref-hud * { box-sizing: border-box; }
-                .radiance-ref-tabs { display:flex; height:44px; border-bottom:1px solid var(--radiance-panel-border); background:rgba(18,18,24,0.95); position:relative; z-index:5; }
-                .radiance-ref-tab { flex:1; display:flex; align-items:center; justify-content:center; position:relative; border:0; background:transparent; color:var(--radiance-text-dim); font:700 10px/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.45px; cursor:pointer; transition: all 0.2s; }
+                .radiance-ref-tabs { display:flex; height:40px; border-bottom:1px solid var(--radiance-panel-border); background:var(--radiance-surface-raised); position:relative; z-index:5; }
+                .radiance-ref-tab { flex:1; display:flex; align-items:center; justify-content:center; position:relative; border:0; background:transparent; color:var(--radiance-text-dim); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.8px; text-transform:uppercase; cursor:pointer; transition: color 0.15s; }
                 .radiance-ref-tab:hover { color: var(--radiance-text); }
-                .radiance-ref-tab.is-active { color: var(--radiance-accent) !important; font-weight: 800; }
-                .radiance-ref-tab.is-active::after { content:""; position:absolute; left:20px; right:20px; bottom:0; height:2px; background:var(--radiance-accent); box-shadow:0 0 10px var(--radiance-accent-glow); }
-                .radiance-ref-body { display:grid; grid-template-columns:1fr; flex:1; min-height:0; overflow:hidden; background: #0c0c12; }
-                .radiance-ref-col { min-width:0; min-height:0; overflow:auto; padding:16px 16px 14px; border-right:1px solid var(--radiance-panel-border); scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; }
+                .radiance-ref-tab.is-active { color: var(--radiance-accent) !important; }
+                .radiance-ref-tab.is-active::after { content:""; position:absolute; left:16px; right:16px; bottom:0; height:2px; background:var(--radiance-accent); }
+                .radiance-ref-body { display:grid; grid-template-columns:1fr; flex:1; min-height:0; overflow:hidden; background: var(--radiance-surface); }
+                .radiance-ref-col { min-width:0; min-height:0; overflow:auto; padding:14px 16px; border-right:1px solid var(--radiance-panel-border); scrollbar-width:thin; scrollbar-color:var(--radiance-border-strong) transparent; }
                 .radiance-ref-col:last-child { border-right:0; }
-                .radiance-ref-section { padding:0 0 15px; margin:0 0 15px; border-bottom:1px solid var(--radiance-panel-border); }
-                .radiance-ref-title { color:var(--radiance-text); font-size:10px; line-height:1; font-weight:800; letter-spacing:.8px; margin-bottom:12px; text-transform:uppercase; opacity: 0.85; }
-                .radiance-ref-kv { display:grid; grid-template-columns:92px minmax(0,1fr); gap:8px 12px; align-items:center; font-size:11px; line-height:1.25; }
+                .radiance-ref-section { padding:0 0 14px; margin:0 0 14px; border-bottom:1px solid var(--radiance-panel-border); }
+                .radiance-ref-title { color:var(--radiance-text); font-size:var(--radiance-fs-heading); line-height:1; font-weight:700; letter-spacing:.9px; margin-bottom:12px; text-transform:uppercase; }
+                .radiance-ref-kv { display:grid; grid-template-columns:112px minmax(0,1fr); gap:7px 12px; align-items:center; font-size:var(--radiance-fs-body); line-height:1.3; }
                 .radiance-ref-kv .k { color:var(--radiance-text-dim); }
                 .radiance-ref-kv .v { color:var(--radiance-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                .radiance-ref-search { width:100%; height:28px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,0.32); color:var(--radiance-text); padding:0 10px; font-size:10px; outline:none; margin-bottom:8px; font-family: var(--radiance-font); }
-                .radiance-ref-search:focus { border-color: var(--radiance-accent); box-shadow: 0 0 8px var(--radiance-accent-glow); }
-                .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 44px; height:24px; align-items:center; padding:0 8px; border-radius:4px; color:rgba(224,233,244,.82); font-size:11px; transition: background 0.15s; }
-                .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.015); }
-                .radiance-ref-channel.is-active { background:rgba(0,189,255,.16); border: 1px solid rgba(0,189,255,.24); color: var(--radiance-accent); }
+                .radiance-ref-search { width:100%; height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 10px; font-size:var(--radiance-fs-body); outline:none; margin-bottom:8px; font-family: var(--radiance-font); }
+                .radiance-ref-search:focus { border-color: var(--radiance-accent); }
+                .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 52px; min-height:28px; align-items:center; padding:0 8px; border-radius:4px; border:1px solid transparent; color:var(--radiance-text); font-size:var(--radiance-fs-body); transition: background 0.15s; }
+                .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.02); }
+                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(0,189,255,.35); color: var(--radiance-accent); }
                 .radiance-ref-channel:not(.is-disabled) { cursor:pointer; }
-                .radiance-ref-channel:not(.is-disabled):hover { background:rgba(255,255,255,.05); }
-                .radiance-ref-channel.is-disabled { opacity:.45; }
-                .radiance-ref-channel .tag { text-align:right; font-size:10px; font-weight:800; color:var(--radiance-accent); }
+                .radiance-ref-channel:not(.is-disabled):hover { background:var(--radiance-control-hover); }
+                .radiance-ref-channel.is-disabled { color:var(--radiance-text-muted); }
+                .radiance-ref-channel .tag { text-align:right; font:700 var(--radiance-fs-body) var(--radiance-font-mono, monospace); color:var(--radiance-accent); }
                 .radiance-ref-channel .tag.alpha { color:#e0c068; }
                 .radiance-ref-channel .tag.crypto { color:#ff8060; }
-                .radiance-ref-field { display:grid; grid-template-columns:108px minmax(0,1fr); gap:8px; align-items:center; margin-bottom:8px; font-size:11px; }
+                .radiance-ref-field { display:grid; grid-template-columns:120px minmax(0,1fr); gap:8px; align-items:center; margin-bottom:8px; font-size:var(--radiance-fs-body); }
                 .radiance-ref-field label { color:var(--radiance-text-dim); }
-                .radiance-ref-field select, .radiance-ref-value { height:26px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,.32); color:var(--radiance-text); padding:0 8px; font-size:10px; outline:none; }
+                .radiance-ref-field select, .radiance-ref-value { height:28px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 8px; font-size:var(--radiance-fs-body); outline:none; }
                 .radiance-ref-field select:focus { border-color: var(--radiance-accent); }
-                .radiance-ref-slider { display:grid; grid-template-columns:80px minmax(0,1fr) 44px; gap:8px; align-items:center; margin:8px 0; font-size:11px; }
+                .radiance-ref-slider { display:grid; grid-template-columns:92px minmax(0,1fr) 52px; gap:8px; align-items:center; margin:6px 0; font-size:var(--radiance-fs-body); }
                 .radiance-ref-slider label { color:var(--radiance-text-dim); }
                 .radiance-ref-slider input[type="range"] {
                     -webkit-appearance: none;
@@ -12956,24 +13051,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-slider input[type="range"]::-webkit-slider-thumb:hover {
                     transform: scale(1.2);
                 }
-                .radiance-ref-slider output { height:22px; display:flex; align-items:center; justify-content:center; border-radius:4px; background:rgba(0,0,0,.45); color:var(--radiance-text); font:10px/1 var(--radiance-font-mono, monospace); border: 1px solid var(--radiance-panel-border); }
-                .radiance-ref-slider .radiance-ref-readout { width:100%; height:22px; padding:0 4px; text-align:center; border-radius:4px; background:rgba(0,0,0,.45); color:var(--radiance-text); font:10px/1 var(--radiance-font-mono, monospace); border:1px solid var(--radiance-panel-border); outline:none; }
+                .radiance-ref-slider output { height:24px; display:flex; align-items:center; justify-content:center; border-radius:4px; background:var(--radiance-control); color:var(--radiance-text); font:var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); border: 1px solid var(--radiance-panel-border); }
+                .radiance-ref-slider .radiance-ref-readout { width:100%; height:24px; padding:0 4px; text-align:center; border-radius:4px; background:var(--radiance-control); color:var(--radiance-text); font:var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); border:1px solid var(--radiance-panel-border); outline:none; }
                 .radiance-ref-slider .radiance-ref-readout:focus { border-color:var(--radiance-accent); }
-                .radiance-ref-section-reset { height:18px; padding:0 7px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.04); color:var(--radiance-text-dim); font:600 9px/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.3px; text-transform:none; cursor:pointer; }
-                .radiance-ref-section-reset:hover { border-color:var(--radiance-accent); color:#fff; }
+                .radiance-ref-section-reset { height:24px; padding:0 8px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text-dim); font:600 var(--radiance-fs-body)/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:0; text-transform:none; cursor:pointer; }
+                .radiance-ref-section-reset:hover { border-color:var(--radiance-accent); color:var(--radiance-text); }
                 .radiance-ref-slider.temperature input { accent-color:#ffffff; }
                 .radiance-ref-slider.tint input { accent-color:#d45cff; }
                 .radiance-ref-slider.saturation input { accent-color:#59d86f; }
                 .radiance-ref-wheels { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
                 .radiance-ref-wheel { min-width:0; text-align:center; }
-                .radiance-ref-wheel-label { color:var(--radiance-text-dim); font-size:10px; margin-bottom:8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+                .radiance-ref-wheel-label { color:var(--radiance-text-dim); font-size:var(--radiance-fs-heading); margin-bottom:8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
                 .radiance-ref-wheel-ring { width:58px; height:58px; margin:0 auto 8px; border-radius:50%; padding:2.5px; background:conic-gradient(from 90deg, #ff4a4a, #ffff4a, #4aff4a, #4affff, #4a4aff, #ff4aff, #ff4a4a); box-shadow:0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,.04); }
                 .radiance-ref-wheel-inner { width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, #1a1a24 0%, #0d0d12 100%); border:1px solid rgba(255,255,255,.08); position:relative; }
                 .radiance-ref-wheel-inner::after { content:""; position:absolute; width:4px; height:4px; border-radius:50%; left:50%; top:50%; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.8); background:rgba(255,255,255,.2); }
                 .radiance-ref-wheel-puck { position:absolute; left:50%; top:50%; width:8px; height:8px; border-radius:50%; transform:translate(-50%,-50%); border:2px solid #ffffff; background:var(--radiance-accent); box-shadow:0 0 8px var(--radiance-accent), 0 2px 4px rgba(0,0,0,.5); pointer-events:none; }
-                .radiance-ref-mini { display:grid; grid-template-columns:42px 1fr; gap:5px 8px; color:var(--radiance-text-dim); font-size:10px; margin-top:6px; }
+                .radiance-ref-mini { display:grid; grid-template-columns:48px 1fr; gap:5px 8px; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); margin-top:6px; }
                 .radiance-ref-wheel-controls { display:grid; gap:5px; margin-top:8px; }
-                .radiance-ref-wheel-channel { display:grid; grid-template-columns:12px minmax(0,1fr) 30px; gap:5px; align-items:center; color:var(--radiance-text-dim); font-size:9px; }
+                .radiance-ref-wheel-channel { display:grid; grid-template-columns:14px minmax(0,1fr) 40px; gap:5px; align-items:center; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); }
                 .radiance-ref-wheel-channel input[type="range"] {
                     -webkit-appearance: none;
                     appearance: none;
@@ -12993,28 +13088,34 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 .radiance-ref-wheel-channel output { text-align:right; font-family:var(--radiance-font-mono, monospace); color:var(--radiance-text); }
                 .radiance-ref-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:8px; }
-                .radiance-ref-actions button { height:26px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.05); color:var(--radiance-text); padding:0 12px; font-size:10px; cursor:pointer; font-weight: 600; }
-                .radiance-ref-actions button:hover { border-color: var(--radiance-accent); background: rgba(0,189,255,0.08); color: #fff; }
-                .radiance-ref-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:28px; margin:6px 0; color:var(--radiance-text); font-size:11px; }
-                .radiance-ref-toggle { width:38px; height:20px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.08); position:relative; cursor:pointer; flex-shrink:0; }
-                .radiance-ref-toggle::after { content:""; position:absolute; width:14px; height:14px; left:2px; top:2px; border-radius:50%; background:rgba(220,230,242,.72); transition:left .15s, background .15s; }
-                .radiance-ref-toggle.is-on { border-color:var(--radiance-accent); background:rgba(0,189,255,.18); }
-                .radiance-ref-toggle.is-on::after { left:20px; background:var(--radiance-accent); box-shadow:0 0 10px var(--radiance-accent-glow); }
-                .radiance-ref-status-pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,.35); color:var(--radiance-text); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.5px; }
+                .radiance-ref-actions button { height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 12px; font-size:var(--radiance-fs-body); cursor:pointer; font-weight: 600; }
+                .radiance-ref-actions button:hover { border-color: var(--radiance-accent); background: var(--radiance-control-hover); }
+                .radiance-ref-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:28px; margin:6px 0; color:var(--radiance-text); font-size:var(--radiance-fs-body); }
+                .radiance-ref-toggle { width:40px; height:22px; padding:0; border-radius:999px; border:1px solid var(--radiance-border-strong); background:var(--radiance-control); position:relative; cursor:pointer; flex-shrink:0; }
+                .radiance-ref-toggle::after { content:""; position:absolute; width:16px; height:16px; left:2px; top:2px; border-radius:50%; background:var(--radiance-text-dim); transition:left .15s, background .15s; }
+                .radiance-ref-toggle.is-on { border-color:var(--radiance-accent); background:var(--radiance-accent-soft); }
+                .radiance-ref-toggle.is-on::after { left:20px; background:var(--radiance-accent); }
+                .radiance-ref-status-pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); font:700 var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); letter-spacing:.4px; }
                 .radiance-ref-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-                .radiance-ref-status-tile { min-width:0; min-height:58px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.025); padding:9px; }
-                .radiance-ref-status-tile .label { color:var(--radiance-text-dim); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.55px; text-transform:uppercase; margin-bottom:9px; }
-                .radiance-ref-status-tile .value { color:var(--radiance-text); font:800 12px/1.25 var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                .radiance-ref-status-tile { min-width:0; min-height:58px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-surface-raised); padding:9px 10px; }
+                .radiance-ref-status-tile .label { color:var(--radiance-text-dim); font:600 var(--radiance-fs-body)/1 var(--radiance-font-ui, Inter, sans-serif); margin-bottom:8px; }
+                .radiance-ref-status-tile .value { color:var(--radiance-text); font:700 var(--radiance-fs-body)/1.25 var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
                 .radiance-ref-action-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-                .radiance-ref-action-grid button { min-height:28px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.045); color:var(--radiance-text); padding:0 9px; font-size:10px; cursor:pointer; text-align:left; font-weight: 600; }
-                .radiance-ref-action-grid button:hover { border-color:var(--radiance-accent); background:rgba(0,189,255,.12); color:#fff; }
-                .radiance-ref-depth-preview { width:100%; aspect-ratio:1; border-radius:6px; border:1px solid var(--radiance-panel-border); background:linear-gradient(90deg, #05070a, #18202a 45%, #eef6ff); position:relative; overflow:hidden; margin:8px 0 10px; }
-                .radiance-ref-depth-preview::after { content:"DEPTH RANGE"; position:absolute; left:10px; bottom:10px; color:rgba(255,255,255,.65); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; }
+                .radiance-ref-action-grid button { min-height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 10px; font-size:var(--radiance-fs-body); cursor:pointer; text-align:left; font-weight: 600; }
+                .radiance-ref-action-grid button:hover { border-color:var(--radiance-accent); background:var(--radiance-control-hover); }
+                .radiance-ref-depth-preview { width:100%; aspect-ratio:1; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-bg); position:relative; overflow:hidden; margin:8px 0 10px; }
+                .radiance-ref-depth-preview::after { content:"DEPTH RANGE"; position:absolute; left:10px; bottom:10px; color:var(--radiance-text); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; }
                 .radiance-ref-depth-preview canvas,
                 .radiance-ref-depth-preview img { width:100%; height:100%; display:block; object-fit:cover; filter:contrast(1.15); }
                 .radiance-ref-scopes-grid { display:flex; flex-direction:column; gap:12px; }
-                .radiance-ref-scope-box { min-width:0; border-radius:6px; border:1px solid var(--radiance-panel-border); background:linear-gradient(180deg, rgba(9,13,21,.95), rgba(3,5,8,.95)); overflow:hidden; }
-                .radiance-ref-scope-head { height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-bottom:1px solid var(--radiance-panel-border); color:var(--radiance-text); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.55px; }
+                .radiance-ref-scope-box { min-width:0; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-bg); overflow:hidden; }
+                .radiance-ref-scope-head { height:28px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-bottom:1px solid var(--radiance-panel-border); color:var(--radiance-text); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; text-transform:uppercase; }
+                .radiance-ref-search::placeholder { color:var(--radiance-text-muted); }
+                .radiance-ref-channel.is-disabled .tag { color:var(--radiance-text-muted); }
+                .radiance-ref-slider:has(input:disabled) label { color:var(--radiance-text-muted); }
+                .radiance-ref-toggle:disabled { cursor:not-allowed; opacity:.45; }
+                .radiance-ref-depth-preview.is-empty { aspect-ratio:auto; height:auto; padding:8px 10px; margin:6px 0 8px; color:var(--radiance-text-dim); background:var(--radiance-surface-raised); font-size:var(--radiance-fs-body); line-height:1.4; }
+                .radiance-ref-depth-preview.is-empty::after { content:none; }
                 .radiance-ref-scope-canvas { width:100%; height:200px; display:block; }
                 .radiance-ref-scope-box.is-square .radiance-ref-scope-canvas { height:auto; aspect-ratio:1; }
                 @container (max-width: 460px) {
@@ -13453,6 +13554,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 btn.style.borderColor = isActive ? color : 'rgba(255,255,255,0.1)';
                 btn.style.color = isActive ? '#fff' : color;
                 btn.style.boxShadow = isActive ? `0 0 6px ${color}44` : 'none';
+                btn.setAttribute('aria-pressed', String(isActive));
             });
         };
 
@@ -13460,16 +13562,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = label;
+            btn.setAttribute('aria-label', `${ch === 'RGB' ? 'Luma' : ch} curve`);
             btn.style.cssText = `
-                width: 22px; height: 20px;
+                width: 28px; height: 26px;
                 background: rgba(255,255,255,0.04);
                 color: ${color};
                 border: 1px solid rgba(255,255,255,0.1);
                 border-radius: 3px;
                 display: flex; align-items: center; justify-content: center;
-                font-size: 10px; font-weight: bold; cursor: pointer;
+                font-size: var(--radiance-fs-body); font-weight: bold; cursor: pointer;
                 transition: all 0.12s;
-                padding: 0; outline: none;
+                padding: 0;
             `;
             btn.onclick = () => {
                 this.refCurveEditor.setActiveChannel(ch);
@@ -13493,16 +13596,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         resetBtn.type = 'button';
         resetBtn.textContent = 'Reset';
         resetBtn.style.cssText = `
-            height: 20px;
-            background: rgba(255,255,255,0.05);
-            color: rgba(235,242,250,0.8);
-            border: 1px solid rgba(255,255,255,0.08);
+            height: 26px;
+            background: var(--radiance-control);
+            color: var(--radiance-text);
+            border: 1px solid var(--radiance-panel-border);
             border-radius: 4px;
-            padding: 0 8px;
-            font-size: 9px;
+            padding: 0 10px;
+            font-size: var(--radiance-fs-body);
             font-weight: 600;
             cursor: pointer;
-            outline: none;
             transition: all 0.12s;
         `;
         resetBtn.onclick = () => {
@@ -14164,7 +14266,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const src = this.zdepthImage || this.frameZdepthImages?.[this.currentFrame] || null;
         if (!src) {
             const empty = document.createElement('div');
-            empty.style.cssText = 'height:100%;display:flex;align-items:center;justify-content:center;color:rgba(230,238,250,.42);font:800 10px/1 var(--radiance-font-mono, monospace);letter-spacing:.8px;';
+            empty.style.cssText = 'height:100%;display:flex;align-items:center;justify-content:center;color:var(--radiance-text-dim);font:700 var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace);letter-spacing:.8px;';
             empty.textContent = 'NO DEPTH MAP';
             preview.appendChild(empty);
             return;
@@ -14442,10 +14544,9 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // v3.0 #15: High Contrast Mode Initialization
         // Restores accessibility preference from localStorage and applies the CSS hook.
-        this.highContrast = localStorage.getItem('radiance_high_contrast') === '1';
-        if (this.highContrast) {
-            this.controlsPanel.classList.add('high-contrast');
-        }
+        let hc = false;
+        try { hc = localStorage.getItem('radiance_high_contrast') === '1'; } catch { /* private mode */ }
+        this.setHighContrast(hc, { persist: false });
 
         if (this.controlsPanel.parentNode !== this.rightControlPanel) {
             if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
@@ -21711,6 +21812,20 @@ self.onmessage = async ({ data: { id, url } }) => {
         row.appendChild(sliderContainer);
 
         return row;
+    }
+
+    /**
+     * M18: high contrast, from the settings popover. It swaps the theme's
+     * secondary text and edge tokens (THEME_HIGH_CONTRAST) on this viewer;
+     * the class it used to set had no CSS behind it.
+     */
+    setHighContrast(on, { persist = true } = {}) {
+        this.highContrast = !!on;
+        this.container?.classList.toggle('radiance-high-contrast', this.highContrast);
+        this.controlsPanel?.classList.toggle('high-contrast', this.highContrast);
+        if (persist) {
+            try { localStorage.setItem('radiance_high_contrast', this.highContrast ? '1' : '0'); } catch { /* private mode */ }
+        }
     }
 
     toggleControls() {
