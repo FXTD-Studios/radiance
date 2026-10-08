@@ -1977,6 +1977,101 @@ class RadianceViewer {
         container.appendChild(toast);
     }
 
+    /**
+     * A message over the picture, for a state the canvas alone shows as
+     * black or not at all: frames gone from the server, a video the browser
+     * cannot play, a lost GPU context. One per kind, until cleared.
+     */
+    _showViewerMessage(kind, text, onClick = null) {
+        const host = this.canvasWrapper || this.container;
+        if (!host) return;
+        if (!this._viewerMessages) this._viewerMessages = new Map();
+        let el = this._viewerMessages.get(kind);
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'radiance-viewer-message';
+            el.dataset.kind = kind;
+            el.setAttribute('role', 'alert');
+            el.style.cssText = `
+                position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                max-width: min(480px, 80%); padding: 14px 18px; z-index: 40;
+                color: #f5f5f7; background: rgba(10,12,20,0.94);
+                border: 1px solid rgba(255,107,107,0.55); border-radius: 8px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+                font: 12px/1.5 var(--radiance-font-ui, -apple-system, 'Segoe UI', sans-serif);
+                text-align: center;
+            `;
+            host.appendChild(el);
+            this._viewerMessages.set(kind, el);
+        }
+        el.textContent = text;
+        el.style.cursor = onClick ? 'pointer' : 'default';
+        el.onclick = onClick;
+    }
+
+    _clearViewerMessage(kind) {
+        const el = this._viewerMessages?.get(kind);
+        if (!el) return;
+        el.remove();
+        this._viewerMessages.delete(kind);
+    }
+
+    /** A frame of the sequence could not be loaded. */
+    _onFrameLoadError(err, idx) {
+        console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+        // Only the frame on screen gets a message: a read-ahead frame that
+        // fails is retried when the playhead reaches it.
+        if (idx !== this.currentFrame) return;
+        if (err?.missing) {
+            this._showViewerMessage('frames',
+                'The frames of this result are no longer on the server. ComfyUI was restarted, '
+                + 'or a later run replaced them. Run the workflow again to see them.');
+        } else {
+            this._showViewerMessage('frames',
+                `Frame ${idx + 1} could not be loaded: ${err?.message || err}.`);
+        }
+        this._termLog?.('error', `[Viewer] Frame ${idx + 1} could not be loaded: ${err?.message || err}`);
+    }
+
+    /** The GPU context is gone: say so, instead of leaving a black viewer. */
+    _onGLContextLost() {
+        this._showViewerMessage('context',
+            'The GPU context was lost, so the picture cannot be drawn. It comes back when the '
+            + 'browser restores the context. Click to try now.',
+            () => {
+                try { this.renderer?.gl?.getExtension('WEBGL_lose_context')?.restoreContext(); } catch { /* not ours to restore */ }
+            });
+        this._termLog?.('error', '[Viewer] GPU context lost.');
+    }
+
+    /** The context is back with nothing on it: upload the picture again. */
+    _onGLContextRestored() {
+        this._clearViewerMessage('context');
+        const r = this.renderer;
+        if (!r) return;
+        r.setPixelFilter?.(this.pixelFilter);
+        if (this.videoMode && this.videoEl) {
+            this._captureVideoFrame();
+        } else if (this.hdrData) {
+            const h = this.hdrData;
+            const ch = h.channels || h.shape?.[2] || 3;
+            if (h.fp16data) r.loadFloat16Texture(h.fp16data, h.width, h.height, ch);
+            else r.loadFloat32Texture(h.data, h.width, h.height, ch);
+        } else if (this.image) {
+            r.loadImageTexture(this.image);
+        }
+        if (this.compareHDR) this._uploadCompareHDR?.(this.compareHDR);
+        else if (this.compareImage) r.loadCompareTexture?.(this.compareImage);
+        if (this.zdepthImage) r.loadDepthTexture(this.zdepthImage);
+        // The curve tables live in textures too; the editors hold the curves.
+        this.refCurveEditor?.notifyChange?.();
+        if (this.curveEditor && this.curveEditor !== this.refCurveEditor) this.curveEditor.notifyChange?.();
+        this._applyCompareToRenderer?.();
+        this.render();
+        this.updateScopes();
+        this._termLog?.('info', '[Viewer] GPU context restored.');
+    }
+
     _showToast(message, tone = "info") {
         const existing = document.getElementById("radiance-viewer-toast");
         if (existing) existing.remove();
@@ -10382,6 +10477,14 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.node.properties.radiance_viewer_video = fileOrUrl;
         delete this.node.properties.radiance_viewer_result;
         this._sequenceAudio?.pause();
+        // The video replaces any sequence: its frames must not stay in the
+        // paging window or in the dock's frame count.
+        this.generationID = (this.generationID || 0) + 1;
+        this._frameWindow?.clear();
+        this.frameImages = [];
+        this.frameHDRData = [];
+        this.hdrData = null;
+        this._hdrZoneStats = null;
 
         const url = (fileOrUrl instanceof File || fileOrUrl instanceof Blob)
             ? URL.createObjectURL(fileOrUrl)
@@ -10410,13 +10513,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         vid.addEventListener('loadedmetadata', () => {
             canvas.width = vid.videoWidth;
             canvas.height = vid.videoHeight;
-            this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || 25)));
+            // The user's rate until the container's own is measured
+            // (_measureVideoFps). It was a fixed 25.
+            this._videoNativeFps = this.playbackFps || 24;
+            this._setVideoFrameCount();
             this.currentFrame = 0;
             this._updateVideoTimeline();
             this._updateScrubberRange();
         });
 
         vid.addEventListener('play', () => {
+            if (this._videoProbing) return;
             if (this._videoReversing) this._videoReverse(false);
             this.isPlaying = true;
             this._updatePlayBtn();
@@ -10424,33 +10531,53 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         vid.addEventListener('pause', () => {
+            if (this._videoProbing) return;
             this.isPlaying = !!this._videoReversing;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
+            // Stop on a whole frame: the one on screen, at its middle, so the
+            // counter, the scrubbers and the picture agree (currentTime can be
+            // a frame ahead of what was presented).
+            if (!this._videoReversing && this._videoMediaTime != null) {
+                const fps = this._videoNativeFps || this.playbackFps || 24;
+                const shown = Math.round(this._videoMediaTime * fps);
+                this._videoMediaTime = null;
+                this.currentFrame = shown;
+                this._seekVideoToFrame(shown);
+                return;
+            }
             // Still capture the paused frame
             this._captureVideoFrame();
         });
 
         vid.addEventListener('ended', () => {
+            if (this._videoProbing) return;
             this.isPlaying = false;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
         });
 
         vid.addEventListener('timeupdate', () => {
-            // Update scrubber & timecode during playback
-            this._updateVideoTimeline();
+            // The frame counter, scrubbers and timecode follow the video.
+            this._syncFrameFromVideo();
         });
 
         vid.addEventListener('seeked', () => {
+            if (this._videoProbing) return;
             this._captureVideoFrame();
         });
 
+        // A codec the browser cannot play, or a file that is gone, used to
+        // leave an empty viewer: there was no error listener at all.
+        vid.addEventListener('error', () => this._onVideoError(vid, url));
+
         // Show video info in bottom bar
         vid.addEventListener('loadeddata', () => {
+            this._clearViewerMessage('video');
             this._updateVideoTimeline();
             this._captureVideoFrame();
-        });
+            this._measureVideoFps(vid);
+        }, { once: true });
 
         this.videoEl = vid;
         this._updatePlayBtn();
@@ -10461,6 +10588,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     unloadVideo(preserveSource = false) {
         this._videoLoadRequest = (this._videoLoadRequest || 0) + 1;
+        this._clearViewerMessage('video');
+        this._videoProbing = false;
         if (!preserveSource && this.node.properties) delete this.node.properties.radiance_viewer_video;
         this._stopVideoRenderLoop();
         if (this._videoRevRAF) { cancelAnimationFrame(this._videoRevRAF); this._videoRevRAF = null; }
@@ -10534,7 +10663,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Decode cadence avoids uploading the same 24/30fps frame on every
         // 60/120Hz display refresh. Keep RAF for older browsers.
         if (this.videoEl.requestVideoFrameCallback) {
-            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback(() => this._videoRenderLoop());
+            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback((now, meta) => {
+                // The time of the frame on screen, which currentTime runs ahead of.
+                this._videoMediaTime = meta?.mediaTime;
+                this._videoRenderLoop();
+            });
         } else {
             this._videoRAF = requestAnimationFrame(() => this._videoRenderLoop());
         }
@@ -10554,6 +10687,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
+        // The video frame is the picture, for the readouts and the 2D paths
+        // (this.image was left at whatever was shown before the video).
+        this.image = canvas;
 
         // Upload synchronously: asynchronous bitmap copies used to queue up
         // and could paint stale frames after a seek or replacement video.
@@ -10564,7 +10700,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
-        this._updateVideoTimeline();
+        this._syncFrameFromVideo();
     }
 
     _updateVideoTimeline() {
@@ -10590,6 +10726,152 @@ self.onmessage = async ({ data: { id, url } }) => {
         const fps = this._videoNativeFps || 25;
         const approxFrame = Math.round(t * fps);
         if (this.frameCounter) this.frameCounter.textContent = `${approxFrame} / ${Math.round(dur * fps)}`;
+    }
+
+    /** Frames in the loaded video at the rate in use. */
+    _setVideoFrameCount() {
+        const vid = this.videoEl;
+        if (!vid || !Number.isFinite(vid.duration) || vid.duration <= 0) return;
+        this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || this.playbackFps || 24)));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+    }
+
+    /**
+     * Move the video to frame idx: the middle of the frame, (idx + 0.5) / fps,
+     * so the decoder lands on that frame and not on a boundary. setFrame used
+     * to move only the counter in video mode, and the one piece of code that
+     * did seek stepped by float seconds after an unconditional return.
+     */
+    _seekVideoToFrame(idx) {
+        const vid = this.videoEl;
+        if (!vid) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        let t = (idx + 0.5) / fps;
+        if (Number.isFinite(vid.duration) && vid.duration > 0) t = Math.max(0, Math.min(t, vid.duration - 0.25 / fps));
+        vid.currentTime = t;
+    }
+
+    /** The frame counter, scrubbers and dock follow the video's own time. */
+    _syncFrameFromVideo() {
+        const vid = this.videoEl;
+        if (!vid || this._videoProbing || !this.videoMode) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        const last = Math.max(0, (this.totalFrames || 1) - 1);
+        // Playing: the frame presented (a frame start time). Paused: the
+        // video sits mid-frame (_seekVideoToFrame), so the floor is the frame.
+        const frame = !vid.paused && this._videoMediaTime != null
+            ? Math.round(this._videoMediaTime * fps)
+            : Math.floor(vid.currentTime * fps + 1e-6);
+        this.currentFrame = Math.max(0, Math.min(last, frame));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+        this._updateVideoTimeline();
+    }
+
+    /**
+     * The container's frame rate, from the frames themselves: the media
+     * times of a few requestVideoFrameCallback calls, played muted before
+     * the user plays it, and of one frame near the end. The user's rate stays
+     * when the browser cannot say.
+     */
+    async _measureVideoFps(vid) {
+        if (!vid?.requestVideoFrameCallback || this.videoEl !== vid) return null;
+        const times = [];
+        const muted = vid.muted;
+        // The media time of the next frame presented, or null after 'ms'.
+        const nextFrame = (ms) => new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), ms);
+            vid.requestVideoFrameCallback((now, meta) => { clearTimeout(timer); resolve(meta.mediaTime); });
+        });
+        this._videoProbing = true;
+        try {
+            vid.muted = true;
+            const playing = vid.play();
+            let failed = false;
+            if (playing?.catch) playing.catch(() => { failed = true; });
+            for (let i = 0; i < 10 && !failed && this.videoEl === vid; i++) {
+                const t = await nextFrame(2500);
+                if (t == null) break;
+                times.push(t);
+            }
+            if (this.videoEl === vid) vid.pause();
+            // A frame far from the start tells 24 from 23.976, which a
+            // fraction of a second of millisecond time stamps cannot.
+            if (times.length >= 3 && Number.isFinite(vid.duration) && vid.duration > 1 && this.videoEl === vid) {
+                vid.currentTime = vid.duration * 0.9;
+                const far = await nextFrame(1500);
+                if (far != null && far > times[times.length - 1]) times.push(far);
+            }
+        } finally {
+            if (this.videoEl === vid) vid.pause();
+            vid.muted = muted;
+            this._videoProbing = false;
+        }
+        if (this.videoEl !== vid) return null;
+        const fps = RadianceViewer._frameRateFromTimes(times);
+        if (fps) {
+            this._videoContainerFps = fps;
+            this.setPlaybackFps(fps);                 // sets _videoNativeFps too
+        }
+        this._setVideoFrameCount();
+        this.currentFrame = -1;                       // so setFrame(0) is not a no-op
+        this.setFrame(0);
+        return fps;
+    }
+
+    /**
+     * The frame rate that explains a list of frame start times (seconds,
+     * kept to the millisecond by most containers). Each standard rate near
+     * the measured one is tried: the one whose frame grid the times fit best
+     * wins, a whole-number rate when the fit cannot tell them apart.
+     */
+    static _frameRateFromTimes(times) {
+        const gaps = [];
+        for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] > 1e-4) gaps.push(times[i] - times[i - 1]);
+        if (gaps.length < 2) return null;
+        // One-frame gaps only: a skipped frame makes a gap of two.
+        const shortest = Math.min(...gaps);
+        const single = gaps.filter((g) => g < 1.5 * shortest);
+        const raw = single.length / single.reduce((a, b) => a + b, 0);
+        const misfit = (rate) => {
+            let worst = 0;
+            for (const t of times) {
+                const d = (t - times[0]) * rate;
+                worst = Math.max(worst, Math.abs(d - Math.round(d)) / rate);
+            }
+            return worst;
+        };
+        const standard = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 119.88, 120]
+            .filter((r) => Math.abs(r - raw) / r < 0.015);
+        if (!standard.length) return Math.round(raw * 1000) / 1000;
+        standard.sort((a, b) => misfit(a) - misfit(b)
+            || (Number.isInteger(b) ? 1 : 0) - (Number.isInteger(a) ? 1 : 0));
+        const best = standard[0];
+        const whole = standard.find((r) => Number.isInteger(r));
+        return whole && misfit(whole) <= misfit(best) + 0.0006 ? whole : best;
+    }
+
+    /** The video element reported an error: say what, over the picture. */
+    _onVideoError(vid, url) {
+        if (this.videoEl !== vid) return;
+        const why = {
+            1: 'loading it was aborted',
+            2: 'a network error interrupted it',
+            3: 'it could not be decoded',
+            4: 'the file is missing, or this browser cannot play its format or codec',
+        }[vid.error?.code] || 'it could not be loaded';
+        this._showViewerMessage('video', `This video cannot be played: ${why}.`);
+        this._termLog?.('error', `[Video] Cannot be played: ${why}${vid.error?.message ? ` (${vid.error.message})` : ''}.`);
+        // A media error does not say "not found"; the server does.
+        if (typeof url === 'string' && !url.startsWith('blob:')) {
+            fetch(url, { method: 'HEAD' }).then((r) => {
+                if (r.status === 404 && this.videoEl === vid) {
+                    this._showViewerMessage('video',
+                        'This video is no longer on the server. ComfyUI was restarted, or the file was removed. Load it again.');
+                }
+            }).catch(() => {});
+        }
     }
 
     _updateScrubberRange() {
@@ -10702,7 +10984,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!Number.isFinite(v) || v <= 0) return;
         this.playbackFps = v;
         this.frameRate = v;
-        if (this.videoEl) this._videoNativeFps = v;
+        if (this.videoEl) { this._videoNativeFps = v; this._setVideoFrameCount(); }
         if (this._fpsSelect) {
             const key = String(v);
             if (![...this._fpsSelect.options].some((o) => o.value === key)) {
@@ -10755,6 +11037,14 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (idx === this.currentFrame) return;
         this.currentFrame = idx;
         this._syncSequenceAudio();
+
+        // A video loaded straight into the viewer: the frame is a time in it.
+        // The picture arrives with 'seeked', the counter follows the video.
+        if (this.videoMode && this.videoEl) {
+            this._seekVideoToFrame(idx);
+            this.updateFrameDisplay();
+            return;
+        }
 
         // Move the paging window with the playhead. The viewer no longer holds
         // the whole sequence, so a scrub outside the window has to page the
@@ -10884,7 +11174,12 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateFrameDisplay() {
         this._syncSimpleTransport?.();
         this._syncCompareUI?.();
-        if (this.videoMode) return; // video mode manages its own timeline
+        if (this.videoMode) {
+            // The video drives its own timeline (_syncFrameFromVideo); the dock
+            // still shows where it is.
+            this._refreshSequenceDock?.();
+            return;
+        }
 
         // Update frame counter text
         if (this.frameCounter && this.frameCounter.tagName !== 'INPUT') {

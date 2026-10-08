@@ -334,3 +334,58 @@ test('a frame with true black still reports its EV range', { skip }, async () =>
     assert.ok(out.ev > 11 && out.ev < 12.5, `EV range ${out.ev}`);
     assert.match(out.badge, new RegExp(`${out.ev.toFixed(1)} EV`));
 });
+
+// ── C6: a video loaded into the viewer steps, scrubs and plays by frame ────
+
+test('stepping, scrubbing and the arrow keys move a video picture frame by frame', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('simple'); const v = n.radianceViewer;
+        await v.loadVideo('/view?filename=clip24.webm&type=temp');
+        await __until(() => v._videoContainerFps && !v._videoProbing, 25000);
+        const vid = v.videoEl;
+        const settle = () => __until(() => !vid.seeking, 3000).then(() => __sleep(80));
+        // The fixture's frame n is grey at 8 n (js/tests/fixtures/clip24.webm).
+        const shown = () => {
+            const c = v._videoCanvas.getContext('2d').getImageData(v._videoCanvas.width >> 1, v._videoCanvas.height >> 1, 1, 1).data;
+            return Math.round(c[0] / 8);
+        };
+        const at = () => ({ frame: v.currentFrame, picture: shown(), time: +vid.currentTime.toFixed(4),
+            scrub: +v._sbScrub.value, dock: +v.sequenceRange.value, label: v._sbFrame.textContent });
+        await settle();
+        const r = { fps: v._videoContainerFps, total: v.totalFrames, start: at() };
+        v._sbNext.click(); await settle(); v._sbNext.click(); await settle();
+        r.afterNext = at();
+        v._sbScrub.value = '20'; v._sbScrub.dispatchEvent(new Event('input')); await settle();
+        r.afterScrub = at();
+        v.container.dispatchEvent(new PointerEvent('pointerenter'));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }));
+        await settle();
+        r.afterArrow = at();
+        v.sequenceRange.value = '7'; v.sequenceRange.dispatchEvent(new Event('input')); await settle();
+        r.afterDock = at();
+        v.togglePlayback(); await __sleep(400); v.togglePlayback();
+        await __sleep(150); await settle();
+        r.afterPlay = at();
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.fps, 24, 'the container frame rate was not read');
+    assert.equal(out.total, 30);
+    const check = (s, frame, what) => {
+        assert.equal(s.frame, frame, `${what}: frame ${s.frame}`);
+        assert.equal(s.picture, frame, `${what}: the picture shows frame ${s.picture}, the counter says ${frame}`);
+        assert.ok(Math.abs(s.time - (frame + 0.5) / 24) < 1e-3, `${what}: video time ${s.time}`);
+        assert.equal(s.scrub, frame, `${what}: simple-bar scrubber at ${s.scrub}`);
+        assert.equal(s.dock, frame, `${what}: dock range at ${s.dock}`);
+        assert.equal(s.label, `${frame + 1} / 30`);
+    };
+    check(out.start, 0, 'loaded');
+    check(out.afterNext, 2, 'two clicks on the next button');
+    check(out.afterScrub, 20, 'scrubbing');
+    check(out.afterArrow, 19, 'the left arrow');
+    check(out.afterDock, 7, 'the dock scrubber');
+    assert.ok(out.afterPlay.frame > 7, `playback did not move the counter (${out.afterPlay.frame})`);
+    assert.equal(out.afterPlay.scrub, out.afterPlay.frame, 'the scrubber did not follow playback');
+    assert.equal(out.afterPlay.picture, out.afterPlay.frame, 'after playback the counter and the picture disagree');
+});
