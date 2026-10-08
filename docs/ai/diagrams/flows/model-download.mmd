@@ -8,7 +8,9 @@ flowchart TD
     mech -->|"Loader, built-in upscale tiers"| f0["core/model_fetch.fetch"]
     f0 --> f1{"sha256 pinned?"}
     f1 -.->|"no"| frefuse["refuse"]
-    f1 -->|"yes"| f2{"consent: downloads_allowed, default true"}
+    f1 -->|"yes"| fe{"dest exists, and its size matches or no size is given?"}
+    fe -->|"yes"| fret["return the file: no consent check, works offline"]
+    fe -.->|"no"| f2{"consent: downloads_allowed, default true"}
     f2 -.->|"off"| frefuse2["ModelFetchError / refusal"]
     f2 -->|"on"| f3[["HTTP Range download to .part"]]
     f3 --> f4{"sha256 matches?"}

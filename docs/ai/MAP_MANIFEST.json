@@ -468,7 +468,7 @@
     },
     {
       "path": "core/rhdr.py",
-      "sha256": "31fb3c98855b58ee89bb089ba395e0bdbc1d2ec75d0eb360f11247be0503dba7"
+      "sha256": "4994c8fd21a3a86e80d9b977bf670247060e884d9a504f1302a72d3ef81b6821"
     },
     {
       "path": "js/radiance_graph_format.js",
