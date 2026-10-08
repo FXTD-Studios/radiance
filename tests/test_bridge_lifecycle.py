@@ -134,7 +134,10 @@ def test_a_request_line_that_never_ends_is_cut_off(monkeypatch):
         s = _connect(port)
         try:
             t0 = time.monotonic()
+            import select
             for ch in b'{"cmd": "pi':
+                if select.select([s], [], [], 0)[0]:
+                    break                # the bridge has answered: stop sending
                 try:
                     s.sendall(bytes([ch]))
                 except OSError:

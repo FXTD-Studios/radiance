@@ -436,7 +436,7 @@
     },
     {
       "path": "nodes/pipeline/dcc.py",
-      "sha256": "566dc8137a357de5aa4cf94a79caaa6b48bf0e8ff9577c8561a80bce43979ae3"
+      "sha256": "788b24d8503fd9445864f8d9171ad66ae48bd198004dd3f9d73c89bab4f2c79e"
     },
     {
       "path": "nodes/pipeline/studio_integrations.py",

@@ -102,6 +102,25 @@ def _queue_signed_ok(msg) -> bool:
     return True
 
 
+def _refuse_and_close(conn, error: str) -> None:
+    """Send a JSON error and end the connection without losing the reply.
+
+    Closing with unread TCP data can reset the connection and discard the
+    error reply on Windows. Finish sending first, then drain briefly without
+    letting an endless sender stall us.
+    """
+    conn.sendall((json.dumps({"ok": False, "error": error}) + "\n").encode())
+    conn.shutdown(socket.SHUT_WR)
+    deadline = time.monotonic() + 0.25
+    while time.monotonic() < deadline:
+        conn.settimeout(max(0.001, deadline - time.monotonic()))
+        try:
+            if not conn.recv(65536):
+                break
+        except socket.timeout:
+            break
+
+
 def _handle(conn, addr=None):
     try:
         conn.settimeout(15.0)
@@ -114,22 +133,10 @@ def _handle(conn, addr=None):
             if line_started is None:
                 line_started = time.monotonic()
             elif time.monotonic() - line_started > _LINE_DEADLINE_S:
-                conn.sendall((json.dumps({
-                    "ok": False,
-                    "error": f"request too slow: no newline within {_LINE_DEADLINE_S:g} s",
-                }) + "\n").encode())
+                _refuse_and_close(conn, f"request too slow: no newline within {_LINE_DEADLINE_S:g} s")
                 return
             if len(buf) > _MAX_LINE:
-                conn.sendall((json.dumps({"ok": False, "error": "request too large"}) + "\n").encode())
-                # Closing with unread TCP data can reset the connection and
-                # discard the error reply on Windows. Finish sending first,
-                # then drain briefly without letting an endless sender stall us.
-                conn.shutdown(socket.SHUT_WR)
-                deadline = time.monotonic() + 0.25
-                while time.monotonic() < deadline:
-                    conn.settimeout(max(0.001, deadline - time.monotonic()))
-                    if not conn.recv(65536):
-                        break
+                _refuse_and_close(conn, "request too large")
                 return
             if c == b"\n":
                 line = buf.decode("utf-8", errors="replace").strip()

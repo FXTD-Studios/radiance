@@ -121,6 +121,6 @@ def test_a_busy_nuke_is_unconfirmed_not_failed(reply):
 
 def test_the_listener_says_pending_not_error_when_nuke_is_busy():
     import pathlib
-    src = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "start_nuke_server.py").read_text()
+    src = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "start_nuke_server.py").read_text(encoding="utf-8")
     assert '"ERROR: Timeout"' not in src
     assert "PENDING:" in src
