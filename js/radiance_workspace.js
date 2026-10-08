@@ -15,7 +15,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 
 // Listen for postMessage updates from Studio Dashboard
-window.addEventListener("message", (event) => {
+window.addEventListener("message", async (event) => {
     // Reject cross-origin senders. Without this, any page that can get a handle
     // to this window could load an arbitrary graph, or ask for the user's graph
     // back via the radiance_save_project_version reply below. The sibling
@@ -24,7 +24,7 @@ window.addEventListener("message", (event) => {
     if (event.data && event.data.type === "radiance_load_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            openSavedGraph(app, graphData, false, event.data.name || "workflow");
+            await openSavedGraph(app, graphData, false, event.data.name || "workflow");
             showToast("Workflow loaded from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse loaded graph", "error");
@@ -32,7 +32,7 @@ window.addEventListener("message", (event) => {
     } else if (event.data && event.data.type === "radiance_append_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            openSavedGraph(app, graphData, true, event.data.name || "workflow");
+            await openSavedGraph(app, graphData, true, event.data.name || "workflow");
             showToast("Workflow merged from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse merged graph", "error");
@@ -612,7 +612,7 @@ app.registerExtension({
                 if (!data.success) throw new Error(data.error);
 
                 const graphData = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-                openSavedGraph(app, graphData, append, "workflow");
+                await openSavedGraph(app, graphData, append, "workflow");
 
                 if (data.secure) {
                     console.log("[Radiance] Verified secure binary .rad workspace.");
@@ -854,7 +854,7 @@ app.registerExtension({
                 content = data.content;
                 metadata = data.metadata;
 
-                openSavedGraph(app, typeof content === 'string' ? JSON.parse(content) : content, append, wf.filename);
+                await openSavedGraph(app, typeof content === 'string' ? JSON.parse(content) : content, append, wf.filename);
                 const success = true;
                 if (success) {
                     const action = append ? "Appended" : "Loaded";
