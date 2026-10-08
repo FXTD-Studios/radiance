@@ -2911,10 +2911,12 @@ const float GOLDEN_ANGLE = 2.39996323;
                 }
 
                 case 30: { // IDT V-Log → Linear
+                    // Panasonic V-Log: linear segment 5.6 * x + 0.125 below
+                    // x = 0.01, so code 0.181 is the cut (the spec's cut2).
                     const float vl_b=0.00873, vl_c=0.241514, vl_d=0.598206;
-                    float vl_cut_cv = 5.625 * 0.01 + 0.125; // 0.18125
+                    float vl_cut_cv = 0.181;
                     vec3 logBranch = pow(vec3(10.0), (c - vl_d) / vl_c) - vl_b;
-                    vec3 linBranch = (c - 0.125) / 5.625;
+                    vec3 linBranch = (c - 0.125) / 5.6;
                     return mix(linBranch, logBranch, vec3(greaterThanEqual(c, vec3(vl_cut_cv))));
                 }
 
@@ -3157,13 +3159,14 @@ ${GRADE_GLSL}
             }
 
             // ── v3.4: Printer Lights ─────────────────────────────────────────
-            // Each channel is multiplied by 2^(offset/50), mirroring how a
-            // film printer light step modulates per-channel density.
+            // Printer points: one point is 0.025 log exposure, so 12 points
+            // make a stop (0.30 log E) and each channel is multiplied by
+            // 2^(points/12). It was 50 points per stop.
             vec3 applyPrinterLights(vec3 color, float r, float g, float b) {
                 if (r == 0.0 && g == 0.0 && b == 0.0) return color;
-                color.r *= pow(2.0, r / 50.0);
-                color.g *= pow(2.0, g / 50.0);
-                color.b *= pow(2.0, b / 50.0);
+                color.r *= pow(2.0, r / 12.0);
+                color.g *= pow(2.0, g / 12.0);
+                color.b *= pow(2.0, b / 12.0);
                 return color;
             }
 
@@ -4270,7 +4273,10 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // CONDITIONAL FILTERING: Linear only if extension supported
         // Prefer HalfFloatLinear for half-float textures, fallback to FloatLinear or NEAREST
-        const canFilter = this.extColorHalfFloatLinear || this.extColorFloatLinear;
+        // RGBA16F filters linearly in core WebGL2; OES_texture_half_float_linear
+        // is a WebGL1 extension and is never present there, so asking for it
+        // alone forced NEAREST on GPUs without the float32 extension.
+        const canFilter = this.isWebGL2 || this.extColorHalfFloatLinear || this.extColorFloatLinear;
         const filter = canFilter ? gl.LINEAR : gl.NEAREST;
 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
