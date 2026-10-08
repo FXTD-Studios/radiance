@@ -815,9 +815,14 @@ def _shot_status_path(project: dict) -> Path:
     included, so "../../x" would have put the file outside it. Raises
     ValueError for a name that does not stay inside the library.
     """
-    path = _resolve_safe_path(f"{project['name']}/.shot_status.json")
-    if path is None:
-        raise ValueError(f"project name {project['name']!r} leaves the workflow library")
+    root = _WORKFLOW_DIR_RESOLVED
+    # Lexical, so only leaving the library is refused; a name that stays
+    # inside keeps the location it always had.
+    path = Path(os.path.normpath(root / str(project["name"]) / ".shot_status.json"))
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise ValueError(f"project name {project['name']!r} leaves the workflow library") from None
     return path
 
 
