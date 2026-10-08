@@ -1733,6 +1733,45 @@ def test_upload_saves_allowed_files_and_skips_the_rest(ws):
     assert not (ws.inp.parent.parent / "escape.png").exists()
 
 
+# A second upload with a taken name used to open the existing file with "wb":
+# the first plate was destroyed, and every workflow that referenced it read the
+# new one. An aborted upload left a truncated file under the real name (code
+# review P2-5).
+
+def test_uploading_a_taken_name_keeps_both_files(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"SECOND")])))
+
+    assert resp.status == 200
+    assert body(resp) == {"success": True, "saved": ["plate_1.exr"],
+                          "renamed": {"plate.exr": "plate_1.exr"}}
+    dest = ws.inp / "radiance_assets"
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+    assert (dest / "plate_1.exr").read_bytes() == b"SECOND"
+
+
+def test_the_same_name_twice_in_one_upload_keeps_both(ws):
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("a.png", b"1"), _Part("a.png", b"2")])))
+    assert body(resp)["saved"] == ["a.png", "a_1.png"]
+
+
+class _BrokenPart(_Part):
+    async def read_chunk(self, size: int = 0) -> bytes:
+        if self._pos:
+            raise ConnectionResetError("client went away")
+        return await super().read_chunk(size)
+
+
+def test_an_aborted_upload_leaves_no_partial_file(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_BrokenPart("plate.exr", b"0123456789ABCDEF")])))
+
+    assert resp.status == 500
+    dest = ws.inp / "radiance_assets"
+    assert sorted(p.name for p in dest.iterdir()) == ["plate.exr"]
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+
+
 def test_upload_500_without_an_input_directory(ws, monkeypatch):
     monkeypatch.delattr(ws.m.folder_paths, "get_input_directory")
     resp = run(ws.m.upload_asset(Req(parts=[])))
