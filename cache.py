@@ -39,13 +39,20 @@ def _viewer_cache_set(key: str, value: torch.Tensor) -> None:
     Stores a detached CPU copy and evicts on a byte budget as well as an entry
     count, so the cache can neither pin VRAM nor grow without bound.
     """
+    nbytes = _tensor_nbytes(value)
+    oversize = nbytes > _VIEWER_CACHE_MAX_BYTES
     try:
         if isinstance(value, torch.Tensor):
-            value = value.detach().to("cpu", copy=True)
+            if oversize and value.device.type == "cpu":
+                # A plate over the whole budget is kept as it is, not copied:
+                # the copy doubled the memory of a long 4K shot at exactly the
+                # moment it was largest. Only an in-place change downstream can
+                # now reach it before delivery, which beats running out of RAM.
+                value = value.detach()
+            else:
+                value = value.detach().to("cpu", copy=True)
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("[Radiance] Could not copy viewer frame to CPU: %s", exc)
-
-    nbytes = _tensor_nbytes(value)
     with _VIEWER_CACHE_LOCK:
         if key in _VIEWER_CACHE:
             _VIEWER_CACHE.move_to_end(key)
@@ -64,11 +71,11 @@ def _viewer_cache_set(key: str, value: torch.Tensor) -> None:
             )
             del evicted_val
 
-        if nbytes > _VIEWER_CACHE_MAX_BYTES:
+        if oversize:
             logger.warning(
                 "[Radiance] A single viewer frame set is %.1f MB, larger than the "
-                "whole %.1f MB cache budget. Raise RADIANCE_VIEWER_CACHE_BYTES if "
-                "delivery of this shot needs the cache.",
+                "whole %.1f MB cache budget, so it is cached without a copy. Raise "
+                "RADIANCE_VIEWER_CACHE_BYTES if delivery of this shot needs a private copy.",
                 nbytes / 1e6, _VIEWER_CACHE_MAX_BYTES / 1e6,
             )
 
