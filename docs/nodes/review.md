@@ -101,7 +101,7 @@ Export a sequence as an animated GIF flipbook for quick review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] and quantised to a 256-colour palette, so display-encoded input is expected. |
+| `images` | IMAGE |  |  | Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] and quantised to a 256-colour palette, so display-encoded input is expected. Alpha is not shown (the passthrough keeps it). |
 | `save_path` | string | `preview/flipbook.gif` |  | Output .gif path. A relative path is written under ComfyUI's output/ folder; absolute paths are used as given. The directory is created automatically. |
 | `fps` | float | 12 | 1 to 60, step 0.5 | Playback speed. GIF frame delay = 1000/fps ms. |
 | `max_width` | int | 480 | 64 to 1920, step 8 | Resize frames to this width (preserves aspect ratio). Smaller = smaller file. |
@@ -210,7 +210,7 @@ Run a local HTTP preview server for browser-based image review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to publish, returned unchanged on passthrough. Only the last frame is served, clamped to [0, 1] as an 8-bit JPEG. |
+| `images` | IMAGE |  |  | Frames to publish, returned unchanged on passthrough. Only the last frame is served, clamped to [0, 1] as an 8-bit JPEG. Alpha is not shown (the passthrough keeps it). |
 | `port` | int | 8765 | 1024 to 65535 | TCP port for the preview HTTP server. |
 | `stream_name` | string | `radiance` |  | Stream identifier. Access at /frame/<stream_name>. |
 | `jpeg_quality` (optional) | int | 85 | 20 to 99 | JPEG compression quality (20=small, 99=lossless-ish). |
