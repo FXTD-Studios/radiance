@@ -493,3 +493,123 @@ test('Effects toggles are named buttons with aria-pressed, and their pills follo
     assert.deepEqual(out.before, { pressed: 'false', pill: 'STATIC' });
     assert.deepEqual(out.after, { pressed: 'true', pill: 'LIVE' });
 });
+
+test('slider labels are linked to their sliders, in Grade and Effects', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        const res = {};
+        for (const tab of ['grade', 'effects']) {
+            v._setReferenceTab(tab);
+            await __sleep(100);
+            res[tab] = [...v.controlsPanel.querySelectorAll('.radiance-ref-slider')].map((row) => {
+                const l = row.querySelector('label'), i = row.querySelector('input[type="range"]');
+                return { label: l?.textContent.trim(), linked: !!l && l.control === i };
+            });
+        }
+        return res;
+    });
+    assert.deepEqual(errors, []);
+    for (const [tab, rows] of Object.entries(out)) {
+        assert.ok(rows.length > 5, `${tab}: ${rows.length} sliders`);
+        assert.deepEqual(rows.filter((r) => !r.linked).map((r) => r.label), [], `${tab}: labels not linked`);
+    }
+});
+
+test('keyboard focus is visible, in the accent colour', { skip }, async () => {
+    const page = await session.open();
+    try {
+        await page.evaluate(installHelpers);
+        await page.evaluate(async () => {
+            const { v } = await __advanced();
+            window.__v = v;
+            v._setReferenceTab('grade');
+            await __sleep(100);
+        });
+        const targets = {
+            rail: '.radiance-pro-sidebar button',
+            slider: '.radiance-ref-slider input[type="range"]',
+            tab: '.radiance-ref-tab',
+            transport: '.radiance-pro-sequence-controls button',
+            action: '.radiance-pro-actions button',
+            viewerBar: '.radiance-pro-viewer-bar button',
+        };
+        const res = {};
+        for (const [k, sel] of Object.entries(targets)) {
+            // Focus after a key press, as a keyboard user's focus is.
+            await page.keyboard.press('Shift');
+            res[k] = await page.evaluate((s) => {
+                const el = document.querySelector(s);
+                el.focus();
+                const cs = getComputedStyle(el);
+                return { visible: el.matches(':focus-visible'), style: cs.outlineStyle, width: parseFloat(cs.outlineWidth), color: cs.outlineColor,
+                    accent: getComputedStyle(window.__v.container).getPropertyValue('--radiance-accent').trim() };
+            }, sel);
+        }
+        assert.deepEqual(page.errors, []);
+        const hex = (rgb) => '#' + (/\d+,\s*\d+,\s*\d+/.exec(rgb)?.[0] || '').split(/,\s*/).map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+        for (const [k, r] of Object.entries(res)) {
+            assert.ok(r.visible, `${k}: focus is not focus-visible`);
+            assert.notEqual(r.style, 'none', `${k}: no outline on keyboard focus`);
+            assert.ok(r.width >= 2, `${k}: outline ${r.width}px`);
+            assert.equal(hex(r.color), r.accent.toLowerCase(), `${k}: focus outline is not the accent`);
+        }
+    } finally {
+        await page.close();
+    }
+});
+
+test('transport, track and wheel controls and the dock scrubber are at least 28 x 28 px', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        v._setReferenceTab('grade');
+        await __sleep(100);
+        const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+        const all = (sel, root = document) => [...root.querySelectorAll(sel)].filter((e) => e.offsetParent).map((e) => [sel, e.textContent.trim() || e.getAttribute('aria-label') || e.type, ...box(e)]);
+        return [
+            ...all('.radiance-pro-sequence-controls button', v.sequenceDock),
+            ...all('.radiance-pro-track-btn', v.sequenceDock),
+            ...all('.radiance-pro-tool-btn', v.sequenceDock),
+            ...all('.radiance-pro-sequence-range', v.sequenceDock),
+            ...all('.radiance-ref-wheel-channel input[type="range"]', v.controlsPanel),
+        ];
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.length >= 10, `only ${out.length} controls found`);
+    const small = out.filter(([sel, , w, h]) => h < 28 || (w < 28 && !/range/.test(sel)));
+    assert.deepEqual(small, [], 'controls under 28 px');
+});
+
+test('Inspector channel rows can be reached and chosen by keyboard', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        v._setReferenceTab('inspector');
+        await __sleep(100);
+        const rows = [...v.controlsPanel.querySelectorAll('.radiance-ref-channel')];
+        const red = rows.find((r) => /^Red/.test(r.textContent.trim()));
+        const r = { n: rows.length, role: red?.getAttribute('role'), tabindex: red?.getAttribute('tabindex'),
+            pressed: red?.getAttribute('aria-pressed') ?? red?.getAttribute('aria-selected') };
+        red.focus();
+        r.focused = document.activeElement === red;
+        const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        red.dispatchEvent(ev);
+        await __sleep(50);
+        r.channelAfterEnter = v.channel;
+        r.prevented = ev.defaultPrevented;
+        const green = [...v.controlsPanel.querySelectorAll('.radiance-ref-channel')].find((x) => /^Green/.test(x.textContent.trim()));
+        green.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+        await __sleep(50);
+        r.channelAfterSpace = v.channel;
+        r.playing = !!v.isPlaying;
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.n >= 4);
+    assert.equal(out.role, 'button');
+    assert.equal(out.tabindex, '0');
+    assert.ok(['true', 'false'].includes(out.pressed));
+    assert.ok(out.focused);
+    assert.equal(out.channelAfterEnter, 'r');
+    assert.ok(out.prevented, 'Enter on a row also reaches the viewer shortcuts');
+    assert.equal(out.channelAfterSpace, 'g');
+    assert.equal(out.playing, false, 'Space on a channel row started playback');
+});
