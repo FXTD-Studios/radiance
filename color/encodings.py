@@ -300,24 +300,33 @@ def resolve(name: str) -> Encoding:
 
 # ── OCIO ────────────────────────────────────────────────────────────────────
 
-@lru_cache(maxsize=8)
-def ocio_config(path: str = ""):
-    """The config to use: explicit path, else $OCIO, else OCIO's built-in
-    ACES studio config. None when OpenColorIO is not installed."""
-    if not HAS_OCIO:
-        return None
-    import os
+def _resolve_ocio_path(path: str = "") -> str:
+    """An explicit path or URI as given, else the session's active config
+    (color/ocio_setup.active_config_path)."""
     p = (path or "").strip().strip('"').strip("'")
     if p:
-        if p.startswith("ocio://"):
-            return _OCIO.Config.CreateFromFile(p)
-        if not os.path.isfile(p):
-            raise FileNotFoundError(f"OCIO config not found: {p}")
-        return _OCIO.Config.CreateFromFile(p)
-    env = os.environ.get("OCIO", "").strip()
-    if env and (env.startswith("ocio://") or os.path.isfile(env)):
-        return _OCIO.Config.CreateFromFile(env)
-    return _OCIO.Config.CreateFromBuiltinConfig("studio-config-latest")
+        return p
+    from radiance.color.ocio_setup import active_config_path
+    return active_config_path() or "ocio://studio-config-latest"
+
+
+@lru_cache(maxsize=8)
+def _ocio_config_at(p: str):
+    import os
+    if not p.startswith("ocio://") and not os.path.isfile(p):
+        raise FileNotFoundError(f"OCIO config not found: {p}")
+    return _OCIO.Config.CreateFromFile(p)
+
+
+def ocio_config(path: str = ""):
+    """The config to use: an explicit path, else the session's active config
+    (color/ocio_setup). None when OpenColorIO is not installed.
+
+    The default is resolved on every call; it used to be cached under the
+    empty path, so a config chosen later never reached the writer."""
+    if not HAS_OCIO:
+        return None
+    return _ocio_config_at(_resolve_ocio_path(path))
 
 
 def ocio_config_name(path: str = "") -> str:
@@ -327,7 +336,7 @@ def ocio_config_name(path: str = "") -> str:
 
 @lru_cache(maxsize=128)
 def _ocio_processor(src: str, dst: str, path: str):
-    cfg = ocio_config(path)
+    cfg = _ocio_config_at(path)
     return cfg.getProcessor(src, dst).getDefaultCPUProcessor()
 
 
@@ -335,13 +344,14 @@ def ocio_apply(arr: np.ndarray, src: str, dst: str, config_path: str = "") -> np
     """Convert RGB (…, 3) float32 between two colorspaces of a config."""
     if not HAS_OCIO:
         raise RuntimeError("OpenColorIO is not installed (pip install opencolorio)")
-    cfg = ocio_config(config_path)
+    resolved = _resolve_ocio_path(config_path)
+    cfg = _ocio_config_at(resolved)
     for n in (src, dst):
         if cfg.getColorSpace(n) is None:
             raise ValueError(f"OCIO colorspace {n!r} is not in config {cfg.getName()!r}")
     out = np.ascontiguousarray(arr[..., :3], dtype=np.float32).copy()
     flat = out.reshape(-1, 3)
-    _ocio_processor(src, dst, config_path).applyRGB(flat)
+    _ocio_processor(src, dst, resolved).applyRGB(flat)
     return flat.reshape(out.shape)
 
 

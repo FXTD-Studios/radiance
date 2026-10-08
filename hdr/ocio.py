@@ -104,46 +104,36 @@ def _resolve_colorspace_name(config, name: str) -> "Optional[str]":
 
 def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
     """
-    Resolve an OCIO config from (in priority order):
-      1. Explicit path argument
-      2. OCIO environment variable
-      3. Active process config (OCIO.GetCurrentConfig), when one was actually
-         configured -- see _is_unconfigured_default() for why that qualifier
-         has to be there
-      4. Local Radiance ACES folder  (../ACES/config.ocio relative to this file)
-      5. ComfyUI models/ACES/config.ocio
+    The config for an explicit path, else the session's active config.
+
+      1. Explicit path argument, when it exists
+      2. color/ocio_setup.active_config(): $OCIO when it loads, else the
+         ACES studio config set up at startup (or the bundled CG config on
+         OpenColorIO < 2.2)
+      3. ComfyUI models/ACES/config.ocio, which the Download ACES 2.0 action
+         installs, only when there is no active config at all
 
     Returns an OCIO.Config object, or None if nothing is found.
-    Centralises what was previously copy-pasted across three nodes.
+
+    Until 4.0 this had its own order: $OCIO, then OCIO's process-current
+    config, then the bundled CG config, whose colour space names differ from
+    the studio config every other consumer fell back to.
     """
     if not HAS_OCIO:
         return None
 
-    # 1. Explicit path
     if ocio_config_path and os.path.exists(ocio_config_path):
         return OCIO.Config.CreateFromFile(ocio_config_path)
 
-    # 2. Environment variable
-    env_path = os.environ.get("OCIO", "")
-    if env_path and (os.path.exists(env_path) or env_path.startswith("ocio://")):
-        return OCIO.Config.CreateFromFile(env_path)
-
-    # 3. Active process config, if a host application set one
     try:
-        cfg = OCIO.GetCurrentConfig()
-        if cfg is not None and not _is_unconfigured_default(cfg):
+        from radiance.color.ocio_setup import active_config
+        cfg = active_config()
+        if cfg is not None:
             return cfg
-    except Exception:  # nosec B110
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        logger.debug("[Radiance] _resolve_config(): no active config (%s: %s)",
+                     type(_exc).__name__, _exc)
 
-    # 4. Local ACES folder shipped alongside the Radiance package
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    radiance_dir = os.path.dirname(current_dir)  # hdr/ -> radiance/
-    local_aces = os.path.join(radiance_dir, "ACES", "config.ocio")
-    if os.path.exists(local_aces):
-        return OCIO.Config.CreateFromFile(local_aces)
-
-    # 5. ComfyUI models folder
     try:
         import folder_paths
 

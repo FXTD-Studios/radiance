@@ -100,7 +100,7 @@ These are recommendations only. None of them describes current behaviour, and no
 agreed with the maintainers.
 
 - **P1. One download path.** Done in 4.0 for MoGe, Marigold, ACESConfigManager and whisper (B17, B18). Left: pin the multipass `_MODEL_REGISTRY` hashes.
-- **P2. One OCIO resolver.** Have every consumer ask `color/ocio_setup` for the active config.
+- **P2. One OCIO resolver.** Done in 4.0: `color/ocio_setup.active_config_path()` / `active_config()` answer for `color/encodings.ocio_config` (Write/Read), `hdr/ocio._resolve_config` and `radiance_ocio.discover_ocio_config`. The ACES 2.0 reference renders (`hdr/aces2_ocio`, `color/display_preview`) stay pinned to studio v4.0.0 on purpose; `ACESConfigManager._find_existing_config` is a disk search for its own action, not a default.
 - **P3. Move user data out of the package dir**, for example under ComfyUI's user directory.
 - **P4. Shared convention constants** for depth polarity and motion-vector axis, and convert at `RADIANCE_PASSES` boundaries (addresses B24).
 - **P5. Atomic media writes** (temp file and `os.replace`) for EXR, video, and workspace files (addresses B12 and the workspace concurrency gap).
