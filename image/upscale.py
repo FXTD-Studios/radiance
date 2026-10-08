@@ -1,7 +1,7 @@
 import os
 
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
+# KMP_DUPLICATE_LIB_OK is defaulted once, in config/env.py
+# (configure_runtime_environment), and never overrides a user value.
 
 import torch
 import torch.nn.functional as F
