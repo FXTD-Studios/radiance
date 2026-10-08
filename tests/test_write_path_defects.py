@@ -152,6 +152,67 @@ def test_a_timed_out_encode_removes_the_partial_file(tmp_path, monkeypatch):
     assert "3 frame(s)" in str(exc.value)
 
 
+class _ExitsWithAnError:
+    """A subprocess that may write part of the output, then exits with 1."""
+    writes_output = True
+
+    def __init__(self, cmd, *a, **k):
+        import io
+        self.stdin = io.BytesIO()
+        self.stderr = io.BytesIO(b"Conversion failed!")
+        self.returncode = 1
+        if self.writes_output:
+            Path(cmd[-1]).write_bytes(b"half a movie")
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):  # pragma: no cover - never reached
+        pass
+
+
+class _ExitsBeforeOpeningTheOutput(_ExitsWithAnError):
+    writes_output = False
+
+
+def test_a_failed_encode_removes_the_partial_file(tmp_path, monkeypatch):
+    """The timeout and cancel paths removed the truncated master; a non-zero
+    exit only raised, so the partial file stayed under its final name, looking
+    like a short delivery (OPEN_QUESTIONS B12)."""
+    monkeypatch.setattr(W.subprocess, "Popen", _ExitsWithAnError)
+
+    with pytest.raises(RuntimeError) as exc:
+        W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
+                             "MP4 (H.264)", 24.0, 30, "")
+
+    assert list(tmp_path.iterdir()) == [], "a partial master was left on disk"
+    assert "exit 1" in str(exc.value)
+    assert "partial file was removed" in str(exc.value)
+
+
+def test_a_failure_before_ffmpeg_opens_the_output_keeps_the_existing_file(tmp_path, monkeypatch):
+    """ffmpeg can fail before it opens the output (a bad option, a missing
+    encoder). The file already at that path is then untouched, and deleting it
+    would destroy a good master."""
+    target = tmp_path / "shot.mp4"
+    target.write_bytes(b"the approved master")
+    monkeypatch.setattr(W.subprocess, "Popen", _ExitsBeforeOpeningTheOutput)
+
+    with pytest.raises(RuntimeError):
+        W._save_video_ffmpeg(iter(frames(3)), str(tmp_path / "shot"),
+                             "MP4 (H.264)", 24.0, 30, "", overwrite=True)
+
+    assert target.read_bytes() == b"the approved master"
+
+
+@needs_ffmpeg
+def test_a_real_failed_encode_leaves_nothing_behind(tmp_path):
+    with pytest.raises(RuntimeError):
+        W._save_video_ffmpeg(iter(frames(4, h=32, w=32)), str(tmp_path / "m"),
+                             "MOV (DNxHR HQ)", 24.0, 18, "")
+    assert list(tmp_path.iterdir()) == []
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  § 4  exr_compression was threaded through four layers and never used
 # ═══════════════════════════════════════════════════════════════════════════
