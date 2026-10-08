@@ -114,3 +114,45 @@ test('the GPU frame cache budget is shared by the viewers on the page', { skip }
         'each viewer kept the whole budget');
     assert.equal(out.back, out.one, 'a deleted viewer kept its share');
 });
+
+// ── H12: a deleted viewer is freed ──────────────────────────────────────────
+
+test('a deleted viewer removes every page listener and can be collected', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const before = await page.evaluate(() => __listenerCount());
+        // Defined in a scope of its own: a closure made next to 'v' would
+        // share its context and keep the viewer alive itself.
+        await page.evaluate(() => {
+            window.__fields = () => {
+                const x = window.__ref.deref();
+                return x && { hdrData: !!x.hdrData, image: !!x.image, compareImage: !!x.compareImage,
+                    zdepthImage: !!x.zdepthImage, frames: (x.frameHDRData || []).filter(Boolean).length };
+            };
+        });
+        await page.evaluate(async () => {
+            const n = __make(); const v = n.radianceViewer;
+            n.onExecuted(__frames(3, 320, 180));
+            await __until(() => v.hdrData);
+            await __sleep(300);
+            window.__ref = new WeakRef(v);
+            __remove(n);
+        });
+        const fields = await page.evaluate(() => window.__fields());
+        const left = await page.evaluate(() => __listenerCount());
+        const cdp = await page.context().newCDPSession(page);
+        let collected = false;
+        for (let i = 0; i < 40 && !collected; i++) {
+            await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+            await cdp.send('HeapProfiler.collectGarbage');
+            collected = await page.evaluate(() => window.__ref.deref() === undefined);
+        }
+        assert.deepEqual(page.errors, []);
+        assert.equal(left, before, `a deleted viewer left ${left - before} window/document listeners`);
+        assert.deepEqual(fields, { hdrData: false, image: false, compareImage: false, zdepthImage: false, frames: 0 },
+            'destroy() left frame data on the instance');
+        assert.ok(collected, 'the deleted viewer is still reachable after garbage collection');
+    } finally {
+        await page.close();
+    }
+});
