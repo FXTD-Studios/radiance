@@ -99,3 +99,53 @@ def test_start_server_registers_an_exit_hook(monkeypatch):
         assert registered == [dcc.stop_server]
     finally:
         dcc.stop_server()
+
+
+# ── review: one peer cannot hold every slot ─────────────────────────────────
+# The read timeout is per byte, so 16 connections that each trickle a byte
+# every few seconds held every slot for as long as they liked.
+
+def test_one_address_cannot_take_every_slot(monkeypatch):
+    monkeypatch.setattr(dcc, "_MAX_CONNECTIONS", 4)
+    monkeypatch.setattr(dcc, "_MAX_PER_ADDRESS", 1)
+    port = _free_port()
+    dcc.start_server(port, "127.0.0.1")
+    try:
+        a = _connect(port)
+        try:
+            assert _ask(a)["result"] == "pong"
+            b = _connect(port)
+            try:
+                reply = json.loads(b.makefile("r").readline())
+                assert reply["ok"] is False and "this address" in reply["error"]
+            finally:
+                b.close()
+        finally:
+            a.close()
+    finally:
+        dcc.stop_server()
+
+
+def test_a_request_line_that_never_ends_is_cut_off(monkeypatch):
+    monkeypatch.setattr(dcc, "_LINE_DEADLINE_S", 0.4)
+    port = _free_port()
+    dcc.start_server(port, "127.0.0.1")
+    try:
+        s = _connect(port)
+        try:
+            t0 = time.monotonic()
+            for ch in b'{"cmd": "pi':
+                try:
+                    s.sendall(bytes([ch]))
+                except OSError:
+                    break                # cut off mid-line, as intended
+                time.sleep(0.06)
+                if time.monotonic() - t0 > 2:
+                    break
+            s.settimeout(3)
+            reply = json.loads(s.makefile("r").readline())
+            assert reply["ok"] is False and "too slow" in reply["error"]
+        finally:
+            s.close()
+    finally:
+        dcc.stop_server()
