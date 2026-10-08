@@ -411,3 +411,85 @@ test('the gear opens real settings; hiding the panel is its own labelled button'
     assert.deepEqual(out.afterHide, { shown: false, text: 'Show Panel', expanded: 'false' });
     assert.equal(out.afterShow, true);
 });
+
+test('Effects without a depth map: one line, and the depth controls disabled with the reason', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        v._setReferenceTab('effects');
+        await __sleep(100);
+        const col = v.controlsPanel.querySelector('.radiance-ref-col');
+        const preview = col.querySelector('.radiance-ref-depth-preview');
+        const row = (label) => [...col.querySelectorAll('.radiance-ref-slider')]
+            .find((el) => el.querySelector('label')?.textContent.trim() === label);
+        const dofToggle = col.querySelector('[data-radiance-toggle="dof"]');
+        return {
+            previewHeight: preview ? preview.getBoundingClientRect().height : 0,
+            previewText: preview?.textContent.trim() || '',
+            sliders: ['Focus', 'Aperture', 'Blades', 'Angle', 'Anamorphic', 'Highlight', 'Rim', 'Cat Eye']
+                .map((l) => [l, row(l)?.querySelector('input[type="range"]')?.disabled]),
+            dof: dofToggle && { disabled: dofToggle.disabled, title: dofToggle.title || dofToggle.getAttribute('aria-describedby') },
+            reason: row('Focus')?.title || '',
+        };
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.previewText, 'No depth map: connect zdepth to enable depth of field');
+    assert.ok(out.previewHeight < 40, `the empty depth preview is ${out.previewHeight}px tall`);
+    for (const [l, disabled] of out.sliders) assert.equal(disabled, true, `${l} is live without a depth map`);
+    assert.ok(out.dof?.disabled, 'Depth Of Field can be switched on without a depth map');
+    assert.match(out.dof.title, /depth map/i);
+    assert.match(out.reason, /depth map/i, 'a disabled slider does not say why');
+});
+
+test('Effects with a depth map: the depth controls work, and Blades skips 1 and 2', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        const map = document.createElement('canvas');
+        map.width = 64; map.height = 48;
+        map.getContext('2d').fillRect(0, 0, 32, 48);
+        v.zdepthImage = map;
+        v._setReferenceTab('effects');
+        await __sleep(100);
+        const col = v.controlsPanel.querySelector('.radiance-ref-col');
+        const blades = col.querySelector('input[type="range"][data-radiance-param="blades"]');
+        const set = (n) => { blades.value = String(n); blades.dispatchEvent(new Event('input', { bubbles: true })); return v.apertureBlades; };
+        return {
+            preview: col.querySelector('.radiance-ref-depth-preview')?.classList.contains('is-empty'),
+            disabled: blades.disabled,
+            dof: col.querySelector('[data-radiance-toggle="dof"]').disabled,
+            blades: [set(0), set(1), set(2), set(3), set(7)],
+        };
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.preview, false);
+    assert.equal(out.disabled, false);
+    assert.equal(out.dof, false);
+    assert.deepEqual(out.blades, [0, 0, 3, 3, 7], 'one and two blades draw the round disc');
+});
+
+test('Effects toggles are named buttons with aria-pressed, and their pills follow a click', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced();
+        v._setReferenceTab('effects');
+        await __sleep(100);
+        const col = v.controlsPanel.querySelector('.radiance-ref-col');
+        const name = (b) => b.getAttribute('aria-label')
+            || (b.getAttribute('aria-labelledby') || '').split(/\s+/).map((id) => document.getElementById(id)?.textContent || '').join(' ').trim();
+        const toggles = [...col.querySelectorAll('.radiance-ref-toggle')].map((b) => ({ name: name(b), pressed: b.getAttribute('aria-pressed') }));
+        const grain = col.querySelector('[data-radiance-toggle="grain-animate"]');
+        const pill = () => grain.closest('.radiance-ref-toggle-row').querySelector('.radiance-ref-status-pill')?.textContent;
+        const before = { pressed: grain.getAttribute('aria-pressed'), pill: pill() };
+        grain.click();
+        await __sleep(30);
+        const live = col.querySelector('[data-radiance-toggle="grain-animate"]') || grain;
+        const after = { pressed: live.getAttribute('aria-pressed'), pill: live.closest('.radiance-ref-toggle-row').querySelector('.radiance-ref-status-pill')?.textContent };
+        return { toggles, before, after };
+    });
+    assert.deepEqual(errors, []);
+    assert.ok(out.toggles.length >= 3);
+    for (const t of out.toggles) {
+        assert.ok(t.name, 'a toggle has no accessible name');
+        assert.ok(['true', 'false'].includes(t.pressed), `${t.name} has no aria-pressed`);
+    }
+    assert.deepEqual(out.before, { pressed: 'false', pill: 'STATIC' });
+    assert.deepEqual(out.after, { pressed: 'true', pill: 'LIVE' });
+});
