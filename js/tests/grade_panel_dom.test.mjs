@@ -86,7 +86,7 @@ async function serveRepo() {
 
 const playwright = await loadPlaywright();
 const skip = playwright ? false
-    : 'Playwright is not installed — the panels cannot be driven. Install it, or set RADIANCE_TEST_CHROMIUM.';
+    : 'Playwright is not installed, so the panels cannot be driven. Install it, or set RADIANCE_TEST_CHROMIUM.';
 
 let report = null;
 const pageErrors = [];

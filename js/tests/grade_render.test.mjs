@@ -110,7 +110,7 @@ async function serveRepo() {
 
 const playwright = await loadPlaywright();
 const skip = playwright ? false
-    : 'Playwright is not installed — the viewer cannot be rendered. Install it, or set RADIANCE_TEST_CHROMIUM.';
+    : 'Playwright is not installed, so the viewer cannot be rendered. Install it, or set RADIANCE_TEST_CHROMIUM.';
 
 let report = null;
 let pageErrors = [];
