@@ -361,11 +361,14 @@ class _FakeVAE:
     the way a video VAE encodes a still.
     """
 
-    def __init__(self, out_channels=4, scale_factor=8, wrapped=False, video=False):
+    def __init__(self, out_channels=4, scale_factor=8, wrapped=False, video=False, clip=False):
         self._c = out_channels
         self._sf = scale_factor
         self._wrapped = wrapped
         self._video = video
+        # ``clip``: a temporal video VAE reads the batch as ONE clip and returns
+        # (1, C, T', h, w), the way ComfyUI's Wan/LTXV VAEs do.
+        self._clip = clip
         self.last_input_channels = None
 
     def encode(self, pixels):
@@ -374,7 +377,9 @@ class _FakeVAE:
             import torch as _rt
             B, H, W = pixels.shape[0], pixels.shape[1], pixels.shape[2]
             shape = (B, self._c, 1, max(1, H // self._sf), max(1, W // self._sf))
-            latent = _rt.zeros(*shape) if self._video else _rt.zeros(*shape[:2], *shape[3:])
+            if self._clip:
+                shape = (1, self._c, 1 + (B - 1) // 4, shape[3], shape[4])
+            latent = _rt.zeros(*shape) if (self._video or self._clip) else _rt.zeros(*shape[:2], *shape[3:])
         else:
             d = _data(pixels) if isinstance(pixels, _NpTensor) else np.asarray(pixels)
             B, H, W, C = d.shape
@@ -533,6 +538,18 @@ class TestEncodeSDRReference(unittest.TestCase):
         vae  = _FakeVAE(out_channels=4, scale_factor=8, video=True)
         out  = self._node()._encode_sdr_reference(ref, vae, work)
         self.assertEqual(tuple(out.shape), tuple(work.shape))
+
+    def test_a_clip_encoded_by_a_temporal_vae_keeps_its_first_frame_and_says_so(self):
+        # Several reference images through a temporal VAE come back as one
+        # clip; only its first latent frame conditions the sample.
+        import torch as _rt
+        work = _rt.zeros(1, 4, 16, 24)
+        ref  = _rt.rand(9, 128, 192, 3)
+        vae  = _FakeVAE(out_channels=4, scale_factor=8, clip=True)
+        with self.assertLogs("radiance", level="WARNING") as logs:
+            out = self._node()._encode_sdr_reference(ref, vae, work)
+        self.assertEqual(tuple(out.shape), tuple(work.shape))
+        self.assertTrue(any("first" in m and "3 latent frames" in m for m in logs.output), logs.output)
 
     def test_an_rgba_reference_is_encoded_as_rgb(self):
         # The VAEEncode node passes pixels[..., :3]; a VAE given 4 channels fails.

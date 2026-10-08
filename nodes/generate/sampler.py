@@ -1511,7 +1511,13 @@ class RadianceSamplerPro:
         ref_latent = res["samples"] if isinstance(res, dict) else res
         if ref_latent.ndim == 5:
             # A video VAE encodes the still as a (B, C, T, h, w) clip; its
-            # first latent frame is the image.
+            # first latent frame is the image. A temporal VAE reads a batch of
+            # references as one clip, so the later frames are dropped: say so.
+            if ref_latent.shape[2] > 1:
+                logger.warning(
+                    "[SDR Conditioning] sdr_vae encoded the reference as a clip of %d latent "
+                    "frames; only the first conditions the sample. Pass one image.",
+                    ref_latent.shape[2])
             ref_latent = ref_latent[:, :, 0]
         B = work.shape[0]
         if ref_latent.shape[0] == 1 and B > 1:
