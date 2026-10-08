@@ -384,6 +384,33 @@ if (!skip) {
             });
         });
 
+        // C3: probe and status bar on an sRGB-encoded float 0.5.
+        await guard('c3', async () => {
+            await load(msg(entry('c_0.5_0.5_0.5.rhdr', SRGB)), { view: 'srgb' });
+            return ev(async () => {
+                const v = window.__lastViewer;
+                const host = document.createElement('div');
+                document.body.appendChild(host);
+                v.renderProbeTab(host);
+                const rect = v.canvas.getBoundingClientRect();
+                const cx = v.panX + v.imageWidth * v.zoom * 0.5, cy = v.panY + v.imageHeight * v.zoom * 0.5;
+                v._lastCanvasRect = null;
+                v.updateProbe({ clientX: rect.left + cx / (v._canvasScaleX || 1), clientY: rect.top + cy / (v._canvasScaleY || 1) });
+                v._probeRenderCurrent();
+                const p = v._probeCurrent;
+                const out = {
+                    hdrEncoding: v.hdrData?.sourceEncoding ?? null, hdrIsLinear: v.hdrData?.isLinear,
+                    probe: p ? [p.r, p.g, p.b] : null,
+                    caption: v._probeDescribe().label,
+                    panel: host.textContent.replace(/\s+/g, ' '),
+                    status: v.infoLeft.textContent.replace(/\s+/g, ' ').trim(),
+                    screen: window.__sample(v),
+                };
+                host.remove();
+                return out;
+            });
+        });
+
     } finally {
         await browser.close();
         server.close();
@@ -535,6 +562,27 @@ test('M9: the sidebar vectorscope draws its graticule', { skip: skip || ok(R.m9_
 });
 
 // ── C3 ──────────────────────────────────────────────────────────────────────
+
+test('C3: hdrData carries the node source encoding', { skip: skip || ok(R.c3) }, () => {
+    assert.equal(R.c3.hdrEncoding, 'srgb');
+    assert.equal(R.c3.hdrIsLinear, false);
+});
+
+test('C3: the probe decodes an sRGB-encoded float before measuring light', { skip: skip || ok(R.c3) }, () => {
+    const { probe, caption, panel } = R.c3;
+    for (const c of probe) near(c, 0.214, 0.001, 'probe linear');
+    assert.doesNotMatch(caption, /scene-linear/, `caption: ${caption}`);
+    assert.match(panel, /EV \+0\.2[45]/, `panel EV: ${panel}`);
+    assert.match(panel, /nits 43\.[45]/, `panel nits: ${panel}`);
+});
+
+test('C3: the status bar Disp is the rendered display value', { skip: skip || ok(R.c3) }, () => {
+    const m = /Disp: ([\d.]+) ([\d.]+) ([\d.]+)/.exec(R.c3.status);
+    assert.ok(m, `no Disp in "${R.c3.status}"`);
+    for (const v of m.slice(1)) near(Number(v) * 255, 127.5, 1.5, `Disp (screen ${R.c3.screen})`);
+    assert.doesNotMatch(R.c3.status, /#000000/, R.c3.status);
+    assert.match(R.c3.status, /0\.2140/, `status linear: ${R.c3.status}`);
+});
 
 // ── H9 / H10 ────────────────────────────────────────────────────────────────
 

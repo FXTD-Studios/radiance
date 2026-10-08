@@ -4253,6 +4253,44 @@ vec3 getDenoiseColor(vec2 uv) {
         return { data: out, float: flt, width: w, height: h, texture: tex, isFloat };
     }
 
+    /**
+     * One pixel of the display signal (the scopes' picture: graded, through
+     * the view, no overlays), as 8-bit code values like the screen's.
+     *
+     * Renders the composite into a 1 x 1 target with the viewport offset so
+     * only image pixel (x, y), top-down, is shaded, which is cheap enough for
+     * a pointer readout. The status bar used to read the placeholder canvas
+     * behind a float frame, so it showed #000000 over a grey picture.
+     */
+    readDisplayPixel(x, y, lutStrength = 1.0) {
+        const gl = this.gl;
+        const W = this.imageWidth, H = this.imageHeight;
+        if (!gl || !this.textures.image || !W || !H) return null;
+        if (!this._pixelTex) {
+            this._pixelTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, this._pixelTex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            this.textures.pixelProbe = this._pixelTex;
+            this._pixelFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this._pixelFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._pixelTex, 0);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        this._exportFBO = { fbo: this._pixelFBO, width: 1, height: 1, x, y: H - 1 - y, fullW: W, fullH: H };
+        this.scopeSignal = true;
+        try {
+            this.render(lutStrength);
+        } finally {
+            this.scopeSignal = false;
+            this._exportFBO = null;
+        }
+        const px = new Uint8Array(4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._pixelFBO);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return px;
+    }
+
     // ── v4.0: Read pixels as Float32 for 32-bit EXR export ──────────────────
     // Renders the full composite pipeline at the specified resolution into an
     // offscreen RGBA32F FBO, then reads back the result as Float32Array.
@@ -4519,7 +4557,10 @@ vec3 getDenoiseColor(vec2 uv) {
         const exportTarget = this._exportFBO;
         if (exportTarget) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, exportTarget.fbo);
-            gl.viewport(0, 0, exportTarget.width, exportTarget.height);
+            // A window onto a full-size render (readDisplayPixel): offset so
+            // the target covers just that part of the frame.
+            gl.viewport(-(exportTarget.x || 0), -(exportTarget.y || 0),
+                exportTarget.fullW || exportTarget.width, exportTarget.fullH || exportTarget.height);
         } else {
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.viewport(0, 0, this.canvas.width, this.canvas.height);
