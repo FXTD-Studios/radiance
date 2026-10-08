@@ -413,6 +413,11 @@ def test_project_slug(value, expected):
     ("SH_0420 comp", "SH0420"),
     ("beauty_pass", "GENERAL"),
     ("sh1", "GENERAL"),          # needs at least 2 digits
+    # The Project Manager node's own names join with "_", a word character, so
+    # a \b-anchored pattern never matched them (code review P2-3).
+    ("sh010_v002", "SH010"),
+    ("sh010_ada_v0003.rad", "SH010"),
+    ("fresh010_v002", "GENERAL"),  # "sh" inside a word is not a shot code
 ])
 def test_shot_from_name(value, expected):
     assert ws_mod._shot_from_name(value) == expected
@@ -423,6 +428,10 @@ def test_shot_from_name(value, expected):
     ("comp v0123 final", "v0123"),
     ("comp_v12", "v001"),        # too few digits
     ("nothing", "v001"),
+    ("sh010_v002", "v002"),
+    ("comp_artist_v0003", "v0003"),
+    ("sh010_ada_v0003.rad", "v0003"),
+    ("dev0003", "v001"),         # "v" inside a word is not a version
 ])
 def test_version_from_name(value, expected):
     assert ws_mod._version_from_name(value) == expected
@@ -1789,6 +1798,42 @@ def test_node_run_writes_a_v3_container_with_metadata(ws):
     assert meta["stats"]["node_count"] == 6
     assert meta["stats"]["is_hdr"] is True
     assert meta["pipeline"]["models"] == ["film_grain.ckpt", "flux_dev.safetensors"]
+
+
+# What ComfyUI actually passes: `prompt` is the API graph ({id: {class_type,
+# inputs}}); the UI workflow, which loadGraphData opens, is in
+# extra_pnginfo["workflow"]. Saving the prompt left node_count at 0 and stored a
+# graph the dashboard could not reopen (code review P2-2).
+API_PROMPT = {
+    "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "flux_dev.safetensors"}},
+    "2": {"class_type": "RadianceHDRTonemap", "inputs": {"image": ["1", 0], "space": "rec2020"}},
+    "3": {"class_type": "PreviewImage", "inputs": {"images": ["2", 0]}},
+}
+
+
+def test_node_run_saves_the_ui_workflow_comfyui_provides(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == GRAPH, "the library opens this with loadGraphData"
+    assert meta["stats"]["node_count"] == 6
+
+
+def test_node_run_with_only_an_api_prompt_still_reports_its_contents(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1, prompt=API_PROMPT)
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == API_PROMPT
+    assert meta["stats"]["node_count"] == 3
+    assert meta["stats"]["is_hdr"] is True
+    assert meta["pipeline"]["models"] == ["flux_dev.safetensors"]
+
+
+def test_a_saved_workflow_is_listed_under_its_own_shot(ws):
+    ws.m.RadianceProjectManager().run(filename="SHOW A/sh010", artist="ada", version=3,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    project, _ = ws.m._find_project("show-a")
+    (version,) = ws.m._versions_for_project(project)
+    assert version["shot"] == "SH010", version
 
 
 def test_node_run_without_a_filename_uses_the_artist(ws):

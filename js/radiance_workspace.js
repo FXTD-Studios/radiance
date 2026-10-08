@@ -5,6 +5,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 import { escapeHtml } from "./radiance_dom_utils.js";
+import { openSavedGraph } from "./radiance_graph_format.js";
 
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
@@ -23,7 +24,7 @@ window.addEventListener("message", (event) => {
     if (event.data && event.data.type === "radiance_load_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, false);
+            openSavedGraph(app, graphData, false, event.data.name || "workflow");
             showToast("Workflow loaded from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse loaded graph", "error");
@@ -31,7 +32,7 @@ window.addEventListener("message", (event) => {
     } else if (event.data && event.data.type === "radiance_append_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, true);
+            openSavedGraph(app, graphData, true, event.data.name || "workflow");
             showToast("Workflow merged from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse merged graph", "error");
@@ -611,7 +612,7 @@ app.registerExtension({
                 if (!data.success) throw new Error(data.error);
 
                 const graphData = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-                app.loadGraphData(graphData, append);
+                openSavedGraph(app, graphData, append, "workflow");
 
                 if (data.secure) {
                     console.log("[Radiance] Verified secure binary .rad workspace.");
@@ -853,7 +854,7 @@ app.registerExtension({
                 content = data.content;
                 metadata = data.metadata;
 
-                app.loadGraphData(typeof content === 'string' ? JSON.parse(content) : content, append);
+                openSavedGraph(app, typeof content === 'string' ? JSON.parse(content) : content, append, wf.filename);
                 const success = true;
                 if (success) {
                     const action = append ? "Appended" : "Loaded";
