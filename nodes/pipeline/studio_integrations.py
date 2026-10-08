@@ -249,6 +249,9 @@ class RadianceNukeSend:
             return f"FAILED ({e})"
         if ok:
             return f"OK ({msg})"
+        if str(msg).startswith("UNCONFIRMED: "):
+            # Sent, but Nuke never acknowledged it: neither OK nor FAILED.
+            return f"UNCONFIRMED ({msg[len('UNCONFIRMED: '):]})"
         return f"FAILED ({msg})"
 
 
