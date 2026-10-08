@@ -1,6 +1,7 @@
 import hmac
 import os
 import json
+import re
 import socket
 import threading
 import time
@@ -33,25 +34,60 @@ _BOUND_LOOPBACK = True  # set at bind time; a remote bind requires the token on 
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
+#: An HTTP request line. A web page can fetch() to a loopback port; the bridge
+#: used to skip the request line and headers as bad JSON and run the body.
+_HTTP_REQUEST_LINE = re.compile(r"^[A-Z]{3,10} \S+ HTTP/\d")
+
 def _remote_bridge_allowed() -> bool:
     return os.environ.get("RADIANCE_ALLOW_REMOTE_BRIDGE", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _queue_token_ok(msg) -> bool:
-    """A remote bind queues only for a client holding the shared DCC token.
+#: How far a signed `queue` timestamp may be from this machine's clock, and
+#: so how long a used nonce is remembered.
+_QUEUE_WINDOW_S = 120
+_SEEN_NONCES: dict = {}
+_NONCE_LOCK = threading.Lock()
+
+
+def _queue_signed_ok(msg) -> bool:
+    """A remote bind queues only a request signed with the shared DCC token.
 
     The token is the one core/dcc_auth gives the Nuke listener
-    (RADIANCE_DCC_AUTH_TOKEN, else ~/.radiance/dcc_token). Loopback binds
-    accept `queue` without it, as before 4.0.
+    (RADIANCE_DCC_AUTH_TOKEN, else ~/.radiance/dcc_token); clients sign with
+    radiance.core.dcc_auth.sign_queue. The token never goes over the wire (the
+    4.0 beta sent it in clear, which gave a listener the key that also signs
+    Nuke commands), each nonce is accepted once, and the timestamp must be
+    within _QUEUE_WINDOW_S of now. Loopback binds accept `queue` unsigned, as
+    before 4.0.
     """
     if _BOUND_LOOPBACK:
         return True
-    sent = msg.get("token")
-    if not isinstance(sent, str) or not sent:
+    ts, nonce, sig = msg.get("ts"), msg.get("nonce"), msg.get("sig")
+    if (not isinstance(ts, int) or isinstance(ts, bool)
+            or not isinstance(nonce, str) or not 8 <= len(nonce) <= 128
+            or not isinstance(sig, str) or not sig):
         return False
-    from radiance.core.dcc_auth import load_or_create_token
-    expected = load_or_create_token()
-    return bool(expected) and hmac.compare_digest(sent.encode(), expected.encode())
+    now = time.time()
+    if abs(now - ts) > _QUEUE_WINDOW_S:
+        return False
+    from radiance.core.dcc_auth import load_or_create_token, queue_signature
+    token = load_or_create_token()
+    if not token:
+        return False
+    try:
+        expected = queue_signature(token, msg.get("prompt", {}), ts, nonce)
+    except (TypeError, ValueError):
+        return False
+    if not hmac.compare_digest(sig.encode(), expected.encode()):
+        return False
+    with _NONCE_LOCK:
+        for n, until in list(_SEEN_NONCES.items()):
+            if until < now:
+                del _SEEN_NONCES[n]
+        if nonce in _SEEN_NONCES:
+            return False
+        _SEEN_NONCES[nonce] = now + 2 * _QUEUE_WINDOW_S
+    return True
 
 
 def _handle(conn, addr=None):
@@ -79,6 +115,13 @@ def _handle(conn, addr=None):
                 buf = b""
                 if not line:
                     continue
+                if _HTTP_REQUEST_LINE.match(line):
+                    conn.sendall((json.dumps({
+                        "ok": False,
+                        "error": "This is the DCC Bridge (JSON lines over TCP), not an HTTP "
+                                 "server; HTTP requests are refused.",
+                    }) + "\n").encode())
+                    return
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError as e:
@@ -102,12 +145,14 @@ def _handle(conn, addr=None):
                         "error": "The 'exec' command has been removed for security reasons. "
                                  "Use 'queue' to submit a workflow prompt instead.",
                     }) + "\n").encode())
-                elif cmd == "queue" and not _queue_token_ok(msg):
+                elif cmd == "queue" and not _queue_signed_ok(msg):
                     conn.sendall((json.dumps({
                         "ok": False,
-                        "error": "This bridge is bound to a network address: 'queue' needs "
-                                 "\"token\", the shared DCC token (RADIANCE_DCC_AUTH_TOKEN "
-                                 "or ~/.radiance/dcc_token).",
+                        "error": "This bridge is bound to a network address: 'queue' must be "
+                                 "signed with the shared DCC token (RADIANCE_DCC_AUTH_TOKEN or "
+                                 "~/.radiance/dcc_token) by radiance.core.dcc_auth.sign_queue, "
+                                 "with a current timestamp and an unused nonce. Never send the "
+                                 "token itself.",
                     }) + "\n").encode())
                 elif cmd == "queue":
                     payload = msg.get("prompt", {})
