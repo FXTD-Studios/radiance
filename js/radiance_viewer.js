@@ -2924,11 +2924,16 @@ class RadianceViewer {
             lutSelect.appendChild(opt);
         });
         lutSelect.value = this.displayLut;
+        // The same route as the Grade tab's Output Transform: a manual pick that
+        // the next image cannot replace, with both selects kept in step. This
+        // set displayLut directly, so the view stayed on Auto and the next frame
+        // put its own LUT back; the localStorage value it wrote was never read.
         lutSelect.onchange = () => {
-            this.displayLut = lutSelect.value;
-            localStorage.setItem('radiance_hud_display_lut', this.displayLut);
-            this.render();
+            this._pushUndo?.();
+            this._setManualDisplayLut(lutSelect.value);
+            this._gradeChanged?.();
         };
+        this._vbLutSelect = lutSelect;
         right.appendChild(lutLabel);
         right.appendChild(lutSelect);
         bar.appendChild(right);
@@ -12822,6 +12827,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._gradeChanged();
         });
 
+        this._gradeOutputSelect = transform.querySelector('select[data-radiance-param="output_transform"]');
+        this._syncLutSelects();
+
         const S = RadianceViewer.GRADE_SECTIONS;
         const exposure = this._renderReferenceSection(parent, 'EXPOSURE', () => this._resetGradeFields(S.exposure));
         this._refSlider(exposure, { label: 'Exposure', key: 'exposure', min: _EXPOSURE_MIN, max: _EXPOSURE_MAX, step: 0.05,
@@ -13151,6 +13159,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         button('Save', 'Save the whole grade as a preset', () => this.saveGrade());
         button('Delete', 'Delete the selected preset', () => select.value && this.deleteGrade(select.value), !names.length);
         section.appendChild(actions);
+    }
+
+    /** Keep the viewer bar's LUT select and the Grade tab's Output Transform on the same value. */
+    _syncLutSelects() {
+        const value = this.displayLut || 'None';
+        const set = (sel, v) => {
+            if (!sel) return;
+            if (![...sel.options].some(o => o.value === v)) {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = v;
+                sel.appendChild(o);
+            }
+            sel.value = v;
+        };
+        set(this._vbLutSelect, value);
+        set(this._gradeOutputSelect, ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(value) ? 'ACES Filmic' : value);
     }
 
     _renderReferenceScopes(parent) {
@@ -17149,6 +17173,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._ocioAutoOff();
         this._viewApprox = false;
         this.displayLut = value;
+        this._syncLutSelects?.();
         this.render?.();
     }
 
@@ -17190,6 +17215,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.displayLut = v === 'srgb' ? 'sRGB (Display)'
                 : v === 'rec709' ? 'Rec.709 (Broadcast)' : 'ACES Filmic';
         }
+        this._syncLutSelects?.();
         this.render?.();
     }
 
