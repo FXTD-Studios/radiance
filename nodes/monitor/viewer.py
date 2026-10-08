@@ -4,10 +4,8 @@
 # `globals().update({... getattr(_viewer_utils, name) ...})` below. Static linters
 # cannot see through that, so F821 (undefined name) is disabled for this file.
 import json
-import struct
 import torch
 import numpy as np
-import zlib
 import os
 import uuid
 import wave
@@ -42,6 +40,7 @@ import folder_paths
 
 # Import safe path utilities
 from radiance.path_utils import safe_join
+from radiance.core import rhdr as _rhdr
 
 # v3.1: Robust EXR Writer from HDR bridge
 try:
@@ -826,65 +825,32 @@ class RadianceViewer:
             frame_to_save = frame
 
         # ── 1. PRIMARY: Save .rhdr sidecar ──────────────────────────────────
-        # Supports two precisions controlled by header flags field:
-        #   flags = 0  →  fp16 payload  (HALF_FLOAT, half VRAM, existing behaviour)
-        #   flags = 1  →  fp32 payload  (FLOAT, full IEEE 754, 32-bit Float mode)
-        #
-        # Header layout (12 bytes, little-endian):
-        #   [0:4]  magic  "RHDR"
-        #   [4:6]  width  uint16
-        #   [6:8]  height uint16
-        #   [8:10] channels uint16
-        #   [10:12] flags uint16  — 0=fp16, 1=fp32
-        #   [12:]  zlib-compressed pixel data
+        # fp32 (flags 1, FLOAT texture) in 32-bit Float mode, otherwise fp16
+        # (flags 0, HALF_FLOAT) clamped to its finite range: 1e5 used to become
+        # +inf. Both stored (zlib level 0): level 1 cost 264 ms here and ~50 ms
+        # of the browser's main thread per 1080p frame. The layout lives in
+        # radiance/core/rhdr.py.
         rhdr_filename = f"{prefix}_{unique_id}_{frame_idx}.rhdr"
         rhdr_saved = False
 
         if preview_only:
             pass  # bracket pass: PNG only, nothing reads the float sidecar
-        elif use_32bit:
-            # ── 32-bit Float path: full IEEE 754 fp32, flags=1 ────────────────
+        elif use_32bit or use_16bit:
+            precision = "fp32" if use_32bit else "fp16"
             try:
                 rhdr_filepath = safe_join(output_dir, rhdr_filename)
-                fp32_bytes = frame_to_save.astype(np.float32).tobytes()
-                compressed = zlib.compress(fp32_bytes, level=0)  # ALBABIT-FIX: stored, see the fp16 path
-                # flags=1 signals fp32 to the viewer parser
-                header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 1)
-                with open(rhdr_filepath, "wb") as rhdr_f:
-                    rhdr_f.write(header)
-                    rhdr_f.write(compressed)
+                size = _rhdr.write(rhdr_filepath, frame_to_save, fp32=use_32bit, clamp_f16=True, level=0)
                 rhdr_saved = True
-                ratio = len(compressed) / len(fp32_bytes) * 100 if fp32_bytes else 0
+                compressed = size - _rhdr.HEADER.size
+                raw = frame_to_save.size * (4 if use_32bit else 2)
+                ratio = compressed / raw * 100 if raw else 0
                 logger.debug(
-                    f"RHDR fp32 saved: {rhdr_filename} "
-                    f"({len(compressed)//1024}KB, {ratio:.0f}% ratio | "
+                    f"RHDR {precision} saved: {rhdr_filename} "
+                    f"({compressed//1024}KB, {ratio:.0f}% ratio | "
                     f"range [{d_min:.3f}, {d_max:.3f}])"
                 )
             except (IOError, OSError, ValueError) as e:
-                logger.warning(f"Failed to save fp32 RHDR for frame {frame_idx}: {e}")
-
-        elif use_16bit:
-            # ── 16-bit Float path: fp16, flags=0 (existing behaviour) ─────────
-            try:
-                rhdr_filepath = safe_join(output_dir, rhdr_filename)
-                # Clamp to the fp16 range: 1e5 used to become +inf.
-                fp16_data = np.clip(frame_to_save, -65504.0, 65504.0).astype(np.float16).tobytes()
-                # ALBABIT-FIX: stored (level 0, same format). Level 1 cost 264 ms
-                # here and ~50 ms of the browser's main thread per 1080p frame.
-                compressed = zlib.compress(fp16_data, level=0)
-                header = struct.pack("<4sHHHH", b"RHDR", w_frame, h_frame, c_frame, 0)
-                with open(rhdr_filepath, "wb") as rhdr_f:
-                    rhdr_f.write(header)
-                    rhdr_f.write(compressed)
-                rhdr_saved = True
-                ratio = len(compressed) / len(fp16_data) * 100 if fp16_data else 0
-                logger.debug(
-                    f"RHDR fp16 saved: {rhdr_filename} "
-                    f"({len(compressed)//1024}KB, {ratio:.0f}% ratio | "
-                    f"range [{d_min:.3f}, {d_max:.3f}])"
-                )
-            except (IOError, OSError, ValueError) as e:
-                logger.warning(f"Failed to save RHDR for frame {frame_idx}: {e}")
+                logger.warning(f"Failed to save {precision} RHDR for frame {frame_idx}: {e}")
 
         # ── 2. SECONDARY: Save .exr (OpenEXR 32-bit float) for external use ──
         # Requested by users for "Save Image" to export true HDR.
@@ -1231,21 +1197,9 @@ class RadianceViewer:
                     npy_filename = f"Radiance_zdepth_{unique_id}_{depth_idx}_float.rhdr"
                     try:
                         npy_filepath = safe_join(output_dir, npy_filename)
-                        dh, dw = depth_np.shape[:2]
-                        dc = depth_np.shape[2] if depth_np.ndim == 3 else 1
-                        # BUG-FIX (BUG-3): flags was hardcoded to 0 (fp16) even in 32-bit Float mode.
-                        # Mirror the same fp16/fp32 branching used in _process_frame().
-                        if use_32bit:
-                            payload = depth_np.astype(np.float32).tobytes()
-                            rhdr_flags = 1  # fp32 marker — viewer uses FLOAT texture
-                        else:
-                            payload = depth_np.astype(np.float16).tobytes()
-                            rhdr_flags = 0  # fp16 marker — viewer uses HALF_FLOAT texture
-                        compressed = zlib.compress(payload, level=0)  # ALBABIT-FIX: stored, see _process_frame
-                        header = struct.pack("<4sHHHH", b"RHDR", dw, dh, dc, rhdr_flags)
-                        with open(npy_filepath, "wb") as rhdr_f:
-                            rhdr_f.write(header)
-                            rhdr_f.write(compressed)
+                        # BUG-FIX (BUG-3): fp32 in 32-bit Float mode, as in _process_frame().
+                        # Stored (level 0), see _process_frame. Not clamped yet.
+                        _rhdr.write(npy_filepath, depth_np, fp32=use_32bit, clamp_f16=False, level=0)
                         frame_meta["hdr_sidecar"] = npy_filename
                     except (IOError, OSError, ValueError) as e:
                         logger.warning(f"Failed to save depth sidecar {depth_idx}: {e}")
