@@ -390,7 +390,10 @@ def handle_client(conn):
             response = (
                 error_box[0]
                 if error_box[0]
-                else (result_box[0] if result_box[0] else "ERROR: Timeout")
+                else (result_box[0] if result_box[0] else
+                      # Not an error: the command is queued on Nuke's main
+                      # thread and usually still runs (the client says so).
+                      "PENDING: Nuke is busy; the command is queued and may still run")
             )
             conn.sendall((response + RADIANCE_END).encode("utf-8"))
 
