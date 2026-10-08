@@ -2239,7 +2239,7 @@ class RadianceViewer {
                 document.removeEventListener('mousedown', close, true);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+        setTimeout(() => document.addEventListener('mousedown', close, { capture: true, signal: this._listenerSignal }), 0);
     }
 
     // ── 3.5.0: Simple / Advanced ─────────────────────────────────────────────
@@ -3088,7 +3088,7 @@ class RadianceViewer {
                 Object.values(trackButtons).forEach(b => b.updateVisual());
             }
         };
-        window.addEventListener('keydown', this._seqDockKeyHandler);
+        window.addEventListener('keydown', this._seqDockKeyHandler, { signal: this._listenerSignal });
 
         head.append(left, center, right);
         dock.appendChild(head);
@@ -3477,8 +3477,8 @@ class RadianceViewer {
             this._timelineMouseMoveBound = onMouseMoveGlobal;
             this._timelineMouseUpBound = onMouseUpGlobal;
 
-            window.addEventListener('mousemove', onMouseMoveGlobal);
-            window.addEventListener('mouseup', onMouseUpGlobal);
+            window.addEventListener('mousemove', onMouseMoveGlobal, { signal: this._listenerSignal });
+            window.addEventListener('mouseup', onMouseUpGlobal, { signal: this._listenerSignal });
 
             // Hover preview card
             this.sequenceTrack.onmousemove = (e) => {
@@ -3663,8 +3663,8 @@ class RadianceViewer {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         this.mainArea.appendChild(this.rightControlPanel);
 
@@ -4949,8 +4949,8 @@ class RadianceViewer {
             this._termResizing = true;
             startY = e.clientY;
             startH = termContainer.getBoundingClientRect().height;
-            document.addEventListener('mousemove', onDrag);
-            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('mousemove', onDrag, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', endDrag, { signal: this._listenerSignal });
         };
         const onDrag = (e) => {
             const delta = startY - e.clientY;
@@ -6138,7 +6138,7 @@ else:
 
             this.scopePanelWidth = newWidth;
             this.scopePanel.style.flex = `0 0 ${newWidth}px`;
-        });
+        }, { signal: this._listenerSignal });
 
         document.addEventListener('mouseup', () => {
             if (this.isResizingScopePanel) {
@@ -6147,7 +6147,18 @@ else:
                 // Save width to localStorage
                 localStorage.setItem('radiance_scope_width', this.scopePanelWidth);
             }
-        });
+        }, { signal: this._listenerSignal });
+    }
+
+    /**
+     * Every window and document listener a viewer adds carries this signal,
+     * and destroy() aborts it. Two of them (the scope-panel resize above)
+     * were never removed and held each deleted viewer, with its frame, for the
+     * life of the page: 55 MB at 1080p, about 230 MB at 4K.
+     */
+    get _listenerSignal() {
+        if (!this._globalListeners) this._globalListeners = new AbortController();
+        return this._globalListeners.signal;
     }
 
     // v2.2: Full cleanup — prevents memory leaks on node deletion
@@ -7143,7 +7154,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.container.style.display === 'none' || !this.container.isConnected) return;
             this.handleKey(e);
         };
-        document.addEventListener('keydown', this._docKeyHandler);
+        document.addEventListener('keydown', this._docKeyHandler, { signal: this._listenerSignal });
     }
 
     handleKey(e) {
@@ -7421,8 +7432,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 requestAnimationFrame(() => { this.resize(); this.render(); });
             };
-            document.addEventListener('fullscreenchange', handler);
-            document.addEventListener('webkitfullscreenchange', handler);
+            document.addEventListener('fullscreenchange', handler, { signal: this._listenerSignal });
+            document.addEventListener('webkitfullscreenchange', handler, { signal: this._listenerSignal });
         } else {
             this.exitFullscreen();
         }
@@ -7498,7 +7509,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousedown', closeMenu);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
+        setTimeout(() => document.addEventListener('mousedown', closeMenu, { signal: this._listenerSignal }), 10);
     }
 
     // v3.0 #7: ASC CDL Export — writes current grading state as .cdl XML
@@ -9168,7 +9179,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.canvas.style.cursor = 'crosshair';
             }
         };
-        window.addEventListener('mouseup', this._winMouseUpHandler);
+        window.addEventListener('mouseup', this._winMouseUpHandler, { signal: this._listenerSignal });
 
         this.canvas.addEventListener('click', (e) => {
             if (this.dofEnabled && !this.isAnnotating && !this.isPanning && !this.isDraggingWipe) {
@@ -9242,7 +9253,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._annotationCurrentLine.pts.push({ x: mx, y: my });
             this._drawAnnotations();
         };
-        document.addEventListener('mousemove', this._docAnnotMoveHandler);
+        document.addEventListener('mousemove', this._docAnnotMoveHandler, { signal: this._listenerSignal });
 
         this._docAnnotUpHandler = () => {
             if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.pts.length > 1) {
@@ -9251,7 +9262,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._isAnnotating = false;
             this._annotationCurrentLine = null;
         };
-        document.addEventListener('mouseup', this._docAnnotUpHandler);
+        document.addEventListener('mouseup', this._docAnnotUpHandler, { signal: this._listenerSignal });
 
         // Shift+Alt+Click clears all annotations
         this.canvas.addEventListener('click', (eAnn) => {
@@ -12406,7 +12417,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (k === 'z' && !e.shiftKey) { e.preventDefault(); active.undo?.(); }
             else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); active.redo?.(); }
         };
-        window.addEventListener('keydown', this._undoKeyHandler);
+        window.addEventListener('keydown', this._undoKeyHandler, { signal: this._listenerSignal });
     }
 
     _renderReferenceSection(parent, title) {
@@ -13950,7 +13961,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                     }
                 }
             };
-            document.addEventListener('keydown', this._undoKeyListener);
+            document.addEventListener('keydown', this._undoKeyListener, { signal: this._listenerSignal });
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -14361,7 +14372,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         };
         if (!this._transportSpaceHandler) {
             this._transportSpaceHandler = spaceHandler;
-            document.addEventListener('keydown', this._transportSpaceHandler);
+            document.addEventListener('keydown', this._transportSpaceHandler, { signal: this._listenerSignal });
         }
 
         // Float transport over the canvas
@@ -19628,8 +19639,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         root.appendChild(resizeHandle);
 
@@ -21447,6 +21458,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     destroy() {
+        // Every window/document listener this viewer added, in one go.
+        this._globalListeners?.abort();
+        this._globalListeners = null;
         // Both of these were added to 'window' and never removed.
         if (this._seqDockKeyHandler) {
             window.removeEventListener('keydown', this._seqDockKeyHandler);
@@ -21537,7 +21551,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._hdrFallbackReasons = null;
         this.frameHDRData = null;
         this.frameImages = null;
+        this.frameCompareImages = null;
+        this.frameZdepthImages = null;
+        this.frameBracketImages = { low: [], high: [] };
         this.imageData = null;
+        this.hdrData = null;
+        this.image = null;
+        this.compareImage = null;
+        this.compareHDR = null;
+        this.zdepthImage = null;
+        this._placeholder = null;
+        this._hdrZoneStats = null;
         this._probeInvalidate();   // the probe measures this frame, not the last one
         // Clear container
         if (this.container) this.container.innerHTML = '';
