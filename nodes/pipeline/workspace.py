@@ -147,9 +147,11 @@ class RadianceProjectManager:
         if not prompt:
             return ()
 
-        # Use prompt (always available) as primary graph data;
-        # extra_pnginfo adds workflow layout metadata when available.
-        graph_data = prompt or extra_pnginfo or {}
+        # Store the UI workflow (extra_pnginfo["workflow"]) when ComfyUI gives
+        # it: it is what the library reopens with loadGraphData. `prompt` is the
+        # API graph ({id: {class_type, inputs}}), kept only as the fallback.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        graph_data = workflow if isinstance(workflow, dict) and workflow.get("nodes") else prompt
         graph_json = json.dumps(graph_data)
 
         # Build pipeline metadata via scene inspector
@@ -277,7 +279,17 @@ def _inspect_graph_content(graph_json: str) -> dict:
 
     try:
         data  = json.loads(graph_json)
-        nodes = data.get("nodes", [])
+        nodes = data.get("nodes")
+        if nodes is None:
+            # API format: {id: {"class_type": ..., "inputs": {...}}}. Read it as
+            # nodes whose widget values are the literal inputs (lists are links).
+            nodes = [
+                {"type": n.get("class_type", ""),
+                 "widgets_values": [v for v in (n.get("inputs") or {}).values()
+                                    if not isinstance(v, (list, dict))]}
+                for n in data.values()
+                if isinstance(n, dict) and "class_type" in n
+            ]
         profile["node_count"] = len(nodes)
 
         for node in nodes:
@@ -661,7 +673,9 @@ def _project_slug(value: str) -> str:
 
 def _shot_from_name(value: str) -> str:
     """Extract a VFX-style shot code from a filename or metadata string."""
-    match = re.search(r"\bsh[-_ ]?(\d{2,5})\b", value, flags=re.IGNORECASE)
+    # Not \b: "_" is a word character, so "sh010_v002" (the Project Manager's
+    # own naming) did not match. Bounded by anything but a letter or digit.
+    match = re.search(r"(?<![a-z0-9])sh[-_ ]?(\d{2,5})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"SH{match.group(1)}"
     return "GENERAL"
@@ -669,7 +683,7 @@ def _shot_from_name(value: str) -> str:
 
 def _version_from_name(value: str) -> str:
     """Extract a vNNN/vNNNN version token from a filename."""
-    match = re.search(r"\bv(\d{3,4})\b", value, flags=re.IGNORECASE)
+    match = re.search(r"(?<![a-z0-9])v(\d{3,4})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"v{match.group(1)}"
     return "v001"
