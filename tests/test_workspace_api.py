@@ -1479,6 +1479,23 @@ def test_set_shot_status_rejects_unknown_values(populated, status):
     assert not (populated.root / "SHOW A" / ".shot_status.json").exists()
 
 
+def test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library(ws, tmp_path):
+    """The project name comes from metadata inside any .rad (or its v1 .json
+    sidecar), so a shared file could name its project "../../escaped" and make
+    the status route create .shot_status.json outside the library (code review
+    P3-3)."""
+    (ws.root / "evil.rad").write_text('{"nodes": []}')
+    (ws.root / "evil.rad.json").write_text('{"project": "../../escaped"}')
+
+    resp = run(ws.m.set_shot_status(Req(json_body={"status": "Approved"},
+                                        match_info={"project_id": "escaped", "shot": "SH010"})))
+
+    assert resp.status == 400, body(resp)
+    assert not (tmp_path.parent / "escaped").exists()
+    project, _ = ws.m._find_project("escaped")
+    assert ws.m._load_shot_status(project) == {}
+
+
 def test_shot_status_loader_ignores_corrupt_and_non_dict_files(populated):
     project, _ = populated.m._find_project("show-a")
     path = populated.m._shot_status_path(project)

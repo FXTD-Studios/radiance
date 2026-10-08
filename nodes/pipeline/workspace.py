@@ -809,7 +809,16 @@ def _find_project(project_id: str) -> tuple[dict | None, list[dict]]:
 
 
 def _shot_status_path(project: dict) -> Path:
-    return _WORKFLOW_DIR_RESOLVED / project["name"] / ".shot_status.json"
+    """Where a project's shot statuses live: <library>/<project name>/.
+
+    The name comes from metadata inside any .rad in the library, shared ones
+    included, so "../../x" would have put the file outside it. Raises
+    ValueError for a name that does not stay inside the library.
+    """
+    path = _resolve_safe_path(f"{project['name']}/.shot_status.json")
+    if path is None:
+        raise ValueError(f"project name {project['name']!r} leaves the workflow library")
+    return path
 
 
 def _load_shot_status(project: dict) -> dict:
@@ -1951,6 +1960,10 @@ async def set_shot_status(request):
         allowed = {"WIP", "Review", "Approved", "Retake", "Final"}
         if status not in allowed:
             return web.json_response({"error": "status must be one of %s" % sorted(allowed)}, status=400)
+        try:
+            _shot_status_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
         mapping = _load_shot_status(project)
         if shot:
             mapping[shot] = status
