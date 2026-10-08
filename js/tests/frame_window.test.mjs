@@ -23,7 +23,7 @@
  *
  * Run: node --test js/tests/frame_window.test.mjs
  */
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -94,8 +94,13 @@ async function drain(win, maxTurns = 500000) {
     assert.ok(turns < maxTurns, 'window never drained — a load was lost');
 }
 
+// The byte bound is shared by every window with a sequence (one per viewer),
+// so a window a test leaves holding frames would shrink the next test's share.
+const made = [];
+afterEach(() => { while (made.length) made.pop().clear(); });
+
 function makeWindow(stub, opts = {}) {
-    return new RadianceFrameWindow({
+    return track(new RadianceFrameWindow({
         windowSize: 16,
         concurrency: 4,
         maxBytes: 1024 * 1024 * 1024,
@@ -103,8 +108,10 @@ function makeWindow(stub, opts = {}) {
         onReady: (idx, payload) => stub.track(idx, payload),
         onEvict: (idx) => stub.release(idx),
         ...opts,
-    });
+    }));
 }
+
+function track(win) { made.push(win); return win; }
 
 // ── the measurement ─────────────────────────────────────────────────────────
 
@@ -423,4 +430,93 @@ test('the simple bar is enabled as soon as a sequence is installed', () => {
     const body = src.slice(start, src.indexOf('\n    }\n', start));
     assert.match(body, /setSequence\([^)]*\);[\s\S]*this\._syncSimpleTransport/,
         'installing a sequence does not update the simple bar');
+});
+
+// ── sized by bytes, and no thrash (4K and 8K) ───────────────────────────────
+
+/** A loader whose frames weigh `bytes` each, without allocating them. */
+function sizedLoader(bytesOf) {
+    const loads = [];
+    return {
+        loads,
+        load(entry, idx) {
+            loads.push(idx);
+            return Promise.resolve({ idx, hdr: { data: { byteLength: bytesOf(idx) } } });
+        },
+    };
+}
+
+test('once a frame lands the window holds what fits, and loads about one frame per step', async () => {
+    // Measured on the old window (768 MB, 16 frames): 1.8, 3.8, 13 and 15
+    // loads per playhead step at 50, 58, 199 and 796 MB a frame. It queued 16
+    // frames whatever they weighed, evicted the ones over the budget as they
+    // landed, and asked for them again on the next step.
+    const MB = 1024 * 1024;
+    for (const size of [50, 58, 199, 796]) {
+        const stub = sizedLoader(() => size * MB);
+        const win = track(new RadianceFrameWindow({
+            windowSize: 16, maxBytes: 768 * MB, concurrency: 4, load: (e, i) => stub.load(e, i),
+        }));
+        win.setSequence(sequence(200), 0);
+        await drain(win);
+        const fits = Math.min(16, Math.max(1, Math.floor(768 / size)));
+        assert.equal(win.span().end - win.span().start + 1, fits,
+            `${size} MB frames: the span is not what fits the budget`);
+        assert.ok(win.retainedBytes <= Math.max(768, size) * MB, "over the budget (one frame is always kept)");
+        const before = stub.loads.length;
+        for (let f = 1; f <= 24; f++) { win.setPlayhead(f); await drain(win); }
+        const perStep = (stub.loads.length - before) / 24;
+        assert.ok(perStep <= 1.0, `${size} MB frames: ${perStep.toFixed(2)} loads per playhead step`);
+        assert.ok(win.has(24), 'the playhead frame is not held');
+        win.clear();
+    }
+});
+
+test('a frame the byte bound just evicted is not queued again until the playhead moves', async () => {
+    // Frames of uneven size: the span is sized from the average, so a heavy
+    // frame can still push one out. It must stay out at this playhead.
+    const MB = 1024 * 1024;
+    const stub = sizedLoader((i) => (i % 2 ? 300 : 20) * MB);
+    const win = track(new RadianceFrameWindow({
+        windowSize: 16, maxBytes: 700 * MB, concurrency: 4, load: (e, i) => stub.load(e, i),
+    }));
+    win.setSequence(sequence(100), 10);
+    await drain(win);
+    const before = stub.loads.length;
+    for (let i = 0; i < 20; i++) { win.setPlayhead(10); await drain(win); }
+    assert.equal(stub.loads.length, before, 'frames were fetched again at an unchanged playhead');
+    assert.ok(win.retainedBytes <= 700 * MB);
+    win.setPlayhead(11);
+    await drain(win);
+    assert.ok(win.has(11));
+});
+
+test('the byte bound is shared by every window on the page, not given to each', async () => {
+    // One window per viewer. Three viewers each kept the full 768 MB.
+    const stubs = [stubLoader(), stubLoader(), stubLoader()];
+    const wins = stubs.map((stub) => makeWindow(stub, { windowSize: 64, maxBytes: 12 * FRAME_BYTES }));
+    wins[0].setSequence(sequence(100), 0);
+    await drain(wins[0]);
+    assert.equal(wins[0].residentCount, 12, 'alone, a window has the whole budget');
+
+    wins[1].setSequence(sequence(100), 0);
+    wins[2].setSequence(sequence(100), 0);
+    for (const w of wins) await drain(w);
+    const total = wins.reduce((n, w) => n + w.retainedBytes, 0);
+    assert.ok(total <= 12 * FRAME_BYTES, `three windows hold ${total / FRAME_BYTES} frames over a 12 frame bound`);
+    for (const w of wins) assert.equal(w.residentCount, 4, 'the budget is not split evenly');
+
+    // A viewer closing hands its share back.
+    wins[2].clear();
+    wins[1].clear();
+    await drain(wins[0]);
+    assert.equal(wins[0].residentCount, 12, 'the remaining window did not grow back');
+});
+
+test('measureFramePayload does not decode an fp16 frame to weigh it', () => {
+    let decoded = 0;
+    const hdr = { fp16data: new Uint16Array(100) };
+    Object.defineProperty(hdr, 'data', { enumerable: false, get() { decoded++; return new Float32Array(100); } });
+    assert.equal(measureFramePayload({ hdr }), 200, 'an fp16 frame is its half floats');
+    assert.equal(decoded, 0, 'weighing the frame decoded it');
 });
