@@ -340,7 +340,7 @@
     },
     {
       "path": "KNOWN_ISSUES.md",
-      "sha256": "a9b398ba628862320b5b0511adefa8326779d5020fee3e4deb83669652b0faa8"
+      "sha256": "80345b1673a3411c34c8d6385e3c70c3a32756df229f227c3add97af7032f399"
     },
     {
       "path": "nodes/vfx/depth.py",
@@ -392,7 +392,7 @@
     },
     {
       "path": "nodes/upscale/upscale.py",
-      "sha256": "7ae874288f969f43b951e9af991ab83400ef9bca50b21c33433fc21b2cc2819f"
+      "sha256": "8fcb0f5f265a589ea65232d512e7c201960b55b657101f7e1403766f582d8c19"
     },
     {
       "path": "image/upscale.py",
@@ -408,7 +408,7 @@
     },
     {
       "path": "nodes/monitor/realtime.py",
-      "sha256": "9ed81fab558c3f4d7864887d4581298a88babd2196efb939fedd80b9d412866c"
+      "sha256": "dc02c2356ad9eac7abd75b085a211846ad35e7c28443171283530c0c634bed55"
     },
     {
       "path": "nodes/video/t2v.py",
@@ -416,7 +416,7 @@
     },
     {
       "path": "nodes/video/hdr.py",
-      "sha256": "46a05c03c6958d421025dd222fac15850e0aab9b40a777b5b1cf6321852b35a6"
+      "sha256": "e6829776989c879ddf986951cfba52124ad5046b845f0cf318dc406c9912b221"
     },
     {
       "path": "nodes/video/dit.py",
