@@ -155,7 +155,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `llm_encoder` (optional) | choice | `None` | `None` | LLM encoder. Used by: HunyuanVideo (Llava-Llama3), LTX 2.3 (Gemma 3), Lumina2 (Gemma-2), Z-Image (Qwen3), Flux.2 (Mistral-3/Qwen3). |
 | `text_projection` (optional) | choice | `None` | `None`, `Baked (from UNET)` | Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). 'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader. |
 | `clip_dtype` (optional) | choice | `default` | `default`, `fp16`, `bf16`, `fp8_e4m3fn`, `fp32` | CLIP weight precision. Independent from UNET. For Flux T5XXL: fp8 saves ~4.7 GB vs fp16. |
-| `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). This switches ComfyUI to LOW_VRAM for the rest of the session, for every workflow; restart ComfyUI to undo it. |
+| `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). This switches ComfyUI to LOW_VRAM (a --novram launch stays as it is) for the rest of the session, for every workflow; restart ComfyUI to undo it. |
 | `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. |
 | `check_vram` (optional) | choice | `On` | `On`, `Off` | Estimate VRAM before load and warn if tight. |
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |

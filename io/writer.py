@@ -947,11 +947,20 @@ def _save_video_ffmpeg(
     else:
         h, w = first.shape[:2]
 
+    # ffmpeg writes a hidden sibling, which replaces out_path only once the
+    # encode has succeeded. Writing out_path directly meant `-y` truncated an
+    # existing master the moment ffmpeg opened it, so any failure after that
+    # (an encoder error, a timeout, a cancel) lost the approved version.
+    fd, part_name = tempfile.mkstemp(
+        prefix=f".{Path(out_path).stem}.", suffix=f".partial{Path(out_path).suffix}",
+        dir=str(Path(out_path).parent))
+    os.close(fd)
+    part_path = Path(part_name)
+
     cmd = [
-        # `-n` rather than `-y` when the operator asked not to overwrite.
-        # `out_path` is already collision-free by then, so this is a second
-        # lock on the door rather than the lock.
-        _ffmpeg_for(codec), "-v", "error", "-y" if overwrite else "-n",
+        # `-y` for the sibling this call just created. `overwrite=False` is
+        # enforced when the sibling is moved into place, below.
+        _ffmpeg_for(codec), "-v", "error", "-y",
         "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{w}x{h}", "-pix_fmt", src_pix_fmt,
         "-r", str(fps),
@@ -968,13 +977,14 @@ def _save_video_ffmpeg(
             cmd += ["-af", f"apad=whole_dur={end},atrim=end={end}"]
         else:
             cmd += ["-shortest"]
-    cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(out_path)]
+    cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(part_path)]
 
-    # What was at out_path before ffmpeg ran, so a failure removes only a file
-    # this encode created or changed.
-    before = _file_signature(out_path)
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except BaseException:
+        _discard_partial(part_path)
+        raise
     errors: List[bytes] = []
     pump = threading.Thread(target=_drain, args=(proc.stderr, errors), daemon=True)
     pump.start()
@@ -996,13 +1006,10 @@ def _save_video_ffmpeg(
         pass
     except BaseException:
         # ALBABIT-FIX: stopped mid-clip (cancelled from ComfyUI, or a frame
-        # failed): the truncated file is removed, as after a timeout.
+        # failed): the partial encode is removed, as after a timeout.
         proc.kill()
         proc.wait()
-        try:
-            Path(out_path).unlink(missing_ok=True)
-        except OSError:  # pragma: no cover
-            pass
+        _discard_partial(part_path)
         raise
     finally:
         try:
@@ -1021,12 +1028,8 @@ def _save_video_ffmpeg(
 
     if timed_out:
         # Never leave a half-written master behind: it is indistinguishable
-        # from a short delivery, and with `-y` it has already replaced the
-        # version that was approved.
-        try:
-            Path(out_path).unlink(missing_ok=True)
-        except OSError as _exc:  # pragma: no cover
-            log.debug("could not remove the truncated encode %s: %s", out_path, _exc)
+        # from a short delivery. The previous master, if any, is untouched.
+        _discard_partial(part_path)
         raise RuntimeError(
             f"ffmpeg did not finish encoding {Path(out_path).name} within "
             f"{timeout:g}s after {written} frame(s); the partial file was removed."
@@ -1034,35 +1037,34 @@ def _save_video_ffmpeg(
         )
 
     if proc.returncode not in (0, None):
-        # Like the timeout above: a partial file under the final name looks
-        # like a short delivery. Removed only if this encode created or changed
-        # it; ffmpeg can fail before opening the output, and then the file
-        # already at that path is intact and must stay.
-        removed = ""
-        after = _file_signature(out_path)
-        if after is not None and after != before:
-            try:
-                Path(out_path).unlink()
-                removed = " The partial file was removed."
-            except OSError as _exc:  # pragma: no cover
-                log.debug("could not remove the failed encode %s: %s", out_path, _exc)
+        # Like the timeout above: the partial encode goes, and whatever was at
+        # out_path before (a previous master) stays as it was.
+        _discard_partial(part_path)
         raise RuntimeError(
             f"ffmpeg failed to encode {Path(out_path).name} (exit "
-            f"{proc.returncode}) after {written} frame(s).{removed}"
+            f"{proc.returncode}) after {written} frame(s). The partial file was removed."
             + (f"\nffmpeg said: {tail}" if tail else
                "\nffmpeg printed nothing on stderr.")
         )
 
+    try:
+        if not overwrite and Path(out_path).exists():
+            # resolve_output_path chose a free name; something took it since.
+            raise FileExistsError(
+                f"{out_path} appeared while encoding; not replacing it (overwrite is off).")
+        os.replace(part_path, out_path)
+    except BaseException:
+        _discard_partial(part_path)
+        raise
     return str(out_path)
 
 
-def _file_signature(path) -> Optional[Tuple[int, int, int]]:
-    """(inode, size, mtime_ns) of a file, or None when there is none."""
+def _discard_partial(path: Path) -> None:
+    """Remove an unfinished encode, quietly: the caller is already failing."""
     try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    return (st.st_ino, st.st_size, st.st_mtime_ns)
+        Path(path).unlink(missing_ok=True)
+    except OSError as _exc:  # pragma: no cover
+        log.debug("could not remove the partial encode %s: %s", path, _exc)
 
 
 def _write_audio_temp_wav(audio: Any) -> Optional[str]:
