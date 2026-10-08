@@ -1824,6 +1824,10 @@ class RadianceAIUpscale:
     def __init__(self):
         self.model = None
         self.current_model_name = None
+        # True when the last upscale() returned the bicubic fallback instead of
+        # running a model. The node's outputs cannot carry it, so callers that
+        # must not ship a resample as an AI upscale (Delivery) read it here.
+        self.used_fallback = False
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2240,7 +2244,8 @@ class RadianceAIUpscale:
 
     def _fallback_upscale(self, image, model_name):
         """Fallback to algorithmic upscale when AI model unavailable."""
-        logger.warning("Falling back to Lanczos upscale (AI model not loaded)")
+        self.used_fallback = True
+        logger.warning("Falling back to bicubic upscale (AI model not loaded)")
 
         # ── Validate input shape (must be BHWC) ──────────────────────────────
         if not isinstance(image, torch.Tensor) or image.dim() != 4:
@@ -2366,6 +2371,7 @@ class RadianceAIUpscale:
         clip=None,
     ):
         """Upscale image using AI model with tiled processing."""
+        self.used_fallback = False
 
         # Load model if needed
         if self.model is None or self.current_model_name != model_name:

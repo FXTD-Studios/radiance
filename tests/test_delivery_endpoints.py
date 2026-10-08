@@ -1274,6 +1274,23 @@ def test_a_failed_upscale_is_reported_rather_than_delivered_as_success(h, monkey
     assert "WITHOUT" in body["message"]
 
 
+def test_a_silent_bicubic_fallback_is_reported_too(h, monkeypatch):
+    """RadianceAIUpscale does not raise when its model is missing, a download
+    fails or inference fails: it returns a bicubic resize. The master was 2x by
+    resampling and the receipt said nothing (code review P1-2)."""
+    from radiance.image.upscale import RadianceAIUpscale
+
+    monkeypatch.setattr(RadianceAIUpscale, "_load_model",
+                        lambda self, *a, **k: (None, "RealESRGAN_x2plus.pth missing"))
+
+    h.put(flat(0.5, n=1, h=8, w=8))
+    body = h.body(h.run({"upscale_2x": True}))
+
+    assert body["status"] == "partial", body
+    note = " ".join(body["warnings"]).lower()
+    assert "upscale" in note and "bicubic" in note, body["warnings"]
+
+
 def test_a_failed_aspect_blank_is_reported(h):
     """An unparseable ratio silently delivered an unblanked master."""
     h.put(flat(0.5))
