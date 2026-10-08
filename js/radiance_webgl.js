@@ -2519,14 +2519,25 @@ const float GOLDEN_ANGLE = 2.39996323;
                 return vec3(1.0, 0.0, 1.0);
             }
 
-            // ACES Tone Mapping (Approx)
+            // ACES Tone Mapping (Approx): Stephen Hill's fit of the ACES RRT +
+            // sRGB ODT, with its AP1 input and output matrices (RRT and ODT
+            // saturation included). It holds the picture until OCIO is up and
+            // is the "Filmic (approx.)" view. It was Narkowicz's curve with no
+            // 0.6 input scale: 18 % grey showed at 141 against ACES 2.0's 89,
+            // so the frame jumped darker when OCIO took over. Even with the
+            // 0.6 scale Narkowicz gives 105; this fit gives 91.
             vec3 toneMapACES(vec3 color) {
-                const float a = 2.51;
-                const float b = 0.03;
-                const float c = 2.43;
-                const float d = 0.59;
-                const float e = 0.14;
-                return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+                const mat3 ACES_IN = mat3(
+                    0.59719, 0.07600, 0.02840,
+                    0.35458, 0.90834, 0.13383,
+                    0.04823, 0.01566, 0.83777);
+                const mat3 ACES_OUT = mat3(
+                     1.60475, -0.10208, -0.00327,
+                    -0.53108,  1.10813, -0.07276,
+                    -0.07367, -0.00605,  1.07602);
+                vec3 v = ACES_IN * color;
+                v = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.4329510) + 0.238081);
+                return clamp(ACES_OUT * v, 0.0, 1.0);
             }
 
             // Simple Reinhard Tone Mapping
@@ -2601,7 +2612,7 @@ const float GOLDEN_ANGLE = 2.39996323;
                 case 8: { // Reinhard global tonemap
                     return c / (c + vec3(1.0));
                 }
-                case 9: { // ACES Filmic (Narkowicz fit)
+                case 9: { // ACES Filmic (Hill fit, see toneMapACES)
                     return toneMapACES(c);
                 }
 
