@@ -8,6 +8,8 @@ import { RadianceNeuralMonitor } from "./radiance_neural.js";
 
 
 import { escapeHtml as _escapeHtml } from "./radiance_dom_utils.js";
+// L1: the header's version, kept equal to pyproject by test_version_sync.py.
+import { RADIANCE_VERSION as _RADIANCE_VERSION } from "./radiance_version.js";
 import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radiance_timecode.js";
 import { cbcr as _vsCbCr, toCanvas as _vsToCanvas, drawGraticule as _vsGraticule } from "./radiance_vectorscope.js";
 import {
@@ -2977,7 +2979,7 @@ class RadianceViewer {
         title.textContent = 'RADIANCE VIEWER';
         const version = document.createElement('span');
         version.className = 'radiance-pro-version';
-        version.textContent = 'v3.5';
+        version.textContent = `v${_RADIANCE_VERSION}`;
         brand.appendChild(mark);
         brand.appendChild(title);
         brand.appendChild(version);

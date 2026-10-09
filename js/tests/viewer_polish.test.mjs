@@ -678,3 +678,13 @@ test('both zoom readouts agree after fit, zoom, wheel and resize', { skip }, asy
     }
     assert.equal(out.z100.model, 100);
 });
+
+test('the header version is the package version', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('advanced');
+        await __sleep(200);
+        return n.radianceViewer.proMenuBar.querySelector('.radiance-pro-version')?.textContent;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out, `v${PACKAGE_VERSION}`);
+});
