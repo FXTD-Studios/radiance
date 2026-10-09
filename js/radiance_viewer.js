@@ -9378,6 +9378,76 @@ self.onmessage = async ({ data: { id, url } }) => {
     //                          EVENTS
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /**
+     * L4: what a wheel event asks for, in CSS pixels. A pinch arrives as
+     * ctrl+wheel and zooms; a two-finger trackpad scroll pans; a mouse wheel
+     * zooms. Line and page deltas are turned into pixels: Firefox sends a
+     * mouse notch as 3 lines, which zoomed 33 times slower than 100 pixels.
+     *
+     * A trackpad is told from a wheel by a sideways component, by Chrome's
+     * and Safari's wheelDeltaY being -3 x deltaY for it (a mouse notch is 120
+     * against 100), or, where there is no wheelDeltaY, by a fractional delta.
+     */
+    static _wheelGesture(e, pageHeight = 800) {
+        const unit = e.deltaMode === 1 ? 100 / 3 : e.deltaMode === 2 ? Math.max(100, pageHeight) : 1;
+        const dx = (e.deltaX || 0) * unit, dy = (e.deltaY || 0) * unit;
+        if (e.ctrlKey) return { kind: 'zoom', dy, pinch: e.deltaMode === 0 && Math.abs(e.deltaY) < 50 };
+        let trackpad = false;
+        if (e.deltaMode === 0) {
+            if (e.deltaX) trackpad = true;
+            else if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) trackpad = e.wheelDeltaY === -3 * e.deltaY;
+            else trackpad = !Number.isInteger(e.deltaY);
+        }
+        return trackpad ? { kind: 'pan', dx, dy } : { kind: 'zoom', dy };
+    }
+
+    /** Zoom to `z`, keeping the canvas point (mx, my) where it is. */
+    _zoomAbout(mx, my, z) {
+        const newZoom = Math.max(0.01, Math.min(200, z));
+        this.panX = mx - (mx - this.panX) * (newZoom / this.zoom);
+        this.panY = my - (my - this.panY) * (newZoom / this.zoom);
+        this.zoom = newZoom;
+        this._viewIsFit = false;
+        this.updateBottomBar();
+        this.render();
+    }
+
+    // L4: touch. One finger pans, two pan with their midpoint and zoom by the
+    // change in their spread. Mouse and pen take the pointer path above.
+    _touchDown(e) {
+        e.preventDefault();
+        try { this.canvas.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer */ }
+        this._touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    _touchMove(e) {
+        const p = this._touchPoints.get(e.pointerId);
+        if (!p) return;
+        const shape = () => {
+            const pts = [...this._touchPoints.values()];
+            const cx = pts.reduce((s, q) => s + q.x, 0) / pts.length;
+            const cy = pts.reduce((s, q) => s + q.y, 0) / pts.length;
+            const spread = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+            return { cx, cy, spread };
+        };
+        const before = shape();
+        p.x = e.clientX; p.y = e.clientY;
+        const after = shape();
+        const rect = this.canvas.getBoundingClientRect();
+        const sx = this.canvas.width / (rect.width || 1), sy = this.canvas.height / (rect.height || 1);
+        this.panX += (after.cx - before.cx) * sx;
+        this.panY += (after.cy - before.cy) * sy;
+        if (before.spread > 0 && after.spread > 0) {
+            this._zoomAbout((after.cx - rect.left) * sx, (after.cy - rect.top) * sy, this.zoom * (after.spread / before.spread));
+        } else {
+            this._viewIsFit = false;
+            this.render();
+        }
+    }
+
+    _touchUp(e) {
+        this._touchPoints?.delete(e.pointerId);
+    }
     setupEventListeners() {
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -9385,23 +9455,32 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._lastCanvasRect = rect;
             this._canvasScaleX = this.canvas.width / rect.width;
             this._canvasScaleY = this.canvas.height / rect.height;
+            const gesture = RadianceViewer._wheelGesture(e, rect.height);
+            if (gesture.kind === 'pan') {
+                // L4: a two-finger trackpad scroll pans, as in every image app.
+                this.panX -= gesture.dx * this._canvasScaleX;
+                this.panY -= gesture.dy * this._canvasScaleY;
+                this._viewIsFit = false;
+                this.render();
+                return;
+            }
+            // v2.5: Exponential zoom for smoother response at all scales (Nuke/Resolve style).
+            // A pinch sends small deltas, so it is ten times as sensitive.
+            const sensitivity = gesture.pinch ? 0.01 : 0.001;
+            const factor = Math.max(0.25, Math.min(4, Math.exp(-gesture.dy * sensitivity)));
             const mx = (e.clientX - rect.left) * this._canvasScaleX;
             const my = (e.clientY - rect.top) * this._canvasScaleY;
+            this._zoomAbout(mx, my, this.zoom * factor);
+        }, { passive: false });
 
-            // v2.5: Exponential zoom for smoother response at all scales (Nuke/Resolve style)
-            const sensitivity = 0.001;
-            const factor = Math.exp(-e.deltaY * sensitivity);
-            const newZoom = Math.max(0.01, Math.min(200, this.zoom * factor));
+        // L4: pointer events, so a pen works like a mouse and touch pans and
+        // pinch-zooms. They were mouse events only. The page must not take the
+        // touch gestures for scrolling or its own zoom.
+        this.canvas.style.touchAction = 'none';
+        this._touchPoints = new Map();
 
-            this.panX = mx - (mx - this.panX) * (newZoom / this.zoom);
-            this.panY = my - (my - this.panY) * (newZoom / this.zoom);
-            this.zoom = newZoom;
-            this._viewIsFit = false;
-            this.updateBottomBar();
-            this.render();
-        });
-
-        this.canvas.addEventListener('mousedown', (e) => {
+        this.canvas.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch') { this._touchDown(e); return; }
             const rect = this.canvas.getBoundingClientRect();
             this._lastCanvasRect = rect; // Cache for performance during mousemove
             this._canvasScaleX = this.canvas.width / rect.width;
@@ -9421,14 +9500,13 @@ self.onmessage = async ({ data: { id, url } }) => {
             // Check Mask UI Handles
             const handle = this.getMaskHandleAt(x, y);
             if (handle && e.button === 0) {
+                this._pushUndo();          // one undo step per handle drag
                 this.maskDragMode = handle;
                 this.maskDragStart = { x, y };
                 this.maskStateStart = JSON.parse(JSON.stringify(this.maskState));
                 this.canvas.style.cursor = handle === 'rotation' ? 'alias' : 'crosshair';
                 return;
             }
-
-
 
             // Probe region drag. Deliberately below the wipe and mask handles
             // -- those are direct manipulation of something already on screen
@@ -9437,7 +9515,6 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this._probeRegionActive() && e.button === 0 && !e.shiftKey) {
                 const px = Math.floor(x), py = Math.floor(y);
                 if (px >= 0 && py >= 0 && px < this.imageWidth && py < this.imageHeight) {
-                    e.preventDefault();
                     this._probeDragging = true;
                     this._probeDragStart = { x: px, y: py };
                     this.probeRect = _probeRectFromCorners(px, py, px, py);
@@ -9448,15 +9525,22 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
 
             if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-                e.preventDefault(); // Prevent middle-click auto-scroll which swallows mouseup
                 this.isPanning = true;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
                 this.canvas.style.cursor = 'grabbing';
             }
         });
+        // The defaults that a pointerdown cannot cancel: middle-click
+        // auto-scroll (which swallows the release) and text selection while
+        // dragging. Cancelling pointerdown itself would also drop the mouse
+        // events the annotation and white-balance pickers listen for.
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1 || this.isPanning || this._probeDragging) e.preventDefault();
+        });
 
-        this.canvas.addEventListener('mousemove', (e) => {
+        this.canvas.addEventListener('pointermove', (e) => {
+            if (e.pointerType === 'touch') { this._touchMove(e); return; }
             if (!this._lastCanvasRect) this._lastCanvasRect = this.canvas.getBoundingClientRect();
             const rect = this._lastCanvasRect;
             const mx = (e.clientX - rect.left) * (this._canvasScaleX || 1);
@@ -9512,10 +9596,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                     m.rotation = Math.atan2(dy, dx) + Math.PI / 2;
                 }
 
-                if (this.activeTab === 'masks' && this.tabContentContainer) {
-                    // Update the visible GUI sliders without fully rebuilding the DOM to avoid losing focus
-                    const centerInputs = this.tabContentContainer.querySelectorAll('.knob-value');
-                }
+                // The Masks tab's sliders follow the handles without a rebuild.
+                if (this._referenceRightTab === 'masks') this._syncGradeControls();
 
                 if (this.renderer) this.renderer.setMask(m);
                 this.render();
@@ -9541,9 +9623,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                     this.canvas.style.cursor = 'crosshair';
                     return;
                 }
-                // Panning strictly relies on clientX delta, scaling isn't necessary for delta-drag
-                this.panX += e.clientX - this.lastMouseX;
-                this.panY += e.clientY - this.lastMouseY;
+                // pan is in canvas pixels and the pointer in CSS pixels, so the
+                // picture keeps up with the pointer on a HiDPI screen too.
+                this.panX += (e.clientX - this.lastMouseX) * (this._canvasScaleX || 1);
+                this.panY += (e.clientY - this.lastMouseY) * (this._canvasScaleY || 1);
                 this._viewIsFit = false;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
@@ -9555,8 +9638,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.updateProbe(e);
         });
 
-        // Click-to-Focus for DoF
+        // The end of any drag, wherever the pointer is let go.
         this._winMouseUpHandler = (e) => {
+            if (e.pointerType === 'touch') { this._touchUp(e); return; }
             this.isPanning = false;
 
             // Finishing a region drag measures it immediately. Requiring a
@@ -9581,18 +9665,18 @@ self.onmessage = async ({ data: { id, url } }) => {
 
             if (this.maskDragMode) {
                 this.maskDragMode = null;
-                // Re-render the mask tab to update sliders if it's the active tab
-                if (this.activeTab === 'masks' && this._lastRenderContent) {
-                    this._lastRenderContent();
-                }
+                this._syncGradeControls();
+                this._gradeChanged();
             }
 
             if (!this.isAnnotating && !this.maskDragMode && this.compareMode !== 'wipe') {
                 this.canvas.style.cursor = 'crosshair';
             }
         };
-        window.addEventListener('mouseup', this._winMouseUpHandler, { signal: this._listenerSignal });
+        window.addEventListener('pointerup', this._winMouseUpHandler, { signal: this._listenerSignal });
+        window.addEventListener('pointercancel', this._winMouseUpHandler, { signal: this._listenerSignal });
 
+        // Click-to-Focus for DoF
         this.canvas.addEventListener('click', (e) => {
             if (this.dofEnabled && !this.isAnnotating && !this.isPanning && !this.isDraggingWipe) {
                 const rect = this.canvas.getBoundingClientRect();
@@ -22757,7 +22841,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._winUpHandler) window.removeEventListener('mouseup', this._winUpHandler);
         if (this._hudResizeListener) window.removeEventListener('resize', this._hudResizeListener);
         if (this._undoKeyListener) { document.removeEventListener('keydown', this._undoKeyListener); this._undoKeyListener = null; }
-        if (this._winMouseUpHandler) window.removeEventListener('mouseup', this._winMouseUpHandler);
+        if (this._winMouseUpHandler) {
+            window.removeEventListener('pointerup', this._winMouseUpHandler);
+            window.removeEventListener('pointercancel', this._winMouseUpHandler);
+        }
         if (this._docAnnotMoveHandler) document.removeEventListener('mousemove', this._docAnnotMoveHandler);
         if (this._docAnnotUpHandler) document.removeEventListener('mouseup', this._docAnnotUpHandler);
         // Video cleanup
