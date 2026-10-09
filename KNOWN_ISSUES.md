@@ -40,11 +40,12 @@ These parts of the release gate need checks that cannot run in CI:
 - **Masks and Qualifiers are inert on the WebGPU backend.** `js/radiance_webgpu.js`
   carries no WGSL for either one. The shared base class, `js/radiance_renderer.js`,
   implements `setMask` and `setQualifier` and stores the state, so the Viewer's
-  calls succeed and nothing changes on screen: both tabs are fully interactive
-  and completely inert on that backend. WebGPU is opt-in since 3.4.0
+  calls succeed and nothing changes on screen: the panel's Masks tab (power
+  window and HSL qualifier) is fully interactive and completely inert on that
+  backend. WebGPU is opt-in since 3.4.0
   (View > Framing & Guides > Backend, stored as
   `localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
-  both. On WebGPU each tab opens with a notice saying so and how to switch
+  both. On WebGPU the tab opens with a notice saying so and how to switch
   back (4.0 corrected its text, which still claimed WebGPU was the default).
   OCIO has the same WGSL gap and returns "OpenColorIO needs the WebGL backend;
   this renderer has no WGSL path for it". *Planned fix:* porting the shaders
