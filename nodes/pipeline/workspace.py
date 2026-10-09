@@ -147,9 +147,11 @@ class RadianceProjectManager:
         if not prompt:
             return ()
 
-        # Use prompt (always available) as primary graph data;
-        # extra_pnginfo adds workflow layout metadata when available.
-        graph_data = prompt or extra_pnginfo or {}
+        # Store the UI workflow (extra_pnginfo["workflow"]) when ComfyUI gives
+        # it: it is what the library reopens with loadGraphData. `prompt` is the
+        # API graph ({id: {class_type, inputs}}), kept only as the fallback.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        graph_data = workflow if isinstance(workflow, dict) and workflow.get("nodes") else prompt
         graph_json = json.dumps(graph_data)
 
         # Build pipeline metadata via scene inspector
@@ -277,7 +279,17 @@ def _inspect_graph_content(graph_json: str) -> dict:
 
     try:
         data  = json.loads(graph_json)
-        nodes = data.get("nodes", [])
+        nodes = data.get("nodes")
+        if nodes is None:
+            # API format: {id: {"class_type": ..., "inputs": {...}}}. Read it as
+            # nodes whose widget values are the literal inputs (lists are links).
+            nodes = [
+                {"type": n.get("class_type", ""),
+                 "widgets_values": [v for v in (n.get("inputs") or {}).values()
+                                    if not isinstance(v, (list, dict))]}
+                for n in data.values()
+                if isinstance(n, dict) and "class_type" in n
+            ]
         profile["node_count"] = len(nodes)
 
         for node in nodes:
@@ -661,7 +673,9 @@ def _project_slug(value: str) -> str:
 
 def _shot_from_name(value: str) -> str:
     """Extract a VFX-style shot code from a filename or metadata string."""
-    match = re.search(r"\bsh[-_ ]?(\d{2,5})\b", value, flags=re.IGNORECASE)
+    # Not \b: "_" is a word character, so "sh010_v002" (the Project Manager's
+    # own naming) did not match. Bounded by anything but a letter or digit.
+    match = re.search(r"(?<![a-z0-9])sh[-_ ]?(\d{2,5})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"SH{match.group(1)}"
     return "GENERAL"
@@ -669,7 +683,7 @@ def _shot_from_name(value: str) -> str:
 
 def _version_from_name(value: str) -> str:
     """Extract a vNNN/vNNNN version token from a filename."""
-    match = re.search(r"\bv(\d{3,4})\b", value, flags=re.IGNORECASE)
+    match = re.search(r"(?<![a-z0-9])v(\d{3,4})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"v{match.group(1)}"
     return "v001"
@@ -795,7 +809,21 @@ def _find_project(project_id: str) -> tuple[dict | None, list[dict]]:
 
 
 def _shot_status_path(project: dict) -> Path:
-    return _WORKFLOW_DIR_RESOLVED / project["name"] / ".shot_status.json"
+    """Where a project's shot statuses live: <library>/<project name>/.
+
+    The name comes from metadata inside any .rad in the library, shared ones
+    included, so "../../x" would have put the file outside it. Raises
+    ValueError for a name that does not stay inside the library.
+    """
+    root = _WORKFLOW_DIR_RESOLVED
+    # Lexical, so only leaving the library is refused; a name that stays
+    # inside keeps the location it always had.
+    path = Path(os.path.normpath(root / str(project["name"]) / ".shot_status.json"))
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise ValueError(f"project name {project['name']!r} leaves the workflow library") from None
+    return path
 
 
 def _load_shot_status(project: dict) -> dict:
@@ -1863,6 +1891,22 @@ async def asset_thumb(request):
     return web.json_response({"error": "not previewable"}, status=415)
 
 
+def _claim_upload_path(dest_dir: Path, name: str):
+    """Create a new, empty file for ``name`` in dest_dir and return (path, handle).
+
+    Never replaces a file: a taken name becomes stem_1.ext, stem_2.ext, ...
+    Exclusive creation ("xb") also holds against a concurrent upload.
+    """
+    stem, suffix = Path(name).stem, Path(name).suffix
+    for n in range(10000):
+        candidate = dest_dir / (name if n == 0 else f"{stem}_{n}{suffix}")
+        try:
+            return candidate, open(candidate, "xb")
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"No free name for {name} in {dest_dir}")
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1873,20 +1917,37 @@ async def upload_asset(request):
         dest_dir.mkdir(parents=True, exist_ok=True)
         reader = await request.multipart()
         saved = []
-        async for part in reader:
-            if part.filename:
-                safe_name = os.path.basename(part.filename)
-                if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
-                    continue
-                dest = dest_dir / safe_name
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = await part.read_chunk()
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-                saved.append(safe_name)
-        return web.json_response({"success": True, "saved": saved})
+        renamed = {}
+        claimed: list[Path] = []
+        try:
+            async for part in reader:
+                if part.filename:
+                    safe_name = os.path.basename(part.filename)
+                    if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
+                        continue
+                    # Opening with "wb" replaced an existing file of the same
+                    # name, so a workflow that referenced it read the new one.
+                    dest, fh = _claim_upload_path(dest_dir, safe_name)
+                    claimed.append(dest)
+                    with fh:
+                        while True:
+                            chunk = await part.read_chunk()
+                            if not chunk:
+                                break
+                            fh.write(chunk)
+                    saved.append(dest.name)
+                    if dest.name != safe_name:
+                        renamed[safe_name] = dest.name
+        except BaseException:
+            # All or nothing: the client gets an error and no list of what was
+            # saved, so no truncated file and no orphan from an earlier part.
+            for path in claimed:
+                path.unlink(missing_ok=True)
+            raise
+        result = {"success": True, "saved": saved}
+        if renamed:
+            result["renamed"] = renamed
+        return web.json_response(result)
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")
         return web.json_response({"error": str(e)}, status=500)
@@ -1908,6 +1969,10 @@ async def set_shot_status(request):
         allowed = {"WIP", "Review", "Approved", "Retake", "Final"}
         if status not in allowed:
             return web.json_response({"error": "status must be one of %s" % sorted(allowed)}, status=400)
+        try:
+            _shot_status_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
         mapping = _load_shot_status(project)
         if shot:
             mapping[shot] = status

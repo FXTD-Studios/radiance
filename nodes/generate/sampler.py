@@ -44,7 +44,7 @@ try:
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
         validate_step_range, apply_pag_to_model, AYS_ANCHORS, get_ays_sigmas,
-        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus,
+        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus, perpendicular_cfg_function,
         build_sigma_report, _temporally_correlate, _perlin_noise, _perlin_noise_2d,
         _spectral_noise, _get_freq_grid, _spectral_noise_2d, _brownian_noise,
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
@@ -71,7 +71,7 @@ except (ImportError, ValueError):
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
         validate_step_range, apply_pag_to_model, AYS_ANCHORS, get_ays_sigmas,
-        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus,
+        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus, perpendicular_cfg_function,
         build_sigma_report, _temporally_correlate, _perlin_noise, _perlin_noise_2d,
         _spectral_noise, _get_freq_grid, _spectral_noise_2d, _brownian_noise,
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
@@ -747,8 +747,9 @@ class RadianceSamplerPro:
                 "sampler_mode": (SamplerMode.ALL, {"default": SamplerMode.STANDARD, "tooltip": (
                     "Standard: one sampler throughout. Phase-Shift: switch at phase_split to dpmpp_2m "
                     "(DPM) or to the same sampler on the sgm_uniform schedule (SGM); not used for video "
-                    "models. CFG++: scales cfg toward 1.0 by a cosine of each stage's starting sigma, so a "
-                    "plain single-stage run keeps cfg unchanged.")}),
+                    "models. CFG++: guidance keeps only the part of (cond - uncond) orthogonal to the "
+                    "conditional prediction, and cfg is scaled toward 1.0 by a cosine of each stage's "
+                    "starting sigma (a single-stage run keeps cfg).")}),
                 "phase_split": (
                     "FLOAT",
                     {"default": 0.40, "min": 0.0, "max": 1.0, "step": 0.05,
@@ -1501,8 +1502,24 @@ class RadianceSamplerPro:
 # unguarded forward still builds and retains an autograd graph.
     @torch.no_grad()
     def _encode_sdr_reference(self, ref, vae, work):
+        # comfy.sd.VAE.encode returns the latent tensor; only the VAEEncode node
+        # wraps it in {"samples": ...}. Indexing the tensor with "samples" made
+        # every real VAE crash the sample. Accept both, and pass RGB the way
+        # VAEEncode does: a VAE given an alpha channel fails.
+        if ref.shape[-1] > 3:
+            ref = ref[..., :3]
         res = vae.encode(ref)
-        ref_latent = res["samples"]
+        ref_latent = res["samples"] if isinstance(res, dict) else res
+        if ref_latent.ndim == 5:
+            # A video VAE encodes the still as a (B, C, T, h, w) clip; its
+            # first latent frame is the image. A temporal VAE reads a batch of
+            # references as one clip, so the later frames are dropped: say so.
+            if ref_latent.shape[2] > 1:
+                logger.warning(
+                    "[SDR Conditioning] sdr_vae encoded the reference as a clip of %d latent "
+                    "frames; only the first conditions the sample. Pass one image.",
+                    ref_latent.shape[2])
+            ref_latent = ref_latent[:, :, 0]
         B = work.shape[0]
         if ref_latent.shape[0] == 1 and B > 1:
             ref_latent = ref_latent.expand(B, -1, -1, -1)
@@ -2109,6 +2126,24 @@ class RadianceSamplerPro:
                     "[Radiance] LTX-AV dual CFG active (video_cfg=%.2f, audio_cfg=%.2f).",
                     _video_cfg, _audio_cfg,
                 )
+
+        # ── CFG++ (Perpendicular) ────────────────────────────────────────────
+        # Until 4.0 the mode only scaled cfg per stage (still done below);
+        # nothing was perpendicular. The guidance now keeps only the part of
+        # (cond - uncond) orthogonal to cond. A cfg function another patch
+        # already set (LTX-AV dual CFG) is kept: the slot holds one function.
+        # Both models are clones by now, so the inputs stay unpatched.
+        if is_cfg_plus_plus:
+            for _cm, _what in ((model, "model"), (refiner_model, "refiner_model")):
+                if _cm is None:
+                    continue
+                if "sampler_cfg_function" in _cm.model_options:
+                    logger.warning(
+                        "[Radiance] CFG++ (Perpendicular): another cfg function is already "
+                        "set on %s (e.g. LTX-AV audio_cfg); keeping it, so only the "
+                        "per-stage cfg scale applies there.", _what)
+                else:
+                    _cm.set_model_sampler_cfg_function(perpendicular_cfg_function)
 
         if SamplerMode.is_phase_shift(sampler_mode) and detected_type in VIDEO_MODEL_TYPES:
             logger.warning(

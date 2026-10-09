@@ -82,7 +82,7 @@ Compare a display render against the ACES 2.0 reference Output Transform (OpenCo
 | `scene_image` | IMAGE |  |  | Scene-linear ACEScg image BEFORE the output transform. |
 | `display_image` | IMAGE |  |  | Display-encoded image AFTER the output transform under test. |
 | `output_type` | choice | `SDR_sRGB` | `SDR_sRGB`, `SDR_P3`, `HDR_PQ_1000`, `HDR_PQ_2000`, `HDR_PQ_4000`, `HDR_HLG` | ACES 2.0 Output Transform the display image is meant to be. The reference is rendered for this output and compared. |
-| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Shown in the report header only; the peak comes from output_type. |
+| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Label only: printed in the report header, never checked. The peak the reference is rendered for comes from output_type (SDR 100, PQ 1000/2000/4000, HLG 1000 nits). |
 
 **Outputs**
 
@@ -443,7 +443,7 @@ Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stop
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | HDR image before compression, encoded as set by colorspace. Metrics treat linear 1.0 as 203 nits. |
-| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Must match the value used in HDR Turbo Encoder. |
+| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Soft-knee compression ratio to evaluate; the PSNR estimate round-trips the image through it. Use the value from Auto Log Select. |
 | `model_preset_used` (optional) | string |  |  | Resolved model key from AutoLogSelect. |
 | `stats_json` (optional) | string |  |  | JSON from HDR Per-Channel Norm (optional). |
 | `coherence_map` (optional) | IMAGE |  |  | Optional coherence map (0 to 1). Only its mean is reported, as coherence_mean in the JSON. |

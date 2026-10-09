@@ -399,7 +399,7 @@ def test_a_delivery_returns_200_with_the_path_it_wrote(h):
     assert os.path.exists(body["path"]), body["path"]
     assert body["path"].startswith(str(h.root))
     assert len(h.exrs()) == 2, [p.name for p in h.exrs()]
-    assert "v01" in body["message"]
+    assert "(v0001)" in body["message"]
     assert os.path.basename(body["path"]) in body["message"]
 
 
@@ -507,17 +507,27 @@ def test_symbols_are_dropped_from_the_file_name(h):
 def test_smart_versioning_advances_on_the_second_delivery(h):
     h.put(flat(0.5))
     first = h.body(h.run())
-    assert "(v01)" in first["message"], first["message"]
+    assert "(v0001)" in first["message"], first["message"]
     second = h.body(h.run())
-    assert "(v02)" in second["message"], second["message"]
-    assert first["path"] != second["path"], "v02 overwrote v01"
+    assert "(v0002)" in second["message"], second["message"]
+    assert first["path"] != second["path"], "v0002 overwrote v0001"
 
 
-def test_smart_versioning_off_does_not_stamp_a_version_into_the_name(h):
+def test_the_delivered_name_carries_one_version_suffix(h):
+    """3.x stamped two: Shot_v02_v0001. 4.0 writes Shot_v0002."""
     h.put(flat(0.5))
-    body = h.body(h.run({"smart_versioning": False, "filename": "Shot"}))
-    assert "Shot_v01" not in _delivered_dir_name(h, body), body["path"]
-    assert "(v01)" in body["message"]
+    h.body(h.run({"filename": "Shot"}))
+    body = h.body(h.run({"filename": "Shot"}))
+    name = _delivered_dir_name(h, body)
+    assert os.path.splitext(name)[0] == "Shot_v0002", body["path"]
+    assert "(v0002)" in body["message"], body["message"]
+
+
+def test_smart_versioning_off_always_writes_v0001(h):
+    h.put(flat(0.5))
+    first = h.body(h.run({"smart_versioning": False, "filename": "Shot"}))
+    assert os.path.splitext(_delivered_dir_name(h, first))[0] == "Shot_v0001", first["path"]
+    assert "(v0001)" in first["message"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -531,18 +541,23 @@ def test_exposure_is_applied_in_stops(h):
         "+1 stop must double a linear value")
 
 
-def test_temperature_and_tint_are_the_viewers_additive_sliders(h):
+def test_temperature_and_tint_are_the_viewers_white_balance_gains(h):
     """The shipped bug fabricated Kelvin from the slider and dropped tint.
 
-    The viewer's shader is `shift.r += temp; shift.b -= temp; shift.g -= tint`,
-    so temp=+1 tint=+1 on a flat 0.25 plate is R 1.25, G 0 (clamped), B 0.
+    The viewer's Temperature and Tint are gains in stops that keep a neutral's
+    luminance (js/radiance_grade.js whiteBalanceGains): temp=+1 is one stop of
+    red against blue, tint=+1 one stop of magenta against green. This test
+    used to pin the additive shift `shift.r += temp; shift.g -= tint`, which
+    clamped G to 0 here; that was the viewer's bug, and the master copied it.
     """
+    import math
+
     h.put(flat(0.25))
     assert h.run(grading={"temperature": 1.0, "tint": 1.0}).status == 200
     r, g, b = h.pixel(h.exrs()[0])[:3]
-    assert r == pytest.approx(1.25, abs=1e-4), f"temperature did not lift R: {r}"
-    assert g == pytest.approx(0.0, abs=1e-4), f"tint did not touch G: {g}"
-    assert b == pytest.approx(0.0, abs=1e-4), f"temperature did not drop B: {b}"
+    assert math.log2(r / b) == pytest.approx(1.0, abs=1e-4), f"temperature: R/B {r / b}"
+    assert math.log2(math.sqrt(r * b) / g) == pytest.approx(1.0, abs=1e-4), f"tint: G {g}"
+    assert 0.2126 * r + 0.7152 * g + 0.0722 * b == pytest.approx(0.25, abs=1e-4)
 
 
 def test_a_temperature_of_zero_leaves_the_channels_alone(h):
@@ -575,13 +590,17 @@ def test_a_nonsense_grade_value_falls_back_to_the_default_instead_of_500(h):
 
 
 def test_the_colour_science_switch_changes_the_result(h):
-    """`colorScience` 'ACEScct' selects a different saturation math path."""
+    """`colorScience` 'ACEScct' grades the wheels in ACEScct.
+
+    Saturation is applied in linear in both modes, so the switch only shows on
+    the wheels; at neutral ACEScct is the identity (viewer review H4).
+    """
     plate = torch.zeros((1, 4, 4, 3))
     plate[..., 0], plate[..., 1], plate[..., 2] = 0.6, 0.3, 0.1
     h.put(plate)
-    h.run(grading={"saturation": 1.5, "colorScience": "0"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "0"},
           settings={"filename": "SDR"})
-    h.run(grading={"saturation": 1.5, "colorScience": "ACEScct"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "ACEScct"},
           settings={"filename": "ACES"})
     sdr = h.pixel([p for p in h.exrs() if "SDR" in str(p)][0])
     aces = h.pixel([p for p in h.exrs() if "ACES" in str(p)][0])
@@ -855,7 +874,7 @@ def test_a_metadata_sidecar_lands_next_to_the_master(h):
     body = h.body(h.run())
     meta_path = os.path.splitext(body["path"])[0] + "_meta.json"
     meta = json.loads(open(meta_path, encoding="utf-8").read())
-    assert meta["version"] == "v01"
+    assert meta["version"] == "v0001"
     assert meta["continuity"] == "PASS"
     assert meta["bake_grade_exr"] is False
     assert "QC PASS" in meta["qc"]
@@ -1140,7 +1159,7 @@ def test_a_delivery_is_appended_to_the_session_log(h):
     h.put(flat(0.5, n=2, h=6, w=10))
     body = h.body(h.run(grading={"exposure": 0.5, "saturation": 1.25}))
     entry = _sessions(h)[-1]
-    assert entry["version"] == "v01"
+    assert entry["version"] == "v0001"
     assert entry["shot"] == os.path.basename(body["path"])
     assert entry["frames"] == 2
     assert entry["resolution"] == "10×6"
@@ -1173,7 +1192,7 @@ def test_the_session_log_is_capped_at_500_entries(h):
     sessions = _sessions(h)
     assert len(sessions) == 500
     assert sessions[0]["shot"] == "old_6", sessions[0]
-    assert sessions[-1]["version"] == "v01"
+    assert sessions[-1]["version"] == "v0001"
 
 
 def test_a_flicker_event_is_recorded_in_the_session_log(h):
@@ -1186,12 +1205,12 @@ def test_a_flicker_event_is_recorded_in_the_session_log(h):
 #  § 15  Small module-level paths the endpoint depends on
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_an_unreadable_directory_yields_v01_rather_than_raising(tmp_path, caplog):
+def test_an_unreadable_directory_yields_v0001_rather_than_raising(tmp_path, caplog):
     """get_next_version's guard: a file where a directory was expected."""
     victim = tmp_path / "not_a_dir"
     victim.write_text("", encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="radiance.delivery.handler"):
-        assert handler.get_next_version(str(victim), "shot") == "v01"
+        assert handler.get_next_version(str(victim), "shot") == "v0001"
     assert any("get_next_version" in r.getMessage() for r in caplog.records)
 
 
@@ -1272,6 +1291,23 @@ def test_a_failed_upscale_is_reported_rather_than_delivered_as_success(h, monkey
     assert any("upscale" in w.lower() for w in body["warnings"]), body["warnings"]
     assert "1x" in " ".join(body["warnings"])
     assert "WITHOUT" in body["message"]
+
+
+def test_a_silent_bicubic_fallback_is_reported_too(h, monkeypatch):
+    """RadianceAIUpscale does not raise when its model is missing, a download
+    fails or inference fails: it returns a bicubic resize. The master was 2x by
+    resampling and the receipt said nothing (code review P1-2)."""
+    from radiance.image.upscale import RadianceAIUpscale
+
+    monkeypatch.setattr(RadianceAIUpscale, "_load_model",
+                        lambda self, *a, **k: (None, "RealESRGAN_x2plus.pth missing"))
+
+    h.put(flat(0.5, n=1, h=8, w=8))
+    body = h.body(h.run({"upscale_2x": True}))
+
+    assert body["status"] == "partial", body
+    note = " ".join(body["warnings"]).lower()
+    assert "upscale" in note and "bicubic" in note, body["warnings"]
 
 
 def test_a_failed_aspect_blank_is_reported(h):

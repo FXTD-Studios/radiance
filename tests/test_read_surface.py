@@ -776,3 +776,49 @@ def test_route_registration_is_idempotent():
         "shadows a live route, and an adjacent repeat is the aiohttp "
         "RuntimeError that crashed ComfyUI at startup"
     )
+
+
+# The routes checked that the file existed before checking that it was inside
+# the allowed roots, so any path outside them answered 404 "not a file" (with
+# the path echoed) when missing and 403 when present: the very oracle the root
+# check exists to close (code review P3-2).
+
+def _media_get_handlers(dispatcher):
+    return {r.resource.canonical: r.handler for r in dispatcher.routes() if r.method == "GET"}
+
+
+def _ask_media_route(monkeypatch, allowed, route, paths):
+    import asyncio
+    from radiance.nodes.io import write as nodes_io
+    from radiance.nodes.io.write import register_read_routes
+
+    monkeypatch.setattr(nodes_io, "_allowed_read_roots", lambda: [str(allowed)])
+    with _real_aiohttp_web() as web:
+        dispatcher = web.UrlDispatcher()
+        with _prompt_server_on(dispatcher):
+            register_read_routes()
+            handler = _media_get_handlers(dispatcher)[route]
+            return [asyncio.run(handler(types.SimpleNamespace(query={"path": p}))) for p in paths]
+
+
+@pytest.mark.parametrize("route", ["/radiance/media/info", "/radiance/media/layers"])
+def test_outside_the_roots_a_file_and_a_missing_path_look_the_same(monkeypatch, tmp_path, route):
+    allowed = tmp_path / "plates"
+    allowed.mkdir()
+    secret = tmp_path / "secret.exr"
+    secret.write_bytes(b"not yours")
+
+    present, missing = _ask_media_route(
+        monkeypatch, allowed, route, [str(secret), str(tmp_path / "nothing_here.exr")])
+
+    assert present.status == missing.status == 403
+    assert present.body == missing.body
+    assert b"nothing_here" not in missing.body, "the route must not echo a path it refused"
+
+
+def test_inside_the_roots_a_missing_file_is_still_a_404(monkeypatch, tmp_path):
+    allowed = tmp_path / "plates"
+    allowed.mkdir()
+    (missing,) = _ask_media_route(
+        monkeypatch, allowed, "/radiance/media/info", [str(allowed / "sh010.exr")])
+    assert missing.status == 404

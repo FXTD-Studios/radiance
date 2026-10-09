@@ -2,6 +2,268 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [4.0.0] - Unreleased (beta, branch version-4-Beta)
+
+A major release because saved graphs and studio scripts can see it: four
+hidden placeholder nodes are gone, delivered file names change, a remote DCC
+bridge needs signed requests, and three controls that did nothing now work. Everything
+else is fixes. Read the upgrade notes before moving a production setup.
+
+### Upgrade notes
+
+- **Removed nodes.** SAM Loader, SAM Mask Generator, HDR Latent Encoder and
+  HDR Turbo Encoder were hidden placeholders that raised when run. A saved
+  graph that still holds one loads with that node missing; delete it. Use
+  ComfyUI's SAM nodes and the HDR VAE Encode node instead. ACES 2.0 Output
+  Transform (Legacy) stays, hidden.
+- **Delivery file names** carry one version suffix: `Shot_v0002.mov`, where
+  3.x wrote `Shot_v02_v0001.mov`. The counter continues from 3.x names in the
+  same folder. Smart versioning off writes `Shot_v0001`. The reported version
+  is four digits too (`v0002`).
+- **DCC bridge on a network address** (`RADIANCE_ALLOW_REMOTE_BRIDGE=1`):
+  `queue` must be signed with the shared DCC token from
+  `RADIANCE_DCC_AUTH_TOKEN` or `~/.radiance/dcc_token` (the one the Nuke
+  listener already uses): `ts`, a single-use `nonce` and `sig`, as
+  `radiance.core.dcc_auth.sign_queue` builds them. The token itself is never
+  sent. Loopback, `ping` and `status` are unchanged.
+- **The DCC bridge refuses HTTP.** A connection whose first line is an HTTP
+  request is closed, so a web page can no longer queue a prompt through a
+  loopback bridge with `fetch()`.
+- **Controls that now act:** Bit Depth Degrade `restore_from_quantized`,
+  Sampler CFG++ (Perpendicular), and Denoise `motion_compensation` (only with
+  `temporal_blend` above 0, which is not the default). A saved graph that set
+  them gets a different result from 3.x, which ignored or under-did them.
+- **One default OCIO config.** The Write/Read colour options, the HDR OCIO
+  nodes and the OCIO manager now all use `$OCIO` when it loads, else the ACES
+  studio config Radiance sets up. Before, two of them fell back to the bundled
+  CG config, whose colour space names differ.
+- **HDR video needs 10 bits.** PQ or HLG with "MP4 (H.264)" or "MOV (DNxHR
+  HQ)" now stops with an error naming H.265 10-bit, ProRes 422 HQ and ProRes
+  4444; before, it wrote an 8-bit file tagged as HDR. PQ H.265 files are now
+  HDR10: P3-D65 1000-nit mastering display and MaxCLL / MaxFALL measured from
+  the frames.
+- **Camera log input** (`apply_input_transform`, used by HDR Analysis on log
+  and ACEScct) now converts the camera gamut to Rec.709 primaries after the
+  curve; it decoded the curve only. Neutrals are unchanged, saturated colours
+  and the measured peak and clipping on saturated log content change.
+- **Installed upscale and face models are checked once.** The first run after
+  upgrading hashes each one against its pinned SHA-256 (records the pass in
+  `<file>.radiance-sha256`, tied to the file's inode and change time). A file
+  that does not match is moved to `<file>.radiance-mismatch` and the pinned
+  one downloaded, or reported when downloads are off; it is never used
+  silently or overwritten.
+- **Nuke push** reports `UNCONFIRMED` when Nuke does not reply before the read
+  timeout, drops the connection, or is busy (the listener now answers
+  `PENDING` after 10 s); it reported `OK`, or `FAILED` for a busy Nuke whose
+  command still ran. Update `scripts/start_nuke_server.py` in Nuke too.
+- **Downloads.** The ACES config manager's download needs download consent
+  (`RADIANCE_ALLOW_DOWNLOADS=0` refuses it) and is checked against a pinned
+  SHA-256. Whisper model downloads ask for consent too (weights already in
+  whisper's cache, including `large` as `large-v3.pt`, need none).
+- **Viewer grade controls mean something different.** Contrast is a power
+  curve about 18% grey (pivot default 0.18, was 0.5 linear), Temperature and
+  Tint are white-balance gains in stops (were added colour), and printer
+  lights are 12 points to the stop (were 50). The same grade now looks
+  different from 3.x; re-check any grade you rely on. Deliver masters and the
+  Grade Apply node use the same maths, so they still match the screen.
+- **Viewer exports.** Grade `.cube` files are 65-point LUTs with ACEScct (AP1)
+  in and out, so HDR survives (about 7 MB); the domain and input transform are
+  in the title, comments and file name. CDLs fold in exposure, white balance,
+  contrast and printer lights, use Power = 1/gamma, and list what they could
+  not hold. Save PNG names end in `_sRGB` or `_DisplayP3`.
+- **Viewer temp files** are named `<prefix>_<token>_<frame>` and no `.rpick`
+  is written. Saved workflows keep a small reference to the result instead of
+  every frame entry; workflows saved by 3.x still load.
+- **Viewer keys and tools moved.** Full Screen is Shift+F (browsers keep
+  F11), the Ref Wipe tool is Shift+R, Alt+1 to Alt+6 open the panel tabs,
+  numpad 0 to 8 zoom (they nudged printer lights), 2 zooms to 200%, and P
+  does nothing. Blade, Adjust (which added a hidden contrast and saturation)
+  and the V1/V2 target are gone from the timeline. Fit now fits the picture
+  above the floating transport, so it is a little smaller. Double-click on
+  the f/ or gamma box selects its text; Alt+click resets it.
+
+### Removed
+
+- SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
+  above). The node count is 152.
+
+### Changed
+
+- **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
+  orthogonal to the conditional prediction, per batch item (projected
+  guidance). It used to be only a cosine cfg schedule per stage, which stays.
+  It applies on the refiner's steps too. A cfg function another patch set
+  (LTX-AV `audio_cfg`) is left in place.
+- **Bit Depth Degrade `restore_from_quantized`** dequantises: eight 3x3
+  smoothing passes, each clamped to the values the pixel could have come
+  from. The other outputs and the metrics then measure the restored image.
+- **Denoise `motion_compensation`** is hierarchical block matching (8x8
+  blocks, ±4 at the coarsest level, about ±30 px per frame on large frames)
+  with an edge-repeating warp, instead of the best of nine 1-pixel offsets
+  with wrap-around.
+- **Relabelled, by design:** ACES Compliance `peak_nits` and the Legacy
+  output transform's `creative_white_scale` say exactly what they do. Sampler
+  `conditioning_clip_target`, Color Space Info `scene_referred` and
+  `peak_nits` were already labelled truthfully. KNOWN_ISSUES lists all seven
+  as resolved.
+- **`hdr/vae.py` split, first slice:** `TileEngine` moved to
+  `hdr/vae_tiling.py` unchanged; `hdr/vae.py` re-exports it.
+- **`.rhdr` sidecars** are written by one encoder, `core/rhdr.py`, shared by
+  the Viewer (fp16, fp32, depth) and the HDR VAE export.
+
+### Viewer
+
+The viewer was reviewed end to end (controls, colour, performance) and these
+are the results.
+
+- **Scopes** plot code values from every pixel, in float, with footroom and
+  headroom: sRGB white reaches the 100% line (it stopped at 58% under nit
+  labels), a single clipped pixel shows, and nits are offered only for a PQ or
+  HLG display. The histogram bins code values with a real log mode, the
+  sidebar vectorscope draws its targets, and the chromaticity scope plots
+  linear light in a known gamut.
+- **Readouts:** the probe and status bar decode sRGB-encoded floats (a 0.5
+  pixel read EV +1.47 and 101.5 nits; it is +0.25 and 43.5), "Disp" reads the
+  rendered value, colour-space labels follow the source (every source said
+  ACEScg), File Info names the frame and its size, and EV Range is right on
+  frames with pure black.
+- **Picture:** Fit averages fine detail in linear light (1-px stripes showed
+  1.3 stops dark), the built-in filmic view sits within 3 code values of ACES
+  2.0 (it was 1.3 stops brighter), NaN and Inf show cyan and orange with a
+  count, the gamut warning and luma use the source and display gamuts, and the
+  Display P3 tag follows what the shader writes.
+- **Grading:** colour wheels no longer pull the level down while dragging,
+  ACEScct mode is the identity at neutral (exact AP1 matrices), Luma Mix keeps
+  the luminance after the primaries, and the eyedropper neutralises the picked
+  pixel exactly (it overcorrected, and picked the wrong pixel on HiDPI).
+- **One CDL and one .cube exporter** that reproduce the screen; the three old
+  copies disagreed with it and with each other.
+- **Undo, reset, presets:** one undo step per drag covers the whole grade
+  (sliders were never undoable and saturation 0 came back as 1), Reset and
+  Reset All differ, each section has its own reset, double-click resets a
+  slider, readouts are editable, the grade is saved with the workflow, and
+  grade presets are in the Grade tab. The two LUT selects stay in step.
+- **Curve editor:** the histogram is the float frame on the curve's own axis,
+  Alt+drag only pans, curve texels are read at their centres, and negatives
+  pass through.
+- **Several viewers:** each has its own control panel (a second viewer took
+  over the first one's), budgets for frame and GPU memory are shared, and a
+  deleted viewer is freed (it kept its frame, up to about 230 MB at 4K).
+- **Video files** step, scrub and play by frame at the file's own rate; the
+  scrubber moved the counter but not the picture.
+- **Sequences:** the frame window is sized by bytes (4K fetched about 13
+  frames per step), float frames keep only their half floats, per-frame work
+  moved off the main thread, scopes update from one place, and the right
+  panel no longer rebuilds under a slider drag.
+- **Compare** uses B's float frame through the same grade and view, placed
+  1:1 or fitted, instead of the 8-bit preview stretched over A.
+- **Errors are visible:** missing files after a restart, an unplayable video,
+  a bad sidecar and a lost GPU context each show a message, and the picture
+  comes back when the context is restored.
+- **Server:** running one workflow no longer deletes another workflow's
+  viewer frames, the purge runs after the new frames are written, and a run
+  that may not fit on the temp disk warns.
+- **Save PNG (Result)** leaves out the viewer f-stop, gamma and overlays.
+- **Smaller:** V-Log decode slope 5.6, input auto-detect matches whole words,
+  the BT.1886 view says it is for an external display, half-float frames
+  filter linearly on WebGL2, the grain loop runs only when grain is animated,
+  and the renderer initialises once.
+- **Keys:** one keymap drives the keys, the help, the menus and every
+  tooltip, so they agree. Keys match by physical key (macOS Option works),
+  keep working with the scrubber, a slider or a dropdown focused, and no
+  longer reach ComfyUI once the viewer has used them.
+- **Reach:** a Masks tab (power window and HSL qualifier with a colour pick),
+  scope scale, levels and per-scope view in the Scopes tab, and the OCIO
+  config loader in the Grade tab. These were built only in a panel the viewer
+  never showed. The menus list every action with its real key, and Ref Wipe
+  shows its B frame (it had none).
+- **Pointer input:** the wheel honours line and page modes, a trackpad pans
+  with two fingers and pinch-zooms, a pen works like a mouse, touch pans and
+  pinch-zooms, and drag pan keeps up on HiDPI screens. The f/ and gamma boxes
+  stay inside their ranges.
+- **Design:** one theme for colour and type, 12 px text at 4.5:1 contrast or
+  better in the rail and panels, visible keyboard focus, labelled sliders,
+  28 px controls, and a high-contrast setting that changes something. The
+  rail scrolls, shows which tools are on, and has no dead items; Pixel Grid
+  outlines pixels at 800% and up.
+- **Header and status:** the gear opens a settings popover (it hid the
+  panel), Hide Panel is its own button, the header shows the package version
+  (it said v3.5), and the format chip, bit depth and clip name come from the
+  frame. Both zoom readouts agree.
+- **Effects** without a depth map say so and disable depth of field; Blades
+  skips 1 and 2, which drew a round disc.
+
+### Fixed
+
+- **SDR reference conditioning** crashed with every real VAE (it expected a
+  dict from `vae.encode`). It takes a tensor or a dict, encodes RGB only, and
+  warns when a video VAE drops reference frames.
+- **Delivery** reports status "partial" with a warning when its 2x AI upscale
+  fell back to bicubic.
+- **Flux.2** is detected as `flux2` when `model_meta` is not connected
+  (longest config pattern first).
+- **Project Manager** saves graphs the library can reopen and parse; shot and
+  version names split on any non-alphanumeric boundary.
+- **Asset upload** keeps an existing file (the new one becomes `name_1.ext`)
+  and removes its partial file when aborted.
+- **`/radiance/media/*`** answers the same for a missing file and one outside
+  the allowed roots, so it no longer reveals which files exist.
+- **Shot status** cannot be written outside the workflow library.
+- **Video encodes** go to a hidden sibling file that replaces the output only
+  on success, so a failed, timed-out or cancelled encode leaves any previous
+  master intact; masters keep normal file permissions and overwrite off never
+  clobbers.
+- **A video written from a stream of unknown length** kept only as many
+  frames as its audio was long; the audio is now padded instead.
+- **fp16 `.rhdr` writes** clamp finite overflow to ±65504 everywhere (the VAE
+  export and the depth sidecar wrote inf for large finite values) while a true
+  Inf or NaN stays one, so the viewer can flag it; the VAE export's path guard
+  works again.
+- **MoGe-2** is checked against its pinned SHA-256 after download, and each
+  **Marigold** file against the Hub's hash at the pinned commit; a mismatch
+  deletes the file. A Marigold download whose check could not run (rate
+  limit, network) is checked again on the next run instead of being used.
+- **Reading:**
+  - Image sequences report the frame rate their EXR, DPX or Cineon header
+    declares (24 only as a stated fallback; DPX's float rates snap, so 23.976
+    is 24000/1001); every sequence said 24.
+  - Video reads work with only ffmpeg installed (imageio-ffmpeg ships no
+    ffprobe): the stream is probed from ffmpeg's banner.
+  - `raw` on a video skips the colour-tag decode and any OCIO override, as it
+    does for images.
+  - Formats only OpenImageIO reads (Cineon, RLA, IFF, ARRIRAW and others) go
+    to OpenImageIO instead of failing in Pillow, with an install hint when it
+    is missing; `.pic` (Radiance RGBE) is read as float HDR.
+- **RGBA:** Tier 2 upscale, SeedVR2 and an external `UPSCALE_MODEL` carry alpha
+  (resized to the output; the model sees RGB), Face Restore keeps the input
+  alpha (it wrote the face's red into alpha), Focus Peaking keeps alpha, and
+  Split View, Contact Sheet, Flipbook GIF and Preview Server accept RGBA and
+  show RGB (they raised, or the GIF's colours were scrambled). Video Assembler
+  joins RGB and RGBA frames (TEN-007).
+- **AI Upscale** honours `RADIANCE_UPSCALE_OFFLINE` and says why a model was
+  not downloaded.
+- **DCC Bridge:** export from an image sequence works (it always failed on an
+  unknown colour space name); at most 16 connections are served at once (8 per
+  address), a request line must arrive within 30 s, and the server stops
+  when ComfyUI exits.
+- **Audio Transcribe:** chunks of a split segment each get their own start
+  and end; they all started at the segment start.
+- **Startup** ends on a warning naming any missing required dependency, and
+  a failure inside the dependency check no longer stops Radiance loading.
+- **OCIO:** a broken `$OCIO` falls back the same way everywhere (the ACES
+  Config Manager's Detect included), a config set after the first use reaches
+  the writer, an edited config file is read again, and the OCIO manager
+  accepts an `ocio://` URI (used when the package folder is read-only).
+
+### Known limits
+
+- Sequential offload still switches ComfyUI to LOW_VRAM for the rest of the
+  session (P2-4); nothing Radiance can hook is scoped to one prompt.
+- The multipass model registry (Depth Anything V2, DSINE) downloads from
+  `main` without a pinned hash; it is consent-gated and logs the digest.
+- GPU timings and DCC round trips need hardware and were not run for this
+  beta.
+
 ## [3.5.4] - 2026-10-02
 
 Registry release. 3.5.0, 3.5.2 and 3.5.3 were published but held as

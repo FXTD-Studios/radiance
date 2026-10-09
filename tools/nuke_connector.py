@@ -164,6 +164,8 @@ class NukeConnector:
             # Read response chunks until END_MARKER or disconnect
             chunks = []
             accumulated = b""
+            confirmed = False
+            timed_out = False
             while True:
                 try:
                     data = sock.recv(BUFFER_SIZE)
@@ -172,16 +174,42 @@ class NukeConnector:
                     chunks.append(data)
                     accumulated = b"".join(chunks)
                     if END_MARKER in accumulated:
+                        confirmed = True
                         break
                 except socket.timeout:
+                    timed_out = True
                     break
 
             response = accumulated.decode("utf-8", errors="replace")
             response = response.replace(END_MARKER.decode(), "").strip()
 
-            if response.startswith("ERROR:"):
+            # The listener answers after 10 s when Nuke's main thread is busy:
+            # "PENDING: ..." since 4.0, "ERROR: Timeout" before. The command is
+            # still queued there, so it is unconfirmed, not failed.
+            busy = response.startswith("PENDING:") or response == "ERROR: Timeout"
+            if response.startswith("ERROR:") and not busy:
                 self._last_error = response
                 return (False, response)
+
+            if busy:
+                msg = (f"UNCONFIRMED: Nuke at {self.host}:{self.port} is busy and has not run the "
+                       "command yet; it is queued there and may still run")
+                self._last_error = msg
+                logger.warning(msg)
+                return (False, msg)
+
+            if not confirmed:
+                # The listener ends every reply with END_MARKER. Without it the
+                # command was sent but never acknowledged: Nuke may be busy and
+                # run it later, or may never have run it. Until 4.0 this was
+                # returned as a success.
+                why = (f"no reply within {timeout:g}s" if timed_out
+                       else "the connection closed before Nuke replied")
+                msg = (f"UNCONFIRMED: sent to Nuke at {self.host}:{self.port}, but {why}; "
+                       "the command may or may not have run in Nuke")
+                self._last_error = msg
+                logger.warning(msg)
+                return (False, msg)
 
             return (True, response)
 

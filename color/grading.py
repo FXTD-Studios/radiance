@@ -7,8 +7,6 @@ from radiance.color.luts import (
     _LUT_FUNCTIONS,
     _lut_false_color,
     _lut_clip_check,
-    _M_SRGB_TO_ACESCG,
-    _M_ACESCG_TO_LIN_SRGB
 )
 
 logger = logging.getLogger("radiance.color.grading")
@@ -104,6 +102,137 @@ def apply_lut(img: np.ndarray, lut_name: str, intensity: float = 1.0) -> np.ndar
     return (img * (1.0 - intensity) + lut_applied * intensity).astype(np.float32)
 
 
+# ── The viewer grade, in Python ──────────────────────────────────────────────
+#
+# A Deliver master and the Grade Apply node bake the viewer's grade into
+# pixels, so this has to be the same maths as js/radiance_grade.js
+# gradePixelFull (the CPU form of the viewer's shader), op for op.
+# tests/test_viewer_grade_parity.py checks it against values generated from
+# that file, so the two cannot drift apart again: they did, and masters
+# stopped matching the screen (additive Temperature/Tint, linear contrast,
+# Luma Mix restoring the ungraded luminance, tone-mapper ACEScct matrices).
+
+_LUMA = np.array([0.2126, 0.7152, 0.0722])
+_PIVOT_DEFAULT = 0.18
+_PIVOT_FLOOR = 0.001
+_CONTRAST_MAX = 5.0
+_CONTRAST_CEILING = 1e30
+_GAMMA_FLOOR = 0.01
+
+# Source gamut (the viewer's u_sourceGamut: 0 linear Rec.709, 1 ACEScg,
+# 2 ACES2065-1, 3 linear Rec.2020, 4 linear P3-D65) to ACEScg, Bradford, and
+# the exact inverses. The same numbers as TO_AP1 / FROM_AP1 in
+# js/radiance_grade.js; OpenColorIO agrees to 1e-7.
+_TO_AP1 = {
+    0: [[0.6130974024011878, 0.3395231461841061, 0.04737945141470665],
+        [0.07019372246958168, 0.9163538790573436, 0.01345239847307412],
+        [0.02061559288222693, 0.1095697729381354, 0.8698146341796377]],
+    2: [[1.451439316145666, -0.2365107468937401, -0.2149285692519255],
+        [-0.0765537733960206, 1.176229699833573, -0.09967592643755213],
+        [0.008316148425697719, -0.006032449791021028, 0.9977163013653231]],
+    3: [[0.9748949779244189, 0.01959910863700534, 0.005505913438576188],
+        [0.002179562797703918, 0.9955354688932204, 0.002284968309075179],
+        [0.004797239683772727, 0.02453201663458945, 0.9706707436816377]],
+    4: [[0.735797914028892, 0.2121664852931746, 0.05203560067793385],
+        [0.04717988497673042, 0.9380457009217151, 0.01477441410155395],
+        [0.003563664639098911, 0.04114188562513292, 0.955294449735768]],
+}
+_FROM_AP1 = {
+    0: [[1.705050992657983, -0.6217921206570056, -0.08325887200097853],
+        [-0.1302564175070434, 1.140804736575402, -0.01054831906835806],
+        [-0.02400335680461803, -0.1289689760649706, 1.152972332869588]],
+    2: [[0.6954522413574517, 0.1406786964702941, 0.1638690621722542],
+        [0.04479456337203774, 0.859671118456422, 0.0955343181715404],
+        [-0.005525882558113543, 0.004025210305978663, 1.001500672252135]],
+    3: [[1.02582474766601, -0.02005319083821517, -0.005771556827795564],
+        [-0.002234369519975978, 1.00458650188848, -0.002352132368503649],
+        [-0.005013351468089286, -0.02529007181078517, 1.030303423278875]],
+    4: [[1.379214128253342, -0.3088641446737119, -0.07034998357963095],
+        [-0.06933485838138222, 1.08229674600235, -0.01296188762096683],
+        [-0.002159009513570322, -0.04545932483731564, 1.047618334350886]],
+}
+
+
+def _luma(c: np.ndarray) -> np.ndarray:
+    return c @ _LUMA
+
+
+def _smoothstep(e0: float, e1: float, x: np.ndarray) -> np.ndarray:
+    t = np.clip((x - e0) / (e1 - e0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _gamut(c: np.ndarray, gamut: int, table: dict) -> np.ndarray:
+    if gamut == 1:
+        return c
+    return c @ np.asarray(table.get(gamut, table[0])).T
+
+
+def _lin_to_acescct(x: np.ndarray) -> np.ndarray:
+    lo = 10.5402377416545 * x + 0.0729055341958355
+    hi = (np.log2(np.maximum(x, 1e-300)) + 9.72) / 17.52
+    return np.where(x <= 0.0078125, lo, hi)
+
+
+def _acescct_to_lin(y: np.ndarray) -> np.ndarray:
+    hi = np.exp2(np.minimum(y * 17.52 - 9.72, 1000.0))
+    lo = (y - 0.0729055341958355) / 10.5402377416545
+    return np.where(y > 0.155251141552511, hi, lo)
+
+
+def _white_balance_gains(temperature: float, tint: float) -> np.ndarray:
+    """One unit of Temperature is a stop of red against blue, one of Tint a stop
+    of green against magenta; scaled so a neutral keeps its luminance."""
+    g = np.array([2.0 ** (temperature / 2.0), 2.0 ** (-tint), 2.0 ** (-temperature / 2.0)])
+    return g / float(g @ _LUMA)
+
+
+def _rgb2hsv(c: np.ndarray) -> np.ndarray:
+    # The shader's branchless form, so hues at the seams land where they do there.
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    st1 = g >= b
+    p0 = np.where(st1, g, b)
+    p1 = np.where(st1, b, g)
+    p2 = np.where(st1, 0.0, -1.0)
+    p3 = np.where(st1, -1.0 / 3.0, 2.0 / 3.0)
+    st2 = r >= p0
+    q0 = np.where(st2, r, p0)
+    q1 = p1
+    q2 = np.where(st2, p2, p3)
+    q3 = np.where(st2, p0, r)
+    d = q0 - np.minimum(q3, q1)
+    e = 1e-10
+    return np.stack([np.abs(q2 + (q3 - q1) / (6.0 * d + e)), d / (q0 + e), q0], axis=-1)
+
+
+def _hsv2rgb(hsv: np.ndarray) -> np.ndarray:
+    h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    out = []
+    for k in (1.0, 2.0 / 3.0, 1.0 / 3.0):
+        x = h + k
+        p = np.abs((x - np.floor(x)) * 6.0 - 3.0)
+        out.append(v * (1.0 + (np.clip(p - 1.0, 0.0, 1.0) - 1.0) * s))
+    return np.stack(out, axis=-1)
+
+
+def _sample_curve(table: np.ndarray, x: np.ndarray, ch: int) -> np.ndarray:
+    """A 256-entry table read at texel centres: input x reads entry x * 255."""
+    f = np.clip(x, 0.0, 1.0) * 255.0
+    k = np.minimum(np.floor(f), 254.0).astype(np.int64)
+    t = f - k
+    return table[k, ch] * (1.0 - t) + table[k + 1, ch] * t
+
+
+def _curve_table(v) -> Optional[np.ndarray]:
+    if v is None:
+        return None
+    try:
+        a = np.asarray(v, dtype=np.float64).reshape(256, 4)
+    except (TypeError, ValueError):
+        return None
+    return a if np.all(np.isfinite(a)) else None
+
+
 def apply_grading(
     img: np.ndarray,
     # Basic controls
@@ -113,26 +242,19 @@ def apply_grading(
     lift: float = 0.0,
     saturation: float = 1.0,
     temperature: float = 6500.0,
-    # Viewer-matched white balance.
-    #
-    # The WebGL viewer's TEMP/TINT sliders are a plain additive shift in [-2, 2]
-    # (`shift.r += temp; shift.b -= temp; shift.g -= tint`), while `temperature`
-    # above is a Kelvin white-balance multiply. The delivery handler used to
-    # fabricate Kelvin from the slider (6500 + t*3500) and pass that, so the
-    # export applied a completely different curve from the one on screen -- and
-    # `tint` had nowhere to go at all, so the green/magenta axis was dropped
-    # from every master. Pass these instead when matching the viewer; leave
-    # `temperature` at 6500 in that case.
+    # The viewer's Temperature and Tint, in stops (see _white_balance_gains).
+    # `temperature` above is a separate Kelvin multiply for the Grade Apply
+    # node; leave it at 6500 when matching the viewer.
     temp_shift: float = 0.0,
     tint_shift: float = 0.0,
     # Extended Resolve-style controls (v3.2 sync)
     offset: float = 0.0,  # global additive offset (applied first)
-    contrast: float = 1.0,  # contrast multiplier (pivoted)
-    pivot: float = 0.18,  # contrast pivot point
+    contrast: float = 1.0,  # power curve about the pivot
+    pivot: float = _PIVOT_DEFAULT,  # contrast pivot point (18% grey)
     shadows: float = 0.0,  # shadow lift/crush (-1..1)
     highlights: float = 0.0,  # highlight expand/compress (-1..1)
-    hue_shift: float = 0.0,  # degrees (-180..180)
-    luma_mix: float = 1.0,   # Preserve original luminance (0.0 = full preservation)
+    hue_shift: float = 0.0,  # degrees
+    luma_mix: float = 1.0,   # 0 keeps the luminance the primaries produced
     # Per-channel overrides (v3.5+) — list/tuple of [R, G, B] floats.
     gamma_rgb: Optional[List[float]] = None,
     gain_rgb: Optional[List[float]] = None,
@@ -145,237 +267,238 @@ def apply_grading(
     color_science: int = 0, # 0 = Linear/sRGB, 1 = ACEScct
     # Gamut Compression
     gamut_compression: bool = False,
+    # The rest of the viewer grade (all neutral by default).
+    color_boost: float = 0.0,
+    log_shadow: Optional[List[float]] = None,
+    log_midtone: Optional[List[float]] = None,
+    log_highlight: Optional[List[float]] = None,
+    printer_rgb: Optional[List[float]] = None,
+    curve_table=None,
+    curve_mix: float = 1.0,
+    secondary_curve_table=None,
+    secondary_curve_mix: float = 0.0,
+    source_gamut: int = 0,
 ) -> np.ndarray:
     """
-    Apply full grading stack to a float32 image.
-    Pipeline order is IDENTICAL to the GLSL composite shader so that the
-    passthrough IMAGE output matches what the WebGL viewer displays.
+    Apply the viewer's grade to a float32 image (H, W, C); alpha is untouched.
+
+    The order and the maths are js/radiance_grade.js gradePixelFull:
+    exposure, white balance, offset / lift / gain / gamma (in ACEScct when
+    color_science is 1), contrast, log wheels, printer lights, shadows /
+    highlights, colour boost, curves, hue curves, saturation, hue shift, Luma
+    Mix, then the LUT. Computed in float64, returned as float32.
     """
-    out = img.astype(np.float32, copy=True)
+    src = np.asarray(img)
+    out = src.astype(np.float32, copy=True)
 
-    # Alpha is not a colour. Exposure, contrast and shadows/highlights below all
-    # used to operate on the whole array, so a 50% matte came back at 1.059 with
-    # exposure +1 and contrast 1.3 -- an over-1.0 "opacity" that clips to fully
-    # opaque on write. Lift/gain/gamma, saturation, hue and gamut compression
-    # were already [..., :3]-guarded; these three were not.
-    _has_alpha = out.ndim == 3 and out.shape[2] >= 4
-    
-    # Pre-grading luma for luma_mix
-    luma_orig = None
-    if abs(luma_mix - 1.0) > 0.001:
-        luma_orig = 0.2126 * out[..., 0] + 0.7152 * out[..., 1] + 0.0722 * out[..., 2]
+    def _vec(rgb, scalar):
+        if rgb is not None and len(rgb) == 3:
+            return np.asarray([float(x) for x in rgb])
+        return np.full(3, float(scalar))
 
-    # Fast-path: skip if all controls are at identity
-    def _arr_at_identity(arr, identity_val: float) -> bool:
-        """True if arr is None/empty or all values equal identity_val within tolerance."""
-        if not arr or len(arr) < 3:
-            return True
-        return all(abs(float(v) - identity_val) < 0.001 for v in arr)
+    v_off = _vec(offset_rgb, offset)
+    v_lift = _vec(lift_rgb, lift)
+    v_gain = _vec(gain_rgb, gain)
+    v_gamma = _vec(gamma_rgb, gamma)
+    v_ls = _vec(log_shadow, 0.0)
+    v_lm = _vec(log_midtone, 0.0)
+    v_lh = _vec(log_highlight, 0.0)
+    v_pl = _vec(printer_rgb, 0.0)
+    curves = _curve_table(curve_table) if curve_mix and curve_mix > 0 else None
+    hue_curves = _curve_table(secondary_curve_table) if secondary_curve_mix and secondary_curve_mix > 0 else None
 
     is_default = (
-        abs(exposure) < 0.001
-        and abs(gamma - 1.0) < 0.001
-        and abs(gain - 1.0) < 0.001
-        and abs(lift) < 0.001
-        and abs(offset) < 0.001
-        and abs(saturation - 1.0) < 0.001
-        and abs(contrast - 1.0) < 0.001
-        and abs(shadows) < 0.001
-        and abs(highlights) < 0.001
-        and abs(hue_shift) < 0.1
-        and abs(temperature - 6500.0) < 10.0
-        and abs(temp_shift) < 0.001
-        and abs(tint_shift) < 0.001
-        and lut_name == "None"
-        and abs(luma_mix - 1.0) < 0.001
-        and _arr_at_identity(gamma_rgb, 1.0)
-        and _arr_at_identity(gain_rgb, 1.0)
-        and _arr_at_identity(lift_rgb, 0.0)
-        and _arr_at_identity(offset_rgb, 0.0)
-        and not gamut_compression
+        exposure == 0.0 and temp_shift == 0.0 and tint_shift == 0.0
+        and abs(temperature - 6500.0) <= 10.0
+        and not v_off.any() and not v_lift.any() and np.all(v_gain == 1.0) and np.all(v_gamma == 1.0)
+        and contrast == 1.0 and not v_ls.any() and not v_lm.any() and not v_lh.any() and not v_pl.any()
+        and shadows == 0.0 and highlights == 0.0 and color_boost == 0.0 and not gamut_compression
+        and curves is None and hue_curves is None and saturation == 1.0 and hue_shift == 0.0
+        and luma_mix >= 1.0 and lut_name == "None"
     )
     if is_default:
         return out
 
-    # ── 1. Offset (global additive shift — handled inside do_lift_gamma_gain)
-    # ── 2. Exposure (Linear part)
-    if abs(exposure) > 0.001:
-        if _has_alpha:
-            out[..., :3] *= np.float32(2.0**exposure)
-        else:
-            out *= np.float32(2.0**exposure)
+    gray = out.ndim < 3 or out.shape[-1] < 3
+    c = (np.repeat(out[..., None] if out.ndim < 3 else out[..., :1], 3, axis=-1) if gray
+         else out[..., :3]).astype(np.float64)
 
-    # ── 3. White Balance
-    if abs(temperature - 6500.0) > 10.0 and out.ndim == 3 and out.shape[2] >= 3:
-        r_mult, g_mult, b_mult = _kelvin_to_rgb_multipliers(temperature)
-        out[..., 0] *= np.float32(r_mult)
-        out[..., 1] *= np.float32(g_mult)
-        out[..., 2] *= np.float32(b_mult)
+    # Exposure, clamped to the viewer's +/-12 stops.
+    c = c * 2.0 ** min(max(float(exposure), -12.0), 12.0)
 
-    # Viewer-matched additive shift. Byte-for-byte the shader's applyTempTint:
-    #   shift.r += temp;  shift.b -= temp;  shift.g -= tint
-    # RGB only -- alpha is not a colour and must not be shifted.
-    if (abs(temp_shift) > 0.001 or abs(tint_shift) > 0.001) \
-            and out.ndim == 3 and out.shape[2] >= 3:
-        out[..., 0] += np.float32(temp_shift)
-        out[..., 1] -= np.float32(tint_shift)
-        out[..., 2] -= np.float32(temp_shift)
-        np.clip(out[..., :3], 0.0, 65504.0, out=out[..., :3])
+    # Kelvin white balance (Grade Apply node only), then the viewer's.
+    if abs(temperature - 6500.0) > 10.0:
+        c = c * np.asarray(_kelvin_to_rgb_multipliers(temperature))
+    if temp_shift or tint_shift:
+        c = c * _white_balance_gains(float(temp_shift), float(tint_shift))
 
-    # ── 4. Lift / Gain / Gamma (Resolve-style, per-channel aware)
-    def do_lift_gamma_gain(color: np.ndarray) -> np.ndarray:
-        c = color.copy()
-        nc = c.shape[2] if c.ndim == 3 else 0
-        has_per_ch = nc >= 3
+    # Offset, lift (pivoted on luminance at white), gain, gamma (positives only).
+    def _primaries(x):
+        x = x + v_off
+        x = x + v_lift * np.clip(1.0 - _luma(x), 0.0, 1.0)[..., None]
+        x = x * v_gain
+        inv = 1.0 / np.maximum(v_gamma, _GAMMA_FLOOR)
+        return np.where(x > 0, np.power(np.maximum(x, 1e-300), inv), x)
 
-        _o = np.array(offset_rgb, dtype=np.float32) if (offset_rgb and len(offset_rgb) == 3) else np.array([offset, offset, offset], dtype=np.float32)
-        _l = np.array(lift_rgb,   dtype=np.float32) if (lift_rgb   and len(lift_rgb)   == 3) else np.array([lift,   lift,   lift  ], dtype=np.float32)
-        _ga = np.array(gain_rgb,  dtype=np.float32) if (gain_rgb   and len(gain_rgb)   == 3) else np.array([gain,   gain,   gain  ], dtype=np.float32)
-        _gm = np.array(gamma_rgb, dtype=np.float32) if (gamma_rgb  and len(gamma_rgb)  == 3) else np.array([gamma,  gamma,  gamma ], dtype=np.float32)
-
-        # Offset: per-channel additive shift
-        if offset_rgb and len(offset_rgb) == 3 and has_per_ch:
-            if np.any(np.abs(_o) > 0.001):
-                c[..., :3] += _o
-        elif abs(offset) > 0.001:
-            c += np.float32(offset)
-
-        # Lift: per-channel shadow offset, luma-pivoted
-        if np.any(np.abs(_l) > 0.001) and has_per_ch:
-            luma = 0.2126 * c[..., 0] + 0.7152 * c[..., 1] + 0.0722 * c[..., 2]
-            pivot_lift = np.clip(1.0 - luma, 0.0, 1.0)[..., np.newaxis]
-            c[..., :3] += _l * pivot_lift
-
-        # Gain: per-channel multiplicative slope
-        if np.any(np.abs(_ga - 1.0) > 0.001) and has_per_ch:
-            c[..., :3] *= _ga
-
-        # Gamma: per-channel power curve
-        if np.any(np.abs(_gm - 1.0) > 0.001) and has_per_ch:
-            for ch in range(3):
-                inv_g = np.float32(1.0 / max(float(_gm[ch]), 0.01))
-                if abs(float(_gm[ch]) - 1.0) > 0.001:
-                    pos = c[..., ch] > 0
-                    c[pos, ch] = np.power(c[pos, ch], inv_g)
-        return c
-
-    if color_science == 1 and out.ndim == 3 and out.shape[2] >= 3:
-        # ACEScct Pipeline
-        acescg = np.tensordot(out[..., :3], _M_SRGB_TO_ACESCG, axes=([2], [1]))
-        
-        cct = np.empty_like(acescg)
-        mask = acescg <= 0.0078125
-        cct[mask] = 10.5402377416545 * acescg[mask] + 0.0729055341958355
-        clamped = np.clip(acescg[~mask], 1e-10, None)
-        cct[~mask] = (np.log2(clamped) + 9.72) / 17.52
-        
-        cct = do_lift_gamma_gain(cct)
-        
-        acescg_back = np.empty_like(cct)
-        mask2 = cct > 0.155251141552511
-        acescg_back[mask2] = np.exp2(cct[mask2] * 17.52 - 9.72)
-        acescg_back[~mask2] = (cct[~mask2] - 0.0729055341958355) / 10.5402377416545
-        
-        out[..., :3] = np.tensordot(acescg_back, _M_ACESCG_TO_LIN_SRGB, axes=([2], [1]))
+    if str(color_science) in ("1", "ACEScct"):
+        cct = _lin_to_acescct(_gamut(c, int(source_gamut), _TO_AP1))
+        c = _gamut(_acescct_to_lin(_primaries(cct)), int(source_gamut), _FROM_AP1)
     else:
-        out = do_lift_gamma_gain(out)
+        c = _primaries(c)
 
-    # ── 5. Contrast
-    if abs(contrast - 1.0) > 0.001:
-        if _has_alpha:
-            out[..., :3] = (out[..., :3] - np.float32(pivot)) \
-                * np.float32(contrast) + np.float32(pivot)
-        else:
-            out = (out - np.float32(pivot)) * np.float32(contrast) + np.float32(pivot)
+    # Contrast: pivot * (c / pivot)^k on positives, negatives untouched.
+    k = min(max(float(contrast), 0.0), _CONTRAST_MAX)
+    if k != 1.0:
+        p = max(float(pivot), _PIVOT_FLOOR)
+        with np.errstate(over="ignore"):
+            curved = np.minimum(p * np.power(np.maximum(c, 1e-300) / p, k), _CONTRAST_CEILING)
+        c = np.where(c > 0, curved, c)
 
-    # ── 6. Shadows / Highlights
-    if (
-        (abs(shadows) > 0.001 or abs(highlights) > 0.001)
-        and out.ndim == 3
-        and out.shape[2] >= 3
-    ):
-        luma = 0.2126 * out[..., 0] + 0.7152 * out[..., 1] + 0.0722 * out[..., 2]
-        s_weight = np.power(np.clip(1.0 - luma, 0.0, 1.0), 2.0)[..., np.newaxis]
-        h_weight = np.power(np.clip(luma, 0.0, 1.0), 2.0)[..., np.newaxis]
-        _s = 1.0 + np.float32(shadows) * s_weight * 0.5
-        _h = 1.0 + np.float32(highlights) * h_weight * 0.5
-        if _has_alpha:
-            out[..., :3] *= _s
-            out[..., :3] *= _h
-            np.maximum(out[..., :3], 0.0, out=out[..., :3])
-        else:
-            out *= _s
-            out *= _h
-            out = np.maximum(out, 0.0)
+    # Log wheels: a gain weighted by luminance zone.
+    if v_ls.any() or v_lm.any() or v_lh.any():
+        y = _luma(c)
+        sw = 1.0 - _smoothstep(0.0, 0.45, y)
+        hw = _smoothstep(0.55, 1.0, y)
+        mw = 1.0 - sw - hw
+        c = c * (1.0 + v_ls * sw[..., None] + v_lm * mw[..., None] + v_lh * hw[..., None])
 
-    # ── 6.5 Gamut Compression
-    if gamut_compression and out.ndim == 3 and out.shape[2] >= 3:
+    # Printer lights: 2^(points / 12) per channel; 12 points make a stop.
+    if v_pl.any():
+        c = c * np.power(2.0, v_pl / 12.0)
+
+    # Shadows / highlights.
+    if shadows or highlights:
+        y = _luma(c)
+        sw = (1.0 - _smoothstep(0.0, 0.5, y)) ** 2
+        hw = _smoothstep(0.5, 1.0, y) ** 2
+        c = c * ((1.0 + shadows * sw * 0.5) * (1.0 + highlights * hw * 0.5))[..., None]
+
+    # Colour boost (vibrance).
+    if color_boost:
+        y = _luma(c)[..., None]
+        sat_est = (c.max(axis=-1) - c.min(axis=-1))[..., None]
+        f = 1.0 + (1.0 - sat_est * 0.8) * color_boost
+        c = np.maximum(y + (c - y) * f, 0.0)
+
+    # Gamut compression (not a viewer control; kept where it was).
+    if gamut_compression:
         if _aces2_gamut_compress is not None:
-            out[..., :3] = _aces2_gamut_compress(out[..., :3])
+            c = np.asarray(_aces2_gamut_compress(c.astype(np.float32)), dtype=np.float64)
         else:
-            logger.warning(
-                "[Radiance Viewer] aces2_gamut_compress unavailable — gamut compression skipped."
-            )
+            logger.warning("[Radiance Viewer] aces2_gamut_compress unavailable, gamut compression skipped.")
 
-    # ── 7. Saturation
-    if abs(saturation - 1.0) > 0.001 and out.ndim == 3 and out.shape[2] >= 3:
-        luma = (0.2126 * out[..., 0] + 0.7152 * out[..., 1] + 0.0722 * out[..., 2])[..., np.newaxis]
-        out[..., :3] = luma + np.float32(saturation) * (out[..., :3] - luma)
+    # Curves: the table on 0..1, the output at 1.0 as a gain above, the output
+    # at 0 as an offset below.
+    if curves is not None:
+        curved = np.empty_like(c)
+        for ch in range(3):
+            x = c[..., ch]
+            curved[..., ch] = np.where(x >= 1.0, x * max(curves[255, ch], 0.0),
+                                       np.where(x < 0.0, x + curves[0, ch], _sample_curve(curves, x, ch)))
+        c = c + (curved - c) * float(curve_mix)
 
-    # ── 8. Hue Shift
-    if abs(hue_shift) > 0.1 and out.ndim == 3 and out.shape[2] >= 3:
-        h_shift = hue_shift / 360.0
-        rgb = np.maximum(out[..., :3], 0.0)
-        r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
-        cmax = np.maximum(np.maximum(r, g), b)
-        cmin = np.minimum(np.minimum(r, g), b)
-        delta = cmax - cmin + 1e-10
+    # Luma Mix holds the luminance from here.
+    ref_luma = _luma(c)
 
-        h = (
-            np.where(
-                cmax == r,
-                (g - b) / delta % 6,
-                np.where(cmax == g, (b - r) / delta + 2, (r - g) / delta + 4),
-            )
-            / 6.0
-        )
-        s = np.where(cmax > 1e-10, delta / cmax, 0.0)
-        v = cmax
+    # Hue vs hue / saturation / luminance.
+    if hue_curves is not None:
+        hsv = _rgb2hsv(c)
+        look = [_sample_curve(hue_curves, hsv[..., 0], ch) for ch in range(3)]
+        h = hsv[..., 0] + (look[0] - 0.5)
+        h = h - np.floor(h)
+        s = np.clip(hsv[..., 1] * look[1] * 2.0, 0.0, 1.0)
+        v = np.clip(hsv[..., 2] + (look[2] - 0.5) * 2.0 * 0.5, 0.0, 65504.0)
+        c = c + (_hsv2rgb(np.stack([h, s, v], axis=-1)) - c) * float(secondary_curve_mix)
 
-        h = (h + h_shift) % 1.0
+    # Saturation about BT.709 luminance.
+    if saturation != 1.0:
+        y = _luma(c)[..., None]
+        c = y + (c - y) * float(saturation)
 
-        i = (h * 6).astype(int)
-        f = h * 6 - i
-        p = v * (1 - s)
-        q = v * (1 - f * s)
-        t = v * (1 - (1 - f) * s)
+    # Hue shift, in degrees.
+    if hue_shift:
+        hsv = _rgb2hsv(c)
+        h = hsv[..., 0] + float(hue_shift) / 360.0
+        h = np.where(h > 1.0, h - 1.0, h)
+        h = np.where(h < 0.0, h + 1.0, h)
+        c = _hsv2rgb(np.stack([h, hsv[..., 1], hsv[..., 2]], axis=-1))
 
-        i6 = i % 6
-        r_out = np.select(
-            [i6 == 0, i6 == 1, i6 == 2, i6 == 3, i6 == 4, i6 == 5], [v, q, p, p, t, v]
-        )
-        g_out = np.select(
-            [i6 == 0, i6 == 1, i6 == 2, i6 == 3, i6 == 4, i6 == 5], [t, v, v, q, p, p]
-        )
-        b_out = np.select(
-            [i6 == 0, i6 == 1, i6 == 2, i6 == 3, i6 == 4, i6 == 5], [p, p, t, v, v, q]
-        )
+    # Luma Mix: 0 keeps the luminance the primaries produced.
+    if luma_mix < 1.0:
+        m = min(max(float(luma_mix), 0.0), 1.0)
+        y = _luma(c)
+        safe_y = np.where(y > 1e-4, y, 1.0)
+        held = np.where((y > 1e-4)[..., None], c * (ref_luma / safe_y)[..., None], c + (ref_luma - y)[..., None])
+        c = held + (c - held) * m
 
-        out[..., 0] = r_out
-        out[..., 1] = g_out
-        out[..., 2] = b_out
+    if gray:
+        out = c[..., 0].astype(np.float32).reshape(out.shape)
+    else:
+        out[..., :3] = c.astype(np.float32)
 
-    # ── 8.5 Luma Mix
-    if luma_orig is not None:
-        luma_curr = 0.2126 * out[..., 0] + 0.7152 * out[..., 1] + 0.0722 * out[..., 2]
-        color_with_orig_luma = out * (luma_orig / (luma_curr + 1e-10))[..., np.newaxis]
-        out = luma_mix * out + (1.0 - luma_mix) * color_with_orig_luma
-
-    # ── 9. LUT (last in chain)
+    # LUT (last in chain)
     if lut_name != "None" and lut_intensity > 0.0:
         out = apply_lut(out, lut_name, lut_intensity)
 
     return out
+
+
+def viewer_grade_kwargs(grading: dict) -> dict:
+    """apply_grading arguments for the viewer's grade, as /radiance/deliver
+    receives it (js/radiance_viewer.js builds the payload).
+
+    Old saved grades lack newer keys; each falls back to its neutral value, and
+    a missing pivot is 18% grey.
+    """
+    grading = grading or {}
+
+    def _f(v, default):
+        if isinstance(v, (list, tuple)):
+            v = v[0] if v else default
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return default
+        return x if np.isfinite(x) else default
+
+    def _rgb(v, default):
+        if isinstance(v, (list, tuple)) and len(v) >= 3:
+            return [_f(x, default) for x in v[:3]]
+        return [_f(v, default)] * 3
+
+    cs = grading.get('colorScience', 0)
+    return dict(
+        exposure=_f(grading.get('exposure'), 0.0),
+        temperature=6500.0,
+        temp_shift=_f(grading.get('temperature'), 0.0),
+        tint_shift=_f(grading.get('tint'), 0.0),
+        offset_rgb=_rgb(grading.get('offset'), 0.0),
+        lift_rgb=_rgb(grading.get('lift'), 0.0),
+        gain_rgb=_rgb(grading.get('gain'), 1.0),
+        gamma_rgb=_rgb(grading.get('gamma'), 1.0),
+        contrast=_f(grading.get('contrast'), 1.0),
+        pivot=_f(grading.get('pivot'), _PIVOT_DEFAULT),
+        saturation=_f(grading.get('saturation'), 1.0),
+        shadows=_f(grading.get('shadows'), 0.0),
+        highlights=_f(grading.get('highlights'), 0.0),
+        hue_shift=_f(grading.get('hue_shift'), 0.0),
+        luma_mix=_f(grading.get('lumaMix'), 1.0),
+        color_boost=_f(grading.get('colorBoost'), 0.0),
+        log_shadow=_rgb(grading.get('logShadow'), 0.0),
+        log_midtone=_rgb(grading.get('logMidtone'), 0.0),
+        log_highlight=_rgb(grading.get('logHighlight'), 0.0),
+        printer_rgb=[_f(grading.get('printerR'), 0.0), _f(grading.get('printerG'), 0.0),
+                     _f(grading.get('printerB'), 0.0)],
+        curve_table=grading.get('curveTable'),
+        curve_mix=_f(grading.get('curveMix'), 1.0),
+        secondary_curve_table=grading.get('secondaryCurveTable'),
+        secondary_curve_mix=_f(grading.get('secondaryCurveMix'), 0.0),
+        color_science=1 if str(cs) in ('1', 'ACEScct') else 0,
+        source_gamut=int(_f(grading.get('sourceGamut'), 0.0)),
+        lut_name=str(grading.get('lut_name', 'None') or 'None'),
+        lut_intensity=_f(grading.get('lut_intensity'), 1.0),
+        gamut_compression=bool(grading.get('gamut_compression', False)),
+    )
 
 
 def grading_to_cdl(grading: dict) -> dict:

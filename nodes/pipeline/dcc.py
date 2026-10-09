@@ -1,5 +1,8 @@
+import atexit
+import hmac
 import os
 import json
+import re
 import socket
 import threading
 import time
@@ -28,39 +31,126 @@ _MAX_LINE = 4 * 1024 * 1024
 _SERVER: Optional[socket.socket] = None
 _SERVER_THREAD: Optional[threading.Thread] = None
 _SERVER_RUNNING = False
-_BOUND_LOOPBACK = True  # set at bind time; recorded for diagnostics
+_BOUND_LOOPBACK = True  # set at bind time; a remote bind requires the token on `queue`
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
+#: Most connections served at once. Each one has its own thread and may idle
+#: for its 15 s read timeout; until 4.0 there was no limit, so a client could
+#: pile up threads by opening connections. Extra ones get a JSON error.
+_MAX_CONNECTIONS = 16
+#: Most connections one peer address may hold, and how long one request line
+#: may take from its first byte to its newline. The read timeout is per byte,
+#: so without these one peer trickling bytes on 16 sockets held every slot.
+_MAX_PER_ADDRESS = 8
+_LINE_DEADLINE_S = 30.0
+_ATEXIT_REGISTERED = False
+
+#: An HTTP request line. A web page can fetch() to a loopback port; the bridge
+#: used to skip the request line and headers as bad JSON and run the body.
+_HTTP_REQUEST_LINE = re.compile(r"^[A-Z]{3,10} \S+ HTTP/\d")
+
 def _remote_bridge_allowed() -> bool:
     return os.environ.get("RADIANCE_ALLOW_REMOTE_BRIDGE", "").strip().lower() in {"1", "true", "yes"}
+
+
+#: How far a signed `queue` timestamp may be from this machine's clock, and
+#: so how long a used nonce is remembered.
+_QUEUE_WINDOW_S = 120
+_SEEN_NONCES: dict = {}
+_NONCE_LOCK = threading.Lock()
+
+
+def _queue_signed_ok(msg) -> bool:
+    """A remote bind queues only a request signed with the shared DCC token.
+
+    The token is the one core/dcc_auth gives the Nuke listener
+    (RADIANCE_DCC_AUTH_TOKEN, else ~/.radiance/dcc_token); clients sign with
+    radiance.core.dcc_auth.sign_queue. The token never goes over the wire (the
+    4.0 beta sent it in clear, which gave a listener the key that also signs
+    Nuke commands), each nonce is accepted once, and the timestamp must be
+    within _QUEUE_WINDOW_S of now. Loopback binds accept `queue` unsigned, as
+    before 4.0.
+    """
+    if _BOUND_LOOPBACK:
+        return True
+    ts, nonce, sig = msg.get("ts"), msg.get("nonce"), msg.get("sig")
+    if (not isinstance(ts, int) or isinstance(ts, bool)
+            or not isinstance(nonce, str) or not 8 <= len(nonce) <= 128
+            or not isinstance(sig, str) or not sig):
+        return False
+    now = time.time()
+    if abs(now - ts) > _QUEUE_WINDOW_S:
+        return False
+    from radiance.core.dcc_auth import load_or_create_token, queue_signature
+    token = load_or_create_token()
+    if not token:
+        return False
+    try:
+        expected = queue_signature(token, msg.get("prompt", {}), ts, nonce)
+    except (TypeError, ValueError):
+        return False
+    if not hmac.compare_digest(sig.encode(), expected.encode()):
+        return False
+    with _NONCE_LOCK:
+        for n, until in list(_SEEN_NONCES.items()):
+            if until < now:
+                del _SEEN_NONCES[n]
+        if nonce in _SEEN_NONCES:
+            return False
+        _SEEN_NONCES[nonce] = now + 2 * _QUEUE_WINDOW_S
+    return True
+
+
+def _refuse_and_close(conn, error: str) -> None:
+    """Send a JSON error and end the connection without losing the reply.
+
+    Closing with unread TCP data can reset the connection and discard the
+    error reply on Windows. Finish sending first, then drain briefly without
+    letting an endless sender stall us.
+    """
+    conn.sendall((json.dumps({"ok": False, "error": error}) + "\n").encode())
+    conn.shutdown(socket.SHUT_WR)
+    deadline = time.monotonic() + 0.25
+    while time.monotonic() < deadline:
+        conn.settimeout(max(0.001, deadline - time.monotonic()))
+        try:
+            if not conn.recv(65536):
+                break
+        except socket.timeout:
+            break
 
 
 def _handle(conn, addr=None):
     try:
         conn.settimeout(15.0)
         buf = b""
+        line_started = None
         while True:
             c = conn.recv(1)
             if not c:
                 return
+            if line_started is None:
+                line_started = time.monotonic()
+            elif time.monotonic() - line_started > _LINE_DEADLINE_S:
+                _refuse_and_close(conn, f"request too slow: no newline within {_LINE_DEADLINE_S:g} s")
+                return
             if len(buf) > _MAX_LINE:
-                conn.sendall((json.dumps({"ok": False, "error": "request too large"}) + "\n").encode())
-                # Closing with unread TCP data can reset the connection and
-                # discard the error reply on Windows. Finish sending first,
-                # then drain briefly without letting an endless sender stall us.
-                conn.shutdown(socket.SHUT_WR)
-                deadline = time.monotonic() + 0.25
-                while time.monotonic() < deadline:
-                    conn.settimeout(max(0.001, deadline - time.monotonic()))
-                    if not conn.recv(65536):
-                        break
+                _refuse_and_close(conn, "request too large")
                 return
             if c == b"\n":
                 line = buf.decode("utf-8", errors="replace").strip()
                 buf = b""
+                line_started = None
                 if not line:
                     continue
+                if _HTTP_REQUEST_LINE.match(line):
+                    conn.sendall((json.dumps({
+                        "ok": False,
+                        "error": "This is the DCC Bridge (JSON lines over TCP), not an HTTP "
+                                 "server; HTTP requests are refused.",
+                    }) + "\n").encode())
+                    return
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError as e:
@@ -83,6 +173,15 @@ def _handle(conn, addr=None):
                         "ok": False,
                         "error": "The 'exec' command has been removed for security reasons. "
                                  "Use 'queue' to submit a workflow prompt instead.",
+                    }) + "\n").encode())
+                elif cmd == "queue" and not _queue_signed_ok(msg):
+                    conn.sendall((json.dumps({
+                        "ok": False,
+                        "error": "This bridge is bound to a network address: 'queue' must be "
+                                 "signed with the shared DCC token (RADIANCE_DCC_AUTH_TOKEN or "
+                                 "~/.radiance/dcc_token) by radiance.core.dcc_auth.sign_queue, "
+                                 "with a current timestamp and an unused nonce. Never send the "
+                                 "token itself.",
                     }) + "\n").encode())
                 elif cmd == "queue":
                     payload = msg.get("prompt", {})
@@ -114,14 +213,53 @@ def _handle(conn, addr=None):
         conn.close()
 
 
+def _refuse_busy(conn, addr=None, per_address: bool = False) -> None:
+    """Answer a connection over a cap with a JSON error and close it."""
+    if per_address:
+        error = (f"DCC Bridge busy: {_MAX_PER_ADDRESS} connections already open from "
+                 "this address; close one and retry.")
+    else:
+        error = (f"DCC Bridge busy: {_MAX_CONNECTIONS} connections already open; "
+                 "close one and retry.")
+    logger.warning("DCC Bridge: refusing %s: %s", addr, error)
+    try:
+        conn.settimeout(1.0)
+        conn.sendall((json.dumps({"ok": False, "error": error}) + "\n").encode())
+    except OSError as _exc:
+        logger.debug("[Radiance] _refuse_busy(): %s: %s", type(_exc).__name__, _exc)
+    finally:
+        conn.close()
+
+
 def start_server(port: int = None, host: str = None) -> str:
-    global _SERVER, _SERVER_THREAD, _SERVER_RUNNING
+    global _SERVER, _SERVER_THREAD, _SERVER_RUNNING, _ATEXIT_REGISTERED
     from radiance.config.env import get_mcp_port, get_mcp_host
     if port is None: port = get_mcp_port()
     if host is None: host = get_mcp_host()
     if _SERVER_THREAD and _SERVER_THREAD.is_alive():
         return f"Bridge already running on {host}:{port}"
     _SERVER_RUNNING = True
+    if not _ATEXIT_REGISTERED:
+        # Nothing else stops the bridge: close the listener and join its
+        # thread on interpreter exit rather than leaving both to teardown.
+        atexit.register(stop_server)
+        _ATEXIT_REGISTERED = True
+    slots = threading.BoundedSemaphore(_MAX_CONNECTIONS)
+    per_peer: dict = {}
+    per_peer_lock = threading.Lock()
+
+    def _release(peer):
+        with per_peer_lock:
+            per_peer[peer] -= 1
+            if not per_peer[peer]:
+                del per_peer[peer]
+        slots.release()
+
+    def _serve(conn, addr):
+        try:
+            _handle(conn, addr)
+        finally:
+            _release(addr[0] if addr else "")
 
     def _run():
         global _SERVER, _BOUND_LOOPBACK
@@ -146,7 +284,23 @@ def start_server(port: int = None, host: str = None) -> str:
                 try:
                     conn, addr = _SERVER.accept()
                     logger.debug(f"DCC Bridge connection from {addr}")
-                    threading.Thread(target=_handle, args=(conn, addr), daemon=True).start()
+                    peer = addr[0] if addr else ""
+                    with per_peer_lock:
+                        crowded = per_peer.get(peer, 0) >= _MAX_PER_ADDRESS
+                    if crowded:
+                        _refuse_busy(conn, addr, per_address=True)
+                        continue
+                    if not slots.acquire(blocking=False):
+                        _refuse_busy(conn, addr)
+                        continue
+                    with per_peer_lock:
+                        per_peer[peer] = per_peer.get(peer, 0) + 1
+                    try:
+                        threading.Thread(target=_serve, args=(conn, addr), daemon=True).start()
+                    except Exception:
+                        _release(peer)
+                        conn.close()
+                        raise
                 except socket.timeout:
                     continue
                 except Exception as e:
@@ -244,6 +398,9 @@ def _push_to_nuke(
         return f"FAILED ({e})"
     if ok:
         return f"OK ({msg})"
+    if str(msg).startswith("UNCONFIRMED: "):
+        # Sent, but Nuke never acknowledged it: neither OK nor FAILED.
+        return f"UNCONFIRMED ({msg[len('UNCONFIRMED: '):]})"
     return f"FAILED ({msg})"
 
 
@@ -392,8 +549,11 @@ class RadianceMCP:
                 return ("Error: sequence_path is required when source=Sequence.", "")
             end = frame_end if frame_end > 0 else 0
             try:
+                # The frames go out as they are on disk. Until 4.0 this passed
+                # "Linear (none)", a name the reader does not know, so every
+                # sequence export failed.
                 batch, _alpha, w, h, n, seq_fps, _ = _read_sequence(
-                    sequence_path, frame_start, end, 1, "Linear (none)", "Skip"
+                    sequence_path, frame_start, end, 1, "Linear Rec.709 (sRGB)", "Skip", raw=True
                 )
                 frames = batch.detach().cpu().float().numpy()
                 if frames.ndim == 3:

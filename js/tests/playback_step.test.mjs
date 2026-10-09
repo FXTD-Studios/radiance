@@ -112,22 +112,28 @@ test('after a jump, playback resumes with a few frames in hand, not one', () => 
     }
 });
 
-test('during playback the side panel is redrawn four times a second, not per frame', () => {
+test('during playback the side panel is refreshed four times a second, not per frame', () => {
     // EFFECTS, which the "Depth" view opens, redrew the frame's depth map on
     // every frame (about 55 ms): playback fell to 18 frames/s in Edge and the
     // sound was pulled back every 0.8 s, heard as a second, delayed track.
-    const Viewer = new Function(`return class { ${methodSource('setFrame')} }`)();
+    // A frame change now only refreshes the panel's readouts (it used to
+    // rebuild the whole panel); the four-a-second limit still applies.
+    const Viewer = new Function(`return class { ${methodSource('setFrame')} ${methodSource('_refreshReferenceReadouts')} }`)();
     const v = Object.assign(new Viewer(), {
-        currentFrame: 0, isPlaying: true, _referenceRightTab: 'effects', draws: 0,
-        frameHDRData: [], frameImages: [], frameZdepthImages: null, renderer: null, _frameWindow: null,
-        _syncSequenceAudio() {}, _updateCompareForFrame() {}, render() {}, updateInfo() {}, updateFrameDisplay() {},
-        _renderReferenceRightHUD() { this.draws++; },
+        currentFrame: 0, isPlaying: true, _referenceRightTab: 'effects', draws: 0, videoMode: false,
+        _frameWindow: null, _syncSequenceAudio() {},
+        _displaySequenceFrame() { this._refreshReferenceReadouts(); },
+        _syncReferenceReadouts() { this.draws++; },
+        _renderReferenceRightHUD() { throw new Error('a frame change rebuilt the whole panel'); },
     });
     for (let f = 1; f <= 48; f++) { now += 1000 / 24; v.setFrame(f); }   // two seconds at 24 fps
-    assert.ok(v.draws >= 7 && v.draws <= 9, `two seconds of playback redrew the panel ${v.draws} times`);
+    assert.ok(v.draws >= 7 && v.draws <= 9, `two seconds of playback refreshed the panel ${v.draws} times`);
     v.isPlaying = false;
     v.draws = 0;
     for (let f = 49; f <= 52; f++) { now += 5; v.setFrame(f); }           // stopped: every scrub
+    assert.equal(v.draws, 4);
+    v._referenceRightTab = 'grade';                                        // nothing on GRADE follows the frame
+    v.setFrame(53);
     assert.equal(v.draws, 4);
 });
 

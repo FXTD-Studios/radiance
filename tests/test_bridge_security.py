@@ -135,3 +135,130 @@ def test_remote_bridge_disabled_by_default(monkeypatch):
     assert dcc._remote_bridge_allowed() is False
     monkeypatch.setenv("RADIANCE_ALLOW_REMOTE_BRIDGE", "1")
     assert dcc._remote_bridge_allowed() is True
+
+
+# ── Remote queue needs the DCC token (code review P2-6) ─────────────────────
+# With RADIANCE_ALLOW_REMOTE_BRIDGE=1 the bridge listened on the network and
+# relayed `queue` to ComfyUI's /prompt for anyone who could reach the port:
+# any installed node, so effectively code execution. A non-loopback bridge now
+# requires `queue` to be signed with the shared DCC token (~/.radiance/dcc_token,
+# or RADIANCE_DCC_AUTH_TOKEN), the secret the Nuke listener uses. The token
+# itself is never sent: the 4.0 beta sent it in clear over plain TCP, where
+# anyone watching learnt the key that also signs Nuke commands.
+
+TOKEN = "s3cret-token"
+
+
+@pytest.fixture
+def _queued(monkeypatch):
+    import urllib.request
+
+    sent = []
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"prompt_id": "x"}'
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: sent.append(req) or _Resp())
+    monkeypatch.setenv("RADIANCE_DCC_AUTH_TOKEN", TOKEN)
+    monkeypatch.setattr(dcc, "_SEEN_NONCES", {})
+    return sent
+
+
+PROMPT = {"1": {"class_type": "PreviewImage", "inputs": {}}}
+
+
+def _send(msg):
+    conn = _FakeConn([_json.dumps(msg)])
+    dcc._handle(conn, ("10.0.0.7", 50000))
+    return _responses(conn)[0]
+
+
+def _signed(token=TOKEN, **override):
+    from radiance.core.dcc_auth import sign_queue
+    msg = sign_queue(PROMPT, token)
+    msg.update(override)
+    return msg
+
+
+@pytest.mark.parametrize("msg", [
+    {"cmd": "queue", "prompt": PROMPT},                          # unsigned
+    {"cmd": "queue", "prompt": PROMPT, "token": TOKEN},          # the 4.0 beta form
+    "wrong token",
+    "stale",
+    "from the future",
+    "edited prompt",
+    "no nonce",
+], ids=["unsigned", "plain-token", "wrong-token", "stale", "future", "edited", "no-nonce"])
+def test_a_remote_bridge_refuses_queue_that_is_not_signed_right(monkeypatch, _queued, msg):
+    import time
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", False)
+    if msg == "wrong token":
+        msg = _signed("wrong")
+    elif msg == "stale":
+        msg = _signed()
+        from radiance.core.dcc_auth import queue_signature
+        msg["ts"] = int(time.time()) - 3600
+        msg["sig"] = queue_signature(TOKEN, PROMPT, msg["ts"], msg["nonce"])
+    elif msg == "from the future":
+        msg = _signed()
+        from radiance.core.dcc_auth import queue_signature
+        msg["ts"] = int(time.time()) + 3600
+        msg["sig"] = queue_signature(TOKEN, PROMPT, msg["ts"], msg["nonce"])
+    elif msg == "edited prompt":
+        msg = _signed(prompt={"1": {"class_type": "SaveImage", "inputs": {}}})
+    elif msg == "no nonce":
+        msg = _signed()
+        del msg["nonce"]
+    reply = _send(msg)
+    assert reply["ok"] is False and "sign" in reply["error"].lower()
+    assert _queued == [], "the prompt reached ComfyUI unsigned"
+
+
+def test_a_remote_bridge_queues_a_signed_prompt(monkeypatch, _queued):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", False)
+    msg = _signed()
+    assert "token" not in msg and TOKEN not in _json.dumps(msg)
+    assert _send(msg)["ok"] is True
+    assert len(_queued) == 1
+
+
+def test_a_signed_queue_cannot_be_replayed(monkeypatch, _queued):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", False)
+    msg = _signed()
+    assert _send(msg)["ok"] is True
+    assert _send(msg)["ok"] is False
+    assert len(_queued) == 1
+
+
+def test_the_signature_does_not_depend_on_key_order():
+    from radiance.core.dcc_auth import queue_signature
+    a = {"1": {"inputs": {"b": 1, "a": 2}, "class_type": "X"}}
+    b = {"1": {"class_type": "X", "inputs": {"a": 2, "b": 1}}}
+    assert queue_signature(TOKEN, a, 5, "n") == queue_signature(TOKEN, b, 5, "n")
+
+
+def test_a_loopback_bridge_still_queues_without_a_token(monkeypatch, _queued):
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", True)
+    assert _send({"cmd": "queue", "prompt": PROMPT})["ok"] is True
+    assert len(_queued) == 1
+
+
+@pytest.mark.parametrize("request_line", ["POST / HTTP/1.1", "PUT /x?y=1 HTTP/1.0", "GET / HTTP/2"])
+def test_a_browser_request_to_a_loopback_bridge_is_dropped(monkeypatch, _queued, request_line):
+    # A web page can fetch() POST to 127.0.0.1:<port>. The bridge answered the
+    # request line and headers with "bad json" and then ran the JSON body
+    # line, queueing whatever the page sent. HTTP is now refused outright.
+    monkeypatch.setattr(dcc, "_BOUND_LOOPBACK", True)
+    conn = _FakeConn([request_line, "Host: 127.0.0.1:9000", "Content-Type: text/plain", "",
+                      _json.dumps({"cmd": "queue", "prompt": PROMPT})])
+    dcc._handle(conn, ("127.0.0.1", 50000))
+    assert _queued == []
+    replies = _responses(conn)
+    assert len(replies) == 1 and "http" in replies[0]["error"].lower()

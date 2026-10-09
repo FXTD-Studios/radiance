@@ -430,10 +430,45 @@ class RadianceAudioCut:
 # Transcription helpers
 # ===========================================================================
 
+#: openai-whisper's cache names where they are not "<size>.pt" (its _MODELS),
+#: for when only the CLI is installed and the package cannot be asked.
+_WHISPER_CACHE_NAMES = {"large": "large-v3.pt", "turbo": "large-v3-turbo.pt"}
+
+
+def _whisper_weights_present(model_size: str) -> bool:
+    """True when whisper would load `model_size` without downloading it.
+
+    openai-whisper keeps its weights in $XDG_CACHE_HOME/whisper (default
+    ~/.cache/whisper) under the URL's file name; a name it does not know is a
+    path, and is never downloaded.
+    """
+    try:
+        import whisper  # type: ignore
+        url = getattr(whisper, "_MODELS", {}).get(model_size)
+    except Exception:  # noqa: BLE001 - no package (the CLI alone)
+        url = _WHISPER_CACHE_NAMES.get(model_size, f"{model_size}.pt")
+    if not url:
+        return os.path.isfile(model_size)
+    root = os.path.join(os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache")),
+                        "whisper")
+    return os.path.isfile(model_size) or os.path.isfile(os.path.join(root, os.path.basename(url)))
+
+
+def _require_whisper_consent(model_size: str) -> None:
+    """Whisper downloads its weights on first use (and checks their SHA-256
+    itself); until 4.0 nothing asked for download consent first (B18)."""
+    if _whisper_weights_present(model_size):
+        return
+    from radiance.core.consent import downloads_allowed, refusal_message
+    if not downloads_allowed():
+        raise RuntimeError(refusal_message(f"Whisper {model_size} model"))
+
+
 def _transcribe_local_whisper(filepath: str, model_size: str,
                                language: str) -> Tuple[str, List[dict]]:
     """openai-whisper local inference."""
     import whisper  # type: ignore
+    _require_whisper_consent(model_size)
     model = whisper.load_model(model_size)
     opts = {}
     if language and language.lower() not in ("auto", ""):
@@ -515,6 +550,7 @@ def _transcribe_whisper_cli(filepath: str, model_size: str,
     Fallback: call the `whisper` CLI subprocess and parse its output.
     Returns (text, segments) — segments are approximate (no timing from CLI).
     """
+    _require_whisper_consent(model_size)
     cmd = ["whisper", filepath, "--model", model_size, "--output_format", "json"]
     if language and language.lower() not in ("auto", ""):
         cmd += ["--language", language]
@@ -543,6 +579,48 @@ def _transcribe_whisper_cli(filepath: str, model_size: str,
 # ===========================================================================
 # Node: RadianceAudioTranscribe
 # ===========================================================================
+
+def _split_long_segments(segments: List[dict], max_chars: int) -> List[dict]:
+    """Word-wrap segments longer than `max_chars` into chunks with their own
+    timings.
+
+    The segment's time span is shared between its chunks in proportion to
+    their characters (spaces not counted), so the chunks are contiguous, in
+    order, and together cover exactly the original start to end. Until 4.0
+    every chunk but the last kept the segment's start time.
+    """
+    out: List[dict] = []
+    for seg in segments:
+        words = seg.get("text", "").split()
+        if len(seg.get("text", "")) <= max_chars or not words:
+            out.append(seg)
+            continue
+        chunks: List[List[str]] = []
+        chunk: List[str] = []
+        chunk_len = 0
+        for w in words:
+            if chunk and chunk_len + len(w) + 1 > max_chars:
+                chunks.append(chunk)
+                chunk, chunk_len = [w], len(w)
+            else:
+                chunk_len += len(w) + (1 if chunk else 0)
+                chunk.append(w)
+        if chunk:
+            chunks.append(chunk)
+
+        start = seg.get("start", 0)
+        end = seg.get("end", start)
+        total = sum(len(w) for w in words)
+        done = 0
+        chunk_start = start
+        for i, c in enumerate(chunks):
+            done += sum(len(w) for w in c)
+            # The last chunk ends exactly at the segment end (no float drift).
+            chunk_end = end if i == len(chunks) - 1 else start + (end - start) * done / total
+            out.append({"start": chunk_start, "end": chunk_end, "text": " ".join(c)})
+            chunk_start = chunk_end
+    return out
+
 
 class RadianceAudioTranscribe:
     CATEGORY = "FXTD STUDIOS/Radiance/◎ Video"
@@ -678,37 +756,7 @@ class RadianceAudioTranscribe:
 
         # Optionally split long segments
         if max_segment_chars > 0 and segments:
-            split_segs: List[dict] = []
-            for seg in segments:
-                seg_text = seg.get("text", "")
-                if len(seg_text) <= max_segment_chars:
-                    split_segs.append(seg)
-                else:
-                    # Naive word-wrap split
-                    words = seg_text.split()
-                    chunk: List[str] = []
-                    chunk_len = 0
-                    start = seg.get("start", 0)
-                    duration = seg.get("end", start) - start
-                    for w in words:
-                        if chunk_len + len(w) + 1 > max_segment_chars and chunk:
-                            split_segs.append({
-                                "start": start,
-                                "end": start + duration * len(chunk) / len(words),
-                                "text": " ".join(chunk),
-                            })
-                            chunk = [w]
-                            chunk_len = len(w)
-                        else:
-                            chunk.append(w)
-                            chunk_len += len(w) + 1
-                    if chunk:
-                        split_segs.append({
-                            "start": start + duration * (len(words) - len(chunk)) / max(len(words), 1),
-                            "end": seg.get("end", start),
-                            "text": " ".join(chunk),
-                        })
-            segments = split_segs
+            segments = _split_long_segments(segments, max_segment_chars)
 
         if not include_timings:
             segments = [{"text": s.get("text", "")} for s in segments]

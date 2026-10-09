@@ -725,7 +725,10 @@ class RadianceWrite:
                             "oiio:ColorSpace); video gets primaries/transfer/matrix tags. "
                             "For a video of scene-linear HDR (e.g. from SDR -> HDR Universal) "
                             "pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light "
-                            "in a video plays back too dark."),
+                            "in a video plays back too dark. PQ and HLG video need a 10-bit "
+                            "format (H.265 10-bit or ProRes); H.264 and DNxHR HQ are refused. "
+                            "PQ H.265 carries HDR10 metadata (P3-D65 1000-nit mastering "
+                            "display, MaxCLL/MaxFALL measured from the frames)."),
             }),
             "fps": ("FLOAT", {
                 "default": 0.0, "min": 0.0, "max": 240.0, "step": 0.001,
@@ -1410,15 +1413,18 @@ def register_read_routes():
         if not raw:
             return None, web.json_response({"error": "no path given"}, status=400)
         candidate = _resolve_browse(raw) or strip_path_quotes(raw)
-        if not os.path.isfile(candidate):
-            return None, web.json_response(
-                {"error": "not a file", "path": candidate}, status=404)
+        # Containment first. Checking existence first answered 404 for a
+        # missing path and 403 for a present one anywhere on the host, the
+        # oracle the root check exists to close.
         if not _is_inside_allowed_read_root(candidate):
             return None, web.json_response({
                 "error": "outside the allowed roots",
                 "hint": f"Set {_ENV_READ_ROOTS} to the directories Radiance may "
                         f"inspect, os.pathsep-separated.",
             }, status=403)
+        if not os.path.isfile(candidate):
+            return None, web.json_response(
+                {"error": "not a file", "path": candidate}, status=404)
         return candidate, None
 
     @PromptServer.instance.routes.get("/radiance/media/layers")

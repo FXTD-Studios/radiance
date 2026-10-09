@@ -601,8 +601,12 @@ def detect_by_config(model) -> Optional[str]:
             # ALBABIT-FIX: without it, detect_by_sampling reported Qwen-Image 2.1 as "flux".
             "QwenImage21": "qwen_image21",
         }
-        for pattern, mtype in config_map.items():
-            if pattern in config_cls: return mtype
+        # Substring match, because ComfyUI's classes carry suffixes (WAN21_T2V),
+        # longest pattern first: in table order "Flux" matched "Flux2" before
+        # "Flux2" was reached, so Flux.2 was detected as Flux.1.
+        for pattern in sorted(config_map, key=len, reverse=True):
+            if pattern in config_cls:
+                return config_map[pattern]
     except Exception as exc:
         logger.warning("[nodes_sampler] detect_by_config: %s", exc)
     return None
@@ -1342,6 +1346,28 @@ def apply_cfg_plus_plus(cfg: float, sigma: torch.Tensor, sigma_max: float) -> fl
     effective_cfg = cfg * cos_factor + 1.0 * (1.0 - cos_factor)
 
     return effective_cfg
+
+
+def perpendicular_cfg_function(args):
+    """ComfyUI sampler_cfg_function for CFG++ (Perpendicular), since 4.0.
+
+    Plain CFG is ``cond + (s - 1) * (cond - uncond)`` on the denoised
+    predictions. This keeps only the part of ``cond - uncond`` orthogonal to
+    ``cond``, per batch item (projected guidance, as in APG), so a high cfg
+    adds less saturation and contrast. ``cond_scale`` is the stage cfg after
+    ``apply_cfg_plus_plus``. Returns noise space (x minus the guided
+    prediction), as comfy/samplers.py:cfg_function expects.
+    """
+    x = args["input"]
+    cond = args["cond_denoised"]
+    uncond = args["uncond_denoised"]
+    scale = args["cond_scale"]
+    diff = cond - uncond
+    dims = tuple(range(1, cond.ndim))
+    dot = (diff * cond).sum(dim=dims, keepdim=True)
+    norm = (cond * cond).sum(dim=dims, keepdim=True).clamp_min(1e-12)
+    perpendicular = diff - (dot / norm) * cond
+    return x - (cond + (scale - 1.0) * perpendicular)
 
 def build_sigma_report(
     detected_type: str,

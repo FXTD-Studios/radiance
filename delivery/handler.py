@@ -26,7 +26,7 @@ import folder_paths
 # Re-import modular components
 from radiance.cache import _viewer_cache_get, _viewer_source_get, _progress_set
 from radiance.config.constants import VERSION as _RADIANCE_VERSION
-from radiance.color.grading import apply_grading
+from radiance.color.grading import apply_grading, viewer_grade_kwargs
 
 logger = logging.getLogger("radiance.delivery.handler")
 
@@ -72,12 +72,16 @@ _UI_TO_WRITE_COLORSPACE = {
 #: the other direction `tint` was sent and read nowhere.
 #:
 #: tests/test_delivery_contract.py compares this list against the keys the JS
-#: actually sends, in both directions, so the two cannot drift again.
+#: actually sends, in both directions, so the two cannot drift again. The grade
+#: keys are read by color/grading.py viewer_grade_kwargs.
 GRADE_PAYLOAD_KEYS = (
     "exposure", "gamma", "gain", "lift", "offset",
     "contrast", "pivot", "saturation", "temperature", "tint",
     "colorScience", "lumaMix",
     "shadows", "highlights", "hue_shift",
+    "colorBoost", "logShadow", "logMidtone", "logHighlight",
+    "printerR", "printerG", "printerB",
+    "curveTable", "curveMix", "secondaryCurveTable", "secondaryCurveMix", "sourceGamut",
     "lut_name", "lut_intensity", "gamut_compression",
     "grain", "bloom", "halation", "diffusion", "denoise",
 )
@@ -207,9 +211,14 @@ def _note(warnings: list, message: str) -> None:
 
 
 def get_next_version(directory: str, filename_base: str) -> str:
-    """Scan directory for existing versions and returns the next one (e.g., v02)."""
+    """The next version after the highest on disk, as the writer stamps it (``v0002``).
+
+    Four digits since 4.0, matching ``write_frames``, so a delivery carries one
+    suffix (``Shot_v0002.mov``) instead of two (``Shot_v02_v0001.mov``). The scan
+    reads the first ``_v<digits>`` after the base, so 3.x names keep counting.
+    """
     if not os.path.exists(directory):
-        return "v01"
+        return "v0001"
     
     pattern = re.compile(rf"{re.escape(filename_base)}_v(\d+)")
     max_v = 0
@@ -224,7 +233,7 @@ def get_next_version(directory: str, filename_base: str) -> str:
     except Exception as exc:
         logger.warning("[radiance.delivery.handler] get_next_version: %s", exc)
         
-    return f"v{max_v + 1:02d}"
+    return f"v{max_v + 1:04d}"
 
 
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
@@ -463,57 +472,31 @@ async def radiance_deliver_endpoint(request):
 
 
         # Handle Versioning
-        version_str = "v01"
+        # One suffix: write_frames stamps `_v{version:04d}` onto filename_prefix.
+        # This used to append its own `_v02` first, giving Shot_v02_v0001.
+        version_str = "v0001"
         if smart_ver:
             base_path = output_path if output_path else folder_paths.get_output_directory()
             version_str = get_next_version(base_path, filename_prefix)
-            filename_prefix = f"{filename_prefix}_{version_str}"
+        version_num = int(version_str[1:])
 
         # ─── Process Grading ──────────────────────────────────────────
-        def safe_float(v, default):
-            if isinstance(v, (list, tuple)) and len(v) > 0: return float(v[0])
-            try: return float(v)
-            except (TypeError, ValueError): return default
-
-        def safe_array(v, default_scalar, length=3):
-            if isinstance(v, (list, tuple)) and len(v) >= length:
-                return [float(x) for x in v[:length]]
-            try:
-                s = float(v)
-                return [s] * length
-            except (TypeError, ValueError):
-                return [default_scalar] * length
-
         # Every key this function reads. The viewer must send all of them --
         # `_warn_on_missing_grade_keys` says so out loud rather than letting a
         # silent .get() default turn a colourist's decision into a no-op.
         _warn_on_missing_grade_keys(grading)
 
-        exposure    = safe_float(grading.get('exposure'), 0.0)
-        saturation  = safe_float(grading.get('saturation'), 1.0)
-
-        # TEMP/TINT are the viewer's additive sliders in [-2, 2], not Kelvin.
-        # This used to be `temperature = 6500.0 + temp * 3500.0`, feeding a
-        # Kelvin white-balance multiply that has nothing to do with the shader's
-        # `shift.r += temp` -- so the export applied a different curve from the
-        # one on screen. `tint` was read nowhere at all, so the green/magenta
-        # axis was silently dropped from every master.
-        temp_shift  = safe_float(grading.get('temperature'), 0.0)
-        tint_shift  = safe_float(grading.get('tint'), 0.0)
-        temperature = 6500.0
-        contrast    = safe_float(grading.get('contrast'), 1.0)
-        pivot       = safe_float(grading.get('pivot'), 0.18)
-        shadows     = safe_float(grading.get('shadows'), 0.0)
-        highlights  = safe_float(grading.get('highlights'), 0.0)
-        hue_shift   = safe_float(grading.get('hue_shift'), 0.0)
-        lut_name    = grading.get('lut_name', 'None')
-        lut_intensity = safe_float(grading.get('lut_intensity'), 1.0)
-        gamut_compression = bool(grading.get('gamut_compression', False))
-
-        gamma_rgb  = safe_array(grading.get('gamma'),  1.0)
-        gain_rgb   = safe_array(grading.get('gain'),   1.0)
-        lift_rgb   = safe_array(grading.get('lift'),   0.0)
-        offset_rgb = safe_array(grading.get('offset'), 0.0)
+        # The viewer's grade, mapped by the same function the parity test runs
+        # (color/grading.py viewer_grade_kwargs). Temperature and Tint are
+        # stops of luminance-preserving gain and contrast is a power curve about
+        # the pivot, as on screen; this read them as additive shifts and a
+        # linear contrast, so a master no longer matched the viewer.
+        grade_kwargs = viewer_grade_kwargs(grading)
+        exposure   = grade_kwargs['exposure']
+        saturation = grade_kwargs['saturation']
+        gamma_rgb  = grade_kwargs['gamma_rgb']
+        gain_rgb   = grade_kwargs['gain_rgb']
+        lift_rgb   = grade_kwargs['lift_rgb']
 
         # ── Everything below runs OFF the event loop ─────────────────────
         # This entire block used to execute inside `async def`, on aiohttp's
@@ -566,32 +549,7 @@ async def radiance_deliver_endpoint(request):
                     # export graded the encoded values. Decode first, as the
                     # Viewer does, so the grade and the master match it.
                     frame_np = _srgb_decode_np(frame_np)
-                graded = apply_grading(
-                    img=frame_np,
-                    exposure=exposure,
-                    gamma=1.0,
-                    gain=1.0,
-                    lift=0.0,
-                    saturation=saturation,
-                    temperature=temperature,
-                    temp_shift=temp_shift,
-                    tint_shift=tint_shift,
-                    offset=0.0,
-                    contrast=contrast,
-                    pivot=pivot,
-                    shadows=shadows,
-                    highlights=highlights,
-                    hue_shift=hue_shift,
-                    gamma_rgb=gamma_rgb,
-                    gain_rgb=gain_rgb,
-                    lift_rgb=lift_rgb,
-                    offset_rgb=offset_rgb,
-                    lut_name=lut_name,
-                    lut_intensity=lut_intensity,
-                    color_science=1 if str(grading.get('colorScience')) in ['1', 'ACEScct'] else 0,
-                    luma_mix=float(grading.get('lumaMix', 1.0)),
-                    gamut_compression=gamut_compression
-                )
+                graded = apply_grading(frame_np, **grade_kwargs)
                 if graded_tensor is None:
                     graded_tensor = torch.empty(
                         (images.shape[0],) + tuple(graded.shape),
@@ -704,12 +662,18 @@ async def radiance_deliver_endpoint(request):
                     # submodule loads from disk.
                     from radiance.image.upscale import RadianceAIUpscale
                     upscaler = RadianceAIUpscale()
-                    graded_tensor, _ = upscaler.upscale(
+                    graded_tensor, upscale_info = upscaler.upscale(
                         image=graded_tensor,
                         model_name="RealESRGAN_x2plus",
                         mode="Refine (HDR)",
                         tile_size=512
                     )
+                    # A missing model, failed download or failed inference does
+                    # not raise: upscale() returns a bicubic resize instead.
+                    if getattr(upscaler, "used_fallback", False):
+                        _note(warnings,
+                              f"AI upscale did not run, the master was resampled "
+                              f"(bicubic), not AI-upscaled: {upscale_info}")
                 except Exception as e:
                     logger.error(f"AI Upscale failed, continuing with original: {e}")
                     _note(warnings,
@@ -878,6 +842,7 @@ async def radiance_deliver_endpoint(request):
                 output_path=output_path,
                 format=write_format,
                 filename=filename_prefix,
+                version=version_num,
                 color_space=write_colorspace_effective,
                 working_space=write_working_space,
                 fps=fps,

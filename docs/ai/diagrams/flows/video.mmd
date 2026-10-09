@@ -1,0 +1,23 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Legend: solid arrow = implemented call or data flow; dashed arrow = conditional or failure path;
+%% edge text "inferred" = not fully traced; [[ ]] = external process, service, or network
+%% Workflow W10. Source: nodes/video/t2v.py, nodes/video/dit.py, nodes/video/hdr.py, nodes/generate/sampler.py, sampler_utils.py
+flowchart TD
+    ldr["UnifiedLoader / VideoLoader"] --> pipe{"T2VPipeline or I2VPipeline"}
+    pipe --> req{"latent_dimensions >= 3?"}
+    req -.->|"no"| e1["raise: not a video model"]
+    req -->|"yes"| spec["_align_spec_to_model: dit.py specs overridden by model and VAE"]
+    spec --> noise["noise latent B,C,ceil(frames/tc),H,W, 4D when one latent frame"]
+    pipe -->|"I2V"| strat{"i2v_strategy auto"}
+    strat -->|"model has extra input channels"| cc["concat_channels Wan-style"]
+    strat -->|"otherwise"| ffl["first_frame_lock"]
+    cc --> smp
+    ffl --> smp
+    noise --> smp["_comfy_sample: sample_custom, noise also passed as start latent, inferred ok for flow models"]
+    smp -.->|"NaN"| nan["replaced with 0, warning"]
+    smp --> dec["VideoBatchDecode: 5D to VAE, frames (T-1)*tc+1"]
+    dec --> outsel{"output"}
+    outsel --> hdr["VideoHDRDecode PQ/HLG"]
+    outsel --> wr["Write node: movie codecs"]
+    outsel --> ex["VideoExport: EXR sequence or GIF only"]
+    alt["SamplerPro temporal_window > 0"] -.->|"experimental, off by default, failed visual acceptance"| win["make_temporal_window_wrapper: sin2/cos2 blended windows each step"]

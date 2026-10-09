@@ -51,16 +51,15 @@ def test_mean_sampling_accepts_a_plain_tensor_posterior():
     assert isinstance(out, torch.Tensor) and out.shape == (1, 3, 2, 2)
 
 
-def test_legacy_encoders_are_hidden_and_stop_with_the_replacement():
-    """They stay registered so saved graphs open, but running one would render
-    clipped with no warning, so it stops and names VAE Encode (HDR)."""
-    from radiance.nodes.hdr.encoder import RadianceHDRLatentEncoder, RadianceHDRTurboEncoder
-    for cls in (RadianceHDRLatentEncoder, RadianceHDRTurboEncoder):
-        assert cls.DEPRECATED is True
-        assert cls.DESCRIPTION.startswith("Legacy.")
-        assert "VAE Encode (HDR)" in cls.DESCRIPTION
-        with pytest.raises(RuntimeError, match="VAE Encode \\(HDR\\)"):
-            getattr(cls(), cls.FUNCTION)(image=torch.zeros(1, 8, 8, 3), vae=object())
+def test_the_legacy_hdr_encoders_are_gone_in_4_0():
+    """3.5 kept them registered only so saved graphs opened; running one
+    stopped and named VAE Encode (HDR), which replaces both. 4.0 removes them."""
+    import radiance.nodes.hdr as hdr_group
+    import radiance.nodes.hdr.encoder as encoder
+    for key in ("RadianceHDRLatentEncoder", "RadianceHDRTurboEncoder"):
+        assert key not in hdr_group.NODE_CLASS_MAPPINGS
+        assert key not in encoder.NODE_CLASS_MAPPINGS
+        assert not hasattr(encoder, key)
 
 
 def test_legacy_aces_output_transform_is_hidden_but_still_works():

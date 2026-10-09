@@ -123,113 +123,10 @@ function install(RV) {
         setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
     };
 
-    RV.prototype._exportCDL = function() {
-        // FIX-006: CDL is (in * slope + offset) ^ power. The Viewer applies
-        // exposure, offset, gain, then gamma (^ 1/gamma), so slope = 2^exposure
-        // * gain and offset = offset * gain. Lift is luma-pivoted, not a CDL
-        // offset; it used to be written as one.
-        const _k = Math.pow(2, this.exposure || 0);
-        const _gain = this.gain || [1, 1, 1];
-        const _off = this.offset || [0, 0, 0];
-        const slope = _gain.map(g => _k * g);
-        const offset = _off.map((o, i) => o * _gain[i]);
-        const gamma = this.gamma && Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const power = gamma.map(g => g > 0 ? (1.0 / g).toFixed(6) : '1.000000');
-        const sat = (this.saturation !== undefined ? this.saturation : 1.0).toFixed(6);
-
-        const s = slope.map(v => v.toFixed(6)).join(' ');
-        const o = offset.map(v => v.toFixed(6)).join(' ');
-        const p = power.join(' ');
-
-        const xml = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">',
-            '  <ColorDecision>',
-            '    <!-- Radiance Viewer v3.0 Grade Export -->',
-            '    <ColorCorrection id="radiance_grade">',
-            '      <SOPNode>',
-            `        <Slope>${s}</Slope>`,
-            `        <Offset>${o}</Offset>`,
-            `        <Power>${p}</Power>`,
-            '      </SOPNode>',
-            '      <SatNode>',
-            `        <Saturation>${sat}</Saturation>`,
-            '      </SatNode>',
-            '    </ColorCorrection>',
-            '  </ColorDecision>',
-            '</ColorDecisionList>',
-        ].join('\n');
-
-        const blob = new Blob([xml], { type: 'text/xml' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cdl`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        var _origLog = window.__radianceOrigLog || console.log;
-        _origLog('[Radiance v3.0] CDL exported');
-    };
-
-    RV.prototype._exportGradeLUT = function() {
-        const N = 17;
-        const lines = [
-            `# Radiance Viewer Grade LUT \u2014 exported ${new Date().toISOString()}`,
-            `# Gain: ${(this.gain || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Gamma: ${(this.gamma || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Lift: ${(this.lift || [0, 0, 0]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Saturation: ${(this.saturation || 1).toFixed(4)}`,
-            `# Contrast: ${(this.contrast || 1).toFixed(4)}  Pivot: ${(this.pivot || 0.18).toFixed(4)}`,
-            'LUT_3D_SIZE 17',
-            'DOMAIN_MIN 0.0 0.0 0.0',
-            'DOMAIN_MAX 1.0 1.0 1.0',
-            ''
-        ];
-
-        const gain = Array.isArray(this.gain) ? this.gain : [1, 1, 1];
-        const gamma = Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const lift = Array.isArray(this.lift) ? this.lift : [0, 0, 0];
-        const sat = this.saturation || 1.0;
-        const con = this.contrast || 1.0;
-        const piv = this.pivot || 0.18;
-
-        const applyGrade = (r, g, b) => {
-            const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            const lumaPivot = Math.max(0, 1 - luma);
-            r += lift[0] * lumaPivot;
-            g += lift[1] * lumaPivot;
-            b += lift[2] * lumaPivot;
-            r *= gain[0]; g *= gain[1]; b *= gain[2];
-            if (r > 0) r = Math.pow(r, 1.0 / Math.max(gamma[0], 0.01));
-            if (g > 0) g = Math.pow(g, 1.0 / Math.max(gamma[1], 0.01));
-            if (b > 0) b = Math.pow(b, 1.0 / Math.max(gamma[2], 0.01));
-            r = (r - piv) * con + piv;
-            g = (g - piv) * con + piv;
-            b = (b - piv) * con + piv;
-            const luma2 = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            r = luma2 + sat * (r - luma2);
-            g = luma2 + sat * (g - luma2);
-            b = luma2 + sat * (b - luma2);
-            return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
-        };
-
-        for (let bi = 0; bi < N; bi++) {
-            for (let gi = 0; gi < N; gi++) {
-                for (let ri = 0; ri < N; ri++) {
-                    const r = ri / (N - 1), g = gi / (N - 1), bv = bi / (N - 1);
-                    const [or, og, ob] = applyGrade(r, g, bv);
-                    lines.push(`${or.toFixed(6)} ${og.toFixed(6)} ${ob.toFixed(6)}`);
-                }
-            }
-        }
-
-        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cube`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        this._termLog?.('success', `[LUT] Exported 17\u00B3 .cube LUT from live grade`);
-    };
+    // _exportCDL and _exportGradeLUT are not overridden here. This file used
+    // to replace the viewer's methods with its own copies of the grade maths,
+    // so the File menu and the Inspector button wrote different files. Both
+    // now run the viewer's one implementation (js/radiance_grade_export.js).
 
     RV.prototype._importCDL = function() {
         const input = document.createElement('input');
@@ -340,27 +237,9 @@ function install(RV) {
             return;
         }
 
-        const exp = document.createElement('canvas');
-        exp.width = this.imageWidth;
-        exp.height = this.imageHeight;
-        const ctx = exp.getContext('2d');
-
-        if (this.useWebGL && this.renderer && this.renderer.textures.image) {
-            const prevW = this.glCanvas.width, prevH = this.glCanvas.height;
-            this.glCanvas.width = this.imageWidth;
-            this.glCanvas.height = this.imageHeight;
-            this.renderer.render(this.lutIntensity || 1.0);
-            ctx.drawImage(this.glCanvas, 0, 0);
-            this.glCanvas.width = prevW;
-            this.glCanvas.height = prevH;
-        } else {
-            this.renderImage(ctx, this.image);
-        }
-
-        const link = document.createElement('a');
-        link.download = `radiance_${Date.now()}.png`;
-        link.href = exp.toDataURL('image/png');
-        link.click();
+        // H17: the result without the viewer-only look or overlays, in a
+        // stated colour space (radiance_viewer.js _saveResultPNG).
+        this._saveResultPNG();
     };
 
     // 3.5.0: primaries for the EXR "chromaticities" attribute, by the OCIO

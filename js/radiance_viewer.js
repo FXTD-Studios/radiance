@@ -8,7 +8,20 @@ import { RadianceNeuralMonitor } from "./radiance_neural.js";
 
 
 import { escapeHtml as _escapeHtml } from "./radiance_dom_utils.js";
+// L1: the header's version, kept equal to pyproject by test_version_sync.py.
+import { RADIANCE_VERSION as _RADIANCE_VERSION } from "./radiance_version.js";
 import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radiance_timecode.js";
+// One table for the keys, the help overlay, the menus and the tooltips (M4).
+import {
+    matchKey as _matchKey,
+    shortcutLabel as _shortcutLabel,
+    isTextEntry as _isTextEntry,
+    RANGE_KEYS as _RANGE_KEYS,
+    MENU_ORDER as _MENU_ORDER,
+    menuEntries as _menuEntries,
+    helpSections as _helpSections,
+    POINTER_HELP as _POINTER_HELP,
+} from "./radiance_keymap.js";
 import { cbcr as _vsCbCr, toCanvas as _vsToCanvas, drawGraticule as _vsGraticule } from "./radiance_vectorscope.js";
 import {
     sampleStats as _probeSampleStats,
@@ -19,11 +32,20 @@ import {
     exposureValue as _probeEV,
     rgbToHsv as _probeRgbToHsv,
     srgbToLinear as _probeSrgbToLinear,
+    linearToSrgb as _probeLinearToSrgb,
     hexSwatch as _probeHexSwatch,
     formatValue as _probeFormat,
     HDR_REFERENCE_WHITE_NITS as _PROBE_REF_WHITE,
 } from "./radiance_probe.js";
-import { gradePixel as _gradePixel } from "./radiance_grade.js";
+import {
+    PIVOT_DEFAULT as _PIVOT_DEFAULT,
+    EXPOSURE_MIN as _EXPOSURE_MIN,
+    EXPOSURE_MAX as _EXPOSURE_MAX,
+    whiteBalanceForNeutral as _wbForNeutral,
+    isIdentitySecondaryTable as _isIdentitySecondaryTable,
+} from "./radiance_grade.js";
+// The one CDL writer and the one .cube writer, both built on the shared grade.
+import { buildCDL as _buildCDL, buildCubeLUT as _buildCubeLUT } from "./radiance_grade_export.js";
 // The bounded paging window for sequence playback. Lives in its own module so
 // the memory bound can be measured in a test rather than reasoned about.
 import {
@@ -40,6 +62,8 @@ import {
     describeMeasurement as _scopeDescribe,
     logAssistPos as _logAssistPos,
     logAssistInv as _logAssistInv,
+    plotPos as _plotPos,
+    plotInv as _plotInv,
 } from "./radiance_scope_units.js";
 // The façade only. It dynamic-imports the 4.7 MB WASM on first use, so nothing
 // is paid by a user who never opens a config.
@@ -58,12 +82,79 @@ class RadianceViewer {
         ['aces2', 'ACES 2.0 SDR (OCIO)'],
         ['aces13', 'ACES 1.3 SDR (OCIO)'],
         ['srgb', 'sRGB (no tone map)'],
-        ['rec709', 'Rec.709 (BT.1886)'],
+        // Encodes for a BT.1886 (gamma 2.4) monitor. The canvas is decoded as
+        // sRGB, so on this screen it looks lighter; it is for an external display.
+        ['rec709', 'Rec.709 BT.1886 (external display)'],
         ['filmic', 'Filmic (approx.)'],
         ['manual', 'Custom (Output Transform)'],
     ];
 
-    static singletonHUD = null;
+    /**
+     * M18: the one place the Advanced viewer's colours and type sizes are
+     * set. The CSS reads them as --radiance-* custom properties (see
+     * _themeVars) and inline styles read this.theme, so a colour or size
+     * changes here and nowhere else. Neutral greys with a slight cool bias
+     * and one accent, the way Resolve, Nuke and RV dress a grading tool.
+     *
+     * Every text colour is at least 4.5:1 against every surface it sits on
+     * (raised controls included); viewer_polish.test.mjs measures it.
+     */
+    static THEME = {
+        bg: '#0b0d10',              // canvas surround
+        surface: '#111317',         // rail, panel body
+        surfaceRaised: '#171a1f',   // header, tab strip, bars
+        control: '#1e2228',         // inputs, buttons, readouts
+        controlHover: '#272c34',
+        panel: 'rgba(23, 26, 31, 0.96)',
+        panelBorder: '#2a2f37',
+        borderStrong: '#3b424d',
+        accent: '#00bdff',
+        accentSoft: 'rgba(0, 189, 255, 0.14)',
+        accentGlow: 'rgba(0, 189, 255, 0.25)',
+        text: '#e6e9ee',
+        textDim: '#a7afbb',         // labels
+        textMuted: '#8b94a1',       // shortcuts and secondary readouts
+        warn: '#f5a524',
+        error: '#ff6b6b',
+        ok: '#4ade80',
+        font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
+        // 12 px for every label and value; 11 px only for uppercase,
+        // letter-spaced section headings.
+        fsBody: '12px',
+        fsHeading: '11px',
+        fsTitle: '13px',
+    };
+
+    /** M18: what high contrast changes: brighter secondary text, firmer edges. */
+    static THEME_HIGH_CONTRAST = {
+        text: '#ffffff',
+        textDim: '#d3d9e1',
+        textMuted: '#bcc4cf',
+        panelBorder: '#56606d',
+        borderStrong: '#7a8594',
+    };
+
+    /** The theme as CSS custom properties, for a rule body. */
+    static _themeVars(theme) {
+        const name = (k) => '--radiance-' + k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
+        return Object.entries(theme).map(([k, v]) => `${name(k)}: ${v};`).join('\n');
+    }
+
+    /** M18, L6: what the Effects tab says when there is no depth map. */
+    static NO_DEPTH_MESSAGE = 'No depth map: connect zdepth to enable depth of field';
+
+    /** The viewer last pointed at: a tie-break for keyboard ownership only. */
+    /** C2: the scopes measure every pixel up to this long edge (4K DCI). */
+    static SCOPE_SIGNAL_MAX = 4096;
+    /** C2: a sidebar update slower than this halves the scope signal size. */
+    static SCOPE_SLOW_UPDATE_MS = 300;
+    /** C2: the sidebar scopes refresh at most this often. */
+    static SCOPE_MIN_INTERVAL_MS = 100;
+    /** L3: the viewer f-stop runs ±this many stops, from the box, the keys and the code. */
+    static VIEW_EXPOSURE_LIMIT = 16;
+    /** L3: the viewer gamma's range. */
+    static VIEW_GAMMA_RANGE = Object.freeze([0.1, 4]);
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -138,15 +229,16 @@ class RadianceViewer {
             style.id = 'radiance-hud-styles';
             style.innerHTML = `
                  :root {
-                    --radiance-bg: #08080c;
-                    --radiance-panel: rgba(22, 22, 29, 0.84);
-                    --radiance-panel-border: rgba(255, 255, 255, 0.08);
-                    --radiance-accent: #00bdff;
-                    --radiance-accent-glow: rgba(0, 189, 255, 0.25);
-                    --radiance-text: #f5f5f7;
-                    --radiance-text-dim: #8e8e93;
-                    --radiance-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    --radiance-mono: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+                    ${RadianceViewer._themeVars(RadianceViewer.THEME)}
+                }
+                .radiance-pro-container.radiance-high-contrast {
+                    ${RadianceViewer._themeVars(RadianceViewer.THEME_HIGH_CONTRAST)}
+                }
+                /* M15: keyboard focus is always visible, in the accent. */
+                .radiance-pro-container :is(button, input, select, textarea, [tabindex]):focus-visible,
+                .radiance-settings-popover :is(button, input, select, [tabindex]):focus-visible {
+                    outline: 2px solid var(--radiance-accent) !important;
+                    outline-offset: 1px;
                 }
                 .radiance-glass-dock {
                     position: fixed;
@@ -179,8 +271,7 @@ class RadianceViewer {
                     flex: 0 0 var(--rcp-width, 620px);
                     display: flex;
                     flex-direction: column;
-                    background: rgba(22, 22, 29, 0.85);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
+                    background: var(--radiance-surface);
                     border-left: 1px solid var(--radiance-panel-border);
                     overflow: hidden;
                     position: relative;
@@ -214,12 +305,10 @@ class RadianceViewer {
                     align-items: center;
                     gap: 24px;
                     padding: 0 20px;
-                    background: rgba(22, 22, 29, 0.72);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+                    background: var(--radiance-surface-raised);
+                    border-bottom: 1px solid var(--radiance-panel-border);
                     white-space: nowrap;
                     overflow: hidden;
-                    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
                 }
                 .radiance-pro-brand {
                     display: flex;
@@ -228,10 +317,9 @@ class RadianceViewer {
                     min-width: 210px;
                     font-family: var(--radiance-font);
                     font-weight: 700;
-                    font-size: 12.5px;
+                    font-size: var(--radiance-fs-title);
                     letter-spacing: 1.2px;
-                    color: #ffffff;
-                    text-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    color: var(--radiance-text);
                 }
                 .radiance-pro-mark {
                     width: 14px;
@@ -245,11 +333,11 @@ class RadianceViewer {
                     border-radius: 2px;
                 }
                 .radiance-pro-version {
-                    color: var(--radiance-text-dim);
-                    font-size: 9.5px;
+                    color: var(--radiance-text-muted);
+                    font-size: var(--radiance-fs-heading);
                     font-family: var(--radiance-font-mono);
-                    margin-left: 8px;
-                    opacity: 0.65;
+                    font-weight: 500;
+                    margin-left: 4px;
                     letter-spacing: 0.5px;
                 }
                 .radiance-pro-menu-items {
@@ -334,10 +422,8 @@ class RadianceViewer {
                     align-items: center;
                     gap: 16px;
                     padding: 0 20px;
-                    background: rgba(14, 14, 20, 0.72);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+                    background: var(--radiance-surface);
+                    border-bottom: 1px solid var(--radiance-panel-border);
                     overflow: hidden;
                 }
                 .radiance-pro-file-meta {
@@ -346,45 +432,43 @@ class RadianceViewer {
                     gap: 16px;
                     min-width: 0;
                     flex: 1;
-                    color: rgba(255, 255, 255, 0.45);
-                    font-size: 11px;
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
                     font-family: var(--radiance-font-mono);
                 }
+                .radiance-pro-file-meta > span:empty { display: none; }
                 .radiance-pro-file-name {
                     font-family: var(--radiance-font);
-                    font-size: 12.5px;
-                    color: #ffffff;
+                    font-size: var(--radiance-fs-title);
+                    color: var(--radiance-text);
                     font-weight: 600;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
                     max-width: 280px;
-                    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
                 }
                 .radiance-pro-chip {
-                    padding: 2.5px 7px;
-                    border-radius: 5px;
-                    border: 1px solid rgba(0, 189, 255, 0.25);
+                    padding: 3px 7px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(0, 189, 255, 0.35);
                     color: var(--radiance-accent);
-                    background: rgba(0, 189, 255, 0.08);
-                    font-size: 9.5px;
+                    background: var(--radiance-accent-soft);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     letter-spacing: 0.5px;
                     font-family: var(--radiance-font-mono);
-                    box-shadow: 0 0 8px rgba(0, 189, 255, 0.06);
                     text-transform: uppercase;
                 }
                 .radiance-pro-engine {
-                    padding: 2.5px 9px;
+                    padding: 3px 9px;
                     border-radius: 999px;
                     border: 1px solid rgba(52, 199, 89, 0.3);
                     background: rgba(52, 199, 89, 0.08);
-                    color: #34c759;
-                    font-size: 9.5px;
+                    color: var(--radiance-ok);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     font-family: var(--radiance-font-mono);
                     letter-spacing: 0.5px;
-                    box-shadow: 0 0 10px rgba(52, 199, 89, 0.08);
                 }
                 .radiance-pro-actions {
                     display: flex;
@@ -394,27 +478,87 @@ class RadianceViewer {
                 }
                 .radiance-pro-actions button {
                     min-height: 28px;
+                    min-width: 28px;
                     padding: 0 12px;
-                    border-radius: 6px;
-                    border: 1px solid rgba(255, 255, 255, 0.07);
-                    background: rgba(255, 255, 255, 0.04);
-                    color: rgba(255, 255, 255, 0.85);
+                    border-radius: 5px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
                     font-family: var(--radiance-font);
-                    font-size: 11.5px;
+                    font-size: var(--radiance-fs-body);
                     font-weight: 500;
-                    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.02);
-                    transition: all 0.18s cubic-bezier(0.25, 0.8, 0.25, 1);
+                    cursor: pointer;
                 }
                 .radiance-pro-actions button:hover {
-                    color: #ffffff;
-                    border-color: rgba(255, 255, 255, 0.15);
-                    background: rgba(255, 255, 255, 0.08);
-                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+                    border-color: var(--radiance-border-strong);
+                    background: var(--radiance-control-hover);
+                }
+                .radiance-pro-actions button.is-active,
+                .radiance-pro-actions button[aria-expanded="true"].radiance-pro-settings-btn {
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-sidebar button:hover {
-                    color: #fff;
-                    background: rgba(255, 255, 255, 0.05);
+                    color: var(--radiance-text);
+                    background: var(--radiance-control);
                 }
+                .radiance-settings-popover {
+                    position: fixed;
+                    z-index: 30000;
+                    width: 300px;
+                    padding: 12px 14px 14px;
+                    border-radius: 8px;
+                    border: 1px solid var(--radiance-border-strong);
+                    background: var(--radiance-surface-raised);
+                    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+                    color: var(--radiance-text);
+                    font: var(--radiance-fs-body)/1.35 var(--radiance-font);
+                    box-sizing: border-box;
+                }
+                .radiance-settings-popover .rsp-title {
+                    color: var(--radiance-text);
+                    font-size: var(--radiance-fs-heading);
+                    font-weight: 700;
+                    letter-spacing: .9px;
+                    text-transform: uppercase;
+                    margin-bottom: 10px;
+                }
+                .radiance-settings-popover .rsp-row {
+                    display: grid;
+                    grid-template-columns: 96px minmax(0, 1fr);
+                    gap: 4px 10px;
+                    align-items: center;
+                    padding: 6px 0;
+                    border-top: 1px solid var(--radiance-panel-border);
+                }
+                .radiance-settings-popover .rsp-label { color: var(--radiance-text-dim); }
+                .radiance-settings-popover .rsp-note {
+                    grid-column: 2;
+                    color: var(--radiance-text-muted);
+                }
+                .radiance-settings-popover .rsp-choice { display: flex; gap: 2px; flex-wrap: wrap; }
+                .radiance-settings-popover button,
+                .radiance-settings-popover select {
+                    min-height: 28px;
+                    padding: 0 8px;
+                    border-radius: 4px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    font: var(--radiance-fs-body) var(--radiance-font);
+                    cursor: pointer;
+                }
+                .radiance-settings-popover select { width: 100%; }
+                .radiance-settings-popover button:hover { background: var(--radiance-control-hover); }
+                .radiance-settings-popover button[aria-pressed="true"],
+                .radiance-settings-popover button[aria-checked="true"] {
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-settings-popover button:disabled { opacity: .45; cursor: not-allowed; }
+                .radiance-settings-popover .rsp-switch { justify-self: start; min-width: 52px; }
                 /* Tactile Micro-Compression Physics (Apple Design) */
                 .radiance-pro-container button,
                 .radiance-pro-viewer-bar button,
@@ -431,28 +575,34 @@ class RadianceViewer {
                     transform: scale(0.95) !important;
                 }
                 .radiance-pro-sidebar {
-                    flex: 0 0 214px;
+                    flex: 0 0 200px;
                     display: flex;
                     flex-direction: column;
                     gap: 0;
-                    background: rgba(14, 14, 18, 0.95);
+                    background: var(--radiance-surface);
                     border-right: 1px solid var(--radiance-panel-border);
                     overflow-y: auto;
+                    overscroll-behavior: contain;
                     scrollbar-width: thin;
-                    scrollbar-color: rgba(255,255,255,0.12) transparent;
+                    scrollbar-color: var(--radiance-border-strong) transparent;
+                }
+                /* M18: a rail that runs past the bottom fades out there, so
+                   it reads as "more below" rather than as the end. */
+                .radiance-pro-sidebar.has-more-below {
+                    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+                    mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
                 }
                 .radiance-pro-sidebar-section {
-                    padding: 16px 12px 14px 16px;
-                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    padding: 12px 10px 10px 12px;
+                    border-bottom: 1px solid var(--radiance-panel-border);
                 }
                 .radiance-pro-sidebar-title {
-                    color: var(--radiance-text-dim);
-                    font-size: 9px;
+                    color: var(--radiance-text-muted);
+                    font-size: var(--radiance-fs-heading);
                     font-weight: 700;
                     letter-spacing: 1px;
-                    margin-bottom: 8px;
+                    margin: 0 0 6px 6px;
                     text-transform: uppercase;
-                    opacity: 0.8;
                 }
                 .radiance-pro-sidebar button {
                     width: 100%;
@@ -462,23 +612,26 @@ class RadianceViewer {
                     gap: 8px;
                     min-height: 28px;
                     padding: 0 8px;
-                    border-radius: 6px;
+                    border-radius: 5px;
                     color: var(--radiance-text-dim);
-                    font-size: 11px;
+                    font-size: var(--radiance-fs-body);
                     text-align: left;
-                    margin: 2px 0;
-                    transition: all 0.15s;
+                    margin: 1px 0;
+                    transition: background 0.12s, color 0.12s;
                 }
                 .radiance-pro-sidebar button.is-active {
                     color: var(--radiance-accent) !important;
-                    background: rgba(0, 189, 255, 0.12) !important;
+                    background: var(--radiance-accent-soft) !important;
                     font-weight: 600;
-                    box-shadow: inset 0 0 0 1px rgba(0, 189, 255, 0.12);
+                    box-shadow: inset 2px 0 0 var(--radiance-accent);
                 }
                 .radiance-pro-sidebar .shortcut {
-                    color: rgba(255,255,255,0.22);
+                    color: var(--radiance-text-muted);
                     font-family: var(--radiance-font-mono);
-                    font-size: 9px;
+                    font-size: var(--radiance-fs-body);
+                }
+                .radiance-pro-sidebar button.is-active .shortcut {
+                    color: var(--radiance-accent);
                 }
                 .radiance-pro-viewer-bar {
                     position: absolute;
@@ -508,13 +661,13 @@ class RadianceViewer {
                 }
                 .radiance-pro-viewer-bar select,
                 .radiance-pro-viewer-bar button {
-                    background: rgba(255,255,255,0.055);
-                    color: rgba(245,248,252,0.82);
-                    border: 1px solid rgba(255,255,255,0.09);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    border: 1px solid var(--radiance-panel-border);
                     border-radius: 4px;
-                    min-height: 26px;
+                    min-height: 28px;
                     padding: 0 10px;
-                    font-size: 11px;
+                    font-size: var(--radiance-fs-body);
                     flex-shrink: 0;
                     white-space: nowrap;
                     cursor: pointer;
@@ -526,18 +679,22 @@ class RadianceViewer {
                 .radiance-pro-viewer-bar select option,
                 .radiance-ref-field select option,
                 select.radiance-ocio-select option {
-                    background: #16181d;
-                    color: rgba(245, 248, 252, 0.92);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
                 }
                 .radiance-pro-viewer-bar button:hover {
-                    background: rgba(255,255,255,0.1);
-                    color: #fff;
+                    background: var(--radiance-control-hover);
+                    border-color: var(--radiance-border-strong);
                 }
                 .radiance-pro-viewer-bar button.is-active {
-                    color: #48b7ff;
-                    border-color: rgba(72,183,255,0.52);
-                    background: rgba(72,183,255,0.15);
-                    box-shadow: 0 0 0 1px rgba(72,183,255,0.18) inset;
+                    color: var(--radiance-accent);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-pro-viewer-bar .radiance-pro-bar-label {
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
+                    font-weight: 600;
                 }
                 .radiance-viewer-frame {
                     position: absolute;
@@ -590,10 +747,9 @@ class RadianceViewer {
                     display: flex;
                     flex-direction: column;
                     border: 1px solid var(--radiance-panel-border);
-                    border-radius: 10px;
+                    border-radius: 8px;
                     background: var(--radiance-panel);
-                    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255,255,255,0.03);
-                    backdrop-filter: blur(35px) saturate(180%) !important;
+                    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
                     z-index: 68;
                     pointer-events: auto;
                     overflow: hidden;
@@ -601,72 +757,116 @@ class RadianceViewer {
                 .radiance-pro-sequence-controls {
                     display: flex;
                     align-items: center;
-                    gap: 5px;
+                    gap: 4px;
                     flex-shrink: 0;
                 }
+                /* M15: transport and track buttons are 28 px targets. */
                 .radiance-pro-sequence-controls button {
-                    width: 23px;
-                    height: 21px;
+                    min-width: 28px;
+                    height: 28px;
+                    padding: 0;
                     border-radius: 4px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    background: rgba(255,255,255,0.045);
-                    color: rgba(238,244,251,0.82);
-                    font-size: 10px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-control);
+                    color: var(--radiance-text);
+                    font-size: var(--radiance-fs-body);
                     cursor: pointer;
                 }
                 .radiance-pro-sequence-controls button:hover {
-                    color: #fff;
-                    border-color: rgba(72,183,255,0.45);
-                    background: rgba(72,183,255,0.12);
+                    border-color: rgba(0, 189, 255, 0.45);
+                    background: var(--radiance-control-hover);
                 }
+                .radiance-pro-tool-btn,
+                .radiance-pro-track-btn {
+                    height: 28px;
+                    min-width: 28px;
+                    padding: 0 8px;
+                    border: 0;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: var(--radiance-text-dim);
+                    font: 600 var(--radiance-fs-body) var(--radiance-font-ui);
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+                .radiance-pro-track-btn {
+                    font-family: var(--radiance-font-mono);
+                }
+                .radiance-pro-tool-btn:hover,
+                .radiance-pro-track-btn:hover {
+                    color: var(--radiance-text);
+                    background: var(--radiance-control-hover);
+                }
+                .radiance-pro-tool-btn.is-active,
+                .radiance-pro-track-btn.is-active {
+                    color: var(--radiance-accent);
+                    background: var(--radiance-accent-soft);
+                }
+                .radiance-pro-timeline-tools {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                    padding: 2px;
+                    border-radius: 5px;
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-surface);
+                }
+                .radiance-pro-timeline-tools .radiance-pro-tool-sep {
+                    width: 1px;
+                    align-self: stretch;
+                    margin: 4px;
+                    background: var(--radiance-panel-border);
+                }
+                /* M15: the dock scrubber's hit area is 28 px tall; the track
+                   drawn inside it is 4 px, the thumb 14 px. */
                 .radiance-pro-sequence-range {
                     width: min(320px, 28vw);
                     -webkit-appearance: none;
                     appearance: none;
-                    height: 3px;
-                    border-radius: 2px;
-                    outline: none;
+                    height: 28px;
+                    margin: 0;
+                    background: transparent;
                     cursor: pointer;
                     vertical-align: middle;
-                    /* background is set dynamically in _refreshSequenceDock */
-                    background: rgba(255,255,255,0.14);
+                    --radiance-scrub-pct: 0%;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-runnable-track {
-                    height: 3px;
+                    height: 4px;
                     border-radius: 2px;
+                    background: linear-gradient(to right, var(--radiance-accent) var(--radiance-scrub-pct), var(--radiance-border-strong) var(--radiance-scrub-pct));
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
                     border-radius: 50%;
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     cursor: pointer;
-                    margin-top: -4.5px;
-                    box-shadow: 0 0 0 2px rgba(57,170,255,0.28);
+                    margin-top: -5px;
+                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
                     transition: box-shadow 0.15s;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb:hover {
-                    box-shadow: 0 0 0 4px rgba(57,170,255,0.38);
+                    box-shadow: 0 0 0 4px rgba(0, 189, 255, 0.38);
                 }
                 .radiance-pro-sequence-range::-moz-range-track {
-                    height: 3px;
+                    height: 4px;
                     border-radius: 2px;
-                    background: rgba(255,255,255,0.14);
+                    background: var(--radiance-border-strong);
                 }
                 .radiance-pro-sequence-range::-moz-range-thumb {
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
                     border-radius: 50%;
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     cursor: pointer;
                     border: none;
-                    box-shadow: 0 0 0 2px rgba(57,170,255,0.28);
+                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
                 }
                 .radiance-pro-sequence-range::-moz-range-progress {
-                    background: #39aaff;
+                    background: var(--radiance-accent);
                     border-radius: 2px 0 0 2px;
-                    height: 3px;
+                    height: 4px;
                 }
                 .radiance-pro-sequence-range:disabled {
                     opacity: 0.38;
@@ -682,16 +882,17 @@ class RadianceViewer {
                     gap: 6px 12px;
                     padding: 6px 10px;
                     flex-wrap: wrap;
-                    border-bottom: 1px solid rgba(255,255,255,0.06);
-                    color: rgba(222,232,244,0.74);
-                    font-size: 10px;
+                    border-bottom: 1px solid var(--radiance-panel-border);
+                    color: var(--radiance-text-dim);
+                    font-size: var(--radiance-fs-body);
                     font-family: var(--radiance-font-mono);
                 }
                 .radiance-pro-sequence-title {
-                    color: rgba(245,249,255,0.88);
-                    font: 800 10px/1 var(--radiance-font-ui);
-                    letter-spacing: .7px;
+                    color: var(--radiance-text);
+                    font: 700 var(--radiance-fs-heading)/1 var(--radiance-font-ui);
+                    letter-spacing: .8px;
                 }
+                .radiance-pro-sequence-name:empty { display: none; }
                 .radiance-pro-sequence-track {
                     flex: 1;
                     display: flex;
@@ -701,31 +902,28 @@ class RadianceViewer {
                     overflow-x: auto;
                     padding: 8px 10px 9px;
                     scrollbar-width: thin;
-                    scrollbar-color: rgba(255,255,255,.18) transparent;
+                    scrollbar-color: var(--radiance-border-strong) transparent;
                 }
                 .radiance-pro-thumb {
                     flex: 0 0 108px;
                     display: flex;
                     flex-direction: column;
                     gap: 5px;
-                    color: rgba(218,228,240,0.68);
-                    font: 10px/1 var(--radiance-font-mono);
+                    color: var(--radiance-text-dim);
+                    font: var(--radiance-fs-heading)/1 var(--radiance-font-mono);
                     text-align: center;
                 }
                 .radiance-pro-thumb-frame {
                     height: 48px;
                     border-radius: 4px;
-                    border: 1px solid rgba(255,255,255,0.08);
-                    background:
-                        linear-gradient(120deg, rgba(255,255,255,0.08), transparent 32%),
-                        radial-gradient(circle at 72% 28%, rgba(252,188,82,0.18), transparent 32%),
-                        linear-gradient(180deg, rgba(37,45,58,0.9), rgba(9,12,18,0.95));
+                    border: 1px solid var(--radiance-panel-border);
+                    background: var(--radiance-surface);
                     overflow: hidden;
                     position: relative;
                 }
                 .radiance-pro-thumb.is-active .radiance-pro-thumb-frame {
-                    border-color: #0c93e8;
-                    box-shadow: 0 0 0 1px rgba(12,147,232,0.45), 0 0 18px rgba(12,147,232,0.22);
+                    border-color: var(--radiance-accent);
+                    box-shadow: 0 0 0 1px rgba(0, 189, 255, 0.45);
                 }
                 .radiance-pro-thumb canvas,
                 .radiance-pro-thumb img {
@@ -733,6 +931,30 @@ class RadianceViewer {
                     height: 100%;
                     object-fit: cover;
                     display: block;
+                }
+                /* The two status rows under the picture. */
+                .radiance-pro-infobar,
+                .radiance-pro-statusbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 16px;
+                    padding: 0 10px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    font: var(--radiance-fs-body) var(--radiance-font-mono);
+                    color: var(--radiance-text-dim);
+                    border-top: 1px solid var(--radiance-panel-border);
+                }
+                .radiance-pro-infobar {
+                    flex: 0 0 24px;
+                    position: relative;
+                    background: var(--radiance-surface);
+                    z-index: 1000;
+                }
+                .radiance-pro-statusbar {
+                    flex: 0 0 24px;
+                    background: var(--radiance-surface-raised);
                 }
                 @media (max-width: 1180px) {
                     .radiance-pro-sidebar { flex-basis: 178px; }
@@ -802,16 +1024,8 @@ class RadianceViewer {
             document.head.appendChild(style);
         }
 
-        this.theme = {
-            bg: '#0a0a0f',
-            panel: 'rgba(16, 16, 24, 0.95)',
-            panelBorder: 'rgba(60, 70, 100, 0.25)',
-            accent: '#00a8ff',
-            text: '#e8e8f0',
-            textDim: '#707088',
-            font: "'Inter', system-ui, -apple-system, sans-serif",
-            mono: "'JetBrains Mono', monospace"
-        };
+        // M18: the shared tokens (RadianceViewer.THEME), not a second palette.
+        this.theme = { ...RadianceViewer.THEME };
 
         // State
         this.image = null;
@@ -852,6 +1066,7 @@ class RadianceViewer {
         this.lutIntensity = 1.0;
 
         this.falseColor = false;
+        this.pixelGrid = false;    // pixel outlines at 800% and up (rail Pixel Grid)
         this.hdrHeatmap = false;   // absolute cd/m2, anchored to BT.2408 (203 nits)
         this.zebra = false;
         this.gamutWarning = false;
@@ -873,6 +1088,10 @@ class RadianceViewer {
         // the status-bar badge so it cannot claim FP32 over a tonemapped PNG.
         this._hdrFallbackReasons = [];
         this.frameCompareImages = [];
+        this.frameCompareHDR = [];          // B's float frames, when the node sent them
+        this.compareFit = (() => {
+            try { return localStorage.getItem('radiance_compare_fit') === 'fit' ? 'fit' : 'pixel'; } catch { return 'pixel'; }
+        })();
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
@@ -1083,7 +1302,7 @@ class RadianceViewer {
         this.temperature = 0.0;
         this.tint = 0.0;
         this.contrast = 1.0;
-        this.pivot = 0.5;
+        this.pivot = _PIVOT_DEFAULT;   // 18% grey, as the node-side grade
         this.saturation = 1.0;
         this.shadows = 0.0;
         this.highlights = 0.0;
@@ -1202,8 +1421,8 @@ class RadianceViewer {
         this.setupKeyboardShortcuts();
         requestAnimationFrame(() => this.resize());
 
-        // Continuous grain ticker — only fires when grain is active
-        this._startGrainTicker();
+        // The grain ticker starts from render() when animated grain is on
+        // (_syncGrainTicker); it no longer runs at 60 fps with grain off.
 
         // Wire ComfyUI events → terminal
         this._termWireEvents();
@@ -1229,15 +1448,16 @@ class RadianceViewer {
     // Drives a ~24fps RAF loop that re-renders only when grain is active,
     // so the noise pattern animates even when the user isn't touching any control.
     _startGrainTicker() {
+        if (this._grainRAF) return;
         let lastT = 0;
         const FPS = 24;
         const INTERVAL = 1000 / FPS;
 
         const tick = (t) => {
+            // Only while grain is on AND animate mode is enabled: the loop
+            // ends itself otherwise, and render() starts it again.
+            if ((this.grain || 0) <= 0.0 || !this.grainAnimate) { this._grainRAF = null; return; }
             this._grainRAF = requestAnimationFrame(tick);
-            // Only animate if grain is on AND animate mode is enabled
-            if ((this.grain || 0) <= 0.0) return;
-            if (!this.grainAnimate) return;
             if (t - lastT < INTERVAL) return;
             lastT = t;
             if (!this.renderer || !this.renderer.textures.image) return;
@@ -1249,6 +1469,78 @@ class RadianceViewer {
 
     _stopGrainTicker() {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
+    }
+
+    /**
+     * The working scene-linear value under an image position, as the white
+     * balance sees it: from the float frame when there is one (decoded if it
+     * is sRGB-encoded), from the 8-bit picture otherwise (always decoded).
+     * A 3x3 average, so a single noisy pixel does not set the balance.
+     */
+    _wbSampleLinear(imgU, imgV) {
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        const hdr = this.hdrData || (this.frameHDRData && this.frameHDRData[this.currentFrame]);
+        if (hdr && hdr.data) {
+            const ch = hdr.channels || 3;
+            const cx = Math.min(hdr.width - 1, Math.max(0, Math.floor(imgU * hdr.width)));
+            const cy = Math.min(hdr.height - 1, Math.max(0, Math.floor(imgV * hdr.height)));
+            const sum = [0, 0, 0];
+            let n = 0;
+            for (let y = Math.max(0, cy - 1); y <= Math.min(hdr.height - 1, cy + 1); y++) {
+                for (let x = Math.max(0, cx - 1); x <= Math.min(hdr.width - 1, cx + 1); x++) {
+                    const i = (y * hdr.width + x) * ch;
+                    const px = [hdr.data[i], hdr.data[i + 1], hdr.data[i + 2]];
+                    if (!px.every(Number.isFinite)) continue;
+                    sum[0] += px[0]; sum[1] += px[1]; sum[2] += px[2]; n++;
+                }
+            }
+            if (!n) return null;
+            const avg = sum.map((v) => v / n);
+            return this.renderer && this.renderer.isLinearTexture === false ? avg.map(decode) : avg;
+        }
+        if (!this.image) return null;
+        // Fallback to the display image (8-bit, sRGB-encoded)
+        const imgX = Math.round(imgU * (this.imageWidth - 1));
+        const imgY = Math.round(imgV * (this.imageHeight - 1));
+        const tmp = document.createElement('canvas');
+        tmp.width = 1; tmp.height = 1;
+        const tctx = tmp.getContext('2d');
+        tctx.drawImage(this.image, -imgX, -imgY);
+        const d = tctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2]].map((v) => decode(v / 255));
+    }
+
+    /**
+     * Set Temperature and Tint so the picked colour comes out neutral. The
+     * solve is exact (radiance_grade.js whiteBalanceForNeutral) and absolute:
+     * it replaces the balance rather than adding to it, so picking the same
+     * grey twice does not overcorrect. Returns false when there is no solve.
+     */
+    _wbApplyPick(rgb) {
+        const wb = _wbForNeutral(rgb);
+        if (!wb) {
+            this._showToast?.('White balance: pick a pixel with some red, green and blue in it.', 'warn');
+            return false;
+        }
+        const lim = RadianceViewer.WB_RANGE;
+        const clamp = (v) => Math.max(-lim, Math.min(lim, v));
+        if (Math.abs(wb.temperature) > lim || Math.abs(wb.tint) > lim) {
+            this._showToast?.(`White balance: that cast needs more than ±${lim} stops; set to the limit.`, 'warn');
+        }
+        this.temperature = clamp(wb.temperature);
+        this.tint = clamp(wb.tint);
+        if (this.renderer) {
+            this.renderer.setTemperature(this.temperature);
+            this.renderer.setTint(this.tint);
+        }
+        this._syncGradeControls?.();
+        this._gradeChanged?.();
+        return true;
+    }
+
+    /** Start the grain ticker when animated grain is on. Called from render(). */
+    _syncGrainTicker() {
+        if (!this._grainRAF && (this.grain || 0) > 0 && this.grainAnimate && !this._destroyed) this._startGrainTicker();
     }
 
     // ── v3.4: Eyedropper White Balance ───────────────────────────────────────
@@ -1274,9 +1566,13 @@ class RadianceViewer {
 
             this._wbPickHandler = (e) => {
                 const rect = this.canvas.getBoundingClientRect();
-                // v3.5: Correct for pan/zoom to find the exact image pixel
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
+                // panX / panY / zoom are in canvas (device) pixels; the mouse is
+                // in CSS pixels. On a HiDPI screen the unscaled position picked
+                // a pixel up and to the left of the one under the cursor.
+                this._canvasScaleX = this.canvas.width / (rect.width || 1);
+                this._canvasScaleY = this.canvas.height / (rect.height || 1);
+                const mouseX = (e.clientX - rect.left) * this._canvasScaleX;
+                const mouseY = (e.clientY - rect.top) * this._canvasScaleY;
 
                 // Convert canvas pos -> image UV
                 // (mouseX - panX) / zoom = imageX
@@ -1288,57 +1584,19 @@ class RadianceViewer {
                     return;
                 }
 
-                // Sample from raw HDR data if available (32-bit float accuracy)
-                let r, g, b;
-                const hdr = this.hdrData || (this.frameHDRData && this.frameHDRData[this.currentFrame]);
-
-                if (hdr && hdr.data) {
-                    const ix = Math.floor(imgU * (hdr.width - 1));
-                    const iy = Math.floor(imgV * (hdr.height - 1));
-                    const idx = (iy * hdr.width + ix) * (hdr.channels || 3);
-                    r = hdr.data[idx];
-                    g = hdr.data[idx + 1];
-                    b = hdr.data[idx + 2];
-                } else {
-                    // Fallback to display image (8-bit SDR)
-                    const imgX = Math.round(imgU * (this.imageWidth - 1));
-                    const imgY = Math.round(imgV * (this.imageHeight - 1));
-                    const tmp = document.createElement('canvas');
-                    tmp.width = 1; tmp.height = 1;
-                    const tctx = tmp.getContext('2d');
-                    tctx.drawImage(this.image, -imgX, -imgY);
-                    const d = tctx.getImageData(0, 0, 1, 1).data;
-                    r = d[0] / 255; g = d[1] / 255; b = d[2] / 255;
-                }
+                const picked = this._wbSampleLinear(imgU, imgV);
+                if (!picked) return;
+                const [r, g, b] = picked;
 
                 // Avoid picking near black or pure white (unreliable neutral)
                 const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                if (luma < 0.01 || luma > 10.0) { // Wider range for HDR
+                if (luma < 0.001 || luma > 10.0) { // Wider range for HDR
                     console.warn('[WB] Picked pixel is invalid — choose a neutral grey');
                     return;
                 }
 
-                // Normalize to equal energy
-                const avg = (r + g + b) / 3.0;
-                if (avg < 1e-6) return;
-
-                const devR = r / avg - 1.0;
-                const devB = b / avg - 1.0;
-                const devG = g / avg - 1.0;
-
-                // Map RGB deviation -> temperature/tint correction
-                const newTemp = -(devR - devB) * 0.8; // Increased gain for better correction
-                const newTint = -(devR + devB - 2 * devG) * 0.4;
-
-                this.temperature = Math.max(-2, Math.min(2, this.temperature + newTemp));
-                this.tint = Math.max(-2, Math.min(2, this.tint + newTint));
-
-                if (this.renderer) {
-                    this.renderer.setTemperature(this.temperature);
-                    this.renderer.setTint(this.tint);
-                }
-                this.requestRender();
-                this.requestScopeUpdate();
+                this._pushUndo();
+                if (!this._wbApplyPick(picked)) return;
 
                 console.log(`[WB] Corrected temp=${this.temperature.toFixed(3)} tint=${this.tint.toFixed(3)} from luma=${luma.toFixed(3)}`);
 
@@ -1416,7 +1674,8 @@ class RadianceViewer {
      * (no DecompressionStream, an RHDR integrity mismatch, and a failed
      * texture creation), each of which used to only console.warn, and what is
      * then on screen is the PNG fallback: 8-bit, capped at FALLBACK_MAX_DIM =
-     * 2048 by the node, and Reinhard tonemapped x/(1+x) whenever d_max > 1.05.
+     * 2048 by the node, and (since 3.5.0) written through the ACES 2.0 SDR view
+     * for a linear source.
      *
      * So a colourist could grade a 4K HDR plate against a 2048px tonemapped
      * 8-bit proxy while the status bar read "FP32 · RGBA32F", and then press
@@ -1432,7 +1691,8 @@ class RadianceViewer {
         let isProxy = false;
         const hdr = this.hdrData;
 
-        if (hdr && hdr.data) {
+        // fp16data first: 'data' on an fp16 frame decodes it (_lazyHalfFloats).
+        if (hdr && (hdr.fp16data || hdr.data)) {
             if (hdr.format === 'rhdr') {
                 inputLabel = 'FP16';
                 inputDetail = 'RHDR half-float sidecar';
@@ -1451,7 +1711,8 @@ class RadianceViewer {
             const sw = src.source_width, sh = src.source_height;
             const pw = src.naturalWidth || src.width, ph = src.naturalHeight || src.height;
             const parts = ['8-bit PNG fallback, NOT the float source'];
-            if (src.preview_tonemapped) parts.push('tonemapped x/(1+x) by the node');
+            // L2: what the node writes now (it said x/(1+x), the old tone map).
+            if (src.preview_tonemapped) parts.push('ACES 2.0 SDR preview written by the node');
             if (sw && sh && pw && ph && (sw !== pw || sh !== ph)) {
                 parts.push(`downscaled ${pw}x${ph} from ${sw}x${sh}`);
             }
@@ -1497,55 +1758,29 @@ class RadianceViewer {
         this._hdrZoneStats = null;
 
         const hdr = this.hdrData;
-        if (!hdr || !hdr.data || hdr.data.length === 0) return;
+        if (!hdr) return;
 
-        const data = hdr.data; // Float32Array
-        const ch   = hdr.channels || 3;
-        const n    = Math.floor(data.length / ch);
-
-        // Sub-sample for performance (target ≤ 500k samples)
-        const step = Math.max(1, Math.ceil(n / 500_000));
-        const sampleCount = Math.ceil(n / step);
-        const luma = new Float32Array(sampleCount);
-
-        let clipped = 0, negative = 0, written = 0;
-        let clippedR = 0, clippedG = 0, clippedB = 0;
-        for (let i = 0; i < n; i += step) {
-            const base = i * ch;
-            const r = data[base]     || 0;
-            const g = ch > 1 ? (data[base + 1] || 0) : r;
-            const b = ch > 2 ? (data[base + 2] || 0) : r;
-            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            luma[written++] = y;
-            if (y > 1.0) clipped++;
-            if (y < 0.0) negative++;
-            if (r > 1.0) clippedR++;
-            if (g > 1.0) clippedG++;
-            if (b > 1.0) clippedB++;
+        // Once per frame, and normally already done in the decode worker. It
+        // was a sort of up to 500,000 samples on the main thread for every
+        // frame shown (about 100 ms), during playback too.
+        let raw = hdr.zoneStats;
+        if (!raw) {
+            // fp16data first: reading 'data' on an fp16 frame decodes it.
+            const values = hdr.fp16data || hdr.data;
+            if (!values || values.length === 0) return;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            raw = this._zoneStatsFromFloats(values, hdr.channels || hdr.shape?.[2] || 3, table, 500_000);
+            if (!raw) return;
+            hdr.zoneStats = raw;
         }
 
-        // Sort a copy for percentile computation
-        const sorted = luma.slice(0, written).sort();
-        const total  = sorted.length;
-
-        const pct = (p) => {
-            const idx = Math.min(total - 1, Math.max(0, Math.floor(p * 0.01 * (total - 1))));
-            return sorted[idx];
-        };
-
-        const p1   = pct(1),  p10  = pct(10), p50 = pct(50);
-        const p90  = pct(90), p99  = pct(99), p999 = pct(99.9);
-
-        let sum = 0;
-        for (let i = 0; i < written; i++) sum += sorted[i];
-        const meanLuma = sum / written;
-
-        const clippedPct  = (clipped  / written) * 100;
-        const negativePct = (negative / written) * 100;
-        const clippedRPct = (clippedR / written) * 100;
-        const clippedGPct = (clippedG / written) * 100;
-        const clippedBPct = (clippedB / written) * 100;
-        const evRange     = p1 > 1e-6 ? Math.log2(Math.max(p99, 1e-6) / p1) : 0;
+        const { p1, p10, p50, p90, p99, p999, meanLuma, clippedPct, negativePct,
+            clippedRPct, clippedGPct, clippedBPct } = raw;
+        // From the lowest NON-ZERO percentile. A frame whose darkest 1% is
+        // true black has p1 = 0, and the old formula then gave up and said
+        // 0.0 EV for a frame running from black to 41.6.
+        const low = raw.p1NonZero;
+        const evRange = low > 0 && p99 > 0 ? Math.max(0, Math.log2(p99 / low)) : 0;
 
         // Nit estimate: decode through IDT log curve if one is active,
         // then apply ITU-R BT.2408 SDR reference (203 cd/m²)
@@ -1553,8 +1788,8 @@ class RadianceViewer {
         const decodedPeak = this._decodeLogForNit(rawPeak);
         const nitPeak = decodedPeak * 203;
 
-        const shadowCeiling = pct(30);
-        const midCeiling    = pct(70);
+        const shadowCeiling = raw.p30;
+        const midCeiling    = raw.p70;
 
         this._hdrZoneStats = {
             p1, p10, p50, p90, p99, p999,
@@ -1568,6 +1803,75 @@ class RadianceViewer {
         };
 
         this._updateHDRPeakBadge();
+    }
+
+    /**
+     * Scene-linear luminance statistics of one frame, from a histogram.
+     *
+     * `values` is the frame's samples: a Float32Array, or the fp16 halves with
+     * `table` (_halfFloatTable) to read them. Positive luminance is binned by
+     * the top 16 bits of its float32 pattern, the exponent and 7 mantissa
+     * bits, so each bin is 1/128 of a stop wide: no sort and no log per
+     * sample. Self-contained, because the decode worker runs it too.
+     */
+    _zoneStatsFromFloats(values, channels, table = null, maxSamples = 0) {
+        const ch = channels || 3;
+        const n = Math.floor(values.length / ch);
+        if (n === 0) return null;
+        const step = maxSamples > 0 ? Math.max(1, Math.ceil(n / maxSamples)) : 1;
+        const hist = new Uint32Array(32768);
+        const f = new Float32Array(1);
+        const u = new Uint32Array(f.buffer);
+        let samples = 0, nonPositive = 0, negative = 0, sum = 0;
+        let clipped = 0, clippedR = 0, clippedG = 0, clippedB = 0;
+        for (let i = 0; i < n; i += step) {
+            const base = i * ch;
+            const r = (table ? table[values[base]] : values[base]) || 0;
+            const g = ch > 1 ? ((table ? table[values[base + 1]] : values[base + 1]) || 0) : r;
+            const b = ch > 2 ? ((table ? table[values[base + 2]] : values[base + 2]) || 0) : r;
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            samples++;
+            sum += y;
+            if (y > 1.0) clipped++;
+            if (r > 1.0) clippedR++;
+            if (g > 1.0) clippedG++;
+            if (b > 1.0) clippedB++;
+            if (y > 0) {
+                f[0] = y;
+                hist[u[0] >>> 16]++;
+            } else {
+                nonPositive++;
+                if (y < 0) negative++;
+            }
+        }
+        const binValue = (bin) => { u[0] = (bin << 16) | 0x8000; return f[0]; };
+        // The p-th percentile of the positive samples, skipping 'skip' of them
+        // that sort first (the non-positive ones, which read as 0).
+        const percentile = (p, total, skip) => {
+            if (total <= 0) return 0;
+            const target = Math.floor(p * 0.01 * (total - 1));
+            if (target < skip) return 0;
+            let acc = skip;
+            for (let bin = 0; bin < 32768; bin++) {
+                acc += hist[bin];
+                if (acc > target) return binValue(bin);
+            }
+            return binValue(32767);
+        };
+        const pct = (p) => percentile(p, samples, nonPositive);
+        const positives = samples - nonPositive;
+        return {
+            p1: pct(1), p10: pct(10), p30: pct(30), p50: pct(50), p70: pct(70),
+            p90: pct(90), p99: pct(99), p999: pct(99.9),
+            p1NonZero: percentile(1, positives, 0),
+            meanLuma: sum / samples,
+            clippedPct: (clipped / samples) * 100,
+            negativePct: (negative / samples) * 100,
+            clippedRPct: (clippedR / samples) * 100,
+            clippedGPct: (clippedG / samples) * 100,
+            clippedBPct: (clippedB / samples) * 100,
+            samples,
+        };
     }
 
     // Decode a scene-linear-encoded peak value through the active IDT log curve
@@ -1668,17 +1972,21 @@ class RadianceViewer {
 
         const BINS = 16;
         const computeFromHDR = (hdr) => {
-            if (!hdr || !hdr.data) return null;
-            const data = hdr.data;
+            // The half floats through the table: reading 'data' on an fp16
+            // frame decodes the whole frame, for 8,000 samples.
+            const data = hdr && (hdr.fp16data || hdr.data);
+            if (!data) return null;
+            const table = hdr.fp16data ? RadianceViewer._halfFloatTable() : null;
+            const at = (i) => (table ? table[data[i]] : data[i]) || 0;
             const ch = hdr.channels || 3;
             const n = Math.floor(data.length / ch);
             const step = Math.max(1, Math.ceil(n / 8000)); // ≤8k samples
             const hist = new Uint16Array(BINS);
             for (let i = 0; i < n; i += step) {
                 const base = i * ch;
-                const r = data[base] || 0;
-                const g = ch > 1 ? (data[base + 1] || 0) : r;
-                const b = ch > 2 ? (data[base + 2] || 0) : r;
+                const r = at(base);
+                const g = ch > 1 ? at(base + 1) : r;
+                const b = ch > 2 ? at(base + 2) : r;
                 const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                 // Reinhard to map HDR to [0,1] display range, then bin
                 const yn = y / (y + 1);
@@ -1840,9 +2148,10 @@ class RadianceViewer {
         const meta = this.hdrData.metadata || {};
         const metaCS = (meta.colorSpace || meta.ColorSpace || '').toLowerCase();
         // LogC4 first: "arri" matches both, and LogC4 metadata was read as LogC3.
+        // L5: "arri" alone is not LogC ("ARRI Wide Gamut 3 linear" is linear).
         if (metaCS.includes('logc4')) {
             detected = 'IDT: LogC4 → Linear'; method = 'EXR metadata';
-        } else if (metaCS.includes('logc3') || metaCS.includes('arri')) {
+        } else if (metaCS.includes('logc3') || (metaCS.includes('arri') && metaCS.includes('logc'))) {
             detected = 'IDT: LogC3 → Linear'; method = 'EXR metadata';
         } else if (metaCS.includes('s-log3') || metaCS.includes('slog3')) {
             detected = 'IDT: S-Log3 → Linear' ; method = 'EXR metadata'; // future IDT
@@ -1855,10 +2164,14 @@ class RadianceViewer {
         }
 
         // ── Tier 2: Filename keyword scan ─────────────────────────────────────
+        // L5: whole words only. Separators were stripped and keywords matched
+        // anywhere, so "david" read as DaVinci ("davi") and "dinterm..." as
+        // anything that contained it. Names are split on separators and a
+        // keyword must be one word, or a run of whole words.
         if (!detected) {
-            const fname = (this.hdrData.filename || this._lastFilename || '').toLowerCase().replace(/[-_ .]/g, '');
+            const words = `_${(this.hdrData.filename || this._lastFilename || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join('_')}_`;
             for (const p of PROFILES) {
-                if (p.kwds.some(k => fname.includes(k.replace(/[-_ ]/g,'')))) {
+                if (p.kwds.some(k => words.includes(`_${k.replace(/[-_ ]/g, '_')}_`))) {
                     detected = p.key; method = 'filename pattern';
                     break;
                 }
@@ -1927,6 +2240,100 @@ class RadianceViewer {
 
         const container = this.container || document.body;
         container.appendChild(toast);
+    }
+
+    /**
+     * A message over the picture, for a state the canvas alone shows as
+     * black or not at all: frames gone from the server, a video the browser
+     * cannot play, a lost GPU context. One per kind, until cleared.
+     */
+    _showViewerMessage(kind, text, onClick = null) {
+        const host = this.canvasWrapper || this.container;
+        if (!host) return;
+        if (!this._viewerMessages) this._viewerMessages = new Map();
+        let el = this._viewerMessages.get(kind);
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'radiance-viewer-message';
+            el.dataset.kind = kind;
+            el.setAttribute('role', 'alert');
+            el.style.cssText = `
+                position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                max-width: min(480px, 80%); padding: 14px 18px; z-index: 40;
+                color: #f5f5f7; background: rgba(10,12,20,0.94);
+                border: 1px solid rgba(255,107,107,0.55); border-radius: 8px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+                font: 12px/1.5 var(--radiance-font-ui, -apple-system, 'Segoe UI', sans-serif);
+                text-align: center;
+            `;
+            host.appendChild(el);
+            this._viewerMessages.set(kind, el);
+        }
+        el.textContent = text;
+        el.style.cursor = onClick ? 'pointer' : 'default';
+        el.onclick = onClick;
+    }
+
+    _clearViewerMessage(kind) {
+        const el = this._viewerMessages?.get(kind);
+        if (!el) return;
+        el.remove();
+        this._viewerMessages.delete(kind);
+    }
+
+    /** A frame of the sequence could not be loaded. */
+    _onFrameLoadError(err, idx) {
+        console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+        // Only the frame on screen gets a message: a read-ahead frame that
+        // fails is retried when the playhead reaches it.
+        if (idx !== this.currentFrame) return;
+        if (err?.missing) {
+            this._showViewerMessage('frames',
+                'The frames of this result are no longer on the server. ComfyUI was restarted, '
+                + 'or a later run replaced them. Run the workflow again to see them.');
+        } else {
+            this._showViewerMessage('frames',
+                `Frame ${idx + 1} could not be loaded: ${err?.message || err}.`);
+        }
+        this._termLog?.('error', `[Viewer] Frame ${idx + 1} could not be loaded: ${err?.message || err}`);
+    }
+
+    /** The GPU context is gone: say so, instead of leaving a black viewer. */
+    _onGLContextLost() {
+        this._showViewerMessage('context',
+            'The GPU context was lost, so the picture cannot be drawn. It comes back when the '
+            + 'browser restores the context. Click to try now.',
+            () => {
+                try { this.renderer?.gl?.getExtension('WEBGL_lose_context')?.restoreContext(); } catch { /* not ours to restore */ }
+            });
+        this._termLog?.('error', '[Viewer] GPU context lost.');
+    }
+
+    /** The context is back with nothing on it: upload the picture again. */
+    _onGLContextRestored() {
+        this._clearViewerMessage('context');
+        const r = this.renderer;
+        if (!r) return;
+        r.setPixelFilter?.(this.pixelFilter);
+        if (this.videoMode && this.videoEl) {
+            this._captureVideoFrame();
+        } else if (this.hdrData) {
+            const h = this.hdrData;
+            const ch = h.channels || h.shape?.[2] || 3;
+            if (h.fp16data) r.loadFloat16Texture(h.fp16data, h.width, h.height, ch);
+            else r.loadFloat32Texture(h.data, h.width, h.height, ch);
+        } else if (this.image) {
+            r.loadImageTexture(this.image);
+        }
+        if (this.compareSource === 'input') this._updateCompareForFrame(this.currentFrame || 0, true);
+        if (this.zdepthImage) r.loadDepthTexture(this.zdepthImage);
+        // The curve tables live in textures too; the editors hold the curves.
+        this.refCurveEditor?.notifyChange?.();
+        if (this.curveEditor && this.curveEditor !== this.refCurveEditor) this.curveEditor.notifyChange?.();
+        this._applyCompareToRenderer?.();
+        this.render();
+        this.updateScopes();
+        this._termLog?.('info', '[Viewer] GPU context restored.');
     }
 
     _showToast(message, tone = "info") {
@@ -2120,7 +2527,7 @@ class RadianceViewer {
             temperature: 0.0,
             tint: 0.0,
             contrast: 1.0,
-            pivot: 0.5,
+            pivot: _PIVOT_DEFAULT,
             saturation: 1.0,
             lift: [0, 0, 0],
             gamma: [1, 1, 1],
@@ -2195,7 +2602,10 @@ class RadianceViewer {
     _setReferenceTab(tabId) {
         this._referenceRightTab = tabId;
         if (this.rightControlPanel) this.rightControlPanel.style.display = 'flex';
+        this.showControls = true;
+        this._syncPanelButton?.();
         this._renderReferenceRightHUD?.();
+        this._syncRail?.();
         if (tabId === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
     }
 
@@ -2213,6 +2623,7 @@ class RadianceViewer {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-pro-menu-item';
+            if (item.id) btn.dataset.action = item.id;
             const label = document.createElement('span');
             label.textContent = item.label;
             const shortcut = document.createElement('span');
@@ -2239,7 +2650,7 @@ class RadianceViewer {
                 document.removeEventListener('mousedown', close, true);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+        setTimeout(() => document.addEventListener('mousedown', close, { capture: true, signal: this._listenerSignal }), 0);
     }
 
     // ── 3.5.0: Simple / Advanced ─────────────────────────────────────────────
@@ -2356,9 +2767,9 @@ class RadianceViewer {
         };
         const transport = document.createElement('div');
         transport.className = 'rsb-group';
-        this._sbPrev = btn('‹', 'Previous frame (Left)', () => this.prevFrame?.());
-        this._sbPlay = btn('▶', 'Play / pause (Space)', () => this.togglePlayback(), 'rsb-play');
-        this._sbNext = btn('›', 'Next frame (Right)', () => this.nextFrame?.());
+        this._sbPrev = btn('‹', `Previous frame (${_shortcutLabel('play.prev')})`, () => this.prevFrame?.());
+        this._sbPlay = btn('▶', `Play / pause (${_shortcutLabel('play.toggle')})`, () => this.togglePlayback(), 'rsb-play');
+        this._sbNext = btn('›', `Next frame (${_shortcutLabel('play.next')})`, () => this.nextFrame?.());
         transport.append(this._sbPrev, this._sbPlay, this._sbNext, this._muteButton());
 
         const scrub = document.createElement('input');
@@ -2391,8 +2802,12 @@ class RadianceViewer {
             else { this.pinReference(); if (this.compareMode === 'none') this.setCompareMode('wipe'); else this.render(); }
             this._syncCompareUI();
         }, 'rsb-pin');
-        const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbPin, fit);
+        // How B sits on A when their sizes differ: pixel for pixel and
+        // centred, or scaled to fit. It used to be stretched over A.
+        this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
+            () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
+        const fit = btn('Fit', `Fit to view (${_shortcutLabel('view.fit')})`, () => this.fitToView?.());
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
         return bar;
     }
 
@@ -2416,6 +2831,15 @@ class RadianceViewer {
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
             if (cm === 'blink') this._sbBLabel.textContent += this._blinkB ? '  [B]' : '  [A]';
+        }
+        if (this._sbBFit) {
+            const fitted = this.compareFit === 'fit';
+            this._sbBFit.textContent = fitted ? 'B fit' : 'B 1:1';
+            this._sbBFit.title = fitted
+                ? 'B scaled to fit inside A. Click for B pixel for pixel, centred'
+                : 'B pixel for pixel, centred on A. Click to fit B inside A instead';
+            this._sbBFit.setAttribute('aria-pressed', String(fitted));
+            this._sbBFit.disabled = this.compareSource !== 'input';
         }
         if (this._sbPin) {
             this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
@@ -2573,7 +2997,7 @@ class RadianceViewer {
         title.textContent = 'RADIANCE VIEWER';
         const version = document.createElement('span');
         version.className = 'radiance-pro-version';
-        version.textContent = 'v3.5';
+        version.textContent = `v${_RADIANCE_VERSION}`;
         brand.appendChild(mark);
         brand.appendChild(title);
         brand.appendChild(version);
@@ -2581,54 +3005,23 @@ class RadianceViewer {
 
         const menu = document.createElement('div');
         menu.className = 'radiance-pro-menu-items';
-        const menus = {
-            File: [
-                { label: 'Snapshot / Export', shortcut: 'S', action: () => this.showExportMenu?.({ target: this.proToolbar || bar }) },
-                { label: 'Pin Current Frame', shortcut: 'A/B', action: () => this.pinCurrentFrame?.() },
-            ],
-            Edit: [
-                // These two work. Their keyboard shortcuts did not: the only
-                // Ctrl+Z / Ctrl+Y handler in the file sits inside the region of
-                // createHUD() after the unconditional 'return' at ~11753, so it
-                // is never installed. The menu advertised a binding that did not
-                // exist. '_installUndoShortcuts' (called from createUI) restores
-                // it in live code.
-                { label: 'Undo', shortcut: 'Ctrl+Z', action: () => this.undo?.() },
-                { label: 'Redo', shortcut: 'Ctrl+Y', action: () => this.redo?.() },
-                'separator',
-                { label: 'Reset Grade', shortcut: '0', action: () => this.resetControls?.() },
-            ],
-            View: [
-                { label: 'Fit', shortcut: 'F', action: () => this.fitToView() },
-                { label: '100%', shortcut: '1', action: () => this.setZoom(1.0) },
-                { label: '200%', shortcut: '2', action: () => this.setZoom(2.0) },
-                'separator',
-                { label: 'Safe Areas', shortcut: 'S', action: () => this.cycleSafeAreas() },
-                { label: 'Grid', shortcut: 'Shift+G', action: () => this.cycleGridMode() },
-            ],
-            Color: [
-                { label: 'Grade', action: () => this._setReferenceTab('grade') },
-                { label: 'Scopes', action: () => this._setReferenceTab('scopes') },
-                { label: 'Analysis', action: () => this._setReferenceTab('analysis') },
-                'separator',
-                { label: 'False Color', action: () => { this.falseColor = !this.falseColor; this.render(); } },
-                { label: 'Zebra', action: () => { this.zebra = !this.zebra; this.render(); } },
-            ],
-            Tools: [
-                { label: 'Effects + Depth', action: () => this._setReferenceTab('effects') },
-                { label: 'Inspector', action: () => this._setReferenceTab('inspector') },
-                { label: 'Metadata Overlay', action: () => this.toggleMetadata() },
-                { label: 'Depth Overlay', shortcut: 'Z', action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); } },
-            ],
-            Window: [
-                { label: 'Right HUD', action: () => this.toggleControls() },
-                { label: 'Compact Layout', action: () => this.toggleCompactLayout() },
-                { label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen() },
-            ],
-            Help: [
-                { label: 'Keyboard Shortcuts', shortcut: '?', action: () => this.toggleHelp() },
-            ],
-        };
+        // The menus are made from the keymap (radiance_keymap.js): each item is
+        // a keymap action, its shortcut is that action's binding, and clicking
+        // it runs what the key runs. They showed S for Snapshot, A/B for Pin
+        // and 0 for Reset Grade, keys that did other things, and 2 and F11,
+        // which were not bound at all (M4, M18).
+        const menus = {};
+        _MENU_ORDER.forEach((name) => {
+            const items = [];
+            let group = null;
+            for (const entry of _menuEntries(name)) {
+                if (group !== null && entry.group !== group) items.push('separator');
+                group = entry.group;
+                items.push({ id: entry.id, label: entry.label, shortcut: _shortcutLabel(entry.id),
+                    action: () => this._runKeyAction(entry.id) });
+            }
+            menus[name] = items;
+        });
         Object.keys(menus).forEach(label => {
             const btn = document.createElement('button');
             btn.textContent = label;
@@ -2652,9 +3045,10 @@ class RadianceViewer {
         this._proFileName = document.createElement('span');
         this._proFileName.className = 'radiance-pro-file-name';
         this._proFileName.textContent = 'No shot loaded';
-        const exrChip = document.createElement('span');
-        exrChip.className = 'radiance-pro-chip';
-        exrChip.textContent = 'EXR';
+        // L2: the format and bit depth of the frame on screen (they were
+        // fixed "EXR" and "32-bit (float)"). Filled by _updateProMetadata.
+        this._proChip = document.createElement('span');
+        this._proChip.className = 'radiance-pro-chip';
         this._proResolution = document.createElement('span');
         this._proResolution.textContent = '— x —';
         this._proAspect = document.createElement('span');
@@ -2662,98 +3056,403 @@ class RadianceViewer {
         this._proFps = document.createElement('span');
         this._proFps.textContent = '24.00 FPS';
         this._proColor = document.createElement('span');
-        this._proColor.textContent = 'ACEScg';
+        this._proColor.textContent = '-';     // the source tag, once a frame arrives
         this._proDepth = document.createElement('span');
-        this._proDepth.textContent = '32-bit (float)';
         this._engineBadge = document.createElement('span');
         this._engineBadge.className = 'radiance-pro-engine';
         this._engineBadge.textContent = 'GPU: —';
-        [this._proFileName, exrChip, this._proResolution, this._proAspect, this._proFps, this._proColor, this._proDepth, this._engineBadge]
+        [this._proFileName, this._proChip, this._proResolution, this._proAspect, this._proFps, this._proColor, this._proDepth, this._engineBadge]
             .forEach(el => meta.appendChild(el));
         bar.appendChild(meta);
 
         const actions = document.createElement('div');
         actions.className = 'radiance-pro-actions';
-        [
-            ['Snapshot', () => this.showExportMenu?.({ target: actions })],
-            ['Compare', () => this.cycleCompareMode()],
-            ['HDR', () => { this.toggleHDRHeatmap(); }],
-            ['⚙', () => this.toggleControls()],
-        ].forEach(([label, handler]) => {
+        const action = (label, title, handler, cls = '') => {
             const btn = document.createElement('button');
+            btn.type = 'button';
             btn.textContent = label;
-            btn.title = label === '⚙' ? 'Settings' : label;
+            btn.title = title;
+            if (cls) btn.className = cls;
             btn.onclick = handler;
             actions.appendChild(btn);
-        });
+            return btn;
+        };
+        action('Snapshot', 'Snapshot', () => this.showExportMenu?.({ target: actions }));
+        action('Compare', 'Compare', () => this.cycleCompareMode());
+        this._hdrHeatmapBtn = action('HDR', 'HDR heatmap: scene luminance in nits', () => this.toggleHDRHeatmap());
+        this._hdrHeatmapBtn.setAttribute('aria-pressed', 'false');
+        // M18: hiding the panel is its own button. It used to be the gear,
+        // labelled Settings.
+        this._panelBtn = action('Hide Panel', 'Hide the right panel', () => this.toggleControls(), 'radiance-pro-panel-btn');
+        this._panelBtn.setAttribute('aria-expanded', 'true');
+        const gear = action('⚙', 'Settings', () => this._toggleSettings(gear), 'radiance-pro-settings-btn');
+        gear.setAttribute('aria-label', 'Settings');
+        gear.setAttribute('aria-haspopup', 'dialog');
+        gear.setAttribute('aria-expanded', 'false');
+        this._settingsBtn = gear;
         bar.appendChild(actions);
         return bar;
+    }
+
+    /** The panel button's label and state, from showControls. */
+    _syncPanelButton() {
+        const b = this._panelBtn;
+        if (!b) return;
+        const shown = this.showControls !== false;
+        b.textContent = shown ? 'Hide Panel' : 'Show Panel';
+        b.title = shown ? 'Hide the right panel' : 'Show the right panel';
+        b.setAttribute('aria-expanded', String(shown));
+        if (this.rightControlPanel?.id) b.setAttribute('aria-controls', this.rightControlPanel.id);
+    }
+
+    _toggleSettings(anchor) {
+        if (this._settingsPopover) this._closeSettings();
+        else this._openSettings(anchor);
+    }
+
+    _closeSettings({ restoreFocus = true } = {}) {
+        const pop = this._settingsPopover;
+        if (!pop) return;
+        this._settingsPopover = null;
+        this._settingsAbort?.abort();
+        this._settingsAbort = null;
+        pop.remove();
+        this._settingsBtn?.setAttribute('aria-expanded', 'false');
+        if (restoreFocus && pop.contains(document.activeElement)) this._settingsBtn?.focus();
+    }
+
+    /**
+     * M18: the gear's settings, the viewer preferences kept in
+     * localStorage: renderer backend, pipeline precision, magnification,
+     * safe-area standard, aspect matte and high contrast. Each control
+     * writes the same key, through the same method, as before.
+     */
+    _openSettings(anchor) {
+        const pop = document.createElement('div');
+        pop.className = 'radiance-settings-popover';
+        pop.setAttribute('role', 'dialog');
+        pop.setAttribute('aria-label', 'Viewer settings');
+        const uid = `radiance-settings-${this.node?.id ?? 'x'}`;
+
+        const row = (label, control, note = '') => {
+            const r = document.createElement('div');
+            r.className = 'rsp-row';
+            const l = document.createElement('div');
+            l.className = 'rsp-label';
+            l.textContent = label;
+            l.id = `${uid}-${control.dataset.setting}`;
+            control.setAttribute('aria-labelledby', l.id);
+            r.append(l, control);
+            if (note) {
+                const n = document.createElement('div');
+                n.className = 'rsp-note';
+                n.textContent = note;
+                r.appendChild(n);
+            }
+            pop.appendChild(r);
+        };
+        // A row of buttons, one pressed: [value, label, disabledReason?].
+        const choice = (setting, options, current, onPick) => {
+            const g = document.createElement('div');
+            g.className = 'rsp-choice';
+            g.setAttribute('role', 'group');
+            g.dataset.setting = setting;
+            const paint = (v) => g.querySelectorAll('button').forEach((b) => {
+                b.setAttribute('aria-pressed', String(b.dataset.value === v));
+            });
+            options.forEach(([value, label, disabled]) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.dataset.value = value;
+                b.textContent = label;
+                if (disabled) { b.disabled = true; b.title = disabled; }
+                b.onclick = () => { onPick(value); paint(value); };
+                g.appendChild(b);
+            });
+            paint(current);
+            return g;
+        };
+        const select = (setting, options, current, onPick) => {
+            const sel = document.createElement('select');
+            sel.dataset.setting = setting;
+            options.forEach((o) => {
+                const opt = document.createElement('option');
+                opt.value = o.id; opt.textContent = o.label;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+            sel.onchange = () => onPick(sel.value);
+            return sel;
+        };
+        const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+        const read = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+        const title = document.createElement('div');
+        title.className = 'rsp-title';
+        title.textContent = 'Settings';
+        pop.appendChild(title);
+
+        const gpu = typeof navigator !== 'undefined' && !!navigator.gpu;
+        row('Renderer', choice('backend', [
+            ['webgl', 'WebGL'],
+            ['webgpu', 'WebGPU', gpu ? '' : 'This browser has no WebGPU'],
+        ], read('radiance_prefer_webgpu') === '1' ? 'webgpu' : 'webgl', (v) => {
+            store('radiance_prefer_webgpu', v === 'webgpu' ? '1' : '0');
+            this._termLog?.('warn', v === 'webgpu'
+                ? '[Renderer] WebGPU enabled: masks, qualifiers, HDR heatmap and OCIO are not implemented there. Reload to apply.'
+                : '[Renderer] WebGL restored. Reload to apply.');
+        }), 'Takes effect on reload. WebGPU has no masks, qualifiers, HDR heatmap or OpenColorIO.');
+        row('Precision', choice('precision', [['u8', 'INT 8'], ['f16', 'FLOAT 16'], ['f32', 'FLOAT 32']],
+            this.renderer?.pipelinePrecision || read('radiance_pipeline_precision') || 'f32',
+            (v) => this._setPipelinePrecision(v)), 'The pipeline\'s working precision (Alt+B cycles it).');
+        row('Magnify', choice('magnify', [['nearest', 'Nearest'], ['linear', 'Linear']], this.pixelFilter || 'nearest',
+            (v) => { if (v !== this.pixelFilter) this.togglePixelFilter(); }), 'Above 100%: actual pixels, or interpolated.');
+        row('Safe areas', select('safe-standard', RadianceViewer.SAFE_AREA_PRESETS, this.safeAreaPreset || 'modern', (v) => {
+            this.safeAreaPreset = v;
+            store('radiance_safe_preset', v);
+            this.renderOverlay();
+        }));
+        row('Matte', select('matte', RadianceViewer.MATTE_PRESETS, this.matteMode || 'off', (v) => {
+            this.matteMode = v;
+            store('radiance_matte', v);
+            this.renderOverlay();
+        }));
+        const hc = document.createElement('button');
+        hc.type = 'button';
+        hc.className = 'rsp-switch';
+        hc.dataset.setting = 'high-contrast';
+        hc.setAttribute('role', 'switch');
+        const paintHc = () => {
+            hc.setAttribute('aria-checked', String(!!this.highContrast));
+            hc.textContent = this.highContrast ? 'On' : 'Off';
+        };
+        hc.onclick = () => { this.setHighContrast(!this.highContrast); paintHc(); };
+        paintHc();
+        row('High contrast', hc, 'Brighter secondary text and edges.');
+
+        document.body.appendChild(pop);
+        const r = anchor.getBoundingClientRect();
+        pop.style.top = `${Math.round(r.bottom + 6)}px`;
+        pop.style.left = `${Math.round(Math.max(8, Math.min(r.right - pop.offsetWidth, window.innerWidth - pop.offsetWidth - 8)))}px`;
+        this._settingsPopover = pop;
+        anchor.setAttribute('aria-expanded', 'true');
+
+        // Closes on Escape, on a press outside it, and with the viewer.
+        this._settingsAbort = new AbortController();
+        const signal = this._settingsAbort.signal;
+        pop.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeSettings(); }
+        }, { signal });
+        setTimeout(() => {
+            if (signal.aborted) return;
+            document.addEventListener('mousedown', (e) => {
+                if (!pop.contains(e.target) && !anchor.contains(e.target)) this._closeSettings({ restoreFocus: false });
+            }, { capture: true, signal });
+        }, 0);
+        this._listenerSignal?.addEventListener('abort', () => this._closeSettings({ restoreFocus: false }), { signal });
+        pop.querySelector('button:not(:disabled), select')?.focus();
     }
 
     createProSidebar() {
         const sidebar = document.createElement('aside');
         sidebar.className = 'radiance-pro-sidebar';
+        sidebar.setAttribute('aria-label', 'Viewer tools');
 
+        // M18, L6: each item says what it is. 'state' items (a choice in a
+        // group, or a toggle) carry aria-pressed and a highlight that follows
+        // the viewer's real state, wherever it was changed (_syncRail, run
+        // from render()); the highlight used to be fixed on Fit and RGB.
+        // Items without 'state' are actions.
+        this._railItems = [];
         const addSection = (title, items) => {
             const section = document.createElement('div');
             section.className = 'radiance-pro-sidebar-section';
+            section.setAttribute('role', 'group');
             const heading = document.createElement('div');
             heading.className = 'radiance-pro-sidebar-title';
             heading.textContent = title;
+            heading.id = `radiance-rail-${this.node?.id ?? 'x'}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            section.setAttribute('aria-labelledby', heading.id);
             section.appendChild(heading);
             items.forEach(item => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.innerHTML = `<span>${RadianceViewer.escapeHtml(item.label)}</span><span class="shortcut">${RadianceViewer.escapeHtml(item.shortcut || '')}</span>`;
-                if (item.active) btn.classList.add('is-active');
-                btn.onclick = item.action;
+                btn.dataset.railId = item.id;
+                const label = document.createElement('span');
+                label.textContent = item.label;
+                const right = document.createElement('span');
+                right.className = 'shortcut';
+                right.textContent = item.shortcut || '';
+                btn.append(label, right);
+                if (item.title) btn.title = item.title;
+                btn.onclick = () => { item.action(); this._syncRail(); };
                 section.appendChild(btn);
+                this._railItems.push({ ...item, btn, right });
             });
             sidebar.appendChild(section);
         };
 
+        const fitted = () => !!this.image && this._viewIsFit !== false;
+        const atZoom = (z) => !fitted() && Math.abs((this.zoom || 0) - z) < z * 0.005;
+        const channel = (c) => () => ({ on: !this.showZdepth && (this.channel || 'rgb') === c });
+        const setChannel = (c) => () => { this.showZdepth = false; this.channel = c; this.render(); };
+        const scopeOn = (test) => () => ({ on: this._referenceRightTab === 'scopes' && test() });
+        const GRID = ['', 'Thirds', 'Safe', 'Center', 'All'];
+        const SAFE = { action: 'Action', title: 'Title', both: 'Both' };
+
+        // Shortcut labels come from the keymap, so they name bound keys (M4).
         addSection('Viewer', [
-            { label: 'Fit', shortcut: 'F', action: () => this.fitToView(), active: true },
-            { label: '100%', shortcut: '1', action: () => this.setZoom(1.0) },
-            { label: '200%', shortcut: '2', action: () => this.setZoom(2.0) },
-            { label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen() },
+            { id: 'fit', label: 'Fit', shortcut: _shortcutLabel('view.fit'), action: () => this.fitToView(), state: () => ({ on: fitted() }) },
+            { id: 'zoom-100', label: '100%', shortcut: _shortcutLabel('view.zoom100'), action: () => this.setZoom(1.0), state: () => ({ on: atZoom(1) }) },
+            { id: 'zoom-200', label: '200%', shortcut: _shortcutLabel('view.zoom200'), action: () => this.setZoom(2.0), state: () => ({ on: atZoom(2) }) },
+            { id: 'fullscreen', toggle: true, label: 'Full Screen', shortcut: _shortcutLabel('window.fullscreen'), action: () => this.toggleFullscreen(), state: () => ({ on: !!this.isFullscreen }) },
         ]);
-        addSection('Channels', [
-            { label: 'RGB', action: () => { this.showZdepth = false; this.channel = 'rgb'; this.render(); }, active: true },
-            { label: 'R', action: () => { this.showZdepth = false; this.channel = 'r'; this.render(); } },
-            { label: 'G', action: () => { this.showZdepth = false; this.channel = 'g'; this.render(); } },
-            { label: 'B', action: () => { this.showZdepth = false; this.channel = 'b'; this.render(); } },
-            { label: 'A', action: () => { this.showZdepth = false; this.channel = 'a'; this.render(); } },
-        ]);
+        addSection('Channels', ['rgb', 'r', 'g', 'b', 'a'].map((c) => (
+            { id: `channel-${c}`, label: c.toUpperCase(), action: setChannel(c), state: channel(c) })));
         addSection('EXR Inspector', [
-            { label: 'Channels', action: () => this._setReferenceTab('inspector') },
-            { label: 'Depth', action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); this._setReferenceTab('effects'); } },
-            { label: 'Metadata', action: () => this._setReferenceTab('inspector') },
+            { id: 'channels', label: 'Channels', title: 'The frame\'s channels, in the Inspector',
+                action: () => this._showInspectorSection('EXR CHANNELS') },
+            { id: 'depth', toggle: true, label: 'Depth', title: 'Show the depth channel',
+                action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); this._setReferenceTab('effects'); },
+                state: () => ({ on: !!this.showZdepth }) },
+            { id: 'metadata', label: 'Metadata', title: 'The frame\'s metadata, in the Inspector',
+                action: () => this._showInspectorSection('METADATA') },
         ]);
         addSection('Overlays', [
-            { label: 'Safe Areas', action: () => this.cycleSafeAreas() },
-            { label: 'Grid', action: () => this.cycleGridMode() },
-            { label: 'Center Cross', action: () => { this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none'; } },
-            { label: 'Pixel Grid', action: () => this.cycleGridMode() },
+            { id: 'safe-areas', toggle: true, label: 'Safe Areas', title: 'Cycle the safe areas: action, title, both, off',
+                action: () => this.cycleSafeAreas(),
+                state: () => ({ on: (this.safeAreaMode || 'none') !== 'none', label: SAFE[this.safeAreaMode] }) },
+            { id: 'grid', toggle: true, label: 'Grid', title: 'Cycle the composition grid: thirds, safe, center, all, off',
+                action: () => this.cycleGridMode(),
+                state: () => ({ on: (this.gridMode || 0) > 0, label: GRID[this.gridMode || 0] }) },
+            { id: 'center-cross', toggle: true, label: 'Center Cross',
+                action: () => { this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none'; },
+                state: () => ({ on: this.viewerCross?.style.display !== 'none' }) },
+            // Was a second Grid button. A pixel grid outlines each image
+            // pixel, and only draws once a pixel is 8 screen pixels wide.
+            { id: 'pixel-grid', toggle: true, label: 'Pixel Grid', title: 'Outline each pixel when zoomed in to 800% or more',
+                action: () => this.togglePixelGrid(), state: () => ({ on: !!this.pixelGrid }) },
         ]);
         addSection('HDR & QC', [
-            { label: 'Exposure', action: () => this.toggleControls() },
-            { label: 'False Color', action: () => { this.falseColor = !this.falseColor; this.render(); } },
-            { label: 'Zebra', action: () => { this.zebra = !this.zebra; this.render(); } },
+            // Was a second "hide the panel" button. It now lands on Exposure.
+            { id: 'exposure', label: 'Exposure', title: 'The Exposure control, on the Grade tab',
+                action: () => this._focusGradeControl('exposure') },
+            { id: 'false-color', toggle: true, label: 'False Color',
+                action: () => { this.falseColor = !this.falseColor; this.render(); }, state: () => ({ on: !!this.falseColor }) },
+            { id: 'zebra', toggle: true, label: 'Zebra',
+                action: () => { this.zebra = !this.zebra; this.render(); }, state: () => ({ on: !!this.zebra }) },
             // Was a second switch on 'falseColor' -- the same feature under two
             // names, and neither reported nits. False Color is an *exposure*
             // tool on display luma; this one reads scene luminance and maps
             // absolute cd/m2 against BT.2408's 203-nit HDR Reference White.
-            { label: 'HDR Heatmap', action: () => { this.toggleHDRHeatmap(); } },
+            { id: 'hdr-heatmap', toggle: true, label: 'HDR Heatmap',
+                action: () => { this.toggleHDRHeatmap(); }, state: () => ({ on: !!this.hdrHeatmap }) },
         ]);
+        // H8: each opens the Scopes tab on the scope it names. They all opened
+        // the same four-scope stack, since that tab ignored scopeMode.
+        const showScope = (mode) => { this._referenceScopeShow = mode; this._openPanel('scopes'); this.updateScopes(); };
         addSection('Analysis', [
-            { label: 'Histogram', action: () => { this.scopeMode = 'histogram'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Waveform', action: () => { this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Vectorscope', action: () => { this.scopeMode = 'vectorscope'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Parade', action: () => { this.waveformParadeMode = true; this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
+            { id: 'histogram', label: 'Histogram', action: () => showScope('histogram'), state: scopeOn(() => this._referenceScopeShow === 'histogram') },
+            { id: 'waveform', label: 'Waveform', action: () => showScope('waveform'), state: scopeOn(() => this._referenceScopeShow === 'waveform') },
+            { id: 'vectorscope', label: 'Vectorscope', action: () => showScope('vectorscope'), state: scopeOn(() => this._referenceScopeShow === 'vectorscope') },
+            { id: 'parade', label: 'Parade', action: () => showScope('parade'), state: scopeOn(() => this._referenceScopeShow === 'parade') },
         ]);
 
+        // M18: a rail taller than the viewer scrolls, and fades at the
+        // bottom while there is more below.
+        const hint = () => {
+            sidebar.classList.toggle('has-more-below',
+                sidebar.scrollHeight - sidebar.clientHeight - sidebar.scrollTop > 2);
+        };
+        sidebar.addEventListener('scroll', hint, { passive: true });
+        if (typeof ResizeObserver !== 'undefined') {
+            this._railResizeObserver = new ResizeObserver(hint);
+            this._railResizeObserver.observe(sidebar);
+        }
+        this._railHint = hint;
         return sidebar;
+    }
+
+    /**
+     * M18, L6: the rail's highlight and aria-pressed, from the viewer's
+     * state. Cheap enough to run on every render(); the DOM is touched only
+     * when something changed.
+     */
+    _syncRail() {
+        const items = this._railItems;
+        if (!items) return;
+        const states = items.map((it) => (it.state ? it.state() : null));
+        const sig = states.map((st) => (st ? `${st.on ? 1 : 0}${st.label || ''}` : '-')).join('|');
+        // The header's HDR button is the same toggle as the rail's.
+        const hdr = this._hdrHeatmapBtn;
+        if (hdr && hdr.getAttribute('aria-pressed') !== String(!!this.hdrHeatmap)) {
+            hdr.classList.toggle('is-active', !!this.hdrHeatmap);
+            hdr.setAttribute('aria-pressed', String(!!this.hdrHeatmap));
+        }
+        if (sig === this._railSig) return;
+        this._railSig = sig;
+        items.forEach((it, i) => {
+            const st = states[i];
+            if (!st) return;
+            it.btn.classList.toggle('is-active', st.on);
+            it.btn.setAttribute('aria-pressed', String(st.on));
+            // A toggle that is on says so, and which mode when it has one.
+            it.right.textContent = st.on && (st.label || it.toggle) ? (st.label || 'On') : (it.shortcut || '');
+        });
+    }
+
+    /** M18: the rail's Exposure: the Grade tab, with that control focused. */
+    _focusGradeControl(param) {
+        if (!this.showControls) this.toggleControls();
+        this._setReferenceTab('grade');
+        const input = this.controlsPanel?.querySelector(`input[type="range"][data-radiance-param="${param}"]`);
+        if (!input) return;
+        input.scrollIntoView?.({ block: 'center' });
+        input.focus();
+    }
+
+    /** The Inspector, scrolled to one of its sections (rail Channels, Metadata). */
+    _showInspectorSection(title) {
+        if (!this.showControls) this.toggleControls();
+        this._setReferenceTab('inspector');
+        const head = [...(this.controlsPanel?.querySelectorAll('.radiance-ref-title') || [])]
+            .find((el) => el.textContent.trim().toUpperCase().startsWith(title));
+        head?.scrollIntoView?.({ block: 'start' });
+    }
+
+    /** M18: the pixel grid, separate from the composition grid (Grid). */
+    togglePixelGrid() {
+        this.pixelGrid = !this.pixelGrid;
+        this.renderOverlay();
+    }
+
+    /**
+     * Pixel boundaries over the picture, once each image pixel covers 8 or
+     * more canvas pixels; below that the lines would be the picture.
+     */
+    _drawPixelGrid(ctx) {
+        const z = this.zoom || 0;
+        if (z < 8 || !this.imageWidth) return;
+        const w = this.overlayCanvas.width, h = this.overlayCanvas.height;
+        const x0 = Math.max(0, Math.floor(-this.panX / z)), x1 = Math.min(this.imageWidth, Math.ceil((w - this.panX) / z));
+        const y0 = Math.max(0, Math.floor(-this.panY / z)), y1 = Math.min(this.imageHeight, Math.ceil((h - this.panY) / z));
+        if (x1 <= x0 || y1 <= y0) return;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(128, 128, 128, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const top = this.panY + y0 * z, bottom = this.panY + y1 * z;
+        const left = this.panX + x0 * z, right = this.panX + x1 * z;
+        for (let x = x0; x <= x1; x++) {
+            const px = Math.round(this.panX + x * z) + 0.5;
+            ctx.moveTo(px, top); ctx.lineTo(px, bottom);
+        }
+        for (let y = y0; y <= y1; y++) {
+            const py = Math.round(this.panY + y * z) + 0.5;
+            ctx.moveTo(left, py); ctx.lineTo(right, py);
+        }
+        ctx.stroke();
+        ctx.restore();
     }
 
     createViewerBar() {
@@ -2818,25 +3517,64 @@ class RadianceViewer {
         left.appendChild(everySelect);
 
         // 3.5.0: viewer-only f-stop and gamma. Grade exposure goes into the
-        // render; these do not (Nuke's viewer gain / gamma). Double-click resets.
-        const mkNum = (label, title, min, max, step, get, set, fmt) => {
+        // render; these do not (Nuke's viewer gain / gamma).
+        // L3: both hold to the range the keys use (they took 100 and 40), a
+        // double-click selects the text to retype it (it used to reset), and
+        // Alt+click resets. Up and Down step; Enter or leaving the box commits.
+        const mkNum = (label, title, [lo, hi], step, neutral, get, apply, fmt) => {
             const wrap = document.createElement('label');
             wrap.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:10px;color:rgba(255,255,255,.55);';
             wrap.textContent = label;
             const inp = document.createElement('input');
-            inp.type = 'number'; inp.min = min; inp.max = max; inp.step = step;
+            inp.type = 'text'; inp.inputMode = 'decimal'; inp.spellcheck = false;
             inp.title = title;
             inp.style.cssText = 'width:52px;background:rgba(255,255,255,.06);color:#ddd;border:1px solid rgba(255,255,255,.14);border-radius:4px;font-size:11px;padding:2px 4px;';
             inp.value = fmt(get());
-            inp.oninput = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) { set(v); this.render(); } };
-            inp.ondblclick = () => { set(label === 'γ' ? 1 : 0); inp.value = fmt(get()); this.render(); };
+            const clamp = (v) => Math.max(lo, Math.min(hi, v));
+            let committed = null;            // the value before typing, for Escape
+            inp.addEventListener('focus', () => { committed = get(); });
+            // While typing, the picture follows; the text is left alone until commit.
+            inp.addEventListener('input', () => {
+                const v = parseFloat(inp.value);
+                if (Number.isFinite(v)) apply(clamp(v), { live: true });
+            });
+            inp.addEventListener('change', () => {
+                const v = parseFloat(inp.value);
+                apply(Number.isFinite(v) ? clamp(v) : get());
+                inp.value = fmt(get());
+            });
+            inp.addEventListener('keydown', (e) => {
+                e.stopPropagation();                 // typed digits are not viewer shortcuts
+                if (e.key === 'Enter') inp.blur();
+                else if (e.key === 'Escape') { apply(committed ?? get()); inp.value = fmt(get()); inp.blur(); }
+                else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    apply(clamp(get() + (e.key === 'ArrowUp' ? step : -step)));
+                    inp.value = fmt(get());
+                    inp.select();
+                }
+            });
+            inp.addEventListener('dblclick', () => inp.select());
+            inp.addEventListener('click', (e) => {
+                if (!e.altKey) return;
+                e.preventDefault();
+                apply(neutral);
+                inp.value = fmt(get());
+                inp.blur();
+            });
             wrap.appendChild(inp);
             return [wrap, inp];
         };
-        const [evWrap, evInp] = mkNum('f/', 'Viewer exposure in stops (not rendered out). Double-click resets.',
-            -16, 16, 0.5, () => this.viewExposure, (v) => { this.viewExposure = v; }, (v) => v.toFixed(1));
-        const [gWrap, gInp] = mkNum('γ', 'Viewer gamma (not rendered out). Double-click resets.',
-            0.2, 5, 0.1, () => this.viewGamma, (v) => { this.viewGamma = Math.max(0.2, v); }, (v) => v.toFixed(2));
+        const evLim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
+        const [evWrap, evInp] = mkNum('f/', `Viewer exposure in stops, ±${evLim} (not rendered out). Alt+click resets.`,
+            [-evLim, evLim], 0.5, 0, () => this.viewExposure,
+            (v, o) => { if (o?.live) { this.viewExposure = v; this.render(); } else this.setViewExposure(v); },
+            (v) => v.toFixed(1));
+        const [gLo, gHi] = RadianceViewer.VIEW_GAMMA_RANGE;
+        const [gWrap, gInp] = mkNum('γ', `Viewer gamma, ${gLo} to ${gHi} (not rendered out). Alt+click resets.`,
+            [gLo, gHi], 0.1, 1, () => this.viewGamma,
+            (v, o) => { if (o?.live) { this.viewGamma = v; this.render(); } else this.setViewGamma(v); },
+            (v) => v.toFixed(2));
         this._viewEvInput = evInp; this._viewGammaInput = gInp;
         left.appendChild(evWrap);
         left.appendChild(gWrap);
@@ -2874,7 +3612,7 @@ class RadianceViewer {
         right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
         const lutLabel = document.createElement('span');
         lutLabel.textContent = 'LUT';
-        lutLabel.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.42);font-weight:800;';
+        lutLabel.className = 'radiance-pro-bar-label';
         const lutSelect = document.createElement('select');
         this.lutOptions.slice(0, 10).forEach(label => {
             const opt = document.createElement('option');
@@ -2883,11 +3621,16 @@ class RadianceViewer {
             lutSelect.appendChild(opt);
         });
         lutSelect.value = this.displayLut;
+        // The same route as the Grade tab's Output Transform: a manual pick that
+        // the next image cannot replace, with both selects kept in step. This
+        // set displayLut directly, so the view stayed on Auto and the next frame
+        // put its own LUT back; the localStorage value it wrote was never read.
         lutSelect.onchange = () => {
-            this.displayLut = lutSelect.value;
-            localStorage.setItem('radiance_hud_display_lut', this.displayLut);
-            this.render();
+            this._pushUndo?.();
+            this._setManualDisplayLut(lutSelect.value);
+            this._gradeChanged?.();
         };
+        this._vbLutSelect = lutSelect;
         right.appendChild(lutLabel);
         right.appendChild(lutSelect);
         bar.appendChild(right);
@@ -2905,12 +3648,14 @@ class RadianceViewer {
         const title = document.createElement('span');
         title.className = 'radiance-pro-sequence-title';
         title.textContent = 'SEQUENCE';
+        // L2: the source's name when the frame carries one, else nothing
+        // (it was a fixed "A001C010"). Filled by _updateProMetadata.
         this.sequenceNameLabel = document.createElement('span');
-        this.sequenceNameLabel.textContent = 'A001C010';
-        this.sequenceNameLabel.style.cssText = 'color:rgba(232,238,247,.72);';
+        this.sequenceNameLabel.className = 'radiance-pro-sequence-name';
+        this.sequenceNameLabel.style.cssText = 'color:var(--radiance-text);';
         this.sequenceFrameLabel = document.createElement('span');
         this.sequenceFrameLabel.textContent = '— / —';
-        this.sequenceFrameLabel.style.cssText = 'color:#39aaff;';
+        this.sequenceFrameLabel.style.cssText = 'color:var(--radiance-accent);';
         left.append(title, this.sequenceNameLabel, this.sequenceFrameLabel);
 
         const right = document.createElement('div');
@@ -2921,16 +3666,19 @@ class RadianceViewer {
         prev.type = 'button';
         prev.textContent = '‹';
         prev.title = 'Previous frame';
+        prev.setAttribute('aria-label', 'Previous frame');
         prev.onclick = () => this.prevFrame();
         this.sequencePlayButton = document.createElement('button');
         this.sequencePlayButton.type = 'button';
         this.sequencePlayButton.textContent = this.isPlaying ? 'Ⅱ' : '▶';
         this.sequencePlayButton.title = 'Play / pause';
+        this.sequencePlayButton.setAttribute('aria-label', 'Play / pause');
         this.sequencePlayButton.onclick = () => this.togglePlayback();
         const next = document.createElement('button');
         next.type = 'button';
         next.textContent = '›';
         next.title = 'Next frame';
+        next.setAttribute('aria-label', 'Next frame');
         next.onclick = () => this.nextFrame();
         controls.append(prev, this.sequencePlayButton, next, this._muteButton());
         this.sequenceRange = document.createElement('input');
@@ -2940,18 +3688,20 @@ class RadianceViewer {
         this.sequenceRange.max = '0';
         this.sequenceRange.value = '0';
         this.sequenceRange.title = 'Scrub sequence';
+        this.sequenceRange.setAttribute('aria-label', 'Frame');
         this.sequenceRange.oninput = () => {
             const total = Math.max(this.totalFrames || 0, this.frameImages?.length || 0);
             if (total > 1) this.setFrame(Math.max(0, Math.min(total - 1, parseInt(this.sequenceRange.value, 10) || 0)));
         };
         this.sequenceTimecode = document.createElement('span');
         this.sequenceTimecode.textContent = '00:00:00:00';
-        this.sequenceTimecode.style.cssText = 'color:rgba(232,238,247,.72);';
+        this.sequenceTimecode.style.cssText = 'color:var(--radiance-text);';
         const mode = document.createElement('span');
         mode.textContent = 'Thumbnails';
         const dot = document.createElement('span');
         dot.textContent = '•';
-        dot.style.cssText = 'color:rgba(255,255,255,.28);';
+        dot.style.cssText = 'color:var(--radiance-text-muted);';
+        dot.setAttribute('aria-hidden', 'true');
         const fps = document.createElement('span');
         this.sequenceFpsLabel = fps;
         fps.textContent = `${this.playbackFps || 24} FPS`;
@@ -2959,14 +3709,18 @@ class RadianceViewer {
         // Setup NLE Timeline Tools center block
         const center = document.createElement('div');
         center.className = 'radiance-pro-timeline-tools';
-        center.style.cssText = 'display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px;';
+        center.setAttribute('role', 'group');
+        center.setAttribute('aria-label', 'Timeline tools');
 
+        // H8: only tools that change what plays. Blade, V1 slip and roll trim
+        // only redrew the track, and Adjust added a grade (contrast 1.15,
+        // saturation 1.08) that no slider, export or undo could see; they are
+        // gone, with the V1 / V2 target that only they used. Slip now moves a
+        // Ref Wipe block's B frame. Keys and tooltips come from the keymap.
         const tools = [
-            { id: 'select', label: '⬈ Select', hotkey: 'KeyA' },
-            { id: 'blade', label: '✂ Blade', hotkey: 'KeyB' },
-            { id: 'slip', label: '⇳ Slip', hotkey: 'KeyS' },
-            { id: 'adjust', label: '✚ Adjust', hotkey: 'KeyD' },
-            { id: 'reference', label: '⬄ Ref Wipe', hotkey: 'KeyF' }
+            { id: 'select', label: '⬈ Select', action: 'tool.select', tip: 'Select: click the track to scrub' },
+            { id: 'slip', label: '⇳ Slip', action: 'tool.slip', tip: 'Slip: drag a Ref Wipe block to run its B ahead of or behind the playhead' },
+            { id: 'reference', label: '⬄ Ref Wipe', action: 'tool.reference', tip: 'Ref Wipe: click V2 to place a block that wipes against another frame' },
         ];
 
         const toolButtons = {};
@@ -2975,39 +3729,31 @@ class RadianceViewer {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = t.label;
-            btn.title = `Switch to ${t.id} tool (${t.hotkey.replace('Key', '')})`;
-            btn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.5);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;';
+            btn.title = `${t.tip} (${_shortcutLabel(t.action)})`;
+            btn.className = 'radiance-pro-tool-btn';
 
             const updateVisual = () => {
-                if (this.activeTimelineTool === t.id) {
-                    btn.style.background = 'rgba(0, 189, 255, 0.16)';
-                    btn.style.color = '#00bdff';
-                    btn.style.boxShadow = '0 0 6px rgba(0, 189, 255, 0.15)';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'rgba(255,255,255,0.5)';
-                    btn.style.boxShadow = 'none';
-                }
+                const on = this.activeTimelineTool === t.id;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-pressed', String(on));
             };
 
-            btn.onclick = () => {
-                this.activeTimelineTool = t.id;
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            };
+            btn.onclick = () => this._setTimelineTool(t.id);
 
             toolButtons[t.id] = { btn, updateVisual };
             center.appendChild(btn);
         });
+        this._timelineToolButtons = toolButtons;
 
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button';
         resetBtn.textContent = '↺ Reset';
-        resetBtn.title = 'Merge all segments and reset timeline';
-        resetBtn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.35);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;margin-left:4px;border-left:1px solid rgba(255,255,255,0.06);';
-        resetBtn.onmouseenter = () => resetBtn.style.color = 'rgba(255,255,255,0.8)';
-        resetBtn.onmouseleave = () => resetBtn.style.color = 'rgba(255,255,255,0.35)';
+        resetBtn.title = 'Remove every Ref Wipe block from V2';
+        resetBtn.className = 'radiance-pro-tool-btn';
+        const toolSep = () => { const s = document.createElement('span'); s.className = 'radiance-pro-tool-sep'; return s; };
+        center.appendChild(toolSep());
         resetBtn.onclick = async () => {
-            if (await this._confirmAction('Merge all clip segments and reset the timeline?', 'Reset')) {
+            if (await this._confirmAction('Remove every Ref Wipe block from the timeline?', 'Reset')) {
                 this.timelineSegments = null;
                 this.v2Segments = null;
                 this._lastFilmstripTotal = null;
@@ -3016,79 +3762,7 @@ class RadianceViewer {
         };
         center.appendChild(resetBtn);
 
-        // Setup V1 / V2 Track Target Selector
-        const trackToggle = document.createElement('div');
-        trackToggle.style.cssText = 'display:flex;align-items:center;margin-left:8px;border-left:1px solid rgba(255,255,255,0.06);padding-left:8px;gap:2px;';
-
-        const trackButtons = {};
-        ['V1', 'V2'].forEach(trk => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = trk;
-            btn.title = `Target active timeline edits to ${trk} track (Key V to toggle)`;
-            btn.style.cssText = 'height:20px;padding:0 6px;border:none;background:transparent;color:rgba(255,255,255,0.4);font-size:9px;font-family:var(--radiance-mono, monospace);font-weight:bold;border-radius:2px;cursor:pointer;transition:all 0.15s;';
-
-            const updateVisual = () => {
-                if (this.activeTimelineTrack === trk) {
-                    btn.style.background = 'rgba(0, 189, 255, 0.22)';
-                    btn.style.color = '#00bdff';
-                    btn.style.boxShadow = '0 0 4px rgba(0, 189, 255, 0.1)';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'rgba(255,255,255,0.4)';
-                    btn.style.boxShadow = 'none';
-                }
-            };
-
-            btn.onclick = () => {
-                this.activeTimelineTrack = trk;
-                Object.values(trackButtons).forEach(b => b.updateVisual());
-            };
-
-            trackButtons[trk] = { btn, updateVisual };
-            trackToggle.appendChild(btn);
-        });
-        center.appendChild(trackToggle);
-
         Object.values(toolButtons).forEach(b => b.updateVisual());
-        Object.values(trackButtons).forEach(b => b.updateVisual());
-
-        // Named and stored so destroy() can remove it. It used to be an
-        // anonymous listener on 'window' with no reference kept, so it could
-        // never be removed: the closure captured 'this', 'toolButtons' and
-        // 'trackButtons', and kept firing after the node was deleted. Pressing
-        // A/B/S/D/F/V anywhere in ComfyUI ran the handler once per destroyed
-        // viewer, each mutating a dead instance and calling updateVisual() on
-        // detached DOM. One more every time the node executed.
-        this._seqDockKeyHandler = (e) => {
-            if (!this._ownsKeyboard(e)) return;
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-            // 3.5.0: Shift+letter and only for the active viewer. Bare A/B/S/D/F/V
-            // on the whole page collided with the viewer's own keys (F both
-            // fitted and switched the timeline tool).
-            if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-            if (RadianceViewer._activeViewer && RadianceViewer._activeViewer !== this) return;
-            if (e.code === 'KeyA') {
-                this.activeTimelineTool = 'select';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyB') {
-                this.activeTimelineTool = 'blade';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyS') {
-                this.activeTimelineTool = 'slip';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyD') {
-                this.activeTimelineTool = 'adjust';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyF') {
-                this.activeTimelineTool = 'reference';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyV') {
-                this.activeTimelineTrack = this.activeTimelineTrack === 'V1' ? 'V2' : 'V1';
-                Object.values(trackButtons).forEach(b => b.updateVisual());
-            }
-        };
-        window.addEventListener('keydown', this._seqDockKeyHandler);
 
         head.append(left, center, right);
         dock.appendChild(head);
@@ -3098,6 +3772,52 @@ class RadianceViewer {
         dock.appendChild(this.sequenceTrack);
         this._refreshSequenceDock();
         return dock;
+    }
+
+    /** Pick a timeline tool ('select', 'slip', 'reference') and show it on the buttons. */
+    _setTimelineTool(id) {
+        this.activeTimelineTool = id;
+        Object.values(this._timelineToolButtons || {}).forEach(b => b.updateVisual());
+    }
+
+    /**
+     * A Ref Wipe block under the playhead wipes A against this sequence's
+     * frame at the playhead plus the block's slip, through the compare path
+     * compare_image uses (its float frame when it is paged in). It used to set
+     * compareImage, which the GPU path never reads, so the wipe had no B. A
+     * pinned B is the user's own choice and wins.
+     */
+    _applyTimelineRefWipe(total) {
+        const cur = this.currentFrame || 0;
+        const seg = this.compareSource === 'pinned' ? null
+            : (this.v2Segments || []).find(s => s.type === 'reference' && cur >= s.startFrame && cur <= s.endFrame);
+        if (seg && total > 0) {
+            const idx = Math.max(0, Math.min(total - 1, cur + (seg.offset || 0)));
+            const img = this.frameImages?.[idx] || null;
+            const hdr = this.frameHDRData?.[idx] || null;
+            if (!img && !hdr) return;                       // not paged in yet; the next refresh tries again
+            if (this._refWipeFrame !== idx || this._refWipeSrc !== (hdr || img)) {
+                this._refWipeFrame = idx;
+                this._refWipeSrc = hdr || img;
+                try { this._pushCompareToRenderer(img, hdr); } catch (e) { /* backend without compare */ }
+            }
+            if (!this._refWipeActive) {
+                this._refWipeActive = true;
+                this._refWipeModeBefore = this.compareMode;
+                this.setCompareMode('wipe');
+            } else {
+                this.requestRender();
+            }
+        } else if (this._refWipeActive) {
+            this._refWipeActive = false;
+            this._refWipeFrame = null;
+            this._refWipeSrc = null;
+            // Back to the compare input when there is one, else no B.
+            if (this.renderer?.setCompareSource) this.renderer.setCompareSource(null);
+            if (this.compareSource === 'input') this._updateCompareForFrame(cur, true);
+            const before = this._refWipeModeBefore;
+            this.setCompareMode(before && before !== 'none' && this._hasCompareB() ? before : 'none');
+        }
     }
 
     _refreshSequenceDock() {
@@ -3127,7 +3847,8 @@ class RadianceViewer {
             this.sequenceRange.value = String(Math.max(0, Math.min(rangeMax, this.currentFrame || 0)));
             this.sequenceRange.disabled = total <= 1;
             const pct = total > 1 ? ((this.currentFrame || 0) / (total - 1)) * 100 : 0;
-            this.sequenceRange.style.background = `linear-gradient(to right, var(--radiance-accent) ${pct}%, rgba(255,255,255,0.14) ${pct}%)`;
+            // The played part of the track (the hit area around it is 28 px).
+            this.sequenceRange.style.setProperty('--radiance-scrub-pct', `${pct}%`);
         }
 
         // 3. Initialize Multi-Clip V1 & V2 Timeline segments
@@ -3150,28 +3871,8 @@ class RadianceViewer {
             this.v2Segments = [];
         }
 
-        // 4. Automatic Reference Comparison Wipe check
-        let hasActiveRef = false;
-        if (this.v2Segments && this.v2Segments.length > 0) {
-            const curFrame = this.currentFrame || 0;
-            const refSeg = this.v2Segments.find(s => s.type === 'reference' && curFrame >= s.startFrame && curFrame <= s.endFrame);
-            if (refSeg) {
-                hasActiveRef = true;
-                const refFrameIdx = Math.max(0, Math.min(total - 1, curFrame + refSeg.offset));
-                const refImg = this.frameImages?.[refFrameIdx];
-                if (refImg && this.compareImage !== refImg) {
-                    this.compareImage = refImg;
-                    this.compareMode = 'wipe';
-                    this.render();
-                }
-            }
-        }
-        if (!hasActiveRef && this._hadActiveRefTimeline) {
-            this.compareMode = 'none';
-            this.compareImage = null;
-            this.render();
-        }
-        this._hadActiveRefTimeline = hasActiveRef;
+        // 4. A Ref Wipe block under the playhead wipes against another frame
+        this._applyTimelineRefWipe(total);
 
         // 5. Build/update the multi-track NLE stacked DOM
         let playhead = this.sequenceTrack.querySelector('.radiance-pro-timeline-playhead');
@@ -3188,8 +3889,8 @@ class RadianceViewer {
 
             if (this.v2Segments.length === 0) {
                 const guide = document.createElement('span');
-                guide.textContent = '✚ Click with Adjust or Ref Wipe tool to place overlays on V2';
-                guide.style.cssText = 'position:absolute; left:12px; font-size:8px; font-family:var(--radiance-mono); font-weight:bold; color:rgba(255,255,255,0.18); pointer-events:none;';
+                guide.textContent = '✚ Click here with the Ref Wipe tool to place a block on V2';
+                guide.style.cssText = 'position:absolute; left:12px; font-size:var(--radiance-fs-heading); font-family:var(--radiance-font-ui); color:var(--radiance-text-muted); pointer-events:none;';
                 v2Lane.appendChild(guide);
             }
 
@@ -3200,11 +3901,12 @@ class RadianceViewer {
 
                 const block = document.createElement('div');
                 block.className = 'radiance-pro-clip-block v2-block';
-                block.style.cssText = `position:absolute; left:${leftPct}%; width:${widthPct}%; height:100%; border:1px solid ${seg.color}; background:rgba(${seg.type === 'adjustment' ? '197,108,255' : '255,173,38'}, 0.16); border-radius:3px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden; cursor:pointer; box-sizing:border-box;`;
+                block.style.cssText = `position:absolute; left:${leftPct}%; width:${widthPct}%; height:100%; border:1px solid ${seg.color}; background:rgba(255,173,38, 0.16); border-radius:3px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden; cursor:pointer; box-sizing:border-box;`;
+                block.title = `${seg.name}: B is ${seg.offset ? `${seg.offset > 0 ? '+' : ''}${seg.offset} frames from` : 'the same frame as'} the playhead. Slip tool to move B, double-click to remove.`;
 
                 const label = document.createElement('div');
                 label.style.cssText = 'color:#e8e8f0; font:800 7px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none;';
-                label.textContent = `${seg.name} (${segFrames}f)`;
+                label.textContent = `${seg.name} (${segFrames}f${seg.offset ? `, B ${seg.offset > 0 ? '+' : ''}${seg.offset}` : ''})`;
                 block.appendChild(label);
 
                 // V2 Trimming handles (Right handle)
@@ -3221,14 +3923,14 @@ class RadianceViewer {
                 };
                 block.appendChild(rightHandle);
 
+                block.ondblclick = (e) => {
+                    e.stopPropagation();
+                    this.v2Segments.splice(idx, 1);
+                    this._refreshSequenceDock();
+                };
                 block.onmousedown = (e) => {
                     e.stopPropagation();
-                    if (this.activeTimelineTool === 'blade') {
-                        // Erase overlay block
-                        this.v2Segments.splice(idx, 1);
-                        this._termLog?.('info', `[V2 Track] Erased overlay segment`);
-                        this._refreshSequenceDock();
-                    } else if (this.activeTimelineTool === 'slip') {
+                    if (this.activeTimelineTool === 'slip') {
                         this._isSlippingClip = true;
                         this._activeSlipSegment = seg;
                         this._initialSlipX = e.clientX;
@@ -3254,21 +3956,7 @@ class RadianceViewer {
                 const pct = Math.max(0, Math.min(1.0, (clickX - rect.left) / rect.width));
                 const clickFrame = Math.round(pct * (total - 1));
 
-                if (this.activeTimelineTool === 'adjust') {
-                    const start = Math.max(0, clickFrame - 8);
-                    const end = Math.min(total - 1, clickFrame + 8);
-                    this.v2Segments.push({
-                        id: Date.now(),
-                        startFrame: start,
-                        endFrame: end,
-                        type: 'adjustment',
-                        name: 'Global Adjustment',
-                        color: '#c56cff',
-                        gradeProps: { contrast: 1.15, saturation: 1.08, gain: [1.03, 1.0, 0.97] }
-                    });
-                    this.v2Segments.sort((a,b) => a.startFrame - b.startFrame);
-                    this._refreshSequenceDock();
-                } else if (this.activeTimelineTool === 'reference') {
+                if (this.activeTimelineTool === 'reference') {
                     const start = Math.max(0, clickFrame - 10);
                     const end = Math.min(total - 1, clickFrame + 10);
                     this.v2Segments.push({
@@ -3326,65 +4014,18 @@ class RadianceViewer {
                 // Label
                 const label = document.createElement('div');
                 label.className = 'radiance-pro-clip-label';
-                label.style.cssText = `position:absolute; bottom:2px; left:6px; right:6px; background:rgba(10,12,18,0.72); border-radius:3px; border:1px solid rgba(255,255,255,0.05); color:#e8e8f0; font:800 7px var(--radiance-font); padding:1px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; pointer-events:none; z-index:4; border-left: 2px solid ${seg.color};`;
+                label.style.cssText = `position:absolute; bottom:2px; left:6px; right:6px; background:rgba(10,12,18,0.72); border-radius:3px; border:1px solid rgba(255,255,255,0.05); color:var(--radiance-text); font:700 10px/12px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; pointer-events:none; z-index:4; border-left: 2px solid ${seg.color};`;
                 label.textContent = `${seg.name} (${segFrames}f)`;
                 block.appendChild(label);
 
-                // Edge Roll/Ripple Trimming
-                if (idx < this.timelineSegments.length - 1) {
-                    const rightHandle = document.createElement('div');
-                    rightHandle.className = 'radiance-pro-right-handle';
-                    rightHandle.style.cssText = 'position:absolute; right:0; top:0; width:5px; height:100%; cursor:ew-resize; z-index:10; background:transparent;';
-                    rightHandle.onmousedown = (e) => {
-                        e.stopPropagation();
-                        this._isDraggingEdge = true;
-                        this._activeDragTrack = 'V1';
-                        this._activeDragSegmentIdx = idx;
-                        this._initialDragX = e.clientX;
-                        this._initSegEndFrame = seg.endFrame;
-                        this._initNextSegStartFrame = this.timelineSegments[idx + 1].startFrame;
-                    };
-                    block.appendChild(rightHandle);
-                }
-
+                // V1 is the sequence as it plays: clicking it scrubs. Its blade,
+                // slip and roll trim only redrew this lane (H8), so they are gone.
                 block.onmousedown = (e) => {
                     const rect = this.sequenceTrack.getBoundingClientRect();
-                    const clickX = e.clientX;
-                    const pct = Math.max(0, Math.min(1.0, (clickX - rect.left) / rect.width));
+                    const pct = Math.max(0, Math.min(1.0, (e.clientX - rect.left) / rect.width));
                     const clickFrame = Math.round(pct * (total - 1));
-
-                    if (this.activeTimelineTool === 'blade') {
-                        e.stopPropagation();
-                        if (clickFrame > seg.startFrame && clickFrame < seg.endFrame) {
-                            const leftSeg = {
-                                id: Date.now(),
-                                startFrame: seg.startFrame,
-                                endFrame: clickFrame,
-                                offset: seg.offset,
-                                name: seg.name + '_A',
-                                color: seg.color
-                            };
-                            const rightSeg = {
-                                id: Date.now() + 1,
-                                startFrame: clickFrame + 1,
-                                endFrame: seg.endFrame,
-                                offset: seg.offset,
-                                name: seg.name + '_B',
-                                color: ['#00bdff', '#d45cff', '#59d86f', '#ffad26', '#ff8060', '#56c7ff'][Math.floor(Math.random() * 6)]
-                            };
-                            this.timelineSegments.splice(idx, 1, leftSeg, rightSeg);
-                            this._refreshSequenceDock();
-                        }
-                    } else if (this.activeTimelineTool === 'slip') {
-                        e.stopPropagation();
-                        this._isSlippingClip = true;
-                        this._activeSlipSegment = seg;
-                        this._initialSlipX = clickX;
-                        this._initSlipOffset = seg.offset;
-                    } else {
-                        this._isScrubbingTimeline = true;
-                        this.setFrame(Math.max(seg.startFrame, Math.min(seg.endFrame, clickFrame)));
-                    }
+                    this._isScrubbingTimeline = true;
+                    this.setFrame(Math.max(seg.startFrame, Math.min(seg.endFrame, clickFrame)));
                 };
 
                 v1Lane.appendChild(block);
@@ -3434,16 +4075,7 @@ class RadianceViewer {
                     const dx = e.clientX - this._initialDragX;
                     const df = Math.round((dx / rect.width) * total);
 
-                    if (this._activeDragTrack === 'V1') {
-                        // Roll Trim V1
-                        const seg = this.timelineSegments[this._activeDragSegmentIdx];
-                        const nextSeg = this.timelineSegments[this._activeDragSegmentIdx + 1];
-                        const minEnd = seg.startFrame + 1;
-                        const maxEnd = nextSeg.endFrame - 1;
-                        const targetEnd = Math.max(minEnd, Math.min(maxEnd, this._initSegEndFrame + df));
-                        seg.endFrame = targetEnd;
-                        nextSeg.startFrame = targetEnd + 1;
-                    } else if (this._activeDragTrack === 'V2') {
+                    if (this._activeDragTrack === 'V2') {
                         // Resize V2 Block
                         const seg = this.v2Segments[this._activeDragSegmentIdx];
                         const minEnd = seg.startFrame + 1;
@@ -3477,8 +4109,8 @@ class RadianceViewer {
             this._timelineMouseMoveBound = onMouseMoveGlobal;
             this._timelineMouseUpBound = onMouseUpGlobal;
 
-            window.addEventListener('mousemove', onMouseMoveGlobal);
-            window.addEventListener('mouseup', onMouseUpGlobal);
+            window.addEventListener('mousemove', onMouseMoveGlobal, { signal: this._listenerSignal });
+            window.addEventListener('mouseup', onMouseUpGlobal, { signal: this._listenerSignal });
 
             // Hover preview card
             this.sequenceTrack.onmousemove = (e) => {
@@ -3574,9 +4206,79 @@ class RadianceViewer {
             this._proAspect.textContent = w && h ? (w / h).toFixed(2) + ':1' : '—';
         }
         if (this._proFps) this._proFps.textContent = `${(this.playbackFps || 24).toFixed(2)} FPS`;
-        if (this._proColor) this._proColor.textContent = this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace.replace('IDT: ', '') : 'ACEScg';
-        if (this._proDepth) this._proDepth.textContent = this.hdrData ? '32-bit (float)' : '8/16-bit';
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
+        const info = this._frameFormatInfo();
+        if (this._proChip) this._proChip.textContent = info.chip;
+        if (this._proDepth) this._proDepth.textContent = info.depth;
+        if (this.sequenceNameLabel) {
+            const clip = this._clipName();
+            this.sequenceNameLabel.textContent = clip;
+            this.sequenceNameLabel.title = clip;
+        }
         this._updateEngineBadge();
+    }
+
+    /**
+     * L2: what the frame on screen is, for the header chip, the header's bit
+     * depth and the Inspector's Format and Bit Depth rows. A float sidecar
+     * still loading reads as what it will be; one that failed reads as the
+     * 8-bit PNG proxy that is showing instead.
+     */
+    _frameFormatInfo() {
+        const current = this._getCurrentResult?.() || {};
+        const hdr = this.hdrData;
+        if (hdr && (hdr.fp16data || hdr.data)) {
+            if (hdr.format === 'rhdr_f32') return { chip: 'RHDR', format: 'RHDR fp32', depth: '32-bit float' };
+            if (hdr.format === 'rhdr') return { chip: 'RHDR', format: 'RHDR fp16', depth: '16-bit half float' };
+            if (hdr.format === 'tiff_u8') return { chip: 'TIFF', format: 'TIFF 8-bit', depth: '8-bit' };
+            const name = String(hdr.format || 'float').split('_')[0].toUpperCase();
+            return { chip: name, format: name, depth: hdr.fp16data ? '16-bit half float' : '32-bit float' };
+        }
+        if (this.videoMode) return { chip: 'VIDEO', format: 'Video (8-bit)', depth: '8-bit' };
+        if (current.hdr_sidecar && !this._currentFallbackReason?.()) {
+            return current.hdr_fp32
+                ? { chip: 'RHDR', format: 'RHDR fp32', depth: '32-bit float' }
+                : { chip: 'RHDR', format: 'RHDR fp16', depth: '16-bit half float' };
+        }
+        if (this.image) {
+            return current.hdr_sidecar || current.has_hdr
+                ? { chip: 'PNG', format: 'PNG (8-bit preview)', depth: '8-bit (proxy)' }
+                : { chip: 'PNG', format: 'PNG', depth: '8-bit' };
+        }
+        return { chip: '', format: '—', depth: '' };
+    }
+
+    /**
+     * L2: the source's name for the dock: from the frame record when the
+     * node sends one, else a loaded video's file name, else nothing (the
+     * label hides). It was a fixed "A001C010".
+     */
+    _clipName() {
+        const current = this._getCurrentResult?.() || {};
+        const named = current.source_name || current.clip_name;
+        if (named) return String(named);
+        if (this.videoMode) {
+            const src = this.node?.properties?.radiance_viewer_video || this.videoEl?.currentSrc || '';
+            if (typeof src === 'string' && src && !src.startsWith('blob:')) {
+                try {
+                    const u = new URL(src, location.href);
+                    return u.searchParams.get('filename') || decodeURIComponent(u.pathname.split('/').pop() || '');
+                } catch { /* not a URL */ }
+            }
+        }
+        return '';
+    }
+
+    /**
+     * H11: what the pixels are, for every colour-space label: the input
+     * transform when one is set, otherwise the node's source tag. The header,
+     * the Inspector and the Grade tab all said ACEScg for every source while
+     * the rendering followed the real tag, so a Linear Rec.709 frame was
+     * labelled with the wrong primaries.
+     */
+    _inputLabel() {
+        if (this.inputSpace && this.inputSpace !== 'None') return this.inputSpace.replace('IDT: ', '');
+        return this.sourceTag?.colorspace || '-';
     }
 
     createUI() {
@@ -3597,12 +4299,13 @@ class RadianceViewer {
             height: 100%;
             min-height: 300px;
             contain: size;
-            background: #070a0f;
+            background: var(--radiance-bg);
+            color: var(--radiance-text);
             color-scheme: dark;
             border-radius: 6px;
             overflow: hidden;
             user-select: none;
-            border: 1px solid rgba(255,255,255,0.08);
+            border: 1px solid var(--radiance-panel-border);
             font-family: var(--radiance-font-ui);
             display: flex;
             flex-direction: column;
@@ -3631,8 +4334,7 @@ class RadianceViewer {
 
         // Canvas wrapper
         this.canvasWrapper = document.createElement('div');
-        this.canvasWrapper.style.cssText = `flex: 1 1 auto; position: relative; overflow: hidden; background:
-            radial-gradient(circle at 50% 48%, rgba(34,42,54,0.24), rgba(5,7,11,0.98) 62%);`;
+        this.canvasWrapper.style.cssText = `flex: 1 1 auto; position: relative; overflow: hidden; background: var(--radiance-bg);`;
         this.mainArea.appendChild(this.canvasWrapper);
 
         // ── Right Control Panel (HUD host) ────────────────────────────────────
@@ -3640,6 +4342,7 @@ class RadianceViewer {
         const rcpWidth = Math.min(760, Math.max(520, savedRcpWidth || 620));
         this.rightControlPanel = document.createElement('div');
         this.rightControlPanel.className = 'radiance-right-control-panel';
+        this.rightControlPanel.id = `radiance-panel-${this.node?.id ?? Math.random().toString(36).slice(2)}`;
         this.rightControlPanel.style.setProperty('--rcp-width', rcpWidth + 'px');
         this.rightControlPanel.style.flex = `0 0 ${rcpWidth}px`;
         // Resize handle on left edge
@@ -3663,8 +4366,8 @@ class RadianceViewer {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         this.mainArea.appendChild(this.rightControlPanel);
 
@@ -3725,6 +4428,8 @@ class RadianceViewer {
         try {
             if (typeof RadianceWebGLRenderer !== 'undefined') {
                 this.renderer = new RadianceWebGLRenderer(this.glCanvas);
+                this.renderer.onContextLost = () => this._onGLContextLost();
+                this.renderer.onContextRestored = () => this._onGLContextRestored();
                 if (this.renderer.init()) {
                     console.log('[Radiance] WebGL Renderer Initialized');
                     this._gpuBackend = 'webgl';
@@ -3906,21 +4611,7 @@ class RadianceViewer {
 
         // Bottom Info Bar (HUD)
         this.bottomInfoBar = document.createElement('div');
-        this.bottomInfoBar.style.cssText = `
-            flex: 0 0 22px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 10px;
-            background: rgba(10, 10, 14, 0.95);
-            border-top: 1px solid ${t.panelBorder};
-            font-size: 10.5px;
-            font-family: monospace;
-            color: #aaa;
-            white-space: nowrap;
-            overflow: hidden;
-            z-index: 1000;
-        `;
+        this.bottomInfoBar.className = 'radiance-pro-infobar';
 
         this.infoLeft = document.createElement('div');
         this.infoLeft.style.cssText = 'display: flex; gap: 16px; align-items: center;';
@@ -3955,8 +4646,8 @@ class RadianceViewer {
                 <div style="width:8px;height:8px;background:${item.c};
                     border:1px solid rgba(255,255,255,0.2);flex-shrink:0;"></div>
                 <div>
-                    <span style="font-size:8.5px;color:#aaa;">${item.s}</span>
-                    <span style="font-size:7px;color:#555;margin-left:2px;">${item.sub}</span>
+                    <span style="font-size:var(--radiance-fs-heading);color:var(--radiance-text);">${item.s}</span>
+                    <span style="font-size:var(--radiance-fs-heading);color:var(--radiance-text-muted);margin-left:2px;">${item.sub}</span>
                 </div>
             `;
             this.fcLegend.appendChild(block);
@@ -3995,17 +4686,7 @@ class RadianceViewer {
 
         // Status bar
         this.statusBar = document.createElement('div');
-        this.statusBar.style.cssText = `
-            flex: 0 0 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 8px;
-            background: ${t.panel};
-            border-top: 1px solid ${t.panelBorder};
-            font-size: 9px;
-            color: ${t.textDim};
-        `;
+        this.statusBar.className = 'radiance-pro-statusbar';
         this.container.appendChild(this.statusBar);
 
         this.cursorInfo = document.createElement('span');
@@ -4041,7 +4722,7 @@ class RadianceViewer {
             padding: 1px 8px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: var(--radiance-fs-heading);
             letter-spacing: 0.6px;
             cursor: pointer;
             user-select: none;
@@ -4057,7 +4738,7 @@ class RadianceViewer {
             padding: 1px 8px;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: var(--radiance-fs-heading);
             letter-spacing: 0.6px;
             display: none;
             cursor: default;
@@ -4660,8 +5341,8 @@ class RadianceViewer {
                             gain: Array.isArray(this.gain) ? [...this.gain] : [this.gain || 1.0, this.gain || 1.0, this.gain || 1.0],
                             lift: Array.isArray(this.lift) ? [...this.lift] : [this.lift || 0.0, this.lift || 0.0, this.lift || 0.0],
                             offset: Array.isArray(this.offset) ? [...this.offset] : [this.offset || 0.0, this.offset || 0.0, this.offset || 0.0],
-                            contrast: this.contrast,
-                            pivot: this.pivot,
+                            contrast: this.contrast ?? 1.0,
+                            pivot: this.pivot ?? _PIVOT_DEFAULT,
                             saturation: this.saturation,
                             temperature: this.temperature,
                             tint: this.tint,
@@ -4675,6 +5356,21 @@ class RadianceViewer {
                             shadows: this.shadows || 0.0,
                             highlights: this.highlights || 0.0,
                             hue_shift: this.hueShift || 0.0,
+                            // The rest of the grade the shader applies, so the
+                            // master matches the screen (color/grading.py
+                            // viewer_grade_kwargs reads these).
+                            colorBoost: this.colorBoost ?? 0.0,
+                            logShadow: Array.isArray(this.logShadow) ? [...this.logShadow] : [0, 0, 0],
+                            logMidtone: Array.isArray(this.logMidtone) ? [...this.logMidtone] : [0, 0, 0],
+                            logHighlight: Array.isArray(this.logHighlight) ? [...this.logHighlight] : [0, 0, 0],
+                            printerR: this.printerR ?? 0,
+                            printerG: this.printerG ?? 0,
+                            printerB: this.printerB ?? 0,
+                            curveTable: this._curveTable ? Array.from(this._curveTable) : null,
+                            curveMix: this.curveMix ?? 1.0,
+                            secondaryCurveTable: this._secondaryCurveTable ? Array.from(this._secondaryCurveTable) : null,
+                            secondaryCurveMix: this._secondaryCurveTable && !_isIdentitySecondaryTable(this._secondaryCurveTable) ? 1.0 : 0.0,
+                            sourceGamut: this.renderer?.sourceGamut ?? 0,
                             lut_name: this.displayLut || 'None',
                             lut_intensity: this.lutIntensity !== undefined ? this.lutIntensity : 1.0,
                             gamut_compression: !!this.gamutCompression,
@@ -4949,8 +5645,8 @@ class RadianceViewer {
             this._termResizing = true;
             startY = e.clientY;
             startH = termContainer.getBoundingClientRect().height;
-            document.addEventListener('mousemove', onDrag);
-            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('mousemove', onDrag, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', endDrag, { signal: this._listenerSignal });
         };
         const onDrag = (e) => {
             const delta = startY - e.clientY;
@@ -5368,32 +6064,8 @@ else:
 
             case 'grade': {
                 if (args[0] === 'reset') {
-                    // Replicate the same reset logic as RESET ALL button
-                    this._pushUndo();
-                    this.exposure = 0.0; this.lift = [0, 0, 0]; this.gamma = [1, 1, 1]; this.gain = [1, 1, 1];
-                    this.temperature = 0.0; this.tint = 0.0; this.contrast = 1.0; this.pivot = 0.5; this.saturation = 1.0;
-                    this.grain = 0.0; this.denoise = 0.0;
-                    this.printerR = 0; this.printerG = 0; this.printerB = 0; this.softClip = 0.0;
-                    this.bloom = 0.0; this.halation = 0.0; this.diffusion = 0.0;
-                    this.grainSize = 1.0; this.grainColor = 0.0; this.grainAnimate = false;
-                    this.bokehHighlightBias = 0.0; this.bokehSoapBubble = 0.0; this.bokehOpticalVig = 0.0;
-                    this.apertureBlades = 0; this.apertureRotation = 0.0; this.apertureAnamorphic = 1.0;
-                    this.anamorphicStreaks = 0.0; this.lensDistortion = 0.0; this.lensFringe = 0.0;
-                    this.vignetteIntensity = 0.0; this.vignetteFalloff = 0.5;
-                    if (this.curveEditor) this.curveEditor.resetAllChannels?.();
-                    if (this.refCurveEditor) this.refCurveEditor.resetAllChannels?.();
-                    if (this.renderer) {
-                        this.renderer.setExposure(0); this.renderer.setLift(0, 0, 0); this.renderer.setGamma(1, 1, 1); this.renderer.setGain(1, 1, 1);
-                        this.renderer.setTemperature(0); this.renderer.setTint(0); this.renderer.setContrast(1); this.renderer.setPivot(0.5);
-                        this.renderer.setSaturation(1); this.renderer.setGrain(0); this.renderer.setGrainSize(1.0); this.renderer.setGrainColor(0.0); this.renderer.setGrainAnimate(false);
-                        this.renderer.setDenoise(0); this.renderer.setBloom(0); this.renderer.setHalation(0); this.renderer.setDiffusion(0);
-                        this.renderer.setLensDistortion(0, 0); this.renderer.setVignette(0, 0.5);
-                        this.renderer.setBokehPhysics(0, 0, 0); this.renderer.setApertureShape(0, 0, 1.0);
-                        if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(0);
-                        this.renderer.setPrinterLights(0, 0, 0); this.renderer.setSoftClip(0);
-                    }
-                    this.render();
-                    if (this._lastRenderContent) this._lastRenderContent();
+                    // The same Reset All as the Grade tab: every grade field.
+                    this.resetGradeAll();
                     this._termLog('success', '[Grade] Reset to defaults.');
                 } else if (args[0] === 'save') {
                     const name = args[1] || `grade_${Date.now()}`;
@@ -5414,8 +6086,8 @@ else:
                     const g = this._captureGradingState();
                     this._termLog('grade', `  Exposure   : ${(g.exposure || 0).toFixed(3)}`);
                     this._termLog('grade', `  Temp/Tint  : ${(g.temperature || 0).toFixed(3)} / ${(g.tint || 0).toFixed(3)}`);
-                    this._termLog('grade', `  Contrast   : ${(g.contrast || 1).toFixed(3)}  Pivot: ${(g.pivot || 0.5).toFixed(3)}`);
-                    this._termLog('grade', `  Saturation : ${(g.saturation || 1).toFixed(3)}`);
+                    this._termLog('grade', `  Contrast   : ${(g.contrast ?? 1).toFixed(3)}  Pivot: ${(g.pivot ?? _PIVOT_DEFAULT).toFixed(3)}`);
+                    this._termLog('grade', `  Saturation : ${(g.saturation ?? 1).toFixed(3)}`);
                     this._termLog('grade', `  Lift       : ${(g.lift || [0, 0, 0]).map(v => v.toFixed(3)).join('  ')}`);
                     this._termLog('grade', `  Gamma      : ${(g.gamma || [1, 1, 1]).map(v => v.toFixed(3)).join('  ')}`);
                     this._termLog('grade', `  Gain       : ${(g.gain || [1, 1, 1]).map(v => v.toFixed(3)).join('  ')}`);
@@ -6138,7 +6810,7 @@ else:
 
             this.scopePanelWidth = newWidth;
             this.scopePanel.style.flex = `0 0 ${newWidth}px`;
-        });
+        }, { signal: this._listenerSignal });
 
         document.addEventListener('mouseup', () => {
             if (this.isResizingScopePanel) {
@@ -6147,7 +6819,18 @@ else:
                 // Save width to localStorage
                 localStorage.setItem('radiance_scope_width', this.scopePanelWidth);
             }
-        });
+        }, { signal: this._listenerSignal });
+    }
+
+    /**
+     * Every window and document listener a viewer adds carries this signal,
+     * and destroy() aborts it. Two of them (the scope-panel resize above)
+     * were never removed and held each deleted viewer, with its frame, for the
+     * life of the page: 55 MB at 1080p, about 230 MB at 4K.
+     */
+    get _listenerSignal() {
+        if (!this._globalListeners) this._globalListeners = new AbortController();
+        return this._globalListeners.signal;
     }
 
     // v2.2: Full cleanup — prevents memory leaks on node deletion
@@ -6671,6 +7354,7 @@ else:
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
+                if (payload.compareHdr) this.frameCompareHDR[idx] = payload.compareHdr;
                 if (payload.compare) {
                     this.frameCompareImages[idx] = payload.compare;
                     if (idx === this.currentFrame) {
@@ -6683,7 +7367,7 @@ else:
                 }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
-                    this._renderReferenceRightHUD?.();
+                    this._syncReferenceReadouts('analysis');
                 }
                 if (this._allFramesReady()) this.updateFrameDisplay();
                 this._queueCacheMarks();
@@ -6692,16 +7376,20 @@ else:
                 // The whole point of the window: drop the decoded pixels for a
                 // frame that has scrolled out of reach. Leaving these set was
                 // the 330 GB defect.
+                if (this.frameHDRData[idx] !== this.hdrData) RadianceViewer._releaseHalfFloats(this.frameHDRData[idx]?.fp16data);
                 this.frameImages[idx] = null;
                 this.frameHDRData[idx] = null;
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
-                if (this._compareEntries.length) this.frameCompareImages[idx] = null;
+                if (this._compareEntries.length) {
+                    this.frameCompareImages[idx] = null;
+                    if (this.frameCompareHDR) this.frameCompareHDR[idx] = null;
+                }
                 this._queueCacheMarks();
             },
             onError: (err, idx) => {
-                console.warn('[Radiance] Frame', idx, 'failed to load:', err);
+                if (this.generationID === generation) this._onFrameLoadError(err, idx);
             },
         });
 
@@ -6730,19 +7418,36 @@ else:
         RadianceViewer._sidecarPool = null;
         try {
             const p = RadianceViewer.prototype;
-            const src = `const RadianceViewer = {};
-class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} }
+            const src = `const RadianceViewer = { _lazyHalfFloats: (parsed) => parsed };
+class Decoder { ${p._parseRHDR} ${p._zlibInflateAsync} ${p._halfToFloat} ${p._zoneStatsFromFloats} }
 const decoder = new Decoder();
+let halfTable = null;
 self.onmessage = async ({ data: { id, url } }) => {
     try {
-        const buffer = await (await fetch(url)).arrayBuffer();
+        const response = await fetch(url);
+        if (!response.ok) {
+            // A 404 is a deleted temp file (ComfyUI restarted, or another run
+            // purged it), not a decode failure, and must be reported as one.
+            self.postMessage({ id, missing: response.status === 404, error: 'HTTP ' + response.status + ' fetching the float sidecar' });
+            return;
+        }
+        const buffer = await response.arrayBuffer();
         if (buffer.byteLength < 12 || new TextDecoder().decode(new Uint8Array(buffer, 0, 4)) !== 'RHDR') {
             self.postMessage({ id, buffer }, [buffer]);
             return;
         }
         const parsed = await decoder._parseRHDR(buffer);
-        const transfer = parsed ? new Set([parsed.data.buffer, parsed.fp16data?.buffer].filter(Boolean)) : [];
-        self.postMessage({ id, parsed }, [...transfer]);
+        if (parsed) {
+            // The frame's luminance statistics, here rather than on the main thread.
+            if (parsed.fp16data && !halfTable) {
+                halfTable = new Float32Array(65536);
+                for (let h = 0; h < 65536; h++) halfTable[h] = decoder._halfToFloat(h);
+            }
+            parsed.zoneStats = decoder._zoneStatsFromFloats(parsed.fp16data || parsed.data,
+                parsed.shape[2] || 1, parsed.fp16data ? halfTable : null, 2000000);
+        }
+        const transfer = parsed ? [parsed.fp16data ? parsed.fp16data.buffer : parsed.data.buffer] : [];
+        self.postMessage({ id, parsed }, transfer);
     } catch (e) {
         self.postMessage({ id, error: String(e?.message || e) });
     }
@@ -6784,13 +7489,41 @@ self.onmessage = async ({ data: { id, url } }) => {
         const pool = RadianceViewer._sidecarWorkers();
         if (pool) {
             const reply = await pool.decode(new URL(url, location.href).href);
-            if (reply.error) throw new Error(reply.error);
+            if (reply.error) {
+                const err = new Error(reply.error);
+                err.missing = !!reply.missing;
+                throw err;
+            }
             if (reply.buffer) return this._parseHDRBuffer(reply.buffer);       // not RHDR
-            if (!reply.workerFailed) return reply.parsed;
+            if (!reply.workerFailed) return RadianceViewer._lazyHalfFloats(reply.parsed);
             console.warn('[Radiance] Sidecar worker failed, decoding frames on the main thread:', reply.workerFailed);
             RadianceViewer._sidecarPool = null;
         }
-        return this._parseHDRBuffer(await (await fetch(url)).arrayBuffer());
+        const response = await fetch(url);
+        if (!response.ok) {
+            const err = new Error(`HTTP ${response.status} fetching the float sidecar`);
+            err.missing = response.status === 404;
+            throw err;
+        }
+        return this._parseHDRBuffer(await response.arrayBuffer());
+    }
+
+    /** B's float sidecar for compare, or null (no sidecar, or it failed). */
+    _loadCompareFloat(entry) {
+        if (!entry?.hdr_sidecar) return Promise.resolve(null);
+        const url = api.apiURL(`/view?filename=${encodeURIComponent(entry.hdr_sidecar)}`
+            + `&subfolder=${encodeURIComponent(entry.subfolder || '')}&type=${entry.type || 'temp'}`);
+        return this._fetchSidecar(url).then((npy) => {
+            if (!npy) return null;
+            npy.height = npy.shape[0];
+            npy.width = npy.shape[1];
+            npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+            npy.source_encoding = entry.source_encoding;
+            return npy;
+        }).catch((e) => {
+            console.warn('[Radiance] Compare float sidecar failed, B uses the preview:', e?.message || e);
+            return null;
+        });
     }
 
     _loadSequenceFrame(imgData, idx, generation) {
@@ -6837,12 +7570,17 @@ self.onmessage = async ({ data: { id, url } }) => {
                         // _parseRHDR returns null with no DecompressionStream
                         // and on a payload-size integrity mismatch.
                         payload.fallbackReason =
-                            'RHDR decode returned no data (missing DecompressionStream, or integrity mismatch)';
+                            'the RHDR sidecar could not be decoded (corrupt or truncated, or no DecompressionStream)';
                         return null;
                     }
                     npy.height = npy.shape[0];
                     npy.width = npy.shape[1];
                     npy.channels = npy.shape.length > 2 ? npy.shape[2] : 1;
+                    // C3: what the node said these floats are. Every sidecar
+                    // was marked linear, so an sRGB-encoded ComfyUI IMAGE was
+                    // measured as light by the probe and the status bar.
+                    npy.sourceEncoding = (imgData.source_encoding || this.sourceTag?.encoding) === 'srgb' ? 'srgb' : 'linear';
+                    npy.isLinear = npy.sourceEncoding !== 'srgb';
                     npy.exr_filename = imgData.exr_filename;
                     npy.exr_subfolder = imgData.exr_subfolder ?? imgData.subfolder ?? '';
                     npy.exr_type = imgData.exr_type ?? imgData.type ?? 'temp';
@@ -6867,7 +7605,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                     return npy;
                 })
                 .catch((e) => {
-                    payload.fallbackReason = `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.fallbackReason = e?.missing
+                        ? 'the float sidecar is no longer on the server (HTTP 404)'
+                        : `RHDR fetch failed (${e && e.message ? e.message : e})`;
+                    payload.missing = !!e?.missing;
                     console.warn('[Radiance] Failed to load RHDR primary:', e);
                     return null;
                 });
@@ -6901,22 +7642,39 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(brackets && brackets.high),
             loadBracket(depthEntry),
             loadBracket(compareEntry),
-        ]).then(([img, hdr, low, high, depth, compare]) => {
+            this._loadCompareFloat(compareEntry),
+        ]).then(([img, hdr, low, high, depth, compare, compareHdr]) => {
             if (this.generationID !== generation) return null;
-            if (!img && !hdr) return null;
+            if (!img && !hdr) {
+                // Neither the picture nor its proxy: say why, rather than
+                // leave the canvas blank (see _onFrameLoadError).
+                const err = new Error(payload.fallbackReason && imgData.hdr_sidecar
+                    ? `the preview and the float sidecar both failed to load (${payload.fallbackReason})`
+                    : 'the preview image failed to load');
+                // No sidecar to ask: a preview that will not load after a
+                // restart is gone as well.
+                err.missing = imgData.hdr_sidecar ? !!payload.missing : true;
+                throw err;
+            }
             payload.img = img;
             payload.hdr = hdr;
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
             payload.compare = compare;
+            if (compare && compareEntry) {
+                compare.source_width = compareEntry.source_width;
+                compare.source_height = compareEntry.source_height;
+            }
+            payload.compareHdr = compareHdr;
             return payload;
         });
     }
 
     /**
-     * Put a paged-in frame on screen. Split out of the old inline onload/then
-     * handlers so the scrub path and the arrival path agree.
+     * Put a frame on screen: the one display routine, for a frame landing
+     * from the paging window and for setFrame (scrub, step, playback), so
+     * the two paths cannot drift apart again.
      */
     _displaySequenceFrame(idx) {
         const img = this.frameImages[idx] || null;
@@ -6948,20 +7706,25 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.hdrData = hdr;
             this.imageWidth = hdr.width;
             this.imageHeight = hdr.height;
-            // Replaces this.image with a sized canvas for the 2D paths, as the
-            // HDR arrival handler always did. The PNG stays in frameImages[idx]
-            // for the filmstrip and for the fallback below.
+            // Replaces this.image with a sized stand-in for the 2D paths, as
+            // the HDR arrival handler always did. The PNG stays in
+            // frameImages[idx] for the filmstrip and for the fallback below.
             this.createPlaceholderImage(hdr.width, hdr.height);
-        } else {
+        } else if (img) {
             this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            if (!img) return;
             this.image = img;
             this.imageWidth = img.width;
             this.imageHeight = img.height;
             if (this.renderer) this.renderer.loadImageTexture(img);
+        } else {
+            // Not paged in yet: the last picture stays until it lands, the
+            // frame counter moves now.
+            this.updateFrameDisplay();
+            return;
         }
+        this._clearViewerMessage('frames');
+
+        this._updateCompareForFrame(idx);
 
         const depth = this.frameZdepthImages && this.frameZdepthImages[idx];
         this.zdepthImage = depth || null;
@@ -6979,8 +7742,79 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.render();
         this.updateInfo();
-        this.updateScopes();
+        this.updateFrameDisplay();
+        // Statistics and the nit badge belong to the frame on screen. They
+        // are computed once per frame, normally in the decode worker.
         if (hdr) this._computeHDRZoneStats();
+        else { this._hdrZoneStats = null; this._updateHDRPeakBadge?.(); }
+        // v4.3: Repaint sparkline current-frame marker on every frame change
+        if (this._frameSparklines) this._drawSparklines();
+        this.updateScopes();
+        this._refreshReferenceReadouts();
+        if (this.activeTab === 'scopes') this.renderScopesTab(this.tabContentContainer);
+    }
+
+    /**
+     * The workflow's copy of a result: the file token and, for each kind of
+     * frame (main, brackets, compare, depth), one entry as a template and a
+     * count. Every name the node writes is <prefix>_<token>_<index>..., so
+     * the entries are rebuilt from those. Per-frame statistics are left out
+     * (the viewer measures each frame as it loads). Returns null when the
+     * result does not rebuild exactly, and the caller keeps it whole.
+     */
+    static _compactResult(message) {
+        const token = message?.file_token?.[0];
+        const images = message?.radiance_images;
+        if (!token || !Array.isArray(images) || !images.length) return null;
+        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_compare ? 'compare'
+            : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
+        const groups = new Map();
+        for (const e of images) {
+            if (!groups.has(kindOf(e))) groups.set(kindOf(e), []);
+            groups.get(kindOf(e)).push(e);
+        }
+        const mark = `_${token}_`;
+        const saved = { v: 1, token, groups: [], message: {} };
+        for (const [kind, list] of groups) {
+            const first = list[0];
+            const index = Number.isInteger(first.frame) ? first.frame : 0;
+            const template = {};
+            for (const [k, v] of Object.entries(first)) {
+                if (PER_FRAME.includes(k)) continue;
+                template[k] = typeof v === 'string' ? v.split(`${mark}${index}`).join(`${mark}{i}`) : v;
+            }
+            saved.groups.push({ kind, count: list.length, template });
+        }
+        for (const [k, v] of Object.entries(message)) {
+            if (k === 'radiance_images' || k === 'warnings') continue;
+            saved.message[k] = k === 'flicker_data' && Array.isArray(v) ? v.map((x) => Math.round(x * 1000) / 1000) : v;
+        }
+        // Only if it rebuilds every entry exactly.
+        const rebuilt = RadianceViewer._expandResult(saved)?.radiance_images || [];
+        const strip = (e) => JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !PER_FRAME.includes(k))));
+        const original = [...groups.values()].flat();
+        if (rebuilt.length !== original.length) return null;
+        for (let i = 0; i < original.length; i++) if (strip(rebuilt[i]) !== strip(original[i])) return null;
+        return saved;
+    }
+
+    /** The result a _compactResult() copy stands for, or null. */
+    static _expandResult(saved) {
+        if (!saved || saved.v !== 1 || !saved.token || !Array.isArray(saved.groups)) return null;
+        const mark = `_${saved.token}_`;
+        const images = [];
+        for (const { count, template } of saved.groups) {
+            for (let i = 0; i < count; i++) {
+                const entry = {};
+                for (const [k, v] of Object.entries(template)) {
+                    entry[k] = typeof v === 'string' ? v.split(`${mark}{i}`).join(`${mark}${i}`) : v;
+                }
+                if ('frame' in template) entry.frame = i;
+                images.push(entry);
+            }
+        }
+        return { ...saved.message, radiance_images: images };
     }
 
     /** Record why a frame has no float data, for the status-bar badge. */
@@ -7023,7 +7857,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     switchTab(tabId) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const validTabs = ['prompt', 'primaries', 'curves', 'effects', 'masks', 'view'];
         if (!validTabs.includes(tabId)) return;
 
@@ -7038,7 +7872,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     setFocusedWheel(name) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.focusedWheelName = name;
 
         const wheels = {
@@ -7059,7 +7893,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     getFocusedWheelElement() {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         const name = active.focusedWheelName || 'OFFSET';
         const wheels = {
             'SHADOW': active.shadowWheel,
@@ -7074,7 +7908,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelChroma(dx, dy, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005; // Standard step size
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -7089,7 +7923,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     adjustFocusedWheelMaster(delta, e) {
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         let step = 0.005;
         if (e.shiftKey) step *= 4.0;
         if (e.ctrlKey) step *= 0.2;
@@ -7107,9 +7941,17 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _ownsKeyboard(e) {
         if (e.defaultPrevented || !this.container?.isConnected || this.container.style.display === 'none') return false;
-        if (e.target?.isContentEditable || e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return false;
+        // Only a field that takes typed text keeps the keys. A slider or a
+        // select does not: after a click on the scrubber or on a dropdown,
+        // Space and J/K/L still drive the viewer (M4).
+        if (_isTextEntry(e.target)) return false;
         const fullscreen = [...RadianceViewer.allInstances].find(v => v.isFullscreen && v.container?.isConnected);
         if (fullscreen) return fullscreen === this;
+        // Focus inside a viewer (its scrubber, a slider, a tab) names it.
+        const focused = e.target && e.target !== document.body
+            ? [...RadianceViewer.allInstances].find(v => v.container?.isConnected && v.container.contains(e.target))
+            : null;
+        if (focused) return focused === this;
         const hovered = RadianceViewer._hoveredViewer;
         if (hovered?.container?.isConnected) return hovered === this;
         const selected = app.canvas?.selected_nodes;
@@ -7135,150 +7977,78 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
         this.container.addEventListener('focusin', claim);
         if (!RadianceViewer._activeViewer) RadianceViewer._activeViewer = this;
+        // A select gives the keys back once a value is picked; with it still
+        // focused the arrows changed the frame rate instead of the frame.
+        this.container.addEventListener('change', (e) => {
+            if (e.target?.tagName === 'SELECT') e.target.blur();
+        }, true);
         this._docKeyHandler = (e) => {
-            const t = e.target;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (e.ctrlKey || e.metaKey) return;
             if (!this._ownsKeyboard(e)) return;
-            if (this.container.style.display === 'none' || !this.container.isConnected) return;
             this.handleKey(e);
         };
-        document.addEventListener('keydown', this._docKeyHandler);
+        document.addEventListener('keydown', this._docKeyHandler, { signal: this._listenerSignal });
     }
 
+    /**
+     * One key, looked up in the keymap (radiance_keymap.js), which also writes
+     * the help overlay, the menu labels and the tooltips. A key the viewer
+     * acts on is consumed: preventDefault, and stopPropagation so ComfyUI's
+     * own single-key shortcuts do not run as well. Returns true when handled.
+     */
     handleKey(e) {
-        // Printer Lights (Numpad) mapped to Offset for Scene-Linear manipulation
-        if (e.code && e.code.startsWith('Numpad')) {
-            const step = 0.01;
-            const prevOffset = [...this.offset];
+        const hit = _matchKey(e);
+        if (!hit) return false;
+        const { entry, key } = hit;
+        // Undo and redo have their own handler (_installUndoShortcuts), which
+        // also serves a grade slider that still has focus after a drag.
+        if (entry.id === 'edit.undo' || entry.id === 'edit.redo') return false;
+        // A focused slider (the scrubber, a grade slider) steps itself.
+        const t = e.target;
+        if (t?.tagName === 'INPUT' && t.type === 'range' && _RANGE_KEYS.has(key.code)) return false;
+        if (this._runKeyAction(entry.id, key.arg, e) === false) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
 
-            switch (e.code) {
-                // Red
-                case 'Numpad7': this.offset[0] -= step; break;
-                case 'Numpad9': this.offset[0] += step; break;
-                // Green
-                case 'Numpad4': this.offset[1] -= step; break;
-                case 'Numpad6': this.offset[1] += step; break;
-                // Blue
-                case 'Numpad1': this.offset[2] -= step; break;
-                case 'Numpad3': this.offset[2] += step; break;
-                // Master (All Channels)
-                case 'Numpad8': this.offset[0] += step; this.offset[1] += step; this.offset[2] += step; break;
-                case 'Numpad2': this.offset[0] -= step; this.offset[1] -= step; this.offset[2] -= step; break;
-                // Exposure
-                case 'NumpadAdd': this.adjustEV(0.25); return;
-                case 'NumpadSubtract': this.adjustEV(-0.25); return;
-            }
+    /** Show the right panel on a tab, scrolled to a section when one is named. */
+    _openPanel(tab, section = null) {
+        this.showControls = true;
+        this._setReferenceTab(tab);
+        if (!section || !this.controlsPanel) return;
+        const heading = [...this.controlsPanel.querySelectorAll('.radiance-ref-title')]
+            .find((h) => (h.firstChild?.textContent || '').trim() === section);
+        heading?.parentElement?.scrollIntoView?.({ block: 'start' });
+    }
 
-            // Only update if changed
-            if (this.offset[0] !== prevOffset[0] || this.offset[1] !== prevOffset[1] || this.offset[2] !== prevOffset[2]) {
-                if (this.renderer) {
-                    this.renderer.setOffset(this.offset[0], this.offset[1], this.offset[2]);
-                    this._pushUndoDebounced();
-                }
-                if (this._lastRenderContent) this._lastRenderContent(); // Update HUD wheels
-                this.render();
-                return; // Handled
-            }
-        }
-
-        const key = e.key.toLowerCase();
-
-        // 1. Alt + 1..6: fast swap navigation tabs
-        if (e.altKey && ['1', '2', '3', '4', '5', '6'].includes(key)) {
-            e.preventDefault();
-            const tabMap = {
-                '1': 'prompt',
-                '2': 'primaries',
-                '3': 'curves',
-                '4': 'effects',
-                '5': 'masks',
-                '6': 'view'
-            };
-            this.switchTab(tabMap[key]);
-            return;
-        }
-
-        // 2. Alt + W: swap primaries wheel mode (PRIMARY vs LOG)
-        if (e.altKey && key === 'w') {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                this.activeWheelTab = this.activeWheelTab === 'PRIMARY' ? 'LOG' : 'PRIMARY';
-                // Trigger tab rebuild so wheels deck updates
-                if (typeof this._triggerRenderTabs === 'function') {
-                    this._triggerRenderTabs();
-                }
-            }
-            return;
-        }
-
-        // 3. Alt + Focus Wheel keys
-        if (e.altKey && ['l', 'g', 'a', 'o'].includes(key)) {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                const isLog = this.activeWheelTab === 'LOG';
-                const wheelMap = {
-                    'l': isLog ? 'SHADOW' : 'LIFT',
-                    'g': isLog ? 'MIDTONE' : 'GAMMA',
-                    'a': isLog ? 'HILIGHT' : 'GAIN',
-                    'o': 'OFFSET'
-                };
-                this.setFocusedWheel(wheelMap[key]);
-            }
-            return;
-        }
-
-        // 4. Alt + ArrowUp / ArrowDown: adjust focused wheel master ring (luma)
-        if (e.altKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                const delta = e.code === 'ArrowUp' ? 0.005 : -0.005;
-                this.adjustFocusedWheelMaster(delta, e);
-            }
-            return;
-        }
-
-        // v4.1: Alt+B — cycle pipeline bit depth (INT 8 / FLOAT 16 / FLOAT 32)
-        if (e.altKey && key === 'b') {
-            e.preventDefault();
-            this._cyclePipelinePrecision();
-            return;
-        }
-
-        switch (key) {
-            case '?': case '/': if (e.shiftKey) this.toggleHelp(); break;
-            case 'f': this.fitToView(); break;
-            case '1': this.setZoom(1.0); break;
-            case 'r': if (e.shiftKey) break; this.channel = 'r'; this.showZdepth = false; this.render(); break;
-            case 'g': if (e.shiftKey) { this.cycleGridMode(); } else if (!e.ctrlKey) { this.channel = 'g'; this.showZdepth = false; this.render(); } break;
-            case 'b': if (e.shiftKey) break; this.channel = 'b'; this.showZdepth = false; this.render(); break;
-            // 3.5.0: Y = luma (L is Resolve/Avid "play forward" now, with J/K).
-            case 'y': this.channel = 'luma'; this.showZdepth = false; this.render(); break;
-            case 'c': this.channel = 'rgb'; this.showZdepth = false; this.render(); break;
-            case 'j': if (!e.shiftKey) this.shuttle(-1); break;
-            case 'l': if (!e.shiftKey) this.shuttle(+1); break;
-            case 'i': this.setInPoint(); break;
-            case 'o': this.setOutPoint(); break;
-            case 'x':
-                if (e.altKey) { e.preventDefault(); this.clearInOut(); }
-                else this.cycleCompareMode();
-                break;
-            case 'home': e.preventDefault(); this.setFrame(this.inPoint ?? 0); break;
-            case 'end': e.preventDefault(); this.setFrame(this.outPoint ?? Math.max(0, (this.totalFrames || 1) - 1)); break;
-            // RV binds nearest-neighbour to 'n'. Pixel-peeping through a
-            // bilinear filter shows a blend of neighbours rather than pixels.
-            case 'n': this.togglePixelFilter(); break;
-            case 'h': this.toggleHelp(); break;
-            case 'w': this.toggleScope('waveform'); break;
-            case 'm': this.toggleParadeMode(); break;
-            case 'v': this.toggleScope('vectorscope'); break;
-            case 'e': this.falseColor = !this.falseColor; this.zebra = false; this.focusPeaking = false; this.showZdepth = false; this.render(); break;
-            case 'k':
-                if (e.shiftKey) { this.focusPeaking = !this.focusPeaking; this.falseColor = false; this.zebra = false; this.showZdepth = false; this.render(); }
-                else this.shuttle(0);          // K: stop (J/K/L)
-                break;
-            case 'z': this.toggleZdepth(); break;
-            case 'q':
+    /**
+     * Run one keymap action, from a key or a menu. Returns false when the
+     * action did not apply (Esc with nothing to close), so the key is left
+     * for the page.
+     */
+    _runKeyAction(id, arg = undefined) {
+        const channel = (c) => { this.channel = c; this.showZdepth = false; this.render(); };
+        switch (id) {
+            // File
+            case 'file.export': this.showExportMenu?.({ target: this.proToolbar || this.container }); break;
+            case 'file.savePNG': this._saveResultPNG?.(); break;
+            case 'file.exportCDL': this._exportCDL(); break;
+            case 'file.exportCUBE': this._exportGradeLUT(); break;
+            case 'file.pinB': this.pinCurrentFrame(); break;
+            // Edit
+            case 'edit.undo': this.undo?.(); break;
+            case 'edit.redo': this.redo?.(); break;
+            case 'edit.resetGrade': this.resetControls(); break;
+            case 'edit.resetAll': this.resetGradeAll(); break;
+            // View
+            case 'view.fit': this.fitToView(); break;
+            case 'view.zoom100': this.setZoom(1.0); break;
+            case 'view.zoom200': this.setZoom(2.0); break;
+            case 'view.zoomPreset': if (arg) this.setZoom(arg); else this.fitToView(); break;
+            case 'view.safeAreas': this.cycleSafeAreas(); break;
+            case 'view.grid': this.cycleGridMode(); break;
+            case 'view.pixelFilter': this.togglePixelFilter(); break;
+            case 'view.loupe':
                 this.showLoupe = !this.showLoupe;
                 if (this.loupeBtn) {
                     this.loupeBtn.classList.toggle('active', this.showLoupe);
@@ -7286,119 +8056,133 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 this.renderOverlay();
                 break;
-            case 'a':
-                // 3.5.0: A = alpha channel, as in RV (compare moved to X).
-                if (e.shiftKey) break;
-                this.channel = this.channel === 'a' ? 'rgb' : 'a'; this.render();
+            case 'view.exposureUp': this.setViewExposure((this.viewExposure || 0) + 0.5); break;
+            case 'view.exposureDown': this.setViewExposure((this.viewExposure || 0) - 0.5); break;
+            case 'view.resetViewer': this.setViewGamma(1); this.setViewExposure(0); break;
+            case 'view.compare': this.cycleCompareMode(); break;
+            case 'view.falseColor':
+                this.falseColor = !this.falseColor; this.zebra = false; this.focusPeaking = false; this.showZdepth = false;
+                this.render();
                 break;
-            case 's': if (!e.ctrlKey && !e.shiftKey) this.cycleSafeAreas(); break;
-            case 'arrowleft':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(-0.005, 0, e);
-                } else {
-                    this.prevFrame();
-                }
+            case 'view.zebra': this.zebra = !this.zebra; this.render(); break;
+            case 'view.heatmap': this.toggleHDRHeatmap(); break;
+            case 'view.focusPeaking':
+                this.focusPeaking = !this.focusPeaking; this.falseColor = false; this.zebra = false; this.showZdepth = false;
+                this.render();
                 break;
-            case 'arrowright':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0.005, 0, e);
-                } else {
-                    this.nextFrame();
-                }
+            case 'view.metadata': this.toggleMetadata(); break;
+            case 'view.depth': this.toggleZdepth(); break;
+            // Channels
+            case 'channel.r': channel('r'); break;
+            case 'channel.g': channel('g'); break;
+            case 'channel.b': channel('b'); break;
+            case 'channel.luma': channel('luma'); break;
+            case 'channel.rgb': channel('rgb'); break;
+            case 'channel.alpha': channel(this.channel === 'a' ? 'rgb' : 'a'); break;
+            // Panel
+            case 'panel.inspector': this._openPanel('inspector'); break;
+            case 'panel.grade': this._openPanel('grade'); break;
+            case 'panel.masks': this._openPanel('masks'); break;
+            case 'panel.effects': this._openPanel('effects'); break;
+            case 'panel.scopes': this._openPanel('scopes'); this.updateScopes?.(); break;
+            case 'panel.analysis': this._openPanel('analysis'); break;
+            case 'panel.curves': this._openPanel('inspector', 'COLOR CURVES'); break;
+            case 'panel.presets': this._openPanel('grade', 'PRESETS'); break;
+            case 'panel.ocio': this._openPanel('grade', 'COLOR TRANSFORM'); break;
+            case 'grade.exposureUp': this.adjustEV(0.25); break;
+            case 'grade.exposureDown': this.adjustEV(-0.25); break;
+            // Scopes over the picture
+            case 'scope.waveform': this.toggleScope('waveform'); break;
+            case 'scope.parade': this.toggleParadeMode(); break;
+            case 'scope.vectorscope': this.toggleScope('vectorscope'); break;
+            // Tools
+            case 'tools.precision': this._cyclePipelinePrecision(); break;
+            case 'tools.terminal': this.toggleTerminal(); break;
+            // Playback
+            case 'play.toggle': this.togglePlayback(); break;
+            case 'play.prev': this.prevFrame(); break;
+            case 'play.next': this.nextFrame(); break;
+            case 'play.reverse': this.shuttle(-1); break;
+            case 'play.stop': this.shuttle(0); break;
+            case 'play.forward': this.shuttle(+1); break;
+            case 'play.in': this.setInPoint(); break;
+            case 'play.out': this.setOutPoint(); break;
+            case 'play.clearInOut': this.clearInOut(); break;
+            case 'play.first': this.setFrame(this.inPoint ?? 0); break;
+            case 'play.last': this.setFrame(this.outPoint ?? Math.max(0, (this.totalFrames || 1) - 1)); break;
+            // Timeline tools
+            case 'tool.select': this._setTimelineTool('select'); break;
+            case 'tool.slip': this._setTimelineTool('slip'); break;
+            case 'tool.reference': this._setTimelineTool('reference'); break;
+            // Window and general
+            case 'window.panel': this.toggleControls(); break;
+            case 'window.compact': this.toggleCompactLayout(); break;
+            case 'window.fullscreen': this.toggleFullscreen(); break;
+            case 'general.run': this.runWorkflow(); break;
+            case 'general.escape':
+                if (this.showHelp) this.toggleHelp();
+                else if (this.isFullscreen) this.exitFullscreen();
+                else return false;
                 break;
-            case 'arrowup':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0, -0.005, e);
-                }
-                break;
-            case 'arrowdown':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0, 0.005, e);
-                }
-                break;
-            case ' ':
-                e.preventDefault(); // Stop default scroll
-                this.togglePlayback();
-                break;
-            case 'escape':
-                if (this.showHelp) { this.toggleHelp(); }
-                else if (this.isFullscreen) { this.exitFullscreen(); }
-                else if (this.showPromptPanel) { this.togglePromptPanel(); }
-                break;
-            // 3.5.0: -/= nudge the VIEWER f-stop (display only); the grade's
-            // exposure stays on Numpad +/-. [ ] set in/out (RV). 0 resets the
-            // viewer f-stop and gamma; it used to wipe the whole grade.
-            case '=': case '+': this.setViewExposure((this.viewExposure || 0) + 0.5); break;
-            case '-': this.setViewExposure((this.viewExposure || 0) - 0.5); break;
-            case '[': this.setInPoint(); break;
-            case ']': this.setOutPoint(); break;
-            case '0':
-                this.viewGamma = 1;
-                if (this._viewGammaInput) this._viewGammaInput.value = '1.00';
-                this.setViewExposure(0);
-                break;
-            case 'p': if (!e.ctrlKey) this.togglePromptPanel(); break;
-            case '`': case '~': this.toggleTerminal(); e.preventDefault(); break;
-            case 'enter': if (e.shiftKey) this.runWorkflow(); break;
+            case 'help.toggle': this.toggleHelp(); break;
+            default: return false;
         }
+        return true;
     }
 
+    /**
+     * Reset the Grade tab's own controls (exposure, tone, colour, wheels and
+     * offset). Curves, printer lights, effects, the LUT and the input space
+     * stay; Reset All takes those too.
+     */
     resetControls() {
-        this._pushUndo();
-        this.exposure = 0.0;
-        this.contrast = 1.0;
-        this.saturation = 1.0;
-        this.temperature = 0.0;
-        this.tint = 0.0;
-        this.pivot = 0.5;
-        this.shadows = 0.0;
-        this.highlights = 0.0;
-        this.midDetail = 0.0;
-        this.colorBoost = 0.0;
-        this.softClip = 0.0;
-        this.lumaMix = 1.0;
-        this.offset = [0.0, 0.0, 0.0];
-        this.gain = [1.0, 1.0, 1.0];
-        this.gamma = [1.0, 1.0, 1.0];
-        this.lift = [0.0, 0.0, 0.0];
-
-        if (this.renderer) {
-            this.renderer.setExposure(this.exposure);
-            this.renderer.setContrast(this.contrast);
-            this.renderer.setPivot(this.pivot);
-            this.renderer.setSaturation(this.saturation);
-            this.renderer.setTemperature(this.temperature);
-            this.renderer.setTint(this.tint);
-            this.renderer.setHighlights?.(this.highlights);
-            this.renderer.setShadows?.(this.shadows);
-            this.renderer.setMidDetail?.(this.midDetail);
-            this.renderer.setColorBoost?.(this.colorBoost);
-            this.renderer.setSoftClip?.(this.softClip);
-            this.renderer.setLumaMix?.(this.lumaMix);
-            this.renderer.setOffset(...this.offset);
-            this.renderer.setGain(...this.gain);
-            this.renderer.setGamma(...this.gamma);
-            this.renderer.setLift(...this.lift);
-        }
-
-        // Update HUD UI
-        if (this._lastRenderContent) this._lastRenderContent();
-        this.render();
+        this._resetGradeFields([
+            ...RadianceViewer.GRADE_SECTIONS.exposure, ...RadianceViewer.GRADE_SECTIONS.tone,
+            ...RadianceViewer.GRADE_SECTIONS.color, ...RadianceViewer.GRADE_SECTIONS.wheels,
+        ]);
     }
 
+    /** Reset every grade field: the Grade tab, curves, printer lights, effects, LUT, input space, mask and qualifier. */
+    resetGradeAll() {
+        this._pushUndo();
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = this._captureGradingState();
+        for (const k of Object.keys(D)) state[k] = RadianceViewer._cloneGradeValue(D[k]);
+        state.curves = null;
+        state.manualLut = null;
+        state.inputSpace = 'None';
+        this._userSetIDT = false;
+        this._restoreGradingState(state);
+        this._afterGradeRestore();
+    }
+
+    /** Reset the named fields to the defaults table, as one undo step. */
+    _resetGradeFields(keys) {
+        this._pushUndo();
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = this._captureGradingState();
+        for (const k of keys) {
+            if (k === 'curves') state.curves = null;
+            else if (k === 'manualLut') state.manualLut = null;
+            else if (k === 'inputSpace') { state.inputSpace = 'None'; this._userSetIDT = false; }
+            else if (k in D) state[k] = RadianceViewer._cloneGradeValue(D[k]);
+        }
+        this._restoreGradingState(state);
+        this._afterGradeRestore();
+    }
+
+    /**
+     * Step exposure (numpad +/-, the scroll gesture). Clamped to the same
+     * ±12 stops the Exposure slider covers and the shader applies, and the
+     * slider follows: evControl was never assigned, so it went stale.
+     */
     adjustEV(delta) {
         this._pushUndoDebounced();
-        this.exposure = Math.max(-12.0, Math.min(12.0, this.exposure + delta));
-        // v2.2: Update HUD slider (replaces crashed evSlider.setValue)
-        if (this.evControl) {
-            const input = this.evControl.querySelector('input[type="range"]');
-            if (input) { input.value = this.exposure; input.dispatchEvent(new Event('input')); }
-        }
+        const ev = (this.exposure ?? 0) + delta;
+        this.exposure = Math.max(_EXPOSURE_MIN, Math.min(_EXPOSURE_MAX, Math.round(ev * 1000) / 1000));
         if (this.renderer) this.renderer.setExposure(this.exposure);
+        this._syncGradeControls();
+        this._schedulePersistGrade();
         this.render();
     }
 
@@ -7421,8 +8205,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 requestAnimationFrame(() => { this.resize(); this.render(); });
             };
-            document.addEventListener('fullscreenchange', handler);
-            document.addEventListener('webkitfullscreenchange', handler);
+            document.addEventListener('fullscreenchange', handler, { signal: this._listenerSignal });
+            document.addEventListener('webkitfullscreenchange', handler, { signal: this._listenerSignal });
         } else {
             this.exitFullscreen();
         }
@@ -7498,115 +8282,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousedown', closeMenu);
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', closeMenu), 10);
+        setTimeout(() => document.addEventListener('mousedown', closeMenu, { signal: this._listenerSignal }), 10);
     }
 
-    // v3.0 #7: ASC CDL Export — writes current grading state as .cdl XML
-    _exportCDL() {
-        // Gain (slope), Lift (offset), Power (gamma), Saturation
-        // FIX-006: CDL is (in * slope + offset) ^ power. The Viewer applies
-        // exposure, offset, gain, then gamma (^ 1/gamma), so slope = 2^exposure
-        // * gain and offset = offset * gain. Lift is luma-pivoted, not a CDL
-        // offset; it used to be written as one.
-        const _k = Math.pow(2, this.exposure || 0);
-        const _gain = this.gain || [1, 1, 1];
-        const _off = this.offset || [0, 0, 0];
-        const slope = _gain.map(g => _k * g);
-        const offset = _off.map((o, i) => o * _gain[i]);
-        // Power: inverse of gamma (CDL power = 1/gamma for gamma>0)
-        const gamma = this.gamma && Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const power = gamma.map(g => g > 0 ? (1.0 / g).toFixed(6) : '1.000000');
-        const sat = (this.saturation !== undefined ? this.saturation : 1.0).toFixed(6);
-
-        const s = slope.map(v => v.toFixed(6)).join(' ');
-        const o = offset.map(v => v.toFixed(6)).join(' ');
-        const p = power.join(' ');
-
-        const xml = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">',
-            '  <ColorDecision>',
-            '    <!-- Radiance Viewer v3.0 Grade Export -->',
-            '    <ColorCorrection id="radiance_grade">',
-            '      <SOPNode>',
-            `        <Slope>${s}</Slope>`,
-            `        <Offset>${o}</Offset>`,
-            `        <Power>${p}</Power>`,
-            '      </SOPNode>',
-            '      <SatNode>',
-            `        <Saturation>${sat}</Saturation>`,
-            '      </SatNode>',
-            '    </ColorCorrection>',
-            '  </ColorDecision>',
-            '</ColorDecisionList>',
-        ].join('\n');
-
-        const blob = new Blob([xml], { type: 'text/xml' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cdl`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        console.log('[Radiance v3.0] CDL exported');
-    }
-
-    // ── Sprint 3: .CUBE 3D LUT export from live grade ──────────────────────
-    // Bakes the current LGG/Sat/Contrast grade into a 17³-point 3D LUT .cube
-    // file that can be loaded into DaVinci Resolve, Nuke, Baselight, or SCRATCH.
-    _exportGradeLUT() {
-        const N = 17; // Grid size (17³ = 4913 points, standard for creative LUTs)
-        const lines = [
-            `# Radiance Viewer Grade LUT — exported ${new Date().toISOString()}`,
-            `# Gain: ${(this.gain || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Gamma: ${(this.gamma || [1, 1, 1]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Lift: ${(this.lift || [0, 0, 0]).map(v => v.toFixed(4)).join(' ')}`,
-            `# Saturation: ${(this.saturation || 1).toFixed(4)}`,
-            `# Contrast: ${(this.contrast || 1).toFixed(4)}  Pivot: ${(this.pivot || 0.18).toFixed(4)}`,
-            'LUT_3D_SIZE 17',
-            'DOMAIN_MIN 0.0 0.0 0.0',
-            'DOMAIN_MAX 1.0 1.0 1.0',
-            ''
-        ];
-
-        const gain = Array.isArray(this.gain) ? this.gain : [1, 1, 1];
-        const gamma = Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
-        const lift = Array.isArray(this.lift) ? this.lift : [0, 0, 0];
-        const sat = this.saturation || 1.0;
-        const con = this.contrast || 1.0;
-        const piv = this.pivot || 0.18;
-
-        // The shared grade definition -- the same one the shaders are emitted
-        // from. This was a fourth hand-written copy, and it differed from the
-        // WebGL one it was meant to mirror by leaving contrast unclamped, so a
-        // .cube taken into Resolve did not match the viewer it came from.
-        const applyGrade = (r, g, b) => {
-            const out = _gradePixel([r, g, b], {
-                lift, gain, gamma, contrast: con, pivot: piv, saturation: sat,
-            });
-            // Clamp to [0, 1] for the LUT domain -- a .cube cannot carry values
-            // outside it.
-            return out.map((v) => Math.max(0, Math.min(1, v)));
-        };
-
-        // .CUBE Ordering: R varies fastest, then G, then B
-        for (let bi = 0; bi < N; bi++) {
-            for (let gi = 0; gi < N; gi++) {
-                for (let ri = 0; ri < N; ri++) {
-                    const r = ri / (N - 1), g = gi / (N - 1), bv = bi / (N - 1);
-                    const [or, og, ob] = applyGrade(r, g, bv);
-                    lines.push(`${or.toFixed(6)} ${og.toFixed(6)} ${ob.toFixed(6)}`);
-                }
-            }
-        }
-
-        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-        const link = document.createElement('a');
-        link.download = `radiance_grade_${Date.now()}.cube`;
-        link.href = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
-        this._termLog?.('success', `[LUT] Exported 17³ .cube LUT from live grade`);
-    }
+    // _exportCDL and _exportGradeLUT live with the grade state (GRADE EXPORT &
+    // PRESETS): one CDL writer and one .cube writer, for every menu and button.
 
     // v3.0 #7: ASC CDL Import — reads .cdl XML and applies to current grading state
     _importCDL() {
@@ -7746,27 +8426,48 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Default PNG Export
+        this._saveResultPNG();
+    }
+
+    /**
+     * H17: "Save PNG (Result)": the graded picture through the view, at full
+     * size, in the colour space the view encodes for, and nothing the viewer
+     * adds for looking: no viewer f-stop or gamma, no false colour, zebra,
+     * wipe, grid or dither. That is the scopes' display signal, so it is
+     * rendered with readDisplaySignal. It used to read the live canvas, so a
+     * +2 viewer f-stop took a 127 pixel to 238 in the file and false colour
+     * was saved as the picture, and a Display P3 view was saved untagged.
+     *
+     * The canvas is created in the view's colour space, so a P3 result is
+     * written as Display P3 (the browser tags the PNG) and an sRGB one as
+     * sRGB; the file name and the log say which.
+     */
+    _saveResultPNG() {
+        const p3 = this.renderer?.displayColorSpace === 'display-p3';
+        const space = p3 ? 'display-p3' : 'srgb';
         const exp = document.createElement('canvas');
         exp.width = this.imageWidth;
         exp.height = this.imageHeight;
-        const ctx = exp.getContext('2d');
-
-        if (this.useWebGL && this.renderer && this.renderer.textures.image) {
-            const prevW = this.glCanvas.width, prevH = this.glCanvas.height;
-            this.glCanvas.width = this.imageWidth;
-            this.glCanvas.height = this.imageHeight;
-            this.renderer.render(this.lutIntensity || 1.0);
-            ctx.drawImage(this.glCanvas, 0, 0);
-            this.glCanvas.width = prevW;
-            this.glCanvas.height = prevH;
+        const ctx = exp.getContext('2d', { colorSpace: space });
+        const sig = this.useWebGL && this.renderer?.readDisplaySignal
+            ? this.renderer.readDisplaySignal(this.imageWidth, this.imageHeight, this.lutIntensity || 1.0, true)
+            : null;
+        if (sig?.data) {
+            let img;
+            try { img = new ImageData(sig.data, sig.width, sig.height, { colorSpace: space }); }
+            catch { img = new ImageData(sig.data, sig.width, sig.height); }
+            ctx.putImageData(img, 0, 0);
         } else {
             this.renderImage(ctx, this.image);
         }
-
+        const tag = p3 ? 'DisplayP3' : 'sRGB';
         const link = document.createElement('a');
-        link.download = `radiance_${Date.now()}.png`;
+        link.download = `radiance_${Date.now()}_${tag}.png`;
         link.href = exp.toDataURL('image/png');
         link.click();
+        const view = this.ocioActive ? `${this.ocioDisplay} / ${this.ocioView}` : (this.displayLut || 'no view');
+        this._termLog?.('success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
+            + `(view: ${view}; no viewer f-stop, gamma or overlays)`);
     }
 
     // ── v4.0: OpenEXR 32-bit FLOAT Encoder ───────────────────────────────────
@@ -7969,74 +8670,28 @@ self.onmessage = async ({ data: { id, url } }) => {
             box-shadow: 0 8px 32px rgba(0,0,0,0.8);
         `;
 
-        const shortcuts = [
-            {
-                category: 'Navigation', items: [
-                    ['F', 'Fit to view'],
-                    ['1', '1:1 pixel zoom'],
-                    ['Mouse Wheel', 'Zoom in/out'],
-                    ['Shift+Drag', 'Pan image'],
-                    ['← →', 'Previous/Next frame'],
-                    ['Space', 'Play / pause'],
-                    ['J / K / L', 'Play reverse / stop / play forward'],
-                    ['I or [ / O or ]', 'Set in / out point'],
-                    ['Alt+X', 'Clear in/out'],
-                    ['Home / End', 'First / last frame (in / out)']
-                ]
-            },
-            {
-                category: 'Display', items: [
-                    ['R/G/B/Y', 'View R/G/B/Luma channel'],
-                    ['C', 'RGB (color) view'],
-                    ['A', 'Alpha channel'],
-                    ['+/−', 'Viewer f-stop (display only)'],
-                    ['Numpad +/−', 'Grade exposure'],
-                    ['0', 'Reset viewer f-stop and gamma'],
-                    ['N', 'Nearest / linear magnification'],
-                    ['E', 'False color (ARRI)'],
-                    ['Shift+K', 'Focus peaking (GPU)'],
-                    ['Q', 'Pixel loupe'],
-                    ['Z', 'Z-Depth / Zebra']
-                ]
-            },
-            {
-                category: 'Analysis', items: [
-                    ['H', 'Histogram (HDR-aware)'],
-                    ['W', 'Waveform'],
-                    ['M', 'Toggle Parade mode'],
-                    ['V', 'Vectorscope'],
-                    ['Shift+G', 'Cycle grid modes'],
-                    ['G', 'Green channel'],
-                    ['S', 'Safe areas'],
-                    ['X', 'A/B compare mode'],
-                ]
-            },
-            {
-                category: 'General', items: [
-                    ['⛶', 'Fullscreen'],
-                    ['Shift+Enter', 'Run workflow'],
-                    ['P', 'Prompt editor'],
-                    ['?', 'This help'],
-                    ['Esc', 'Close help/Exit fullscreen']
-                ]
-            }
-        ];
+        // Made from the keymap, so it lists every bound key and no other (it
+        // said H was Histogram while H opened this, and listed P, which opened
+        // nothing). Pointer gestures follow; they are not keys.
+        const shortcuts = _helpSections().map(({ section, items }) => ({ category: section, items }));
+        shortcuts.push({ category: 'Mouse, trackpad, pen and touch', items: _POINTER_HELP.map(([k, d]) => [k, d]) });
+        const esc = RadianceViewer.escapeHtml;
 
         let html = `<div style="color: ${this.theme.accent}; font-size: 18px; font-weight: bold; margin-bottom: 16px; text-align: center;">◎ Keyboard Shortcuts</div>`;
 
         shortcuts.forEach(section => {
             html += `<div style="margin-bottom: 16px;">`;
-            html += `<div style="color: ${this.theme.accent}; font-size: 12px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid ${this.theme.panelBorder}; padding-bottom: 4px;">${section.category}</div>`;
+            html += `<div style="color: ${this.theme.accent}; font-size: 12px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid ${this.theme.panelBorder}; padding-bottom: 4px;">${esc(section.category)}</div>`;
             section.items.forEach(([key, desc]) => {
                 html += `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">`;
-                html += `<span style="background: #1a1a28; padding: 2px 8px; border-radius: 3px; font-family: monospace; color: ${this.theme.text};">${key}</span>`;
-                html += `<span style="color: ${this.theme.textDim}; margin-left: 12px;">${desc}</span>`;
+                html += `<span style="background: #1a1a28; padding: 2px 8px; border-radius: 3px; font-family: monospace; color: ${this.theme.text};">${esc(key)}</span>`;
+                html += `<span style="color: ${this.theme.textDim}; margin-left: 12px;">${esc(desc)}</span>`;
                 html += `</div>`;
             });
             html += `</div>`;
         });
 
-        html += `<div style="text-align: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid ${this.theme.panelBorder}; color: ${this.theme.textDim}; font-size: 9px;">Press ? or Esc to close</div>`;
+        html += `<div style="text-align: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid ${this.theme.panelBorder}; color: ${this.theme.textDim}; font-size: 9px;">Press ${esc(_shortcutLabel('help.toggle', { all: true }))} or Esc to close</div>`;
 
         this.helpPanel.innerHTML = html;
         this.canvasWrapper.appendChild(this.helpPanel);
@@ -8158,10 +8813,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     // v3.0 #6: Route histogram scope to renderer.renderHistogram() for GPU-based rendering
     _renderGPUHistogram() {
         if (this.renderer && this.histogramCanvas && this.showHistogram) {
-            // Use log scale for HDR images (data_range max > 1.0)
-            const isHDR = this.hdrData && this.hdrData.data_range && this.hdrData.data_range[1] > 1.05;
+            // Log is the LogC assist curve, as everywhere else the scopes draw.
             const _hs = this._scopeSource();
-            this.renderer.renderHistogram(this.histogramCanvas, isHDR, _hs.tex, _hs.isLinear);
+            this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs.tex, _hs.isLinear, this._scopeOpts(_hs));
         }
     }
 
@@ -8253,7 +8907,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** True when a B picture is available to compare against. */
     _hasCompareB() {
-        if (this.renderer?.textures) return !!this.renderer.textures.reference;
+        if (this.renderer?.textures) return !!(this.renderer.textures.reference || this.renderer._compareSrc);
         return !!this.compareImage;
     }
 
@@ -8457,18 +9111,38 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.showHistogram) this.updateHistogram();
             if (this.showWaveform) this.updateWaveform();
             if (this.showVectorscope) this.updateVectorscope();
-            this._updateReferenceScopes?.();
+            this._scheduleReferenceScopeUpdate();
             if (this.scopeOverlay) this.renderOverlay();
         }, this.scopeDebounceMs);
     }
 
+    /**
+     * The one place the SCOPES tab is redrawn from. Each redraw is four
+     * 512x512 read-backs, and a frame change used to ask for two (one from
+     * render(), one from setFrame). Now at most one is pending, and during
+     * playback they come at most about six times a second.
+     */
     _scheduleReferenceScopeUpdate() {
         if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
-        if (this._referenceScopeRAF) cancelAnimationFrame(this._referenceScopeRAF);
-        this._referenceScopeRAF = requestAnimationFrame(() => {
-            this._referenceScopeRAF = null;
-            this._updateReferenceScopes?.();
-        });
+        if (this._referenceScopeRAF || this._referenceScopeTimer) return;   // one is already coming
+        // C2: the scopes read every pixel now, so they refresh at most every
+        // SCOPE_MIN_INTERVAL_MS (about six times a second while playing). A
+        // pending update reads the state when it runs, so the last change is
+        // always shown. The picture itself is never held back.
+        const interval = this.isPlaying ? 160 : RadianceViewer.SCOPE_MIN_INTERVAL_MS;
+        const wait = (this._referenceScopeAt || 0) + interval - performance.now();
+        const draw = () => {
+            this._referenceScopeRAF = requestAnimationFrame(() => {
+                this._referenceScopeRAF = null;
+                this._referenceScopeAt = performance.now();
+                this._updateReferenceScopes?.();
+            });
+        };
+        if (wait > 0) {
+            this._referenceScopeTimer = setTimeout(() => { this._referenceScopeTimer = null; draw(); }, wait);
+        } else {
+            draw();
+        }
     }
 
     updateHistogram() {
@@ -8476,7 +9150,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Use renderHistogram() which adds log-scale grid, HDR dotted line, and labels
         const _hs2 = this._scopeSource();
-        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear);
+        this.renderer.renderHistogram(this.histogramCanvas, this.scopeLogView || false, _hs2.tex, _hs2.isLinear, this._scopeOpts(_hs2));
     }
 
     toggleParadeMode() {
@@ -8525,24 +9199,73 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /**
      * 3.5.0: what every scope measures: the displayed picture, graded and
-     * through the view, without overlays, at up to 512 px. The GPU scopes
-     * used to read the ungraded source texture, so grading never moved them.
+     * through the view, without overlays. The GPU scopes used to read the
+     * ungraded source texture, so grading never moved them.
+     *
+     * C2: at the frame's own resolution (up to SCOPE_SIGNAL_MAX on the long
+     * edge), in float. It was a 512 px 8-bit copy, so a one-pixel line, a
+     * lone clipped specular and anything outside 0-1 never reached a scope.
      */
     _scopeSource() {
         const r = this.renderer;
         if (r?.readDisplaySignal && this.imageWidth && this.imageHeight) {
-            const s = Math.min(1, 512 / Math.max(this.imageWidth, this.imageHeight));
+            const s = Math.min(1, this._scopeSignalMaxNow() / Math.max(this.imageWidth, this.imageHeight));
             const res = r.readDisplaySignal(this.imageWidth * s, this.imageHeight * s, this.lutIntensity || 1.0, false);
-            if (res?.texture) return { tex: res.texture, isLinear: false };
+            if (res?.texture) return { tex: res.texture, isLinear: false, width: res.width, height: res.height };
         }
-        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture };
+        return { tex: r?.textures?.image, isLinear: r?.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+    }
+
+    /**
+     * The long edge the scope signal is rendered at: every pixel up to
+     * SCOPE_SIGNAL_MAX on a GPU. Rendering the full graded frame a second
+     * time is cheap on a GPU and slow on a software rasteriser, so there it
+     * starts at 1024, and any machine whose sidebar update takes longer than
+     * SCOPE_SLOW_UPDATE_MS has it halved (not below 512). Below full size the
+     * scopes average neighbouring pixels again, so this is the degraded mode.
+     */
+    _scopeSignalMaxNow() {
+        if (this.scopeSignalMax === undefined) {
+            const budget = this.renderer?._scopePointBudgetNow?.();
+            this.scopeSignalMax = budget !== undefined && budget < 1e6 ? 1024 : RadianceViewer.SCOPE_SIGNAL_MAX;
+        }
+        return this.scopeSignalMax;
+    }
+
+    /**
+     * The display encoding the viewer is putting out, for the scope scales
+     * that interpret one: 'pq', 'hlg' or 'sdr'. Only an OCIO display or view
+     * that names ST 2084 / PQ or HLG counts; every built-in view is SDR.
+     */
+    _activeDisplayEncoding() {
+        if (!this.ocioActive) return 'sdr';
+        const name = `${this.ocioDisplay || ''} ${this.ocioView || ''}`;
+        if (/ST[-._ ]?2084|\bPQ\b/i.test(name)) return 'pq';
+        if (/\bHLG\b/i.test(name)) return 'hlg';
+        return 'sdr';
+    }
+
+    /**
+     * Graticule and source size for the GPU scopes (C1): the selected scale's
+     * ticks, as the Scopes tab draws them. A nit scale is only used when the
+     * output really is PQ or HLG; otherwise the scale falls back to 10-bit
+     * code value rather than labelling an SDR signal in nits.
+     */
+    _scopeOpts(src) {
+        let scale = this.scopeScale || 'cv10';
+        const interprets = (_SCOPE_SCALES.find((x) => x.id === scale) || {}).interprets;
+        if (interprets && interprets.toLowerCase() !== this._activeDisplayEncoding()) scale = 'cv10';
+        return {
+            width: src.width, height: src.height,
+            ticks: _scopeTicks(scale, { levels: this.scopeLevels || 'data', peakNits: this.scopeHlgPeak || 1000 }),
+        };
     }
 
     updateWaveform() {
         if (!this.image || !this.renderer) return;
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('waveform', this.waveformCanvas, tex, isLinear, this.waveformParadeMode);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('waveform', this.waveformCanvas, src.tex, src.isLinear, this.waveformParadeMode, this._scopeOpts(src));
         }
     }
 
@@ -8550,9 +9273,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateVectorscope() {
         if (!this.image || !this.renderer) return;
 
-        const { tex, isLinear } = this._scopeSource();
-        if (tex) {
-            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, tex, isLinear);
+        const src = this._scopeSource();
+        if (src.tex) {
+            this.renderer.renderScope('vectorscope', this.vectorscopeCanvas, src.tex, src.isLinear, false, this._scopeOpts(src));
 
             // BT.709 Cb/Cr graticule: targets from colour bars, same maths as the trace.
             _vsGraticule(this.vectorscopeCtx, this.vectorscopeCanvas.width, this.vectorscopeCanvas.height, { labels: false });
@@ -8574,6 +9297,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Grid
         if (this.showGrid) this.drawGrid(ctx, w, h);
+        if (this.pixelGrid) this._drawPixelGrid(ctx);
 
         // Scope overlay
         if (this.scopeOverlay && this.histogramData) this.drawHistogramOverlay(ctx, w, h);
@@ -8955,6 +9679,76 @@ self.onmessage = async ({ data: { id, url } }) => {
     //                          EVENTS
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /**
+     * L4: what a wheel event asks for, in CSS pixels. A pinch arrives as
+     * ctrl+wheel and zooms; a two-finger trackpad scroll pans; a mouse wheel
+     * zooms. Line and page deltas are turned into pixels: Firefox sends a
+     * mouse notch as 3 lines, which zoomed 33 times slower than 100 pixels.
+     *
+     * A trackpad is told from a wheel by a sideways component, by Chrome's
+     * and Safari's wheelDeltaY being -3 x deltaY for it (a mouse notch is 120
+     * against 100), or, where there is no wheelDeltaY, by a fractional delta.
+     */
+    static _wheelGesture(e, pageHeight = 800) {
+        const unit = e.deltaMode === 1 ? 100 / 3 : e.deltaMode === 2 ? Math.max(100, pageHeight) : 1;
+        const dx = (e.deltaX || 0) * unit, dy = (e.deltaY || 0) * unit;
+        if (e.ctrlKey) return { kind: 'zoom', dy, pinch: e.deltaMode === 0 && Math.abs(e.deltaY) < 50 };
+        let trackpad = false;
+        if (e.deltaMode === 0) {
+            if (e.deltaX) trackpad = true;
+            else if (typeof e.wheelDeltaY === 'number' && e.wheelDeltaY !== 0) trackpad = e.wheelDeltaY === -3 * e.deltaY;
+            else trackpad = !Number.isInteger(e.deltaY);
+        }
+        return trackpad ? { kind: 'pan', dx, dy } : { kind: 'zoom', dy };
+    }
+
+    /** Zoom to `z`, keeping the canvas point (mx, my) where it is. */
+    _zoomAbout(mx, my, z) {
+        const newZoom = Math.max(0.01, Math.min(200, z));
+        this.panX = mx - (mx - this.panX) * (newZoom / this.zoom);
+        this.panY = my - (my - this.panY) * (newZoom / this.zoom);
+        this.zoom = newZoom;
+        this._viewIsFit = false;
+        this.updateBottomBar();
+        this.render();
+    }
+
+    // L4: touch. One finger pans, two pan with their midpoint and zoom by the
+    // change in their spread. Mouse and pen take the pointer path above.
+    _touchDown(e) {
+        e.preventDefault();
+        try { this.canvas.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer */ }
+        this._touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    _touchMove(e) {
+        const p = this._touchPoints.get(e.pointerId);
+        if (!p) return;
+        const shape = () => {
+            const pts = [...this._touchPoints.values()];
+            const cx = pts.reduce((s, q) => s + q.x, 0) / pts.length;
+            const cy = pts.reduce((s, q) => s + q.y, 0) / pts.length;
+            const spread = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
+            return { cx, cy, spread };
+        };
+        const before = shape();
+        p.x = e.clientX; p.y = e.clientY;
+        const after = shape();
+        const rect = this.canvas.getBoundingClientRect();
+        const sx = this.canvas.width / (rect.width || 1), sy = this.canvas.height / (rect.height || 1);
+        this.panX += (after.cx - before.cx) * sx;
+        this.panY += (after.cy - before.cy) * sy;
+        if (before.spread > 0 && after.spread > 0) {
+            this._zoomAbout((after.cx - rect.left) * sx, (after.cy - rect.top) * sy, this.zoom * (after.spread / before.spread));
+        } else {
+            this._viewIsFit = false;
+            this.render();
+        }
+    }
+
+    _touchUp(e) {
+        this._touchPoints?.delete(e.pointerId);
+    }
     setupEventListeners() {
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -8962,23 +9756,32 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._lastCanvasRect = rect;
             this._canvasScaleX = this.canvas.width / rect.width;
             this._canvasScaleY = this.canvas.height / rect.height;
+            const gesture = RadianceViewer._wheelGesture(e, rect.height);
+            if (gesture.kind === 'pan') {
+                // L4: a two-finger trackpad scroll pans, as in every image app.
+                this.panX -= gesture.dx * this._canvasScaleX;
+                this.panY -= gesture.dy * this._canvasScaleY;
+                this._viewIsFit = false;
+                this.render();
+                return;
+            }
+            // v2.5: Exponential zoom for smoother response at all scales (Nuke/Resolve style).
+            // A pinch sends small deltas, so it is ten times as sensitive.
+            const sensitivity = gesture.pinch ? 0.01 : 0.001;
+            const factor = Math.max(0.25, Math.min(4, Math.exp(-gesture.dy * sensitivity)));
             const mx = (e.clientX - rect.left) * this._canvasScaleX;
             const my = (e.clientY - rect.top) * this._canvasScaleY;
+            this._zoomAbout(mx, my, this.zoom * factor);
+        }, { passive: false });
 
-            // v2.5: Exponential zoom for smoother response at all scales (Nuke/Resolve style)
-            const sensitivity = 0.001;
-            const factor = Math.exp(-e.deltaY * sensitivity);
-            const newZoom = Math.max(0.01, Math.min(200, this.zoom * factor));
+        // L4: pointer events, so a pen works like a mouse and touch pans and
+        // pinch-zooms. They were mouse events only. The page must not take the
+        // touch gestures for scrolling or its own zoom.
+        this.canvas.style.touchAction = 'none';
+        this._touchPoints = new Map();
 
-            this.panX = mx - (mx - this.panX) * (newZoom / this.zoom);
-            this.panY = my - (my - this.panY) * (newZoom / this.zoom);
-            this.zoom = newZoom;
-            this._viewIsFit = false;
-            this.updateBottomBar();
-            this.render();
-        });
-
-        this.canvas.addEventListener('mousedown', (e) => {
+        this.canvas.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch') { this._touchDown(e); return; }
             const rect = this.canvas.getBoundingClientRect();
             this._lastCanvasRect = rect; // Cache for performance during mousemove
             this._canvasScaleX = this.canvas.width / rect.width;
@@ -8998,14 +9801,13 @@ self.onmessage = async ({ data: { id, url } }) => {
             // Check Mask UI Handles
             const handle = this.getMaskHandleAt(x, y);
             if (handle && e.button === 0) {
+                this._pushUndo();          // one undo step per handle drag
                 this.maskDragMode = handle;
                 this.maskDragStart = { x, y };
                 this.maskStateStart = JSON.parse(JSON.stringify(this.maskState));
                 this.canvas.style.cursor = handle === 'rotation' ? 'alias' : 'crosshair';
                 return;
             }
-
-
 
             // Probe region drag. Deliberately below the wipe and mask handles
             // -- those are direct manipulation of something already on screen
@@ -9014,7 +9816,6 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this._probeRegionActive() && e.button === 0 && !e.shiftKey) {
                 const px = Math.floor(x), py = Math.floor(y);
                 if (px >= 0 && py >= 0 && px < this.imageWidth && py < this.imageHeight) {
-                    e.preventDefault();
                     this._probeDragging = true;
                     this._probeDragStart = { x: px, y: py };
                     this.probeRect = _probeRectFromCorners(px, py, px, py);
@@ -9025,15 +9826,22 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
 
             if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-                e.preventDefault(); // Prevent middle-click auto-scroll which swallows mouseup
                 this.isPanning = true;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
                 this.canvas.style.cursor = 'grabbing';
             }
         });
+        // The defaults that a pointerdown cannot cancel: middle-click
+        // auto-scroll (which swallows the release) and text selection while
+        // dragging. Cancelling pointerdown itself would also drop the mouse
+        // events the annotation and white-balance pickers listen for.
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1 || this.isPanning || this._probeDragging) e.preventDefault();
+        });
 
-        this.canvas.addEventListener('mousemove', (e) => {
+        this.canvas.addEventListener('pointermove', (e) => {
+            if (e.pointerType === 'touch') { this._touchMove(e); return; }
             if (!this._lastCanvasRect) this._lastCanvasRect = this.canvas.getBoundingClientRect();
             const rect = this._lastCanvasRect;
             const mx = (e.clientX - rect.left) * (this._canvasScaleX || 1);
@@ -9089,10 +9897,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                     m.rotation = Math.atan2(dy, dx) + Math.PI / 2;
                 }
 
-                if (this.activeTab === 'masks' && this.tabContentContainer) {
-                    // Update the visible GUI sliders without fully rebuilding the DOM to avoid losing focus
-                    const centerInputs = this.tabContentContainer.querySelectorAll('.knob-value');
-                }
+                // The Masks tab's sliders follow the handles without a rebuild.
+                if (this._referenceRightTab === 'masks') this._syncGradeControls();
 
                 if (this.renderer) this.renderer.setMask(m);
                 this.render();
@@ -9118,9 +9924,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                     this.canvas.style.cursor = 'crosshair';
                     return;
                 }
-                // Panning strictly relies on clientX delta, scaling isn't necessary for delta-drag
-                this.panX += e.clientX - this.lastMouseX;
-                this.panY += e.clientY - this.lastMouseY;
+                // pan is in canvas pixels and the pointer in CSS pixels, so the
+                // picture keeps up with the pointer on a HiDPI screen too.
+                this.panX += (e.clientX - this.lastMouseX) * (this._canvasScaleX || 1);
+                this.panY += (e.clientY - this.lastMouseY) * (this._canvasScaleY || 1);
                 this._viewIsFit = false;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
@@ -9132,8 +9939,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.updateProbe(e);
         });
 
-        // Click-to-Focus for DoF
+        // The end of any drag, wherever the pointer is let go.
         this._winMouseUpHandler = (e) => {
+            if (e.pointerType === 'touch') { this._touchUp(e); return; }
             this.isPanning = false;
 
             // Finishing a region drag measures it immediately. Requiring a
@@ -9158,18 +9966,18 @@ self.onmessage = async ({ data: { id, url } }) => {
 
             if (this.maskDragMode) {
                 this.maskDragMode = null;
-                // Re-render the mask tab to update sliders if it's the active tab
-                if (this.activeTab === 'masks' && this._lastRenderContent) {
-                    this._lastRenderContent();
-                }
+                this._syncGradeControls();
+                this._gradeChanged();
             }
 
             if (!this.isAnnotating && !this.maskDragMode && this.compareMode !== 'wipe') {
                 this.canvas.style.cursor = 'crosshair';
             }
         };
-        window.addEventListener('mouseup', this._winMouseUpHandler);
+        window.addEventListener('pointerup', this._winMouseUpHandler, { signal: this._listenerSignal });
+        window.addEventListener('pointercancel', this._winMouseUpHandler, { signal: this._listenerSignal });
 
+        // Click-to-Focus for DoF
         this.canvas.addEventListener('click', (e) => {
             if (this.dofEnabled && !this.isAnnotating && !this.isPanning && !this.isDraggingWipe) {
                 const rect = this.canvas.getBoundingClientRect();
@@ -9242,7 +10050,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._annotationCurrentLine.pts.push({ x: mx, y: my });
             this._drawAnnotations();
         };
-        document.addEventListener('mousemove', this._docAnnotMoveHandler);
+        document.addEventListener('mousemove', this._docAnnotMoveHandler, { signal: this._listenerSignal });
 
         this._docAnnotUpHandler = () => {
             if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.pts.length > 1) {
@@ -9251,7 +10059,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._isAnnotating = false;
             this._annotationCurrentLine = null;
         };
-        document.addEventListener('mouseup', this._docAnnotUpHandler);
+        document.addEventListener('mouseup', this._docAnnotUpHandler, { signal: this._listenerSignal });
 
         // Shift+Alt+Click clears all annotations
         this.canvas.addEventListener('click', (eAnn) => {
@@ -9271,12 +10079,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (typeof ResizeObserver !== 'undefined') {
             this.resizeObserver = new ResizeObserver(() => this.resize());
             this.resizeObserver.observe(this.canvasWrapper);
+            // M17: the controls floating over the canvas decide what Fit fills.
+            if (this.viewerBar) this.resizeObserver.observe(this.viewerBar);
+            if (this.sequenceDock) this.resizeObserver.observe(this.sequenceDock);
         }
     }
 
     resize() {
         this._lastCanvasRect = null; // Invalidate cache
         this._applyResponsiveLayout?.();
+        this._railHint?.();
         if (this.sequenceDock && this.canvasWrapper) {
             this.canvasWrapper.style.setProperty('--sequence-dock-height', this.sequenceDock.offsetHeight + 'px');
         }
@@ -9302,15 +10114,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         // visible viewport stayed black with only the crosshair. A view that
         // is still auto-fitted is refitted to the new size. A view the user
         // has zoomed or panned keeps the same image point at the centre.
+        if (this.image && this._viewIsFit !== false) {
+            // M17: also when only the controls over the canvas changed size.
+            this.fitToView();
+            return;
+        }
         if (this.image && (oldW !== newW || oldH !== newH)) {
-            if (this._viewIsFit !== false) {
-                this.fitToView();
-                return;
-            }
             this.panX += (newW - oldW) / 2;
             this.panY += (newH - oldH) / 2;
         }
         this.render();
+        this._syncZoomReadouts();
     }
 
     updateCursor(e) {
@@ -9338,6 +10152,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (imgX >= 0 && imgX < this.imageWidth && imgY >= 0 && imgY < this.imageHeight) {
             const idx = (imgY * this.imageWidth + imgX) * 4;
             let r = this.imageData[idx], g = this.imageData[idx + 1], b = this.imageData[idx + 2], a = this.imageData[idx + 3];
+            // The source as loaded, for the 8-bit readouts below.
+            const srcR = r, srcG = g, srcB = b;
+            // C3: "Disp" is what the display receives at this pixel: graded,
+            // through the view, without overlays (the scopes' signal). It read
+            // imageData, which behind a float frame is the black placeholder
+            // canvas, so it said #000000 over a grey picture.
+            const disp = this.renderer?.readDisplayPixel?.(imgX, imgY, this.lutIntensity || 1.0);
+            if (disp) { r = disp[0]; g = disp[1]; b = disp[2]; }
+            // C3: an sRGB-encoded float source is decoded before it is read as light.
+            const dec = this.hdrData?.isLinear === false ? _probeSrgbToLinear : (v) => v;
 
             // Check for HDR float data
             let floatR, floatG, floatB;
@@ -9358,21 +10182,22 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
             } else {
                 // Fallback to 8-bit normalized
-                floatR = r / 255;
-                floatG = g / 255;
-                floatB = b / 255;
+                floatR = srcR / 255;
+                floatG = srcG / 255;
+                floatB = srcB / 255;
             }
 
             let floatVals = '';
             let evVal = '';
-            const luma_f = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+            const luma_f = _probeSrgbToLinear(srcR / 255) * 0.2126 + _probeSrgbToLinear(srcG / 255) * 0.7152
+                + _probeSrgbToLinear(srcB / 255) * 0.0722;
 
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx = (imgY * this.imageWidth + imgX) * ch;
-                const fr = this.hdrData.data[hIdx];
-                const fg = ch > 1 ? this.hdrData.data[hIdx + 1] : fr;
-                const fb = ch > 2 ? this.hdrData.data[hIdx + 2] : fr;
+                const fr = dec(this.hdrData.data[hIdx]);
+                const fg = ch > 1 ? dec(this.hdrData.data[hIdx + 1]) : fr;
+                const fb = ch > 2 ? dec(this.hdrData.data[hIdx + 2]) : fr;
                 floatVals = `<span style="color:${this.theme.accent}">F: ${(fr).toFixed(4)} ${(fg).toFixed(4)} ${(fb).toFixed(4)}</span> | `;
 
                 const curLuma = fr * 0.2126 + fg * 0.7152 + fb * 0.0722;
@@ -9398,15 +10223,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.hdrData && this.hdrData.data) {
                 const ch = this.hdrData.channels || 3;
                 const hIdx2 = (imgY * this.imageWidth + imgX) * ch;
-                linR = this.hdrData.data[hIdx2];
-                linG = ch > 1 ? this.hdrData.data[hIdx2 + 1] : linR;
-                linB = ch > 2 ? this.hdrData.data[hIdx2 + 2] : linR;
+                linR = dec(this.hdrData.data[hIdx2]);
+                linG = ch > 1 ? dec(this.hdrData.data[hIdx2 + 1]) : linR;
+                linB = ch > 2 ? dec(this.hdrData.data[hIdx2 + 2]) : linR;
             } else {
                 // sRGB → linear approximation (IEC 61966-2-1)
                 const sRGBtoLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-                linR = sRGBtoLin(r / 255);
-                linG = sRGBtoLin(g / 255);
-                linB = sRGBtoLin(b / 255);
+                linR = sRGBtoLin(srcR / 255);
+                linG = sRGBtoLin(srcG / 255);
+                linB = sRGBtoLin(srcB / 255);
             }
 
             const linStr = `${linR.toFixed(4)} ${linG.toFixed(4)} ${linB.toFixed(4)}`;
@@ -9462,7 +10287,6 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Update fixed right info stats continuously
-        const zoomPct = Math.round(this.zoom * 100);
         const depth = (this.hdrData && this.hdrData.data) ? '32b FP' : '8b INT';
 
         let indicators = '';
@@ -9475,9 +10299,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             <span>${depth}</span>
             <span>CH: ${this.channel.toUpperCase()}</span>
             <span>RES: ${this.imageWidth}x${this.imageHeight}</span>
-            <span>ZOOM: ${zoomPct}%</span>
+            <span data-readout="zoom"></span>
             <span>FRM: ${this.currentFrame + 1}/${this.totalFrames}</span>
         `;
+        this._syncZoomReadouts();
 
         // Toggle Legend visibility
         if (this.fcLegend) {
@@ -9489,15 +10314,48 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateBottomBar() {
         if (!this.infoRight) return;
         this._updateProMetadata();
-        const zoomPct = Math.round((this.zoom || 1) * 100);
         const w = this.imageWidth || 0;
         const h = this.imageHeight || 0;
+        // M7: non-finite pixels in this frame, drawn cyan (NaN) and orange
+        // (Inf) on the picture. A single NaN is fatal downstream and was
+        // invisible: it drew black and nothing counted it.
+        const bad = this._nonFiniteCounts();
+        const badHtml = bad && (bad.nan || bad.inf)
+            ? `<span style="color:#ff5050;font-weight:700" title="Pixels with a NaN or Inf channel in this frame: NaN shows cyan, Inf orange.">⚠ ${bad.nan} NaN · ${bad.inf} Inf</span>`
+            : '';
         this.infoRight.innerHTML = `
+            ${badHtml}
             <span>CH: ${(this.channel || 'rgb').toUpperCase()}</span>
             <span>RES: ${w}x${h}</span>
-            <span>ZOOM: ${zoomPct}%</span>
+            <span data-readout="zoom"></span>
             <span>FRM: ${(this.currentFrame || 0) + 1}/${this.totalFrames || 1}</span>
         `;
+        this._syncZoomReadouts();
+    }
+
+    /**
+     * M7: pixels of the current float frame with a NaN or an Inf in a colour
+     * channel, '{ nan, inf }' (a pixel with both counts as NaN), or null with
+     * no float frame. The RHDR parse counts them on the way in; other formats
+     * are counted here once and the result kept on the frame.
+     */
+    _nonFiniteCounts() {
+        const hdr = this.hdrData;
+        if (!hdr?.data) return null;
+        if (hdr.nonFinite) return hdr.nonFinite;
+        const d = hdr.data, C = hdr.channels || 3, cc = Math.min(C, 3);
+        let nan = 0, inf = 0;
+        for (let i = 0; i < d.length; i += C) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const v = d[i + k];
+                if (v !== v) n = true;
+                else if (v === Infinity || v === -Infinity) f = true;
+            }
+            if (n) nan++; else if (f) inf++;
+        }
+        hdr.nonFinite = { nan, inf };
+        return hdr.nonFinite;
     }
 
     drawLoupe(mx, my, imgX, imgY) {
@@ -9833,13 +10691,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.updateScopes();
         this._updateProMetadata();
 
-        // Update Curve Editor Histogram
-        if (this.curveEditor && this.image) {
-            this.curveEditor.updateHistogram(this.image);
-        }
-        if (this.refCurveEditor && this.image) {
-            this.refCurveEditor.updateHistogram(this.image);
-        }
+        // Update Curve Editor Histogram (from the float frame when there is one)
+        this._curveHistSource = null;
+        this._updateCurveHistograms();
 
         // v4.1: Refresh pipeline precision badge whenever a new image is loaded
         this._updateBitDepthBadge();
@@ -9999,38 +10853,74 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     createPlaceholderImage(width, height) {
-        // Create a small placeholder for 2D canvas operations
-        const placeholder = document.createElement('canvas');
-        placeholder.width = width;
-        placeholder.height = height;
-        const ctx = placeholder.getContext('2d');
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = '#fff';
-        ctx.font = '24px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('WebGL2 HDR Mode', width / 2, height / 2);
-
-        this.image = placeholder;
-        // v3.0 FIX: Store .data (Uint8ClampedArray), not ImageData object.
-        // The rest of the code indexes this.imageData[i] for pixel values.
-        this.imageData = ctx.getImageData(0, 0, width, height).data;
+        // A sized stand-in for this.image while a float frame is on screen:
+        // the 2D paths and readouts need its size, a truthy image and an
+        // indexable this.imageData. It was a full-size canvas, filled,
+        // lettered and read back with getImageData for every frame (0.1 to
+        // 0.7 s at 1080p, up to 2 s at 8K) only to serve as that flag. One
+        // stand-in per size is kept instead: a canvas with no context holds
+        // no pixels, and a zeroed buffer is only paged in where it is read.
+        let stub = this._placeholder;
+        if (!stub || stub.width !== width || stub.height !== height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            // v3.0 FIX: .data (Uint8ClampedArray), not ImageData. The rest of
+            // the code indexes this.imageData[i] for pixel values.
+            stub = this._placeholder = { canvas, width, height, data: new Uint8ClampedArray(width * height * 4) };
+        }
+        this.image = stub.canvas;
+        this.imageData = stub.data;
         this._probeInvalidate();   // the probe measures this frame, not the last one
     }
 
     /** 3.5.0: the compare sequence follows the playhead (it stayed on frame 0). */
     _updateCompareForFrame(idx, force = false) {
-        const list = this.frameCompareImages;
-        if (!list || !list.length) return;
+        const list = this.frameCompareImages || [];
+        const floats = this.frameCompareHDR || [];
+        const n = Math.max(list.length, floats.length);
+        if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const img = list[Math.min(idx, list.length - 1)];
-        if (!img || (img === this.compareImage && !force)) return;
+        const i = Math.min(idx, n - 1);
+        const img = list[i] || null, hdr = floats[i] || null;
+        if (!img && !hdr) return;
+        if (img === this.compareImage && hdr === this.compareHDR && !force) return;
         this.compareSource = 'input';
-        this.compareImage = img;
+        if (img) this.compareImage = img;
+        this.compareHDR = hdr;
         this.diffCanvas = null;
-        if (this.renderer?.loadCompareTexture) {
-            try { this.renderer.loadCompareTexture(img); } catch (e) { /* backend without compare */ }
+        try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /**
+     * B to the renderer: its float frame when the node sent one, drawn
+     * through the same view as A, else the preview PNG; placed by pixel size
+     * either way (see RadianceWebGLRenderer.setCompareSource).
+     */
+    _pushCompareToRenderer(img, hdr) {
+        const r = this.renderer;
+        if (!r) return;
+        if (!r.setCompareSource) {            // WebGPU: the preview, as before
+            if (img) r.loadCompareTexture?.(img);
+            return;
         }
+        r.setCompareFit?.(this.compareFit);
+        if (hdr) {
+            r.setCompareSource({ kind: 'float', hdr, encoding: hdr.source_encoding });
+        } else if (img) {
+            r.setCompareSource({ kind: 'display', image: img,
+                width: img.source_width || img.naturalWidth || img.width,
+                height: img.source_height || img.naturalHeight || img.height });
+        }
+    }
+
+    /** B at 1:1 and centred ('pixel', the default) or scaled to fit A ('fit'). */
+    setCompareFit(mode) {
+        this.compareFit = mode === 'fit' ? 'fit' : 'pixel';
+        try { localStorage.setItem('radiance_compare_fit', this.compareFit); } catch { /* storage is optional */ }
+        this.renderer?.setCompareFit?.(this.compareFit);
+        this._syncCompareUI?.();
+        this.render();
     }
 
     setCompareImage(img) {
@@ -10039,9 +10929,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.compareImage = img;
         this.compareSource = img ? 'input' : null;
         this.diffCanvas = null; // Clear difference cache
-        if (this.renderer && this.renderer.loadCompareTexture && img) {
+        if (this.renderer && img) {
             try {
-                this.renderer.loadCompareTexture(img);
+                this._pushCompareToRenderer(img, this.frameCompareHDR?.[0] || null);
             } catch (e) {
                 this._termLog?.('warn', `[Compare] This renderer cannot show a compare image: ${e.message}`);
             }
@@ -10053,6 +10943,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     togglePlayback() {
         if (this.videoMode && this.videoEl) {
             // Video element mode — delegate to native play/pause
+            if (this._videoProbing) {                 // the rate is being read: play after
+                this._videoPlayAfterProbe = !this._videoPlayAfterProbe;
+                return;
+            }
             if (this._videoReversing) { this._videoReverse(false); return; }
             if (this.videoEl.paused) {
                 this.videoEl.play();
@@ -10086,7 +10980,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._seqRAF = null;
             }
             // ALBABIT-FIX: the panel shows the frame playback stopped on.
-            if (this._hudDrawnAt) this._renderReferenceRightHUD?.();
+            if (this._hudDrawnAt) this._refreshReferenceReadouts();
         }
     }
 
@@ -10264,7 +11158,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.node.properties ||= {};
         this.node.properties.radiance_viewer_video = fileOrUrl;
         delete this.node.properties.radiance_viewer_result;
+        delete this.node.properties.radiance_viewer_saved;
         this._sequenceAudio?.pause();
+        // The video replaces any sequence: its frames must not stay in the
+        // paging window or in the dock's frame count.
+        this.generationID = (this.generationID || 0) + 1;
+        this._frameWindow?.clear();
+        this.frameImages = [];
+        this.frameHDRData = [];
+        this.hdrData = null;
+        this._hdrZoneStats = null;
 
         const url = (fileOrUrl instanceof File || fileOrUrl instanceof Blob)
             ? URL.createObjectURL(fileOrUrl)
@@ -10293,13 +11196,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         vid.addEventListener('loadedmetadata', () => {
             canvas.width = vid.videoWidth;
             canvas.height = vid.videoHeight;
-            this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || 25)));
+            // The user's rate until the container's own is measured
+            // (_measureVideoFps). It was a fixed 25.
+            this._videoNativeFps = this.playbackFps || 24;
+            this._setVideoFrameCount();
             this.currentFrame = 0;
             this._updateVideoTimeline();
             this._updateScrubberRange();
         });
 
         vid.addEventListener('play', () => {
+            if (this._videoProbing) return;
             if (this._videoReversing) this._videoReverse(false);
             this.isPlaying = true;
             this._updatePlayBtn();
@@ -10307,33 +11214,53 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         vid.addEventListener('pause', () => {
+            if (this._videoProbing) return;
             this.isPlaying = !!this._videoReversing;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
+            // Stop on a whole frame: the one on screen, at its middle, so the
+            // counter, the scrubbers and the picture agree (currentTime can be
+            // a frame ahead of what was presented).
+            if (!this._videoReversing && this._videoMediaTime != null) {
+                const fps = this._videoNativeFps || this.playbackFps || 24;
+                const shown = Math.round(this._videoMediaTime * fps);
+                this._videoMediaTime = null;
+                this.currentFrame = shown;
+                this._seekVideoToFrame(shown);
+                return;
+            }
             // Still capture the paused frame
             this._captureVideoFrame();
         });
 
         vid.addEventListener('ended', () => {
+            if (this._videoProbing) return;
             this.isPlaying = false;
             this._updatePlayBtn();
             this._stopVideoRenderLoop();
         });
 
         vid.addEventListener('timeupdate', () => {
-            // Update scrubber & timecode during playback
-            this._updateVideoTimeline();
+            // The frame counter, scrubbers and timecode follow the video.
+            this._syncFrameFromVideo();
         });
 
         vid.addEventListener('seeked', () => {
+            if (this._videoProbing) return;
             this._captureVideoFrame();
         });
 
+        // A codec the browser cannot play, or a file that is gone, used to
+        // leave an empty viewer: there was no error listener at all.
+        vid.addEventListener('error', () => this._onVideoError(vid, url));
+
         // Show video info in bottom bar
         vid.addEventListener('loadeddata', () => {
+            this._clearViewerMessage('video');
             this._updateVideoTimeline();
             this._captureVideoFrame();
-        });
+            this._measureVideoFps(vid);
+        }, { once: true });
 
         this.videoEl = vid;
         this._updatePlayBtn();
@@ -10344,6 +11271,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     unloadVideo(preserveSource = false) {
         this._videoLoadRequest = (this._videoLoadRequest || 0) + 1;
+        this._clearViewerMessage('video');
+        this._videoProbing = false;
         if (!preserveSource && this.node.properties) delete this.node.properties.radiance_viewer_video;
         this._stopVideoRenderLoop();
         if (this._videoRevRAF) { cancelAnimationFrame(this._videoRevRAF); this._videoRevRAF = null; }
@@ -10417,7 +11346,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Decode cadence avoids uploading the same 24/30fps frame on every
         // 60/120Hz display refresh. Keep RAF for older browsers.
         if (this.videoEl.requestVideoFrameCallback) {
-            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback(() => this._videoRenderLoop());
+            this._videoFrameCallback = this.videoEl.requestVideoFrameCallback((now, meta) => {
+                // The time of the frame on screen, which currentTime runs ahead of.
+                this._videoMediaTime = meta?.mediaTime;
+                this._videoRenderLoop();
+            });
         } else {
             this._videoRAF = requestAnimationFrame(() => this._videoRenderLoop());
         }
@@ -10437,6 +11370,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
+        // The video frame is the picture, for the readouts and the 2D paths
+        // (this.image was left at whatever was shown before the video).
+        this.image = canvas;
 
         // Upload synchronously: asynchronous bitmap copies used to queue up
         // and could paint stale frames after a seek or replacement video.
@@ -10447,7 +11383,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this.imageWidth = canvas.width;
         this.imageHeight = canvas.height;
-        this._updateVideoTimeline();
+        this._syncFrameFromVideo();
     }
 
     _updateVideoTimeline() {
@@ -10473,6 +11409,159 @@ self.onmessage = async ({ data: { id, url } }) => {
         const fps = this._videoNativeFps || 25;
         const approxFrame = Math.round(t * fps);
         if (this.frameCounter) this.frameCounter.textContent = `${approxFrame} / ${Math.round(dur * fps)}`;
+    }
+
+    /** Frames in the loaded video at the rate in use. */
+    _setVideoFrameCount() {
+        const vid = this.videoEl;
+        if (!vid || !Number.isFinite(vid.duration) || vid.duration <= 0) return;
+        this.totalFrames = Math.max(1, Math.round(vid.duration * (this._videoNativeFps || this.playbackFps || 24)));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+    }
+
+    /**
+     * Move the video to frame idx: the middle of the frame, (idx + 0.5) / fps,
+     * so the decoder lands on that frame and not on a boundary. setFrame used
+     * to move only the counter in video mode, and the one piece of code that
+     * did seek stepped by float seconds after an unconditional return.
+     */
+    _seekVideoToFrame(idx) {
+        const vid = this.videoEl;
+        if (!vid) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        let t = (idx + 0.5) / fps;
+        if (Number.isFinite(vid.duration) && vid.duration > 0) t = Math.max(0, Math.min(t, vid.duration - 0.25 / fps));
+        vid.currentTime = t;
+    }
+
+    /** The frame counter, scrubbers and dock follow the video's own time. */
+    _syncFrameFromVideo() {
+        const vid = this.videoEl;
+        if (!vid || this._videoProbing || !this.videoMode) return;
+        const fps = this._videoNativeFps || this.playbackFps || 24;
+        const last = Math.max(0, (this.totalFrames || 1) - 1);
+        // Playing: the frame presented (a frame start time). Paused: the
+        // video sits mid-frame (_seekVideoToFrame), so the floor is the frame.
+        const frame = !vid.paused && this._videoMediaTime != null
+            ? Math.round(this._videoMediaTime * fps)
+            : Math.floor(vid.currentTime * fps + 1e-6);
+        this.currentFrame = Math.max(0, Math.min(last, frame));
+        this._syncSimpleTransport?.();
+        this._refreshSequenceDock?.();
+        this._updateVideoTimeline();
+    }
+
+    /**
+     * The container's frame rate, from the frames themselves: the media
+     * times of a few requestVideoFrameCallback calls, played muted before
+     * the user plays it, and of one frame near the end. The user's rate stays
+     * when the browser cannot say.
+     */
+    async _measureVideoFps(vid) {
+        if (!vid?.requestVideoFrameCallback || this.videoEl !== vid) return null;
+        const times = [];
+        const muted = vid.muted;
+        // The media time of the next frame presented, or null after 'ms'.
+        const nextFrame = (ms) => new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(null), ms);
+            vid.requestVideoFrameCallback((now, meta) => { clearTimeout(timer); resolve(meta.mediaTime); });
+        });
+        this._videoProbing = true;
+        try {
+            vid.muted = true;
+            const playing = vid.play();
+            let failed = false;
+            if (playing?.catch) playing.catch(() => { failed = true; });
+            for (let i = 0; i < 10 && !failed && this.videoEl === vid; i++) {
+                const t = await nextFrame(2500);
+                if (t == null) break;
+                times.push(t);
+            }
+            if (this.videoEl === vid) vid.pause();
+            // A frame far from the start tells 24 from 23.976, which a
+            // fraction of a second of millisecond time stamps cannot.
+            if (times.length >= 3 && Number.isFinite(vid.duration) && vid.duration > 1 && this.videoEl === vid) {
+                vid.currentTime = vid.duration * 0.9;
+                const far = await nextFrame(1500);
+                if (far != null && far > times[times.length - 1]) times.push(far);
+            }
+        } finally {
+            if (this.videoEl === vid) vid.pause();
+            vid.muted = muted;
+            this._videoProbing = false;
+        }
+        if (this.videoEl !== vid) return null;
+        const fps = RadianceViewer._frameRateFromTimes(times);
+        if (fps) {
+            this._videoContainerFps = fps;
+            this.setPlaybackFps(fps);                 // sets _videoNativeFps too
+        }
+        this._setVideoFrameCount();
+        // Where the user went (and whether they pressed Play) while the rate
+        // was being read, applied now with the rate known.
+        const target = Math.max(0, Math.min((this.totalFrames || 1) - 1, this._videoPendingFrame ?? 0));
+        const play = this._videoPlayAfterProbe;
+        this._videoPendingFrame = null;
+        this._videoPlayAfterProbe = false;
+        this.currentFrame = -1;                       // so setFrame is not a no-op
+        this.setFrame(target);
+        if (play) this.togglePlayback();
+        return fps;
+    }
+
+    /**
+     * The frame rate that explains a list of frame start times (seconds,
+     * kept to the millisecond by most containers). Each standard rate near
+     * the measured one is tried: the one whose frame grid the times fit best
+     * wins, a whole-number rate when the fit cannot tell them apart.
+     */
+    static _frameRateFromTimes(times) {
+        const gaps = [];
+        for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] > 1e-4) gaps.push(times[i] - times[i - 1]);
+        if (gaps.length < 2) return null;
+        // One-frame gaps only: a skipped frame makes a gap of two.
+        const shortest = Math.min(...gaps);
+        const single = gaps.filter((g) => g < 1.5 * shortest);
+        const raw = single.length / single.reduce((a, b) => a + b, 0);
+        const misfit = (rate) => {
+            let worst = 0;
+            for (const t of times) {
+                const d = (t - times[0]) * rate;
+                worst = Math.max(worst, Math.abs(d - Math.round(d)) / rate);
+            }
+            return worst;
+        };
+        const standard = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 119.88, 120]
+            .filter((r) => Math.abs(r - raw) / r < 0.015);
+        if (!standard.length) return Math.round(raw * 1000) / 1000;
+        standard.sort((a, b) => misfit(a) - misfit(b)
+            || (Number.isInteger(b) ? 1 : 0) - (Number.isInteger(a) ? 1 : 0));
+        const best = standard[0];
+        const whole = standard.find((r) => Number.isInteger(r));
+        return whole && misfit(whole) <= misfit(best) + 0.0006 ? whole : best;
+    }
+
+    /** The video element reported an error: say what, over the picture. */
+    _onVideoError(vid, url) {
+        if (this.videoEl !== vid) return;
+        const why = {
+            1: 'loading it was aborted',
+            2: 'a network error interrupted it',
+            3: 'it could not be decoded',
+            4: 'the file is missing, or this browser cannot play its format or codec',
+        }[vid.error?.code] || 'it could not be loaded';
+        this._showViewerMessage('video', `This video cannot be played: ${why}.`);
+        this._termLog?.('error', `[Video] Cannot be played: ${why}${vid.error?.message ? ` (${vid.error.message})` : ''}.`);
+        // A media error does not say "not found"; the server does.
+        if (typeof url === 'string' && !url.startsWith('blob:')) {
+            fetch(url, { method: 'HEAD' }).then((r) => {
+                if (r.status === 404 && this.videoEl === vid) {
+                    this._showViewerMessage('video',
+                        'This video is no longer on the server. ComfyUI was restarted, or the file was removed. Load it again.');
+                }
+            }).catch(() => {});
+        }
     }
 
     _updateScrubberRange() {
@@ -10574,8 +11663,18 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** 3.5.0: viewer-only f-stop (keys and the bar both land here). */
     setViewExposure(stops) {
-        this.viewExposure = Math.max(-16, Math.min(16, Number(stops) || 0));
+        const lim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
+        this.viewExposure = Math.max(-lim, Math.min(lim, Number(stops) || 0));
         if (this._viewEvInput) this._viewEvInput.value = this.viewExposure.toFixed(1);
+        this.render();
+    }
+
+    /** Viewer gamma (display only), clamped to VIEW_GAMMA_RANGE. */
+    setViewGamma(g) {
+        const [lo, hi] = RadianceViewer.VIEW_GAMMA_RANGE;
+        const v = Number(g);
+        this.viewGamma = Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 1;
+        if (this._viewGammaInput) this._viewGammaInput.value = this.viewGamma.toFixed(2);
         this.render();
     }
 
@@ -10585,7 +11684,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!Number.isFinite(v) || v <= 0) return;
         this.playbackFps = v;
         this.frameRate = v;
-        if (this.videoEl) this._videoNativeFps = v;
+        if (this.videoEl) { this._videoNativeFps = v; this._setVideoFrameCount(); }
         if (this._fpsSelect) {
             const key = String(v);
             if (![...this._fpsSelect.options].some((o) => o.value === key)) {
@@ -10639,6 +11738,16 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.currentFrame = idx;
         this._syncSequenceAudio();
 
+        // A video loaded straight into the viewer: the frame is a time in it.
+        // The picture arrives with 'seeked', the counter follows the video.
+        if (this.videoMode && this.videoEl) {
+            // While the rate is being read the frame is kept for afterwards.
+            if (this._videoProbing) this._videoPendingFrame = idx;
+            else this._seekVideoToFrame(idx);
+            this.updateFrameDisplay();
+            return;
+        }
+
         // Move the paging window with the playhead. The viewer no longer holds
         // the whole sequence, so a scrub outside the window has to page the
         // frame in on demand; ensure() jumps it ahead of the read-ahead queue
@@ -10659,69 +11768,126 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
         }
 
-        // Update Display
-        if (this.frameHDRData[idx]) {
-            // We have HDR data for this frame
-            const npy = this.frameHDRData[idx];
-            this.hdrData = npy;
-            this.imageWidth = npy.width;
-            this.imageHeight = npy.height;
+        // The same routine that shows a frame as it lands, so the stats, the
+        // nit badge and the panel follow every path to a frame. setFrame had
+        // its own copy, and on it the badge went on showing an older frame.
+        this._displaySequenceFrame(idx);
+    }
 
-            if (this.renderer) {
-                // 3.5.0: the cached loaders, like _displaySequenceFrame. The
-                // uncached ones re-uploaded the whole frame on every step.
-                const frameId = `${this.generationID}:${idx}`;
-                if (npy.fp16data) {
-                    this.renderer.loadFloat16TextureCached(frameId, npy.fp16data, npy.width, npy.height, npy.channels);
-                } else {
-                    this.renderer.loadFloat32TextureCached(frameId, npy.data, npy.width, npy.height, npy.channels);
-                }
-            }
-        } else if (this.frameImages[idx]) {
-            // Fallback to PNG
-            this.hdrData = null;
-            this._hdrZoneStats = null;
-            this._updateHDRPeakBadge && this._updateHDRPeakBadge();
-            this.image = this.frameImages[idx];
-            if (this.renderer) this.renderer.loadImageTexture(this.image);
-        }
-
-        this._updateCompareForFrame(idx);
-
-        // Update Z-Depth for the new frame
-        if (this.frameZdepthImages && this.frameZdepthImages[idx]) {
-            this.zdepthImage = this.frameZdepthImages[idx];
-            if (this.renderer) this.renderer.loadDepthTexture(this.zdepthImage);
-        } else {
-            this.zdepthImage = null;
-        }
-
-        this.render();
-        this.updateInfo();
-        this.updateFrameDisplay();
-        // v4.3: Repaint sparkline current-frame marker on every frame change
-        if (this._frameSparklines) this._drawSparklines();
-        if (this._referenceRightTab === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
+    /**
+     * The right panel after a frame change: readouts only, never a rebuild
+     * under the user's hands.
+     *
+     * Every frame change used to rebuild the whole panel (every 250 ms during
+     * playback, every frame while scrubbing), which removed a slider being
+     * dragged from the page and wiped the channel search text. GRADE and
+     * SCOPES have nothing that follows the frame (the scopes have their own
+     * schedule); the rest have their readouts rewritten in place.
+     */
+    _refreshReferenceReadouts() {
+        const tab = this._referenceRightTab || 'inspector';
+        if (tab === 'grade' || tab === 'scopes') return;
         // ALBABIT-FIX: at most four times a second during playback. EFFECTS
         // (opened by "Depth") redraws the depth map, ~55 ms: 18 frames/s.
-        if (['inspector', 'grade', 'effects', 'analysis'].includes(this._referenceRightTab)
-            && !(this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250)) {
-            this._hudDrawnAt = performance.now();
-            this._renderReferenceRightHUD?.();
-        }
+        if (this.isPlaying && performance.now() - (this._hudDrawnAt || 0) < 250) return;
+        this._hudDrawnAt = performance.now();
+        this._syncReferenceReadouts(tab);
+    }
 
-        // Update Scopes
-        // Note: Real-time scopes update from displayed texture, so just calling updateScopes() is enough
-        // assuming updateScopes pulls from renderer's texture.
-        if (this.activeTab === 'scopes') {
-            this.renderScopesTab(this.tabContentContainer);
+    _syncReferenceReadouts(tab) {
+        const col = this.controlsPanel?.querySelector('.radiance-ref-col');
+        if (!col) return;
+        if (tab === 'effects') {
+            // A depth map that arrives (or goes) with the frame enables or
+            // disables the depth controls: that is a rebuild, not a readout.
+            if (this._hasDepthMap() !== this._effectsBuiltWithDepth) {
+                this._renderReferenceRightHUD();
+                return;
+            }
+            const preview = col.querySelector('.radiance-ref-depth-preview');
+            if (preview) this._renderReferenceDepthPreview(preview);
+            return;
         }
+        if (tab !== 'inspector' && tab !== 'analysis') return;
+        const fresh = document.createElement('div');
+        if (tab === 'analysis') this._renderReferenceAnalysis(fresh);
+        else this._renderReferenceInspector(fresh);
+        if (this._copyReadouts(fresh, col)) return;
+        // The layout itself changed (a frame with other channels): rebuild,
+        // which waits while a control in the panel is held or focused.
+        this._renderReferenceRightHUD();
+    }
+
+    /**
+     * Copy the readout text of freshly rendered sections onto the live ones
+     * with the same titles. False when the two do not have the same layout.
+     */
+    _copyReadouts(fresh, live) {
+        const titleOf = (sec) => sec.querySelector('.radiance-ref-title')?.textContent;
+        const liveSections = new Map([...live.querySelectorAll('.radiance-ref-section')].map((sec) => [titleOf(sec), sec]));
+        const READOUTS = '.radiance-ref-kv > div, .radiance-ref-status-tile > div';
+        for (const sec of fresh.querySelectorAll('.radiance-ref-section')) {
+            const target = liveSections.get(titleOf(sec));
+            if (!target) return false;
+            const from = sec.querySelectorAll(READOUTS);
+            const to = target.querySelectorAll(READOUTS);
+            if (from.length !== to.length) return false;
+            for (let i = 0; i < from.length; i++) {
+                if (from[i].className !== to[i].className) return false;
+                if (to[i].classList.contains('k') || to[i].classList.contains('label')) {
+                    if (from[i].textContent !== to[i].textContent) return false;
+                } else if (to[i].textContent !== from[i].textContent) {
+                    to[i].textContent = from[i].textContent;
+                }
+            }
+            // The channel list: with the same rows only their state differs,
+            // and a filtered list is the user's, so it is left as it is.
+            const rowsFrom = sec.querySelectorAll('.radiance-ref-channel');
+            const rowsTo = target.querySelectorAll('.radiance-ref-channel');
+            const search = target.querySelector('.radiance-ref-search');
+            if (rowsFrom.length && !(search && search.value)) {
+                if (rowsFrom.length !== rowsTo.length) return false;
+                for (let i = 0; i < rowsFrom.length; i++) {
+                    if (rowsFrom[i].textContent !== rowsTo[i].textContent) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True when a rebuild must wait: one asked for from outside the panel
+     * while a control in it is held or focused. It runs when the control is
+     * let go (see createHUD).
+     */
+    _referenceRebuildDeferred() {
+        if (this._inPanelEvent || !this._referencePanelBusy()) {
+            this._referencePanelStale = false;
+            return false;
+        }
+        this._referencePanelStale = true;
+        return true;
+    }
+
+    /** True while a control in the right panel is held or has focus. */
+    _referencePanelBusy() {
+        const panel = this.controlsPanel;
+        if (!panel) return false;
+        if (this._referencePointerDown) return true;
+        const el = document.activeElement;
+        return !!(el && el !== document.body && panel.contains(el)
+            && el.matches('input, select, textarea, [contenteditable="true"]'));
     }
 
     updateFrameDisplay() {
         this._syncSimpleTransport?.();
         this._syncCompareUI?.();
-        if (this.videoMode) return; // video mode manages its own timeline
+        if (this.videoMode) {
+            // The video drives its own timeline (_syncFrameFromVideo); the dock
+            // still shows where it is.
+            this._refreshSequenceDock?.();
+            return;
+        }
 
         // Update frame counter text
         if (this.frameCounter && this.frameCounter.tagName !== 'INPUT') {
@@ -10995,7 +12161,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._termLog?.('info', '[Pin Frame] Reference released.');
     }
 
-    // Existing fitToView...
+    /**
+     * M17: Fit fits the picture inside the part of the canvas nothing covers.
+     * The viewer bar and the sequence dock float over the bottom of the
+     * canvas, and Fit used to centre in the whole of it, so the bottom of
+     * the picture sat under the transport.
+     */
     fitToView() {
         if (!this.image) return;
         const w = this.canvas.width, h = this.canvas.height;
@@ -11005,16 +12176,53 @@ self.onmessage = async ({ data: { id, url } }) => {
             return;
         }
 
-        let z = Math.min(w / this.imageWidth, h / this.imageHeight);
-        // Add a small margin (5%) if it's tight
-        z = z * 0.95;
+        const free = this._freeViewRect();
+        // A small margin (5%) so the frame edge stays visible.
+        const z = Math.min(free.w / this.imageWidth, free.h / this.imageHeight) * 0.95;
 
         this.zoom = z;
-        this.panX = (w - this.imageWidth * this.zoom) / 2;
-        this.panY = (h - this.imageHeight * this.zoom) / 2;
+        this.panX = free.x + (free.w - this.imageWidth * this.zoom) / 2;
+        this.panY = free.y + (free.h - this.imageHeight * this.zoom) / 2;
         this._viewIsFit = true;   // resize() refits a fitted view
         this.updateBottomBar();
         this.render();
+    }
+
+    /**
+     * The canvas area, in canvas pixels, above the controls that float over
+     * it (viewer bar, sequence dock). Hidden controls (Simple mode) take no
+     * room. Never less than a quarter of the canvas, so a very short viewer
+     * still shows a picture.
+     */
+    _freeViewRect() {
+        const w = this.canvas.width, h = this.canvas.height;
+        const box = this.canvas.getBoundingClientRect();
+        if (!(box.height > 0)) return { x: 0, y: 0, w, h };
+        let bottom = box.bottom;
+        for (const el of [this.viewerBar, this.sequenceDock]) {
+            if (!el?.offsetParent) continue;
+            const r = el.getBoundingClientRect();
+            if (r.height > 0 && r.top < bottom && r.bottom > box.top) bottom = Math.min(bottom, r.top);
+        }
+        const freeH = Math.max(h * 0.25, (bottom - box.top) * (h / box.height));
+        return { x: 0, y: 0, w, h: Math.min(h, freeH) };
+    }
+
+    /** M17: the zoom both readouts show; there is one, so they cannot disagree. */
+    _zoomReadout() {
+        return this.image ? `${Math.round((this.zoom || 1) * 100)}%` : '—';
+    }
+
+    /**
+     * M17: writes the zoom into the status row and the bottom bar together.
+     * Every path that changes one (fit, zoom, the wheel, a resize, the panel
+     * toggling) ends here; Fit used to refresh only one of them.
+     */
+    _syncZoomReadouts() {
+        const z = this._zoomReadout();
+        if (this.zoomInfo) this.zoomInfo.textContent = z;
+        const span = this.infoRight?.querySelector('[data-readout="zoom"]');
+        if (span) span.textContent = `ZOOM: ${z}`;
     }
 
     setZoom(z) {
@@ -11061,6 +12269,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     render() {
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
+        this._syncGrainTicker();
+        this._syncRail();
 
         // ═══════════════════════════════════════════════════════════════
         // GPU-ACCELERATED WEBGL RENDERING PATH (Primary - Always On)
@@ -11071,46 +12281,30 @@ self.onmessage = async ({ data: { id, url } }) => {
             // Ensure WebGL canvas is backend-only (hidden)
             this.glCanvas.style.visibility = 'hidden';
 
-            // 1. Resize/Init WebGL Canvas to Image Size (Texture size)
-            if (this.glCanvas.width !== this.imageWidth || this.glCanvas.height !== this.imageHeight) {
-                this.glCanvas.width = this.imageWidth;
-                this.glCanvas.height = this.imageHeight;
+            // 1. Size the WebGL canvas. H10: below 100 % it is the size it is
+            // shown at, and the shader averages each pixel's footprint in
+            // linear light before the view transform (u_minify). It was
+            // always the image size and the 2D blit below shrank the finished
+            // display image, which averages code values: one-pixel black and
+            // white stripes showed 128 at Fit instead of 188, so fine detail
+            // read about 1.3 stops dark.
+            const shown = Math.min(1, this.zoom || 1);
+            const glW = Math.max(1, Math.round(this.imageWidth * shown));
+            const glH = Math.max(1, Math.round(this.imageHeight * shown));
+            if (this.glCanvas.width !== glW || this.glCanvas.height !== glH) {
+                this.glCanvas.width = glW;
+                this.glCanvas.height = glH;
             }
 
-            // 2. Update renderer state from UI controls (GPU parameters)
-            // 2. Accumulate and chain stacked grading parameters (V1 + V2 Adjustment Layers)
-            let finalExposure = this.exposure || 0.0;
-            let finalSaturation = this.saturation !== undefined ? this.saturation : 1.0;
-            let finalContrast = this.contrast !== undefined ? this.contrast : 1.0;
-            let finalLift = Array.isArray(this.lift) ? [...this.lift] : [0, 0, 0];
-            let finalGain = Array.isArray(this.gain) ? [...this.gain] : [1, 1, 1];
-            let finalGamma = Array.isArray(this.gamma) ? [...this.gamma] : [1, 1, 1];
-
-            if (this.v2Segments && this.v2Segments.length > 0) {
-                const curFrame = this.currentFrame || 0;
-                const activeAdj = this.v2Segments.find(s => s.type === 'adjustment' && curFrame >= s.startFrame && curFrame <= s.endFrame);
-                if (activeAdj && activeAdj.gradeProps) {
-                    const p = activeAdj.gradeProps;
-                    if (p.exposure !== undefined) finalExposure += p.exposure;
-                    if (p.saturation !== undefined) finalSaturation *= p.saturation;
-                    if (p.contrast !== undefined) finalContrast *= p.contrast;
-                    if (p.lift) {
-                        finalLift[0] += p.lift[0];
-                        finalLift[1] += p.lift[1];
-                        finalLift[2] += p.lift[2];
-                    }
-                    if (p.gain) {
-                        finalGain[0] *= p.gain[0];
-                        finalGain[1] *= p.gain[1];
-                        finalGain[2] *= p.gain[2];
-                    }
-                    if (p.gamma) {
-                        finalGamma[0] *= p.gamma[0];
-                        finalGamma[1] *= p.gamma[1];
-                        finalGamma[2] *= p.gamma[2];
-                    }
-                }
-            }
+            // 2. Update renderer state from UI controls (GPU parameters).
+            // The grade on screen is the grade in the panel: the timeline's
+            // Adjust blocks added a hidden one here, and are gone (H8).
+            const finalExposure = this.exposure || 0.0;
+            const finalSaturation = this.saturation !== undefined ? this.saturation : 1.0;
+            const finalContrast = this.contrast !== undefined ? this.contrast : 1.0;
+            const finalLift = Array.isArray(this.lift) ? this.lift : [0, 0, 0];
+            const finalGain = Array.isArray(this.gain) ? this.gain : [1, 1, 1];
+            const finalGamma = Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
 
             this.renderer.setExposure(finalExposure);
             this.renderer.setGamma(finalGamma[0], finalGamma[1], finalGamma[2]);
@@ -11120,7 +12314,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.renderer.setTemperature?.(this.temperature || 0.0);
             this.renderer.setTint?.(this.tint || 0.0);
             this.renderer.setContrast?.(finalContrast);
-            this.renderer.setPivot?.(this.pivot !== undefined ? this.pivot : 0.5);
+            this.renderer.setPivot?.(this.pivot ?? _PIVOT_DEFAULT);
             this.renderer.setHighlights?.(this.highlights || 0.0);
             this.renderer.setShadows?.(this.shadows || 0.0);
             this.renderer.setMidDetail?.(this.midDetail || 0.0);
@@ -11141,7 +12335,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             // v3.4 FIX: Qualifier must be pushed every frame, not just when the masks tab is open.
             // Pass showMask=true only while the masks tab is active — switching away hides the overlay.
             if (this.renderer.setQualifier && this.qualifierState) {
-                const qState = this.activeTab === 'masks'
+                const qState = this._referenceRightTab === 'masks'
                     ? this.qualifierState
                     : { ...this.qualifierState, showMask: false };
                 this.renderer.setQualifier(qState);
@@ -11271,8 +12465,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ctx.imageSmoothingEnabled = this.pixelFilter !== 'nearest';
             }
 
-            // Draw the GPU-rendered image
-            ctx.drawImage(this.glCanvas, 0, 0);
+            // Draw the GPU-rendered image (smaller than the frame below 100 %)
+            ctx.drawImage(this.glCanvas, 0, 0, this.imageWidth, this.imageHeight);
 
             ctx.restore();
 
@@ -11693,14 +12887,14 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateInfo() {
         if (!this.image) {
             this.dimensionInfo.textContent = '—×—';
-            this.zoomInfo.textContent = '—';
+            this._syncZoomReadouts();
             if (this.colorspaceInfo) this.colorspaceInfo.textContent = `${this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace} / ${this.displayLut || 'None'}`;
             return;
         }
 
         const z = (this.zoom * 100).toFixed(0);
         this.dimensionInfo.textContent = `${this.imageWidth}×${this.imageHeight}`;
-        this.zoomInfo.textContent = `${z}%`;
+        this._syncZoomReadouts();
         if (this.colorspaceInfo) {
             const input = this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace;
             const output = this.displayLut || 'None';
@@ -12155,6 +13349,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     _renderReferenceRightHUD() {
         const panel = this.controlsPanel;
         if (!panel) return;
+        if (this._referenceRebuildDeferred()) return;
 
         panel.innerHTML = '';
         panel.classList.add('radiance-panel-embedded');
@@ -12165,8 +13360,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             height: 100%;
             min-height: 0;
             overflow: hidden;
-            background: linear-gradient(180deg, rgba(17,23,33,0.98), rgba(10,14,22,0.98));
-            color: rgba(232,238,247,0.86);
+            background: var(--radiance-surface);
+            color: var(--radiance-text);
             font-family: var(--radiance-font-ui, Inter, system-ui, sans-serif);
         `;
 
@@ -12176,51 +13371,69 @@ self.onmessage = async ({ data: { id, url } }) => {
             style.textContent = `
                 .radiance-ref-hud { container-type:inline-size; font-family: var(--radiance-font); }
                 .radiance-ref-hud * { box-sizing: border-box; }
-                .radiance-ref-tabs { display:flex; height:44px; border-bottom:1px solid var(--radiance-panel-border); background:rgba(18,18,24,0.95); position:relative; z-index:5; }
-                .radiance-ref-tab { flex:1; display:flex; align-items:center; justify-content:center; position:relative; border:0; background:transparent; color:var(--radiance-text-dim); font:700 10px/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.45px; cursor:pointer; transition: all 0.2s; }
+                .radiance-ref-tabs { display:flex; height:40px; border-bottom:1px solid var(--radiance-panel-border); background:var(--radiance-surface-raised); position:relative; z-index:5; }
+                .radiance-ref-tab { flex:1; display:flex; align-items:center; justify-content:center; position:relative; border:0; background:transparent; color:var(--radiance-text-dim); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:.8px; text-transform:uppercase; cursor:pointer; transition: color 0.15s; }
                 .radiance-ref-tab:hover { color: var(--radiance-text); }
-                .radiance-ref-tab.is-active { color: var(--radiance-accent) !important; font-weight: 800; }
-                .radiance-ref-tab.is-active::after { content:""; position:absolute; left:20px; right:20px; bottom:0; height:2px; background:var(--radiance-accent); box-shadow:0 0 10px var(--radiance-accent-glow); }
-                .radiance-ref-body { display:grid; grid-template-columns:1fr; flex:1; min-height:0; overflow:hidden; background: #0c0c12; }
-                .radiance-ref-col { min-width:0; min-height:0; overflow:auto; padding:16px 16px 14px; border-right:1px solid var(--radiance-panel-border); scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.18) transparent; }
+                .radiance-ref-tab.is-active { color: var(--radiance-accent) !important; }
+                .radiance-ref-tab.is-active::after { content:""; position:absolute; left:16px; right:16px; bottom:0; height:2px; background:var(--radiance-accent); }
+                .radiance-ref-body { display:grid; grid-template-columns:1fr; flex:1; min-height:0; overflow:hidden; background: var(--radiance-surface); }
+                .radiance-ref-col { min-width:0; min-height:0; overflow:auto; padding:14px 16px; border-right:1px solid var(--radiance-panel-border); scrollbar-width:thin; scrollbar-color:var(--radiance-border-strong) transparent; }
                 .radiance-ref-col:last-child { border-right:0; }
-                .radiance-ref-section { padding:0 0 15px; margin:0 0 15px; border-bottom:1px solid var(--radiance-panel-border); }
-                .radiance-ref-title { color:var(--radiance-text); font-size:10px; line-height:1; font-weight:800; letter-spacing:.8px; margin-bottom:12px; text-transform:uppercase; opacity: 0.85; }
-                .radiance-ref-kv { display:grid; grid-template-columns:92px minmax(0,1fr); gap:8px 12px; align-items:center; font-size:11px; line-height:1.25; }
+                .radiance-ref-section { padding:0 0 14px; margin:0 0 14px; border-bottom:1px solid var(--radiance-panel-border); }
+                .radiance-ref-title { color:var(--radiance-text); font-size:var(--radiance-fs-heading); line-height:1; font-weight:700; letter-spacing:.9px; margin-bottom:12px; text-transform:uppercase; }
+                .radiance-ref-kv { display:grid; grid-template-columns:112px minmax(0,1fr); gap:7px 12px; align-items:center; font-size:var(--radiance-fs-body); line-height:1.3; }
                 .radiance-ref-kv .k { color:var(--radiance-text-dim); }
                 .radiance-ref-kv .v { color:var(--radiance-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-                .radiance-ref-search { width:100%; height:28px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,0.32); color:var(--radiance-text); padding:0 10px; font-size:10px; outline:none; margin-bottom:8px; font-family: var(--radiance-font); }
-                .radiance-ref-search:focus { border-color: var(--radiance-accent); box-shadow: 0 0 8px var(--radiance-accent-glow); }
-                .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 44px; height:24px; align-items:center; padding:0 8px; border-radius:4px; color:rgba(224,233,244,.82); font-size:11px; transition: background 0.15s; }
-                .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.015); }
-                .radiance-ref-channel.is-active { background:rgba(0,189,255,.16); border: 1px solid rgba(0,189,255,.24); color: var(--radiance-accent); }
+                .radiance-ref-search { width:100%; height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 10px; font-size:var(--radiance-fs-body); outline:none; margin-bottom:8px; font-family: var(--radiance-font); }
+                .radiance-ref-search:focus { border-color: var(--radiance-accent); }
+                .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 52px; min-height:28px; align-items:center; padding:0 8px; border-radius:4px; border:1px solid transparent; color:var(--radiance-text); font-size:var(--radiance-fs-body); transition: background 0.15s; }
+                .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.02); }
+                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(0,189,255,.35); color: var(--radiance-accent); }
                 .radiance-ref-channel:not(.is-disabled) { cursor:pointer; }
-                .radiance-ref-channel:not(.is-disabled):hover { background:rgba(255,255,255,.05); }
-                .radiance-ref-channel.is-disabled { opacity:.45; }
-                .radiance-ref-channel .tag { text-align:right; font-size:10px; font-weight:800; color:var(--radiance-accent); }
+                .radiance-ref-channel:not(.is-disabled):hover { background:var(--radiance-control-hover); }
+                .radiance-ref-channel.is-disabled { color:var(--radiance-text-muted); }
+                .radiance-ref-channel .tag { text-align:right; font:700 var(--radiance-fs-body) var(--radiance-font-mono, monospace); color:var(--radiance-accent); }
                 .radiance-ref-channel .tag.alpha { color:#e0c068; }
                 .radiance-ref-channel .tag.crypto { color:#ff8060; }
-                .radiance-ref-field { display:grid; grid-template-columns:108px minmax(0,1fr); gap:8px; align-items:center; margin-bottom:8px; font-size:11px; }
+                .radiance-ref-field { display:grid; grid-template-columns:120px minmax(0,1fr); gap:8px; align-items:center; margin-bottom:8px; font-size:var(--radiance-fs-body); }
                 .radiance-ref-field label { color:var(--radiance-text-dim); }
-                .radiance-ref-field select, .radiance-ref-value { height:26px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,.32); color:var(--radiance-text); padding:0 8px; font-size:10px; outline:none; }
+                .radiance-ref-field select, .radiance-ref-value { height:28px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 8px; font-size:var(--radiance-fs-body); outline:none; }
                 .radiance-ref-field select:focus { border-color: var(--radiance-accent); }
-                .radiance-ref-slider { display:grid; grid-template-columns:80px minmax(0,1fr) 44px; gap:8px; align-items:center; margin:8px 0; font-size:11px; }
+                .radiance-ref-slider { display:grid; grid-template-columns:92px minmax(0,1fr) 52px; gap:8px; align-items:center; margin:6px 0; font-size:var(--radiance-fs-body); }
                 .radiance-ref-slider label { color:var(--radiance-text-dim); }
-                .radiance-ref-slider input[type="range"] {
+                /* M15: sliders are 24 px (wheel channels 28 px) to grab; the
+                   track drawn inside is 4 px. */
+                .radiance-ref-slider input[type="range"],
+                .radiance-ref-wheel-channel input[type="range"] {
                     -webkit-appearance: none;
                     appearance: none;
                     width: 100%;
+                    height: 24px;
+                    margin: 0;
+                    background: transparent;
+                    cursor: pointer;
+                }
+                .radiance-ref-wheel-channel input[type="range"] { height: 28px; }
+                .radiance-ref-slider input[type="range"]::-webkit-slider-runnable-track,
+                .radiance-ref-wheel-channel input[type="range"]::-webkit-slider-runnable-track {
                     height: 4px;
                     border-radius: 2px;
-                    background: rgba(255, 255, 255, 0.12);
-                    outline: none;
+                    background: var(--radiance-border-strong);
                 }
+                .radiance-ref-slider input[type="range"]::-moz-range-track,
+                .radiance-ref-wheel-channel input[type="range"]::-moz-range-track {
+                    height: 4px;
+                    border-radius: 2px;
+                    background: var(--radiance-border-strong);
+                }
+                .radiance-ref-slider input[type="range"]:disabled { cursor: not-allowed; opacity: .45; }
                 .radiance-ref-slider input[type="range"]::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 12px;
-                    height: 12px;
+                    width: 14px;
+                    height: 14px;
+                    margin-top: -5px;
                     border-radius: 50%;
-                    background: #f5f5f7;
+                    background: var(--radiance-text);
                     cursor: pointer;
                     border: 1px solid rgba(0,0,0,0.5);
                     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
@@ -12229,61 +13442,63 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-slider input[type="range"]::-webkit-slider-thumb:hover {
                     transform: scale(1.2);
                 }
-                .radiance-ref-slider output { height:22px; display:flex; align-items:center; justify-content:center; border-radius:4px; background:rgba(0,0,0,.45); color:var(--radiance-text); font:10px/1 var(--radiance-font-mono, monospace); border: 1px solid var(--radiance-panel-border); }
+                .radiance-ref-slider output { height:24px; display:flex; align-items:center; justify-content:center; border-radius:4px; background:var(--radiance-control); color:var(--radiance-text); font:var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); border: 1px solid var(--radiance-panel-border); }
+                .radiance-ref-slider .radiance-ref-readout { width:100%; height:24px; padding:0 4px; text-align:center; border-radius:4px; background:var(--radiance-control); color:var(--radiance-text); font:var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); border:1px solid var(--radiance-panel-border); outline:none; }
+                .radiance-ref-slider .radiance-ref-readout:focus { border-color:var(--radiance-accent); }
+                .radiance-ref-section-reset { height:24px; padding:0 8px; border-radius:4px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text-dim); font:600 var(--radiance-fs-body)/1 var(--radiance-font-ui, Inter, sans-serif); letter-spacing:0; text-transform:none; cursor:pointer; }
+                .radiance-ref-section-reset:hover { border-color:var(--radiance-accent); color:var(--radiance-text); }
                 .radiance-ref-slider.temperature input { accent-color:#ffffff; }
                 .radiance-ref-slider.tint input { accent-color:#d45cff; }
                 .radiance-ref-slider.saturation input { accent-color:#59d86f; }
                 .radiance-ref-wheels { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
                 .radiance-ref-wheel { min-width:0; text-align:center; }
-                .radiance-ref-wheel-label { color:var(--radiance-text-dim); font-size:10px; margin-bottom:8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-                .radiance-ref-wheel-ring { width:58px; height:58px; margin:0 auto 8px; border-radius:50%; padding:2.5px; background:conic-gradient(from 180deg, #ff4a4a, #ffff4a, #4aff4a, #4affff, #4a4aff, #ff4aff, #ff4a4a); box-shadow:0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,.04); }
+                .radiance-ref-wheel-label { color:var(--radiance-text-dim); font-size:var(--radiance-fs-heading); margin-bottom:8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+                .radiance-ref-wheel-ring { width:58px; height:58px; margin:0 auto 8px; border-radius:50%; padding:2.5px; background:conic-gradient(from 90deg, #ff4a4a, #ffff4a, #4aff4a, #4affff, #4a4aff, #ff4aff, #ff4a4a); box-shadow:0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,.04); }
                 .radiance-ref-wheel-inner { width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, #1a1a24 0%, #0d0d12 100%); border:1px solid rgba(255,255,255,.08); position:relative; }
                 .radiance-ref-wheel-inner::after { content:""; position:absolute; width:4px; height:4px; border-radius:50%; left:50%; top:50%; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.8); background:rgba(255,255,255,.2); }
                 .radiance-ref-wheel-puck { position:absolute; left:50%; top:50%; width:8px; height:8px; border-radius:50%; transform:translate(-50%,-50%); border:2px solid #ffffff; background:var(--radiance-accent); box-shadow:0 0 8px var(--radiance-accent), 0 2px 4px rgba(0,0,0,.5); pointer-events:none; }
-                .radiance-ref-mini { display:grid; grid-template-columns:42px 1fr; gap:5px 8px; color:var(--radiance-text-dim); font-size:10px; margin-top:6px; }
+                .radiance-ref-mini { display:grid; grid-template-columns:48px 1fr; gap:5px 8px; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); margin-top:6px; }
                 .radiance-ref-wheel-controls { display:grid; gap:5px; margin-top:8px; }
-                .radiance-ref-wheel-channel { display:grid; grid-template-columns:12px minmax(0,1fr) 30px; gap:5px; align-items:center; color:var(--radiance-text-dim); font-size:9px; }
-                .radiance-ref-wheel-channel input[type="range"] {
-                    -webkit-appearance: none;
-                    appearance: none;
-                    width: 100%;
-                    height: 2px;
-                    border-radius: 1px;
-                    background: rgba(255, 255, 255, 0.08);
-                    outline: none;
-                }
+                .radiance-ref-wheel-channel { display:grid; grid-template-columns:14px minmax(0,1fr) 40px; gap:5px; align-items:center; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); }
                 .radiance-ref-wheel-channel input[type="range"]::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 8px;
-                    height: 8px;
+                    width: 12px;
+                    height: 12px;
+                    margin-top: -4px;
                     border-radius: 50%;
-                    background: #f5f5f7;
+                    background: var(--radiance-text);
                     cursor: pointer;
                 }
                 .radiance-ref-wheel-channel output { text-align:right; font-family:var(--radiance-font-mono, monospace); color:var(--radiance-text); }
                 .radiance-ref-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:8px; }
-                .radiance-ref-actions button { height:26px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.05); color:var(--radiance-text); padding:0 12px; font-size:10px; cursor:pointer; font-weight: 600; }
-                .radiance-ref-actions button:hover { border-color: var(--radiance-accent); background: rgba(0,189,255,0.08); color: #fff; }
-                .radiance-ref-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:28px; margin:6px 0; color:var(--radiance-text); font-size:11px; }
-                .radiance-ref-toggle { width:38px; height:20px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.08); position:relative; cursor:pointer; flex-shrink:0; }
-                .radiance-ref-toggle::after { content:""; position:absolute; width:14px; height:14px; left:2px; top:2px; border-radius:50%; background:rgba(220,230,242,.72); transition:left .15s, background .15s; }
-                .radiance-ref-toggle.is-on { border-color:var(--radiance-accent); background:rgba(0,189,255,.18); }
-                .radiance-ref-toggle.is-on::after { left:20px; background:var(--radiance-accent); box-shadow:0 0 10px var(--radiance-accent-glow); }
-                .radiance-ref-status-pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--radiance-panel-border); background:rgba(0,0,0,.35); color:var(--radiance-text); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.5px; }
+                .radiance-ref-actions button { height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 12px; font-size:var(--radiance-fs-body); cursor:pointer; font-weight: 600; }
+                .radiance-ref-actions button:hover { border-color: var(--radiance-accent); background: var(--radiance-control-hover); }
+                .radiance-ref-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:28px; margin:6px 0; color:var(--radiance-text); font-size:var(--radiance-fs-body); }
+                .radiance-ref-toggle { width:40px; height:22px; padding:0; border-radius:999px; border:1px solid var(--radiance-border-strong); background:var(--radiance-control); position:relative; cursor:pointer; flex-shrink:0; }
+                .radiance-ref-toggle::after { content:""; position:absolute; width:16px; height:16px; left:2px; top:2px; border-radius:50%; background:var(--radiance-text-dim); transition:left .15s, background .15s; }
+                .radiance-ref-toggle.is-on { border-color:var(--radiance-accent); background:var(--radiance-accent-soft); }
+                .radiance-ref-toggle.is-on::after { left:20px; background:var(--radiance-accent); }
+                .radiance-ref-status-pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); font:700 var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); letter-spacing:.4px; }
                 .radiance-ref-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-                .radiance-ref-status-tile { min-width:0; min-height:58px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.025); padding:9px; }
-                .radiance-ref-status-tile .label { color:var(--radiance-text-dim); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.55px; text-transform:uppercase; margin-bottom:9px; }
-                .radiance-ref-status-tile .value { color:var(--radiance-text); font:800 12px/1.25 var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                .radiance-ref-status-tile { min-width:0; min-height:58px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-surface-raised); padding:9px 10px; }
+                .radiance-ref-status-tile .label { color:var(--radiance-text-dim); font:600 var(--radiance-fs-body)/1 var(--radiance-font-ui, Inter, sans-serif); margin-bottom:8px; }
+                .radiance-ref-status-tile .value { color:var(--radiance-text); font:700 var(--radiance-fs-body)/1.25 var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
                 .radiance-ref-action-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-                .radiance-ref-action-grid button { min-height:28px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:rgba(255,255,255,.045); color:var(--radiance-text); padding:0 9px; font-size:10px; cursor:pointer; text-align:left; font-weight: 600; }
-                .radiance-ref-action-grid button:hover { border-color:var(--radiance-accent); background:rgba(0,189,255,.12); color:#fff; }
-                .radiance-ref-depth-preview { width:100%; aspect-ratio:1; border-radius:6px; border:1px solid var(--radiance-panel-border); background:linear-gradient(90deg, #05070a, #18202a 45%, #eef6ff); position:relative; overflow:hidden; margin:8px 0 10px; }
-                .radiance-ref-depth-preview::after { content:"DEPTH RANGE"; position:absolute; left:10px; bottom:10px; color:rgba(255,255,255,.65); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; }
+                .radiance-ref-action-grid button { min-height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 10px; font-size:var(--radiance-fs-body); cursor:pointer; text-align:left; font-weight: 600; }
+                .radiance-ref-action-grid button:hover { border-color:var(--radiance-accent); background:var(--radiance-control-hover); }
+                .radiance-ref-depth-preview { width:100%; aspect-ratio:1; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-bg); position:relative; overflow:hidden; margin:8px 0 10px; }
+                .radiance-ref-depth-preview::after { content:"DEPTH RANGE"; position:absolute; left:10px; bottom:10px; color:var(--radiance-text); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; }
                 .radiance-ref-depth-preview canvas,
                 .radiance-ref-depth-preview img { width:100%; height:100%; display:block; object-fit:cover; filter:contrast(1.15); }
                 .radiance-ref-scopes-grid { display:flex; flex-direction:column; gap:12px; }
-                .radiance-ref-scope-box { min-width:0; border-radius:6px; border:1px solid var(--radiance-panel-border); background:linear-gradient(180deg, rgba(9,13,21,.95), rgba(3,5,8,.95)); overflow:hidden; }
-                .radiance-ref-scope-head { height:24px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-bottom:1px solid var(--radiance-panel-border); color:var(--radiance-text); font:800 9px/1 var(--radiance-font-mono, monospace); letter-spacing:.55px; }
+                .radiance-ref-scope-box { min-width:0; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-bg); overflow:hidden; }
+                .radiance-ref-scope-head { height:28px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-bottom:1px solid var(--radiance-panel-border); color:var(--radiance-text); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; text-transform:uppercase; }
+                .radiance-ref-search::placeholder { color:var(--radiance-text-muted); }
+                .radiance-ref-channel.is-disabled .tag { color:var(--radiance-text-muted); }
+                .radiance-ref-slider:has(input:disabled) label { color:var(--radiance-text-muted); }
+                .radiance-ref-toggle:disabled { cursor:not-allowed; opacity:.45; }
+                .radiance-ref-depth-preview.is-empty { aspect-ratio:auto; height:auto; padding:8px 10px; margin:6px 0 8px; color:var(--radiance-text-dim); background:var(--radiance-surface-raised); font-size:var(--radiance-fs-body); line-height:1.4; }
+                .radiance-ref-depth-preview.is-empty::after { content:none; }
                 .radiance-ref-scope-canvas { width:100%; height:200px; display:block; }
                 .radiance-ref-scope-box.is-square .radiance-ref-scope-canvas { height:auto; aspect-ratio:1; }
                 @container (max-width: 460px) {
@@ -12326,11 +13541,14 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         let activeTab = this._referenceRightTab || 'inspector';
         const render = () => {
+            if (this._referenceRebuildDeferred()) return;
             col.innerHTML = '';
             [...tabs.children].forEach(btn => btn.classList.toggle('is-active', btn.dataset.tabId === activeTab));
             if (activeTab === 'grade') {
                 // The full control set, not the read-only summary.
                 this._renderReferenceGrade(col);
+            } else if (activeTab === 'masks') {
+                this._renderReferenceMasks(col);
             } else if (activeTab === 'effects') {
                 this._renderReferenceEffects(col);
             } else if (activeTab === 'scopes') {
@@ -12346,22 +13564,26 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._lastRenderContent = render;
         };
 
+        // In Alt+1 to Alt+6 order (radiance_keymap.js).
         [
-            ['inspector', 'INSPECTOR'],
-            ['grade', 'GRADE'],
-            ['effects', 'EFFECTS'],
-            ['scopes', 'SCOPES'],
-            ['analysis', 'ANALYSIS'],
-        ].forEach(([id, label]) => {
+            ['inspector', 'INSPECTOR', 'panel.inspector'],
+            ['grade', 'GRADE', 'panel.grade'],
+            ['masks', 'MASKS', 'panel.masks'],
+            ['effects', 'EFFECTS', 'panel.effects'],
+            ['scopes', 'SCOPES', 'panel.scopes'],
+            ['analysis', 'ANALYSIS', 'panel.analysis'],
+        ].forEach(([id, label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-ref-tab';
             btn.dataset.tabId = id;
             btn.textContent = label;
+            btn.title = `${label.charAt(0)}${label.slice(1).toLowerCase()} (${_shortcutLabel(action)})`;
             const activate = () => {
                 activeTab = id;
                 this._referenceRightTab = id;
                 render();
+                this._syncRail();
             };
             btn.addEventListener('click', activate);
             tabs.appendChild(btn);
@@ -12390,31 +13612,48 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _installUndoShortcuts() {
-        // The Edit menu offers Undo and Redo and labels them Ctrl+Z / Ctrl+Y.
-        // The handler that implemented those labels lives after the
-        // unconditional 'return' in createHUD(), so it was never installed and
-        // the labels were a promise the app did not keep -- while _pushUndo()
-        // kept filling a 50-deep stack from live code the whole time.
+        // The Edit menu offers Undo and Redo with the keymap's labels, and this
+        // is the handler behind them (the one in createHUD() sits after its
+        // unconditional 'return' and was never installed). On the document,
+        // like the other keys, so stopPropagation keeps a handled Ctrl+Z from
+        // ComfyUI's own undo on the window.
         if (this._undoKeyHandler) return;
         this._undoKeyHandler = (e) => {
-            if (!this._ownsKeyboard(e)) return;
+            const hit = _matchKey(e);
+            const id = hit?.entry.id;
+            if (id !== 'edit.undo' && id !== 'edit.redo') return;
             const t = e.target;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-            if (!(e.ctrlKey || e.metaKey)) return;
-            const active = this;
-            const k = (e.key || '').toLowerCase();
-            if (k === 'z' && !e.shiftKey) { e.preventDefault(); active.undo?.(); }
-            else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); active.redo?.(); }
+            // A grade slider keeps focus after a drag, and Ctrl+Z there has to
+            // undo the drag. Text fields keep their own undo.
+            const onSlider = t?.tagName === 'INPUT' && t.type === 'range'
+                && !!(this.container?.contains(t) || this.controlsPanel?.contains(t));
+            if (!onSlider && !this._ownsKeyboard(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (id === 'edit.undo') this.undo?.();
+            else this.redo?.();
         };
-        window.addEventListener('keydown', this._undoKeyHandler);
+        document.addEventListener('keydown', this._undoKeyHandler, { signal: this._listenerSignal });
     }
 
-    _renderReferenceSection(parent, title) {
+    _renderReferenceSection(parent, title, onReset = null) {
         const section = document.createElement('section');
         section.className = 'radiance-ref-section';
         const heading = document.createElement('div');
         heading.className = 'radiance-ref-title';
         heading.textContent = title;
+        if (onReset) {
+            // Each grade section resets on its own, back to the defaults table.
+            heading.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'radiance-ref-section-reset';
+            btn.textContent = 'Reset';
+            btn.title = `Reset ${title.toLowerCase()} to defaults`;
+            btn.dataset.radianceReset = title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+            btn.onclick = onReset;
+            heading.appendChild(btn);
+        }
         section.appendChild(heading);
         parent.appendChild(section);
         return section;
@@ -12486,18 +13725,20 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _renderReferenceInspector(parent) {
         const current = this._getCurrentResult();
-        const fileName = current.filename || current.exr_filename || current.hdr_sidecar || 'No shot loaded';
-        const resolution = this.imageWidth && this.imageHeight ? `${this.imageWidth} x ${this.imageHeight}` : '— x —';
+        // M16: the frame, not its 8-bit thumbnail: the float sidecar the
+        // viewer shows when there is one, else the PNG. Resolution and format
+        // fall back to the frame record, so a panel drawn before the pixels
+        // land is not blank or wrong.
+        const fileName = current.hdr_sidecar || current.hdr_filename || current.filename || current.exr_filename || 'No shot loaded';
+        const resW = this.imageWidth || current.source_width, resH = this.imageHeight || current.source_height;
+        const resolution = resW && resH ? `${resW} x ${resH}` : '— x —';
         const frame = (this.currentFrame ?? current.frame ?? 0) + 1;
         const fps = this.playbackFps || 24;
         const durationFrames = Math.max(0, (this.totalFrames || 1) - 1);
         const durationSeconds = durationFrames / fps;
         const duration = `${String(Math.floor(durationSeconds / 60)).padStart(2, '0')}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}:${String(durationFrames % Math.round(fps)).padStart(2, '0')}`;
-        const format = this.hdrData?.format === 'rhdr_f32' ? 'RHDR fp32'
-            : this.hdrData?.format === 'rhdr' ? 'RHDR fp16'
-                : current.exr_filename ? 'EXR'
-                    : current.hdr_sidecar ? 'RHDR'
-                        : this.image ? 'PNG / Canvas' : '—';
+        const frameInfo = this._frameFormatInfo();
+        const format = frameInfo.format;
         const dataRange = Array.isArray(current.data_range)
             ? `${Number(current.data_range[0]).toFixed(4)} - ${Number(current.data_range[1]).toFixed(4)}`
             : '—';
@@ -12514,9 +13755,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Frame', frame],
             ['Frame Rate', `${Number(fps).toFixed(2)} FPS`],
             ['Duration', duration],
-            ['Input Transform', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : this.inputSpace],
+            ['Input Transform', this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace : `None (source: ${this._inputLabel()})`],
             ['Display', this.displayLut || 'None'],
-            ['Bit Depth', '32-bit (float)'],
+            ['Bit Depth', frameInfo.depth || '—'],
             ['Data Range', dataRange],
             ['Peak', stats?.p999 !== undefined ? Number(stats.p999).toFixed(4) : '—'],
         ].forEach(([k, v]) => {
@@ -12552,6 +13793,23 @@ self.onmessage = async ({ data: { id, url } }) => {
                 row.append(n, t);
                 row.title = rowData.available ? `View ${rowData.name}` : 'Metadata-only channel; no renderer binding available';
                 row.onclick = () => this._selectReferenceChannel(rowData);
+                // M15: a row is a button a keyboard can reach and press.
+                row.setAttribute('role', 'button');
+                row.setAttribute('aria-pressed', String(!!rowData.active));
+                row.dataset.channelName = rowData.name;
+                if (rowData.available) row.tabIndex = 0;
+                else row.setAttribute('aria-disabled', 'true');
+                row.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    // Not the viewer's shortcuts too: Space would start playback.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!rowData.available) return;
+                    this._selectReferenceChannel(rowData);
+                    // The panel was redrawn; keep the keyboard on this row.
+                    [...(this.controlsPanel?.querySelectorAll('.radiance-ref-channel') || [])]
+                        .find((r) => r.dataset.channelName === rowData.name)?.focus();
+                });
                 list.appendChild(row);
             });
         };
@@ -12628,7 +13886,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const kv = document.createElement('div');
         kv.className = 'radiance-ref-kv';
         [
-            ['Input', this.inputSpace === 'None' ? 'Scene Linear / ACEScg' : (this.inputSpace || 'Scene Linear')],
+            ['Input', this._inputLabel()],
             ['Output', this.displayLut || 'None'],
             ['Texture', this.hdrData?.format === 'rhdr_f32' ? 'RGBA32F' : this.hdrData?.format === 'rhdr' ? 'RGBA16F' : this.hdrData ? 'Float HDR' : 'Canvas'],
             ['Compare', this.compareMode || 'Off'],
@@ -12653,8 +13911,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Open Scopes', () => { this._setReferenceTab?.('scopes'); this.updateScopes?.(); }],
             ['Open Effects', () => { this._setReferenceTab?.('effects'); }],
             ['Snapshot', () => this.exportSnapshot?.('png')],
-            ['Export .CUBE', () => this.exportToCube()],
-            ['Export .CDL', () => this.exportToCDL()],
+            ['Export .CUBE', () => this._exportGradeLUT()],
+            ['Export .CDL', () => this._exportCDL()],
         ].forEach(([label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -12678,38 +13936,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         btnGroup.style.cssText = 'display: flex; gap: 4px;';
         selectorRow.appendChild(btnGroup);
 
-        // Initialize Sidebar Curve Editor if it doesn't exist
-        if (!this.refCurveEditor) {
-            this.refCurveEditor = new RadianceCurveEditor(240, 160, this.theme, (data, secData) => {
-                if (this.renderer) {
-                    this.renderer.updateCurveLut(data);
-                    if (secData) {
-                        this.renderer.updateSecondaryCurveLut(secData);
-                        const isIdentity = secData.every((v, i) => i % 4 === 3 ? true : Math.abs(v - 0.5) < 0.001);
-                        if (!isIdentity) {
-                            this.renderer.setSecondaryCurveMix(1.0);
-                        } else {
-                            this.renderer.setSecondaryCurveMix(0.0);
-                        }
-                    }
-                    this.renderer.setCurveMix(this.curveMix !== undefined ? this.curveMix : 1.0);
-                    this.render();
-                }
-                if (this.curveEditor && this.curveEditor !== this.refCurveEditor) {
-                    this.curveEditor.draw();
-                }
-            });
-
-            if (this.curveEditor) {
-                this.refCurveEditor.curves = this.curveEditor.curves;
-                this.refCurveEditor.levels = this.curveEditor.levels;
-                this.refCurveEditor.channelGain = this.curveEditor.channelGain;
-                this.refCurveEditor.softClipEnabled = this.curveEditor.softClipEnabled;
-                this.refCurveEditor.softClipParams = this.curveEditor.softClipParams;
-            }
-            if (this.image) this.refCurveEditor.updateHistogram(this.image);
-            this.refCurveEditor.notifyChange();
-        }
+        this._ensureCurveEditor();
+        this._updateCurveHistograms();
 
         const channelMap = [
             { ch: 'RGB', label: 'Y', color: '#e0e0e0', bg: 'rgba(255,255,255,0.12)' },
@@ -12728,6 +13956,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 btn.style.borderColor = isActive ? color : 'rgba(255,255,255,0.1)';
                 btn.style.color = isActive ? '#fff' : color;
                 btn.style.boxShadow = isActive ? `0 0 6px ${color}44` : 'none';
+                btn.setAttribute('aria-pressed', String(isActive));
             });
         };
 
@@ -12735,16 +13964,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = label;
+            btn.setAttribute('aria-label', `${ch === 'RGB' ? 'Luma' : ch} curve`);
             btn.style.cssText = `
-                width: 22px; height: 20px;
+                width: 28px; height: 26px;
                 background: rgba(255,255,255,0.04);
                 color: ${color};
                 border: 1px solid rgba(255,255,255,0.1);
                 border-radius: 3px;
                 display: flex; align-items: center; justify-content: center;
-                font-size: 10px; font-weight: bold; cursor: pointer;
+                font-size: var(--radiance-fs-body); font-weight: bold; cursor: pointer;
                 transition: all 0.12s;
-                padding: 0; outline: none;
+                padding: 0;
             `;
             btn.onclick = () => {
                 this.refCurveEditor.setActiveChannel(ch);
@@ -12768,16 +13998,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         resetBtn.type = 'button';
         resetBtn.textContent = 'Reset';
         resetBtn.style.cssText = `
-            height: 20px;
-            background: rgba(255,255,255,0.05);
-            color: rgba(235,242,250,0.8);
-            border: 1px solid rgba(255,255,255,0.08);
+            height: 26px;
+            background: var(--radiance-control);
+            color: var(--radiance-text);
+            border: 1px solid var(--radiance-panel-border);
             border-radius: 4px;
-            padding: 0 8px;
-            font-size: 9px;
+            padding: 0 10px;
+            font-size: var(--radiance-fs-body);
             font-weight: 600;
             cursor: pointer;
-            outline: none;
             transition: all 0.12s;
         `;
         resetBtn.onclick = () => {
@@ -12813,8 +14042,83 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._refCurveResizeObs.observe(editorContainer);
     }
 
+    /**
+     * The sidebar curve editor, created on first use. A grade restored from
+     * the workflow or a preset calls this too, so its curves reach the shader
+     * without the Inspector tab having been opened.
+     */
+    _ensureCurveEditor() {
+        if (this.refCurveEditor) return this.refCurveEditor;
+        if (typeof RadianceCurveEditor === 'undefined') return null;
+        this.refCurveEditor = new RadianceCurveEditor(240, 160, this.theme, (data, secData) => {
+            // The tables the shader samples, kept for the CDL and LUT exports.
+            this._curveTable = data;
+            if (secData) this._secondaryCurveTable = secData;
+            if (this.renderer) {
+                this.renderer.updateCurveLut(data);
+                if (secData) {
+                    this.renderer.updateSecondaryCurveLut(secData);
+                    this.renderer.setSecondaryCurveMix(_isIdentitySecondaryTable(secData) ? 0.0 : 1.0);
+                }
+                this.renderer.setCurveMix(this.curveMix !== undefined ? this.curveMix : 1.0);
+                this.render();
+            }
+            if (this.curveEditor && this.curveEditor !== this.refCurveEditor) {
+                this.curveEditor.draw();
+            }
+            this._schedulePersistGrade?.();
+        });
+        // A point drag, an added or removed point: one undo step each.
+        this.refCurveEditor.onEditStart = () => this._pushUndo();
+
+        if (this.curveEditor) {
+            this.refCurveEditor.curves = this.curveEditor.curves;
+            this.refCurveEditor.levels = this.curveEditor.levels;
+            this.refCurveEditor.channelGain = this.curveEditor.channelGain;
+            this.refCurveEditor.softClipEnabled = this.curveEditor.softClipEnabled;
+            this.refCurveEditor.softClipParams = this.curveEditor.softClipParams;
+        }
+        if (this._pendingCurves) {
+            const c = RadianceViewer._cloneGradeValue(this._pendingCurves);
+            this._pendingCurves = null;
+            this.refCurveEditor.curves = { ...this.refCurveEditor.curves, ...c.curves };
+            if (c.levels) this.refCurveEditor.levels = c.levels;
+            if (c.channelGain) this.refCurveEditor.channelGain = c.channelGain;
+            this.refCurveEditor.softClipEnabled = !!c.softClipEnabled;
+            if (c.softClipParams) this.refCurveEditor.softClipParams = c.softClipParams;
+        }
+        this._curveHistSource = null;
+        this._updateCurveHistograms();
+        this.refCurveEditor.notifyChange();
+        return this.refCurveEditor;
+    }
+
+    /**
+     * The curve editors' histogram, on the axis the curve acts on: scene-linear
+     * 0 to 1, from the float frame. For a float source the old histogram was
+     * built from the 8-bit placeholder canvas, which is black.
+     */
+    _updateCurveHistograms() {
+        const editors = [this.refCurveEditor, this.curveEditor].filter(Boolean);
+        if (!editors.length) return;
+        const hdr = this.hdrData || this.frameHDRData?.[this.currentFrame];
+        const src = hdr?.data ? hdr : null;
+        const key = src || this.image;
+        if (!key || key === this._curveHistSource) return;
+        this._curveHistSource = key;
+        const encoded = this.renderer?.isLinearTexture === false;
+        for (const ed of editors) {
+            if (src) ed.updateHistogramFromFloat?.(src.data, src.width, src.height, src.channels || 3, encoded);
+            else ed.updateHistogram(this.image, { linearize: true });
+        }
+    }
+
     _renderReferenceGrade(parent) {
-        const transform = this._renderReferenceSection(parent, 'COLOR TRANSFORM');
+        // Controls register here so adjustEV, undo and the eyedropper can move
+        // them without a rebuild.
+        this._gradeControls = new Map();
+        const transform = this._renderReferenceSection(parent, 'COLOR TRANSFORM',
+            () => this._resetGradeFields(RadianceViewer.GRADE_SECTIONS.transform));
         const field = (label, options, value, onChange) => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-field';
@@ -12844,16 +14148,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             'S-Log3 (Sony)': 'IDT: S-Log3 → Linear',
         })[this.inputSpace] || (this.inputSpace || 'None');
         field('Input Color Space', [
-            { label: 'ACEScg / Linear', value: 'None' },
+            { label: `As tagged: ${this.sourceTag?.colorspace || 'source'}`, value: 'None' },
             { label: 'sRGB', value: 'IDT: sRGB → Linear' },
             { label: 'Rec.709', value: 'IDT: Rec.709 → Linear' },
             { label: 'LogC3', value: 'IDT: LogC3 → Linear' },
             { label: 'LogC4', value: 'IDT: LogC4 → Linear' },
             { label: 'S-Log3', value: 'IDT: S-Log3 → Linear' },
         ], inputSpaceValue, v => {
+            this._pushUndo();
             this.inputSpace = v;
             this._userSetIDT = true;
-            this.requestRender();
+            this._gradeChanged();
         });
         field('Output Transform', [
             'None',
@@ -12863,82 +14168,89 @@ self.onmessage = async ({ data: { id, url } }) => {
             'Reinhard Tonemap',
             'ACES Filmic',
         ], ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(this.displayLut) ? 'ACES Filmic' : (this.displayLut || 'None'), v => {
+            this._pushUndo();
             this._setManualDisplayLut(v);
+            this._gradeChanged();
         });
 
-        const slider = (parentEl, label, min, max, value, step, cb, cls = '') => {
-            const row = document.createElement('div');
-            row.className = `radiance-ref-slider ${cls}`;
-            row.dataset.radianceParam = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-            const l = document.createElement('label');
-            l.textContent = label;
-            const input = document.createElement('input');
-            input.type = 'range';
-            input.dataset.radianceParam = row.dataset.radianceParam;
-            input.min = min;
-            input.max = max;
-            input.step = step;
-            input.value = value;
-            const out = document.createElement('output');
-            const setText = () => out.textContent = Number(input.value).toFixed(step < 0.05 ? 2 : step < 1 ? 1 : 0);
-            setText();
-            input.oninput = () => {
-                setText();
-                cb(parseFloat(input.value));
-                this.requestRender();
-                this.requestScopeUpdate?.();
-            };
-            row.append(l, input, out);
-            parentEl.appendChild(row);
-            return input;
-        };
+        this._gradeOutputSelect = transform.querySelector('select[data-radiance-param="output_transform"]');
+        this._syncLutSelects();
+        // H8: the OCIO config loader (bundled ACES configs, a .ocio file, and
+        // its input, display and view). It was built only in the old View tab,
+        // after createHUD()'s return. Color > OCIO Config opens it here.
+        const ocio = document.createElement('div');
+        ocio.dataset.radianceParam = 'ocio';
+        ocio.style.marginTop = '10px';
+        transform.appendChild(ocio);
+        this.renderOcioSection(ocio);
 
-        const exposure = this._renderReferenceSection(parent, 'EXPOSURE');
-        slider(exposure, 'Exposure', -10, 10, this.exposure || 0, 0.1, v => { this.exposure = v; this.renderer?.setExposure(v); });
-        slider(exposure, 'Contrast', 0.2, 3, this.contrast || 1, 0.01, v => { this.contrast = v; this.renderer?.setContrast(v); });
-        slider(exposure, 'Pivot', 0, 1, this.pivot || 0.5, 0.01, v => { this.pivot = v; this.renderer?.setPivot(v); });
+        const S = RadianceViewer.GRADE_SECTIONS;
+        const exposure = this._renderReferenceSection(parent, 'EXPOSURE', () => this._resetGradeFields(S.exposure));
+        this._refSlider(exposure, { label: 'Exposure', key: 'exposure', min: _EXPOSURE_MIN, max: _EXPOSURE_MAX, step: 0.05,
+            title: 'Stops', get: () => this.exposure, set: v => { this.exposure = v; this.renderer?.setExposure(v); } });
+        this._refSlider(exposure, { label: 'Contrast', key: 'contrast', min: 0.2, max: 3, step: 0.01,
+            title: 'A power curve about the pivot: each stop above and below it is spread by this factor',
+            get: () => this.contrast, set: v => { this.contrast = v; this.renderer?.setContrast(v); } });
+        this._refSlider(exposure, { label: 'Pivot', key: 'pivot', min: 0, max: 1, step: 0.01,
+            title: 'Scene-linear value contrast leaves unchanged (0.18 = 18% grey)',
+            get: () => this.pivot, set: v => { this.pivot = v; this.renderer?.setPivot(v); } });
 
-        const tone = this._renderReferenceSection(parent, 'TONE');
-        slider(tone, 'Highlights', -1, 1, this.highlights || 0, 0.01, v => { this.highlights = v; this.renderer?.setHighlights?.(v); });
-        slider(tone, 'Mid Detail', -1, 1, this.midDetail || 0, 0.01, v => { this.midDetail = v; this.renderer?.setMidDetail?.(v); });
-        slider(tone, 'Shadows', -1, 1, this.shadows || 0, 0.01, v => { this.shadows = v; this.renderer?.setShadows?.(v); });
-        slider(tone, 'Soft Clip', 0, 1, this.softClip || 0, 0.01, v => { this.softClip = v; this.renderer?.setSoftClip?.(v); });
-        slider(tone, 'Luma Mix', 0, 1, this.lumaMix ?? 1, 0.01, v => { this.lumaMix = v; this.renderer?.setLumaMix?.(v); });
+        const tone = this._renderReferenceSection(parent, 'TONE', () => this._resetGradeFields(S.tone));
+        this._refSlider(tone, { label: 'Highlights', key: 'highlights', min: -1, max: 1, step: 0.01,
+            get: () => this.highlights, set: v => { this.highlights = v; this.renderer?.setHighlights?.(v); } });
+        this._refSlider(tone, { label: 'Mid Detail', key: 'midDetail', min: -1, max: 1, step: 0.01,
+            get: () => this.midDetail, set: v => { this.midDetail = v; this.renderer?.setMidDetail?.(v); } });
+        this._refSlider(tone, { label: 'Shadows', key: 'shadows', min: -1, max: 1, step: 0.01,
+            get: () => this.shadows, set: v => { this.shadows = v; this.renderer?.setShadows?.(v); } });
+        this._refSlider(tone, { label: 'Soft Clip', key: 'softClip', min: 0, max: 1, step: 0.01,
+            get: () => this.softClip, set: v => { this.softClip = v; this.renderer?.setSoftClip?.(v); } });
+        this._refSlider(tone, { label: 'Luma Mix', key: 'lumaMix', min: 0, max: 1, step: 0.01,
+            title: '0 keeps the brightness the primaries set while saturation and hue move',
+            get: () => this.lumaMix, set: v => { this.lumaMix = v; this.renderer?.setLumaMix?.(v); } });
 
-        const color = this._renderReferenceSection(parent, 'COLOR');
-        slider(color, 'Temperature', -2, 2, this.temperature || 0, 0.05, v => { this.temperature = v; this.renderer?.setTemperature(v); }, 'temperature');
-        slider(color, 'Tint', -2, 2, this.tint || 0, 0.05, v => { this.tint = v; this.renderer?.setTint(v); }, 'tint');
-        slider(color, 'Saturation', 0, 2, this.saturation || 1, 0.01, v => { this.saturation = v; this.renderer?.setSaturation(v); }, 'saturation');
-        slider(color, 'Color Boost', 0, 1, this.colorBoost || 0, 0.01, v => { this.colorBoost = v; this.renderer?.setColorBoost?.(v); });
+        const color = this._renderReferenceSection(parent, 'COLOR', () => this._resetGradeFields(S.color));
+        const wb = RadianceViewer.WB_RANGE;
+        this._refSlider(color, { label: 'Temperature', key: 'temperature', min: -wb, max: wb, step: 0.05, cls: 'temperature',
+            title: 'Stops of red against blue: + warmer, - cooler. Brightness of a neutral is kept.',
+            get: () => this.temperature, set: v => { this.temperature = v; this.renderer?.setTemperature(v); } });
+        this._refSlider(color, { label: 'Tint', key: 'tint', min: -wb, max: wb, step: 0.05, cls: 'tint',
+            title: 'Stops of magenta against green: + magenta, - green. Brightness of a neutral is kept.',
+            get: () => this.tint, set: v => { this.tint = v; this.renderer?.setTint(v); } });
+        {
+            const pickRow = document.createElement('div');
+            pickRow.className = 'radiance-ref-actions';
+            pickRow.style.cssText = 'justify-content:flex-start;padding-top:0;margin:-2px 0 6px 88px;';
+            const pick = document.createElement('button');
+            pick.type = 'button';
+            pick.textContent = 'Pick neutral';
+            pick.dataset.radianceParam = 'wb_pick';
+            pick.title = 'Click a grey or white in the picture to set Temperature and Tint so it comes out neutral';
+            pick.onclick = () => this._toggleWBPicker?.(pick);
+            pickRow.appendChild(pick);
+            color.appendChild(pickRow);
+        }
+        this._refSlider(color, { label: 'Saturation', key: 'saturation', min: 0, max: 2, step: 0.01, cls: 'saturation',
+            get: () => this.saturation, set: v => { this.saturation = v; this.renderer?.setSaturation(v); } });
+        this._refSlider(color, { label: 'Color Boost', key: 'colorBoost', min: 0, max: 1, step: 0.01,
+            get: () => this.colorBoost, set: v => { this.colorBoost = v; this.renderer?.setColorBoost?.(v); } });
 
-        const wheels = this._renderReferenceSection(parent, 'COLOR WHEELS');
+        const wheels = this._renderReferenceSection(parent, 'COLOR WHEELS', () => this._resetGradeFields(S.wheels));
         const wheelsGrid = document.createElement('div');
         wheelsGrid.className = 'radiance-ref-wheels';
         wheels.appendChild(wheelsGrid);
         const wheelDefs = [
-            ['Lift', 'lift', this.lift || [0, 0, 0], -0.2, 0.2, 0.01, vals => this.renderer?.setLift?.(...vals)],
-            ['Gamma', 'gamma', this.gamma || [1, 1, 1], 0.2, 3, 0.01, vals => this.renderer?.setGamma?.(...vals)],
-            ['Gain', 'gain', this.gain || [1, 1, 1], 0, 3, 0.01, vals => this.renderer?.setGain?.(...vals)],
+            ['Lift', 'lift', -0.2, 0.2, 0.01, vals => this.renderer?.setLift?.(...vals)],
+            ['Gamma', 'gamma', 0.2, 3, 0.01, vals => this.renderer?.setGamma?.(...vals)],
+            ['Gain', 'gain', 0, 3, 0.01, vals => this.renderer?.setGain?.(...vals)],
         ];
         const renderWheelReadout = (container, vals) => {
             container.textContent = vals.map(v => Number(v).toFixed(2)).join(' ');
         };
         const clamp = (v, minVal, maxVal) => Math.max(minVal, Math.min(maxVal, v));
-        const hueToRgb = angle => {
-            const h = ((angle / (Math.PI * 2)) + 1) % 1;
-            const sector = h * 6;
-            const x = 1 - Math.abs((sector % 2) - 1);
-            let r = 0, g = 0, b = 0;
-            if (sector < 1) [r, g, b] = [1, x, 0];
-            else if (sector < 2) [r, g, b] = [x, 1, 0];
-            else if (sector < 3) [r, g, b] = [0, 1, x];
-            else if (sector < 4) [r, g, b] = [0, x, 1];
-            else if (sector < 5) [r, g, b] = [x, 0, 1];
-            else [r, g, b] = [1, 0, x];
-            return [r, g, b];
-        };
-        wheelDefs.forEach(([label, prop, initial, min, max, step, apply]) => {
-            this[prop] = Array.isArray(this[prop]) ? this[prop] : [...initial];
+        wheelDefs.forEach(([label, prop, min, max, step, apply]) => {
+            const neutral = RadianceViewer.GRADE_DEFAULTS[prop];
+            const current = () => (Array.isArray(this[prop]) ? this[prop] : [...neutral]);
+            this[prop] = [...current()];
             const item = document.createElement('div');
             item.className = 'radiance-ref-wheel';
             item.dataset.radianceParam = prop;
@@ -12964,20 +14276,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             controls.className = 'radiance-ref-wheel-controls';
             const controlRefs = [];
             const wheelRange = (max - min) * (prop === 'lift' ? 0.45 : 0.18);
-            const syncWheel = next => {
-                this[prop] = next;
-                controlRefs.forEach((ref, idx) => {
-                    ref.input.value = next[idx];
-                    ref.out.textContent = Number(next[idx]).toFixed(2);
-                });
-                renderWheelReadout(miniValues, next);
-                apply(next);
-                this.requestRender();
-                this.requestScopeUpdate?.();
-                updatePuck();
-            };
             const updatePuck = () => {
-                const vals = Array.isArray(this[prop]) ? this[prop] : [...initial];
+                const vals = current();
                 const mean = (vals[0] + vals[1] + vals[2]) / 3;
                 const dr = vals[0] - mean;
                 const dg = vals[1] - mean;
@@ -12993,6 +14293,26 @@ self.onmessage = async ({ data: { id, url } }) => {
                 puck.style.left = `calc(50% + ${Math.cos(angle) * radius}px)`;
                 puck.style.top = `calc(50% + ${Math.sin(angle) * radius}px)`;
             };
+            const syncFromState = () => {
+                const vals = current();
+                controlRefs.forEach((ref, idx) => {
+                    ref.input.value = vals[idx];
+                    ref.out.textContent = Number(vals[idx]).toFixed(2);
+                });
+                renderWheelReadout(miniValues, vals);
+                updatePuck();
+            };
+            const syncWheel = next => {
+                this[prop] = next;
+                apply(next);
+                syncFromState();
+                this._gradeChanged();
+            };
+            // The level the drag started from. Each move used to rebuild the
+            // colour around the average of values that already held the last
+            // move's shift, so holding the Gain puck on red took the level from
+            // 1.00 to 0.27 in four moves.
+            let dragLevel = null;
             const setFromWheel = evt => {
                 const rect = inner.getBoundingClientRect();
                 const cx = rect.left + rect.width / 2;
@@ -13000,24 +14320,33 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const dx = evt.clientX - cx;
                 const dy = evt.clientY - cy;
                 const maxRadius = Math.max(1, rect.width / 2 - 4);
-                const sat = clamp(Math.hypot(dx, dy) / maxRadius, 0, 1);
-                const rgb = hueToRgb(Math.atan2(dy, dx));
-                const current = Array.isArray(this[prop]) ? this[prop] : [...initial];
-                const base = clamp((current[0] + current[1] + current[2]) / 3, min, max);
-                const next = rgb.map(c => clamp(base + (c - 0.5) * 2 * sat * wheelRange, min, max));
-                syncWheel(next);
+                const strength = clamp(Math.hypot(dx, dy) / maxRadius, 0, 1) * wheelRange;
+                const a = Math.atan2(dy, dx);
+                if (dragLevel === null) {
+                    const vals = current();
+                    dragLevel = clamp((vals[0] + vals[1] + vals[2]) / 3, min, max);
+                }
+                // A zero-mean chroma offset around the held level, as
+                // createColorWheel does: red at 0, green at 120, blue at 240.
+                const chroma = [Math.cos(a), Math.cos(a - 2 * Math.PI / 3), Math.cos(a - 4 * Math.PI / 3)];
+                syncWheel(chroma.map(c => clamp(dragLevel + c * strength, min, max)));
             };
             inner.addEventListener('pointerdown', evt => {
                 evt.preventDefault();
                 inner.setPointerCapture?.(evt.pointerId);
+                this._pushUndo();   // one undo step per drag
+                dragLevel = null;
                 setFromWheel(evt);
             });
             inner.addEventListener('pointermove', evt => {
-                if (evt.buttons) setFromWheel(evt);
+                if (evt.buttons && dragLevel !== null) setFromWheel(evt);
             });
+            const endDrag = () => { dragLevel = null; };
+            inner.addEventListener('pointerup', endDrag);
+            inner.addEventListener('pointercancel', endDrag);
             inner.addEventListener('dblclick', () => {
-                const neutral = prop === 'lift' ? [0, 0, 0] : [1, 1, 1];
-                syncWheel(neutral);
+                this._pushUndo();
+                syncWheel([...neutral]);
             });
             ['R', 'G', 'B'].forEach((channel, idx) => {
                 const row = document.createElement('label');
@@ -13032,41 +14361,396 @@ self.onmessage = async ({ data: { id, url } }) => {
                 input.step = step;
                 input.value = this[prop][idx];
                 const out = document.createElement('output');
-                const updateOut = () => out.textContent = Number(input.value).toFixed(2);
-                updateOut();
+                out.textContent = Number(input.value).toFixed(2);
+                input.addEventListener('pointerdown', () => this._pushUndo());
+                input.addEventListener('keydown', () => this._pushUndoDebounced());
+                input.addEventListener('dblclick', () => {
+                    this._pushUndo();
+                    const next = [...current()];
+                    next[idx] = neutral[idx];
+                    syncWheel(next);
+                });
                 input.oninput = () => {
-                    const next = [...this[prop]];
+                    const next = [...current()];
                     next[idx] = parseFloat(input.value);
-                    this[prop] = next;
-                    updateOut();
-                    renderWheelReadout(miniValues, next);
-                    apply(next);
-                    this.requestRender();
-                    this.requestScopeUpdate?.();
-                    updatePuck();
+                    syncWheel(next);
                 };
                 row.append(ch, input, out);
                 controlRefs.push({ input, out });
                 controls.appendChild(row);
             });
-            updatePuck();
+            syncFromState();
+            (this._gradeControls ||= new Map()).set(`wheel:${prop}`, { sync: syncFromState });
             item.append(wheelLabel, ring, mini, controls);
             wheelsGrid.appendChild(item);
         });
 
+        this._renderReferencePresets(parent);
+
         const actions = document.createElement('div');
         actions.className = 'radiance-ref-actions';
         const reset = document.createElement('button');
+        reset.type = 'button';
         reset.textContent = 'Reset';
+        reset.title = 'Reset this tab: exposure, tone, colour and the wheels';
         reset.onclick = () => this.resetControls?.();
         const resetAll = document.createElement('button');
+        resetAll.type = 'button';
         resetAll.textContent = 'Reset All';
-        resetAll.onclick = () => this.resetControls?.();
+        resetAll.title = 'Reset every grade field: this tab, curves, printer lights, effects, LUT and input space';
+        resetAll.onclick = () => this.resetGradeAll?.();
         actions.append(reset, resetAll);
         parent.appendChild(actions);
     }
 
+    /**
+     * One Grade or Effects slider. Its readout shows the value the grade holds
+     * (at the step's own precision, so 0.05 does not round to 0.1) and takes a
+     * typed value; a drag is one undo step; a double-click returns it to the
+     * defaults table.
+     */
+    _refSlider(parentEl, { label, key, min, max, step, get, set, cls = '', title = '', param: paramName = null, neutral: neutralValue = undefined }) {
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        // A control inside a grade object (the mask, the qualifier) names its
+        // own param and neutral; the rest are read off the label and the table.
+        const param = paramName || label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        const row = document.createElement('div');
+        row.className = `radiance-ref-slider ${cls}`;
+        row.dataset.radianceParam = param;
+        if (title) row.title = title;
+        const l = document.createElement('label');
+        l.textContent = label;
+        const input = document.createElement('input');
+        input.type = 'range';
+        // M15: the label names its slider (a click on it focuses the slider).
+        input.id = `radiance-${this.node?.id ?? 'x'}-${param}-${(this._controlSeq = (this._controlSeq || 0) + 1)}`;
+        l.htmlFor = input.id;
+        input.dataset.radianceParam = param;
+        input.min = min;
+        input.max = max;
+        input.step = step;
+        input.setAttribute('aria-label', label);
+        const readout = document.createElement('input');
+        readout.type = 'text';
+        readout.inputMode = 'decimal';
+        readout.className = 'radiance-ref-readout';
+        readout.dataset.radianceReadout = param;
+        readout.setAttribute('aria-label', `${label} value`);
+        const decimals = String(step).includes('.') ? String(step).split('.')[1].length : 0;
+        const neutral = neutralValue ?? D[key] ?? 0;
+        const read = () => {
+            const v = Number(get());
+            return Number.isFinite(v) ? v : neutral;
+        };
+        const sync = () => {
+            const v = read();
+            input.value = String(v);
+            if (document.activeElement !== readout) readout.value = v.toFixed(decimals);
+        };
+        const apply = (v) => { set(v); sync(); this._gradeChanged(); };
+        const reset = () => { this._pushUndo(); apply(neutral); };
+        input.addEventListener('pointerdown', () => this._pushUndo());   // one step per drag
+        input.addEventListener('keydown', () => this._pushUndoDebounced());
+        input.addEventListener('input', () => apply(parseFloat(input.value)));
+        input.addEventListener('dblclick', reset);
+        l.addEventListener('dblclick', reset);
+        readout.addEventListener('focus', () => readout.select());
+        readout.addEventListener('keydown', (e) => {
+            // Digits typed here are not viewer shortcuts.
+            e.stopPropagation();
+            if (e.key === 'Enter') readout.blur();
+            else if (e.key === 'Escape') { readout.value = read().toFixed(decimals); readout.blur(); }
+        });
+        readout.addEventListener('change', () => {
+            const v = parseFloat(readout.value);
+            if (!Number.isFinite(v)) { sync(); return; }
+            this._pushUndo();
+            apply(Math.max(Number(min), Math.min(Number(max), v)));
+        });
+        readout.addEventListener('blur', sync);
+        sync();
+        row.append(l, input, readout);
+        parentEl.appendChild(row);
+        (this._gradeControls ||= new Map()).set(`slider:${key}`, { sync });
+        return input;
+    }
+
+    /** Grade presets: save the whole grade by name, load it back, delete it. */
+    _renderReferencePresets(parent) {
+        const section = this._renderReferenceSection(parent, 'PRESETS');
+        const presets = RadianceViewer.readJSON('radiance_presets', {});
+        const names = Object.keys(presets).sort((a, b) => a.localeCompare(b));
+        const row = document.createElement('div');
+        row.className = 'radiance-ref-field';
+        row.dataset.radianceParam = 'presets';
+        const l = document.createElement('label');
+        l.textContent = 'Grade preset';
+        const select = document.createElement('select');
+        select.dataset.radianceParam = 'grade_preset';
+        if (!names.length) {
+            const o = document.createElement('option');
+            o.value = ''; o.textContent = 'No presets saved';
+            select.appendChild(o);
+        }
+        names.forEach(n => {
+            const o = document.createElement('option');
+            o.value = n; o.textContent = n;
+            select.appendChild(o);
+        });
+        if (this._selectedPreset && names.includes(this._selectedPreset)) select.value = this._selectedPreset;
+        select.onchange = () => { this._selectedPreset = select.value || null; };
+        row.append(l, select);
+        section.appendChild(row);
+
+        const actions = document.createElement('div');
+        actions.className = 'radiance-ref-actions';
+        const button = (text, title, onClick, disabled = false) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = text;
+            b.title = title;
+            b.disabled = disabled;
+            b.dataset.radianceAction = text.toLowerCase().replace(/[^a-z]+/g, '_').replace(/_$/, '');
+            b.onclick = onClick;
+            actions.appendChild(b);
+        };
+        button('Load', 'Apply the selected preset (one undo step)', () => select.value && this.loadGrade(select.value), !names.length);
+        button('Save', 'Save the whole grade as a preset', () => this.saveGrade());
+        button('Delete', 'Delete the selected preset', () => select.value && this.deleteGrade(select.value), !names.length);
+        section.appendChild(actions);
+    }
+
+    /**
+     * H8: the power window and the HSL qualifier, in the live panel. Their
+     * only controls were in the old panel after createHUD()'s unconditional
+     * return, so the shader's mask and qualifier could not be reached. These
+     * drive the same maskState and qualifierState that render() sends every
+     * frame; each change is one undo step and is saved with the grade.
+     */
+    _renderReferenceMasks(parent) {
+        this._gradeControls = new Map();
+        this._backendUnsupportedNotice(parent, 'Masks and qualifiers');
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const m = () => this.maskState;
+        const q = () => this.qualifierState;
+        const pushMask = () => this.renderer?.setMask?.(this.maskState);
+        const pushQual = () => this.renderer?.setQualifier?.(this.qualifierState);
+
+        const toggle = (parentEl, label, param, get, set) => {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-toggle-row';
+            const l = document.createElement('span');
+            l.textContent = label;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'radiance-ref-toggle';
+            b.dataset.radianceParam = param;
+            b.setAttribute('aria-label', label);
+            const sync = () => {
+                const on = !!get();
+                b.classList.toggle('is-on', on);
+                b.setAttribute('aria-pressed', String(on));
+            };
+            b.onclick = () => { this._pushUndo(); set(!get()); sync(); this._gradeChanged(); };
+            sync();
+            row.append(l, b);
+            parentEl.appendChild(row);
+            this._gradeControls.set(`toggle:${param}`, { sync });
+        };
+        const slider = (parentEl, push, label, param, min, max, step, neutral, get, set, title = '') =>
+            this._refSlider(parentEl, { label, key: param, param, min, max, step, neutral, title, get,
+                set: (v) => { set(v); push(); } });
+        const hint = (parentEl, text) => {
+            const h = document.createElement('div');
+            h.style.cssText = 'font-size:var(--radiance-fs-body);line-height:1.45;color:var(--radiance-text-dim);margin:2px 0 8px;';
+            h.textContent = text;
+            parentEl.appendChild(h);
+        };
+
+        // ── Power window ──
+        const win = this._renderReferenceSection(parent, 'POWER WINDOW', () => this._resetGradeFields(['maskState']));
+        hint(win, 'Limits the grade to a shape. With Show window on, drag its handles on the picture to move, size and turn it.');
+        {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-field';
+            const l = document.createElement('label');
+            l.textContent = 'Shape';
+            const sel = document.createElement('select');
+            sel.dataset.radianceParam = 'mask_type';
+            sel.setAttribute('aria-label', 'Window shape');
+            [['0', 'None'], ['1', 'Circle'], ['2', 'Box']].forEach(([v, t]) => {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = t;
+                sel.appendChild(o);
+            });
+            const sync = () => { sel.value = String(m().type || 0); };
+            sel.onchange = () => {
+                this._pushUndo();
+                m().type = parseInt(sel.value, 10) || 0;
+                pushMask();
+                this._gradeChanged();
+            };
+            sync();
+            row.append(l, sel);
+            win.appendChild(row);
+            this._gradeControls.set('select:mask_type', { sync });
+        }
+        toggle(win, 'Invert', 'mask_invert', () => m().invert, (v) => { m().invert = v; pushMask(); });
+        toggle(win, 'Show window', 'mask_overlay', () => m().showOverlay, (v) => { m().showOverlay = v; pushMask(); });
+        const W = D.maskState;
+        slider(win, pushMask, 'Center X', 'mask_center_x', 0, 1, 0.01, W.center[0], () => m().center[0], (v) => { m().center[0] = v; });
+        slider(win, pushMask, 'Center Y', 'mask_center_y', 0, 1, 0.01, W.center[1], () => m().center[1], (v) => { m().center[1] = v; });
+        slider(win, pushMask, 'Size X', 'mask_scale_x', 0.01, 2, 0.01, W.scale[0], () => m().scale[0], (v) => { m().scale[0] = v; });
+        slider(win, pushMask, 'Size Y', 'mask_scale_y', 0.01, 2, 0.01, W.scale[1], () => m().scale[1], (v) => { m().scale[1] = v; });
+        slider(win, pushMask, 'Rotation', 'mask_rotation', -3.14, 3.14, 0.01, W.rotation, () => m().rotation, (v) => { m().rotation = v; },
+            'Radians');
+        slider(win, pushMask, 'Feather', 'mask_feather', 0, 1, 0.01, W.feather, () => m().feather, (v) => { m().feather = v; });
+
+        // ── HSL qualifier ──
+        const qual = this._renderReferenceSection(parent, 'HSL QUALIFIER', () => this._resetGradeFields(['qualifierState']));
+        hint(qual, 'Limits the grade to a hue, saturation and lightness range of the source. Show matte draws what it selects in white.');
+        toggle(qual, 'Active', 'qualifier_enabled', () => q().enabled, (v) => { q().enabled = v; pushQual(); });
+        toggle(qual, 'Show matte', 'qualifier_matte', () => q().showMask, (v) => { q().showMask = v; pushQual(); });
+        {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-actions';
+            row.style.cssText = 'justify-content:flex-start;padding-top:0;margin:0 0 6px;';
+            const pick = document.createElement('button');
+            pick.type = 'button';
+            pick.textContent = 'Pick colour';
+            pick.dataset.radianceParam = 'qualifier_pick';
+            pick.title = 'Click a colour in the picture to centre the qualifier on it';
+            pick.setAttribute('aria-pressed', String(!!this._qualifierPickArmed));
+            pick.onclick = () => this._armQualifierPick(pick);
+            row.appendChild(pick);
+            qual.appendChild(row);
+        }
+        const Q = D.qualifierState;
+        [['Hue', 'hue', 'h'], ['Saturation', 'sat', 's'], ['Lightness', 'luma', 'l']].forEach(([name, p, k]) => {
+            slider(qual, pushQual, name, `qualifier_${p}`, 0, 1, 0.01, Q[k], () => q()[k], (v) => { q()[k] = v; });
+            slider(qual, pushQual, `${name} width`, `qualifier_${p}_width`, 0, 1, 0.01, Q[`${k}W`], () => q()[`${k}W`], (v) => { q()[`${k}W`] = v; });
+            slider(qual, pushQual, `${name} soft`, `qualifier_${p}_soft`, 0, 0.5, 0.01, Q[`${k}S`], () => q()[`${k}S`], (v) => { q()[`${k}S`] = v; });
+        });
+    }
+
+    /**
+     * The qualifier's colour from the source, as the shader measures it:
+     * hue, saturation and lightness of the linear value (rgb2hsl in
+     * radiance_webgl.js), so a pick lands the centre where the matte looks.
+     */
+    static _qualifierHSL([r, g, b]) {
+        const P = g < b ? [b, g, -1, 2 / 3] : [g, b, 0, -1 / 3];
+        const Q = r < P[0] ? [P[0], P[1], P[3], r] : [r, P[1], P[2], P[0]];
+        const C = Q[0] - Math.min(Q[3], Q[1]);
+        const H = Math.abs((Q[3] - Q[1]) / (6 * C + 1e-10) + Q[2]);
+        const L = Q[0] - C * 0.5;
+        const S = C / (1 - Math.abs(L * 2 - 1) + 1e-10);
+        return [H, S, L];
+    }
+
+    /** One click on the picture sets the qualifier's centre from the source colour there. */
+    _armQualifierPick(btn) {
+        if (this._qualifierPickHandler) {
+            this.canvas.removeEventListener('pointerdown', this._qualifierPickHandler, true);
+            this._qualifierPickHandler = null;
+            btn?.setAttribute('aria-pressed', 'false');
+            return;
+        }
+        btn?.setAttribute('aria-pressed', 'true');
+        this.canvas.style.cursor = 'crosshair';
+        this._qualifierPickHandler = (e) => {
+            if (e.button !== 0) return;
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            this.canvas.removeEventListener('pointerdown', this._qualifierPickHandler, true);
+            this._qualifierPickHandler = null;
+            btn?.setAttribute('aria-pressed', 'false');
+            const rect = this.canvas.getBoundingClientRect();
+            const sx = this.canvas.width / (rect.width || 1), sy = this.canvas.height / (rect.height || 1);
+            const u = ((e.clientX - rect.left) * sx - this.panX) / (this.imageWidth * this.zoom);
+            const v = ((e.clientY - rect.top) * sy - this.panY) / (this.imageHeight * this.zoom);
+            if (!(u >= 0 && u <= 1 && v >= 0 && v <= 1)) return;
+            const rgb = this._wbSampleLinear(u, v);
+            if (!rgb) return;
+            const [h, s, l] = RadianceViewer._qualifierHSL(rgb);
+            this._pushUndo();
+            Object.assign(this.qualifierState, { h, s: Math.min(1, s), l: Math.min(1, l), enabled: true });
+            this.renderer?.setQualifier?.(this.qualifierState);
+            this._syncGradeControls();
+            this._gradeChanged();
+        };
+        this.canvas.addEventListener('pointerdown', this._qualifierPickHandler, true);
+    }
+    /** Keep the viewer bar's LUT select and the Grade tab's Output Transform on the same value. */
+    _syncLutSelects() {
+        const value = this.displayLut || 'None';
+        const set = (sel, v) => {
+            if (!sel) return;
+            if (![...sel.options].some(o => o.value === v)) {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = v;
+                sel.appendChild(o);
+            }
+            sel.value = v;
+        };
+        set(this._vbLutSelect, value);
+        set(this._gradeOutputSelect, ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(value) ? 'ACES Filmic' : value);
+    }
+
     _renderReferenceScopes(parent) {
+        // H8: what the scopes show and in which unit. The scale and levels
+        // selectors lived only in the old Scopes tab after createHUD()'s
+        // return, so every scope read 10-bit code values with no way to
+        // change it; the rail's four scope buttons all opened this stack.
+        const opts = this._renderReferenceSection(parent, 'SCOPE OPTIONS');
+        const field = (label, param, options, value, onChange, title = '') => {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-field';
+            if (title) row.title = title;
+            const l = document.createElement('label');
+            l.textContent = label;
+            const sel = document.createElement('select');
+            sel.dataset.radianceParam = param;
+            sel.setAttribute('aria-label', label);
+            options.forEach(([v, t]) => {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = t;
+                sel.appendChild(o);
+            });
+            sel.value = value;
+            sel.onchange = () => { onChange(sel.value); this._renderReferenceRightHUD(); this.updateScopes(); };
+            row.append(l, sel);
+            opts.appendChild(row);
+            return sel;
+        };
+        const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage is optional */ } };
+        const show = this._referenceScopeShow || 'all';
+        field('Show', 'scope_show', [['all', 'All four'], ['histogram', 'Histogram'], ['waveform', 'Waveform'],
+            ['parade', 'Parade'], ['vectorscope', 'Vectorscope']], show, (v) => { this._referenceScopeShow = v; });
+        field('Scale', 'scope_scale', _SCOPE_SCALES.map((s) => [s.id, `${s.label} (${s.unit})`]), this.scopeScale || 'cv10',
+            (v) => { this.scopeScale = v; store('radiance_scope_scale', v); });
+        if (this.scopeScale === 'nits-hlg') {
+            field('HLG peak', 'scope_hlg_peak', [400, 600, 1000, 2000, 4000].map((p) => [String(p), `${p} nits`]),
+                String(this.scopeHlgPeak || 1000), (v) => { this.scopeHlgPeak = parseInt(v, 10) || 1000; store('radiance_scope_hlg_peak', v); },
+                'HLG nominal peak luminance; the system gamma follows it (BT.2100).');
+        }
+        const levelsHint = (_SCOPE_LEVELS.find((l) => l.id === this.scopeLevels) || _SCOPE_LEVELS[0]).hint;
+        field('Levels', 'scope_levels', _SCOPE_LEVELS.map((l) => [l.id, l.label]), this.scopeLevels || 'data',
+            (v) => { this.scopeLevels = v; store('radiance_scope_levels', v); }, levelsHint);
+        // What the numbers mean. A nit scale only applies when the output is
+        // PQ or HLG; otherwise the scopes fall back to 10-bit code value and
+        // say so here (see _scopeOpts).
+        const desc = _scopeDescribe(this.scopeScale || 'cv10', this._scopeCtx());
+        const interprets = (_SCOPE_SCALES.find((s) => s.id === this.scopeScale) || {}).interprets;
+        const fallback = interprets && interprets.toLowerCase() !== this._activeDisplayEncoding();
+        const note = document.createElement('div');
+        note.dataset.radianceParam = 'scope_note';
+        note.style.cssText = 'font-size:var(--radiance-fs-body);line-height:1.45;color:var(--radiance-text-dim);margin-top:2px;';
+        note.textContent = fallback
+            ? `${desc.label} needs a ${interprets} output; the view is not ${interprets}, so the scopes read 10-bit code values.`
+            : `${desc.label} · ${desc.levels}. ${desc.detail}`;
+        opts.appendChild(note);
+
         const section = this._renderReferenceSection(parent, 'SCOPES');
         const scopes = document.createElement('div');
         scopes.className = 'radiance-ref-scopes-grid';
@@ -13078,9 +14762,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['waveform', 'Waveform', false],
             ['parade', 'Parade', false],
             ['vectorscope', 'Vectorscope', true],
-        ].forEach(([mode, label, square]) => {
+        ].filter(([mode]) => show === 'all' || show === mode).forEach(([mode, label, square]) => {
             const box = document.createElement('div');
             box.className = `radiance-ref-scope-box ${square ? 'is-square' : ''}`;
+            box.dataset.scope = mode;
             const head = document.createElement('div');
             head.className = 'radiance-ref-scope-head';
             const title = document.createElement('span');
@@ -13133,11 +14818,22 @@ self.onmessage = async ({ data: { id, url } }) => {
             return;
         }
         try {
+            const t0 = performance.now();
             const src = this._scopeSource();
-            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear);
-            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false);
-            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true);
-            if (canvases.vectorscope) this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false);
+            const opts = this._scopeOpts(src);
+            if (canvases.histogram) this.renderer.renderHistogram(canvases.histogram, this.scopeLogView || false, src.tex, src.isLinear, opts);
+            if (canvases.waveform) this.renderer.renderScope('waveform', canvases.waveform, src.tex, src.isLinear, false, opts);
+            if (canvases.parade) this.renderer.renderScope('waveform', canvases.parade, src.tex, src.isLinear, true, opts);
+            if (canvases.vectorscope) {
+                this.renderer.renderScope('vectorscope', canvases.vectorscope, src.tex, src.isLinear, false, opts);
+                // M9: the same BT.709 targets as the Scopes tab. It drew none.
+                const vs = canvases.vectorscope;
+                _vsGraticule(vs.getContext('2d'), vs.width, vs.height, { labels: true });
+            }
+            // The read-backs above waited for the GPU, so this is the real cost.
+            if (performance.now() - t0 > RadianceViewer.SCOPE_SLOW_UPDATE_MS && this._scopeSignalMaxNow() > 512) {
+                this.scopeSignalMax = Math.max(512, this.scopeSignalMax / 2);
+            }
         } catch (err) {
             console.warn('[Radiance] Reference scopes failed:', err);
             Object.entries(canvases).forEach(([mode, canvas]) => this._drawReferenceScopeEmpty(canvas, mode.toUpperCase()));
@@ -13195,14 +14891,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         qc.appendChild(grid);
     }
 
+    /** A depth map for the clip: on this viewer, in its frames, or on the GPU. */
+    _hasDepthMap() {
+        return !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
+    }
+
     _renderReferenceDepthPreview(preview) {
         preview.innerHTML = '';
         const src = this.zdepthImage || this.frameZdepthImages?.[this.currentFrame] || null;
+        // M18: no map is one line, not a square of gradient.
+        preview.classList.toggle('is-empty', !src);
         if (!src) {
-            const empty = document.createElement('div');
-            empty.style.cssText = 'height:100%;display:flex;align-items:center;justify-content:center;color:rgba(230,238,250,.42);font:800 10px/1 var(--radiance-font-mono, monospace);letter-spacing:.8px;';
-            empty.textContent = 'NO DEPTH MAP';
-            preview.appendChild(empty);
+            preview.textContent = this._hasDepthMap() ? 'No depth map for this frame' : RadianceViewer.NO_DEPTH_MESSAGE;
             return;
         }
         const canvas = document.createElement('canvas');
@@ -13227,55 +14927,50 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _renderReferenceEffects(parent) {
-        const makeSlider = (parentEl, label, min, max, value, step, cb, cls = '') => {
-            const row = document.createElement('div');
-            row.className = `radiance-ref-slider ${cls}`;
-            row.dataset.radianceParam = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-            const l = document.createElement('label');
-            l.textContent = label;
-            const input = document.createElement('input');
-            input.type = 'range';
-            input.dataset.radianceParam = row.dataset.radianceParam;
-            input.min = min;
-            input.max = max;
-            input.step = step;
-            input.value = value;
-            const out = document.createElement('output');
-            const updateText = () => out.textContent = Number(input.value).toFixed(step < 0.05 ? 2 : step < 1 ? 1 : 0);
-            updateText();
-            input.oninput = () => {
-                updateText();
-                cb(parseFloat(input.value));
-                this.requestRender();
-                this.requestScopeUpdate?.();
-            };
-            row.append(l, input, out);
-            parentEl.appendChild(row);
-            return input;
-        };
+        this._gradeControls = new Map();
+        const S = RadianceViewer.GRADE_SECTIONS;
+        // The same slider as the Grade tab: editable readout, one undo step per
+        // drag, double-click to the defaults table.
+        const makeSlider = (parentEl, label, min, max, key, step, cb, cls = '') =>
+            this._refSlider(parentEl, { label, key, min, max, step, cls, get: () => this[key], set: cb });
 
-        const makeToggle = (parentEl, label, enabled, cb, statusText = '') => {
+        // M15: a switch is a button named by its label, with aria-pressed,
+        // and its status pill (status(on)) follows a click; both used to
+        // stay as drawn. 'disabled' is the reason it cannot be used.
+        const uid = `radiance-fx-${this.node?.id ?? 'x'}`;
+        const makeToggle = (parentEl, label, enabled, cb, { id, status = null, disabled = '' } = {}) => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-toggle-row';
             const l = document.createElement('span');
             l.textContent = label;
+            l.id = `${uid}-${id}`;
             const right = document.createElement('div');
             right.style.cssText = 'display:flex;align-items:center;gap:8px;';
-            if (statusText) {
-                const pill = document.createElement('span');
+            const pill = status ? document.createElement('span') : null;
+            if (pill) {
                 pill.className = 'radiance-ref-status-pill';
-                pill.textContent = statusText;
+                pill.textContent = status(!!enabled);
                 right.appendChild(pill);
             }
             const toggle = document.createElement('button');
             toggle.type = 'button';
             toggle.className = `radiance-ref-toggle ${enabled ? 'is-on' : ''}`;
+            toggle.dataset.radianceToggle = id;
+            toggle.setAttribute('aria-labelledby', l.id);
+            toggle.setAttribute('aria-pressed', String(!!enabled));
+            if (disabled) {
+                toggle.disabled = true;
+                toggle.title = disabled;
+                row.title = disabled;
+            }
             toggle.onclick = () => {
-                const next = !toggle.classList.contains('is-on');
+                const next = toggle.getAttribute('aria-pressed') !== 'true';
+                this._pushUndo();
                 toggle.classList.toggle('is-on', next);
+                toggle.setAttribute('aria-pressed', String(next));
                 cb(next);
-                this.requestRender();
-                this.requestScopeUpdate?.();
+                if (pill) pill.textContent = status(next);
+                this._gradeChanged();
             };
             right.appendChild(toggle);
             row.append(l, right);
@@ -13314,7 +15009,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             return select;
         };
 
-        const grain = this._renderReferenceSection(parent, 'FILM GRAIN');
+        const grain = this._renderReferenceSection(parent, 'FILM GRAIN', () => this._resetGradeFields(S.grain));
 
         const grainPresets = [
             { value: 'none', label: 'Off / Custom', amount: 0.0, size: 1.0, color: 0.0, animate: false },
@@ -13333,6 +15028,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         ];
 
         makeSelect(grain, 'Film Stock', grainPresets, this.activeGrainPreset || 'none', val => {
+            this._pushUndo();
             this.activeGrainPreset = val;
             const preset = grainPresets.find(p => p.value === val);
             if (preset) {
@@ -13347,158 +15043,138 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.renderer?.setGrainAnimate(this.grainAnimate);
             }
             this._renderReferenceRightHUD();
-            this.requestRender();
+            this._gradeChanged();
         });
 
         makeToggle(grain, 'Animate Grain', !!this.grainAnimate, v => {
             this.grainAnimate = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainAnimate(v);
-        }, this.grainAnimate ? 'LIVE' : 'STATIC');
+        }, { id: 'grain-animate', status: (on) => (on ? 'LIVE' : 'STATIC') });
 
-        makeSlider(grain, 'Amount', 0, 1, this.grain || 0, 0.01, v => {
+        makeSlider(grain, 'Amount', 0, 1, 'grain', 0.01, v => {
             this.grain = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrain(v);
         });
 
-        makeSlider(grain, 'Size', 0.25, 4, this.grainSize || 1, 0.05, v => {
+        makeSlider(grain, 'Size', 0.25, 4, 'grainSize', 0.05, v => {
             this.grainSize = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainSize(v);
         });
 
-        makeSlider(grain, 'Color', 0, 1, this.grainColor || 0, 0.01, v => {
+        makeSlider(grain, 'Color', 0, 1, 'grainColor', 0.01, v => {
             this.grainColor = v;
             this.activeGrainPreset = 'none';
             this.renderer?.setGrainColor(v);
         }, 'saturation');
 
-        const lens = this._renderReferenceSection(parent, 'LENS EFFECTS');
-        makeSlider(lens, 'Bloom', 0, 2, this.bloom || 0, 0.01, v => {
+        const lens = this._renderReferenceSection(parent, 'LENS EFFECTS', () => this._resetGradeFields(S.lens));
+        makeSlider(lens, 'Bloom', 0, 2, 'bloom', 0.01, v => {
             this.bloom = v;
             this.renderer?.setBloom(v);
         });
-        makeSlider(lens, 'Halation', 0, 2, this.halation || 0, 0.01, v => {
+        makeSlider(lens, 'Halation', 0, 2, 'halation', 0.01, v => {
             this.halation = v;
             this.renderer?.setHalation(v);
         });
-        makeSlider(lens, 'Diffusion', 0, 2, this.diffusion || 0, 0.01, v => {
+        makeSlider(lens, 'Diffusion', 0, 2, 'diffusion', 0.01, v => {
             this.diffusion = v;
             this.renderer?.setDiffusion(v);
         });
-        makeSlider(lens, 'Fringe', 0, 2, this.lensFringe || 0, 0.01, v => {
+        makeSlider(lens, 'Fringe', 0, 2, 'lensFringe', 0.01, v => {
             this.lensFringe = v;
             this.renderer?.setLensDistortion(this.lensDistortion || 0, v);
         });
 
-        const depth = this._renderReferenceSection(parent, 'REALTIME DEPTH');
-        const hasDepth = !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
+        const depth = this._renderReferenceSection(parent, 'REALTIME DEPTH', () => this._resetGradeFields(S.depth));
+        // M18, L6: without a depth map this section is one line saying so,
+        // and its controls are disabled with that reason. It was a half-panel
+        // gradient over live sliders that changed nothing.
+        const hasDepth = this._hasDepthMap();
+        this._effectsBuiltWithDepth = hasDepth;
+        const noDepth = hasDepth ? '' : RadianceViewer.NO_DEPTH_MESSAGE;
         makeToggle(depth, 'Show Depth Overlay', !!this.showZdepth, v => {
             this.showZdepth = v;
             this.renderer?.setShowDepth(v);
-        }, hasDepth ? 'READY' : 'NO MAP');
+        }, { id: 'depth-overlay', status: () => (hasDepth ? 'READY' : 'NO MAP'), disabled: noDepth });
         makeToggle(depth, 'Depth Of Field', !!this.dofEnabled, v => {
             this.dofEnabled = v;
             this.renderer?.setDoFEnabled(v);
-        }, this.dofEnabled ? 'ON' : 'OFF');
+        }, { id: 'dof', status: (on) => (on ? 'ON' : 'OFF'), disabled: noDepth });
         const preview = document.createElement('div');
         preview.className = 'radiance-ref-depth-preview';
         depth.appendChild(preview);
         this._renderReferenceDepthPreview(preview);
-        makeSlider(depth, 'Focus', 0, 1, this.focusDistance ?? 0.5, 0.01, v => {
+        const depthSliders = [];
+        const depthSlider = (...a) => { const input = makeSlider(depth, ...a); depthSliders.push(input); return input; };
+        depthSlider('Focus', 0, 1, 'focusDistance', 0.01, v => {
             this.focusDistance = v;
             this.renderer?.setFocusDistance(v);
         });
-        makeSlider(depth, 'Aperture', 0, 1, this.aperture || 0, 0.01, v => {
+        depthSlider('Aperture', 0, 1, 'aperture', 0.01, v => {
             this.aperture = v;
             this.renderer?.setAperture(v);
         });
-        makeSlider(depth, 'Blades', 0, 9, this.apertureBlades || 0, 1, v => {
-            this.apertureBlades = Math.round(v);
+        depthSlider('Blades', 0, 9, 'apertureBlades', 1, v => {
+            // L6: a shape needs three blades; 1 and 2 drew the same round
+            // disc as 0. They snap to round (1) or to three (2).
+            const n = Math.round(v);
+            this.apertureBlades = n === 1 ? 0 : n === 2 ? 3 : n;
             this.renderer?.setApertureShape(this.apertureBlades, this.apertureRotation || 0, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Angle', 0, 360, this.apertureRotation || 0, 1, v => {
+        depthSlider('Angle', 0, 360, 'apertureRotation', 1, v => {
             this.apertureRotation = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, v, this.apertureAnamorphic || 1);
         });
-        makeSlider(depth, 'Anamorphic', 1, 2, this.apertureAnamorphic || 1, 0.05, v => {
+        depthSlider('Anamorphic', 1, 2, 'apertureAnamorphic', 0.05, v => {
             this.apertureAnamorphic = v;
             this.renderer?.setApertureShape(this.apertureBlades || 0, this.apertureRotation || 0, v);
         });
-        makeSlider(depth, 'Highlight', 0, 5, this.bokehHighlightBias || 0, 0.1, v => {
+        depthSlider('Highlight', 0, 5, 'bokehHighlightBias', 0.1, v => {
             this.bokehHighlightBias = v;
             this.renderer?.setBokehPhysics(v, this.bokehSoapBubble || 0, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Rim', 0, 2, this.bokehSoapBubble || 0, 0.05, v => {
+        depthSlider('Rim', 0, 2, 'bokehSoapBubble', 0.05, v => {
             this.bokehSoapBubble = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, v, this.bokehOpticalVig || 0);
         });
-        makeSlider(depth, 'Cat Eye', 0, 1, this.bokehOpticalVig || 0, 0.05, v => {
+        depthSlider('Cat Eye', 0, 1, 'bokehOpticalVig', 0.05, v => {
             this.bokehOpticalVig = v;
             this.renderer?.setBokehPhysics(this.bokehHighlightBias || 0, this.bokehSoapBubble || 0, v);
+        });
+        depthSliders.forEach((input) => {
+            const row = input.closest('.radiance-ref-slider');
+            if (input.dataset.radianceParam === 'blades') row.title = 'Aperture blades: 0 is round, 3 to 9 are polygons';
+            if (hasDepth) return;
+            input.disabled = true;
+            row.querySelector('.radiance-ref-readout')?.setAttribute('disabled', '');
+            row.title = noDepth;
         });
 
         const actions = document.createElement('div');
         actions.className = 'radiance-ref-actions';
         const reset = document.createElement('button');
+        reset.type = 'button';
         reset.textContent = 'Reset Effects';
+        reset.title = 'Reset grain, lens effects (Fringe included) and depth of field';
+        // Every effect field from the defaults table. The list here was typed
+        // out by hand and left Fringe out.
         reset.onclick = () => {
-            this.grain = 0;
-            this.grainSize = 1;
-            this.grainColor = 0;
-            this.grainAnimate = false;
-            this.activeGrainPreset = 'none';
-            this.bloom = 0;
-            this.halation = 0;
-            this.diffusion = 0;
             this.showZdepth = false;
-            this.dofEnabled = false;
-            this.aperture = 0;
-            this.focusDistance = 0.5;
-            this.apertureBlades = 0;
-            this.apertureRotation = 0;
-            this.apertureAnamorphic = 1;
-            this.bokehHighlightBias = 0;
-            this.bokehSoapBubble = 0;
-            this.bokehOpticalVig = 0;
-            this.renderer?.setGrain(0);
-            this.renderer?.setGrainSize(1);
-            this.renderer?.setGrainColor(0);
-            this.renderer?.setGrainAnimate(false);
-            this.renderer?.setBloom(0);
-            this.renderer?.setHalation(0);
-            this.renderer?.setDiffusion(0);
-            this.renderer?.setShowDepth(false);
-            this.renderer?.setDoFEnabled(false);
-            this.renderer?.setAperture(0);
-            this.renderer?.setFocusDistance(0.5);
-            this.renderer?.setApertureShape(0, 0, 1);
-            this.renderer?.setBokehPhysics(0, 0, 0);
-            this._renderReferenceRightHUD();
-            this.requestRender();
+            this.renderer?.setShowDepth?.(false);
+            this._resetGradeFields([...S.grain, ...S.lens, ...S.depth]);
         };
         actions.appendChild(reset);
         parent.appendChild(actions);
     }
 
     createHUD() {
-        // Singleton pattern: Check if HUD already exists
-        if (RadianceViewer.singletonHUD) {
-            this.controlsPanel = RadianceViewer.singletonHUD;
-            // Attach to THIS instance's rightControlPanel (not document.body)
-            if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-                if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-                this.rightControlPanel.appendChild(this.controlsPanel);
-            }
-
-            // v2.4: Sync active instance and re-render content immediately on creation if HUD already exists
-            RadianceViewer.activeInstance = this;
-            this._renderReferenceRightHUD();
-            if (typeof this._lastRenderContent === 'function') this._lastRenderContent();
-            return;
-        }
-
+        // One panel per viewer. It used to be a page-wide singleton that moved
+        // into whichever viewer was built last: viewer A's panel emptied when
+        // B was added, its controls then drove the wrong viewer, and deleting
+        // B left A with no panel until a reload.
         if (this._hudResizeListener) {
             window.removeEventListener('resize', this._hudResizeListener);
             this._hudResizeListener = null;
@@ -13507,15 +15183,37 @@ self.onmessage = async ({ data: { id, url } }) => {
         const t = this.theme;
         this.controlsPanel = document.createElement('div');
         this.controlsPanel.className = 'radiance-glass-dock radiance-panel-embedded';
-        this.controlsPanel.id = 'radiance-singleton-hud';
-        RadianceViewer.singletonHUD = this.controlsPanel;
+
+        // A frame change only rewrites readouts, and nothing outside the
+        // panel (a frame change, OCIO finishing loading) rebuilds it while
+        // one of its controls is held or focused (_referencePanelBusy). A
+        // rebuild that had to wait runs once the control is let go. The
+        // panel's own controls may still redraw it from their handlers.
+        const catchUp = () => {
+            if (this._referencePanelStale && !this._referencePanelBusy()) this._renderReferenceRightHUD();
+        };
+        const inPanelEvent = () => {
+            this._inPanelEvent = true;
+            queueMicrotask(() => { this._inPanelEvent = false; });
+        };
+        for (const type of ['input', 'change', 'click', 'keydown', 'pointerdown', 'pointerup']) {
+            this.controlsPanel.addEventListener(type, inPanelEvent, true);
+        }
+        this.controlsPanel.addEventListener('pointerdown', () => { this._referencePointerDown = true; }, true);
+        const release = () => {
+            if (!this._referencePointerDown) return;
+            this._referencePointerDown = false;
+            catchUp();
+        };
+        window.addEventListener('pointerup', release, { capture: true, signal: this._listenerSignal });
+        window.addEventListener('pointercancel', release, { capture: true, signal: this._listenerSignal });
+        this.controlsPanel.addEventListener('focusout', () => setTimeout(catchUp, 0));
 
         // v3.0 #15: High Contrast Mode Initialization
         // Restores accessibility preference from localStorage and applies the CSS hook.
-        this.highContrast = localStorage.getItem('radiance_high_contrast') === '1';
-        if (this.highContrast) {
-            this.controlsPanel.classList.add('high-contrast');
-        }
+        let hc = false;
+        try { hc = localStorage.getItem('radiance_high_contrast') === '1'; } catch { /* private mode */ }
+        this.setHighContrast(hc, { persist: false });
 
         if (this.controlsPanel.parentNode !== this.rightControlPanel) {
             if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
@@ -13679,7 +15377,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             border: 1px solid transparent;
         `;
 
-        const active = RadianceViewer.activeInstance || this;
+        const active = this;
         active.activeTab = 'primaries';
         const tabContentContainer = document.createElement('div');
         this.tabContentContainer = tabContentContainer;
@@ -13696,7 +15394,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._hudTabs = [];
 
         const renderTabs = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabsRow.innerHTML = '';
             tabs.forEach(tab => {
                 const btn = document.createElement('div');
@@ -13738,7 +15436,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
 
         const renderContent = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             tabContentContainer.innerHTML = '';
             tabContentContainer.style.cssText = 'display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;';
 
@@ -13789,7 +15487,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // A/B Bypass Toggle
         const bypassBtn = document.createElement('div');
         bypassBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active._gradingBypassed = !active._gradingBypassed;
             if (active._gradingBypassed) {
                 // Save current state and set identity
@@ -13846,18 +15544,18 @@ self.onmessage = async ({ data: { id, url } }) => {
         undoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         undoBtn.onmouseenter = () => { undoBtn.style.color = this._undoStack.length > 0 ? this.theme.accent : '#555'; };
         undoBtn.onmouseleave = () => { undoBtn.style.color = '#555'; };
-        undoBtn.onclick = () => { (RadianceViewer.activeInstance || this).undo(); };
+        undoBtn.onclick = () => { this.undo(); };
 
         const redoBtn = document.createElement('div');
         redoBtn.textContent = '↷';
         redoBtn.title = 'Redo (Ctrl+Shift+Z)';
         redoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
         redoBtn.onmouseenter = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             redoBtn.style.color = active._redoStack.length > 0 ? active.theme.accent : '#555';
         };
         redoBtn.onmouseleave = () => { redoBtn.style.color = '#555'; };
-        redoBtn.onclick = () => { (RadianceViewer.activeInstance || this).redo(); };
+        redoBtn.onclick = () => { this.redo(); };
 
         undoRedoGroup.appendChild(undoBtn);
         undoRedoGroup.appendChild(redoBtn);
@@ -13868,7 +15566,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         resetBtn.textContent = 'RESET ALL';
         resetBtn.style.cssText = 'font-size: 9px; color: #666; cursor: pointer; letter-spacing: 1px;';
         resetBtn.onclick = () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             // Push undo before resetting
             active._pushUndo();
             // Primaries
@@ -13923,8 +15621,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._undoKeyListener = (e) => {
                 if (!this._ownsKeyboard(e)) return;
                 // Only respond when HUD is visible and not in a text input
-                if (!RadianceViewer.singletonHUD || RadianceViewer.singletonHUD.style.opacity === '0') return;
-                const active = RadianceViewer.activeInstance;
+                if (!this.controlsPanel || this.controlsPanel.style.opacity === '0') return;
+                const active = this;
                 if (!active) return;
 
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -13964,7 +15662,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                     }
                 }
             };
-            document.addEventListener('keydown', this._undoKeyListener);
+            document.addEventListener('keydown', this._undoKeyListener, { signal: this._listenerSignal });
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -14375,7 +16073,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         };
         if (!this._transportSpaceHandler) {
             this._transportSpaceHandler = spaceHandler;
-            document.addEventListener('keydown', this._transportSpaceHandler);
+            document.addEventListener('keydown', this._transportSpaceHandler, { signal: this._listenerSignal });
         }
 
         // Float transport over the canvas
@@ -14559,9 +16257,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 printerEVBadge.textContent = '±0';
                 printerEVBadge.style.color = '#555';
             } else {
-                const evR = (r / 50).toFixed(2);
-                const evG = (g / 50).toFixed(2);
-                const evB = (b / 50).toFixed(2);
+                const evR = (r / 12).toFixed(2);
+                const evG = (g / 12).toFixed(2);
+                const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
                 printerEVBadge.style.color = '#00a8ff';
             }
@@ -14644,7 +16342,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             const evLbl = document.createElement('span');
             evLbl.style.cssText = 'font-size: 7.5px; color: #444; width: 34px; text-align: left; font-family: monospace;';
             const _updateEV = (v) => {
-                const ev = (v / 50);
+                const ev = (v / 12);      // 12 printer points to the stop (see applyPrinterLights)
                 evLbl.textContent = ev === 0 ? '' : `${ev>0?'+':''}${ev.toFixed(2)}EV`;
                 evLbl.style.color = ev !== 0 ? hexColor + 'bb' : '#333';
             };
@@ -15433,7 +17131,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
             };
 
-            if (this.image) this.curveEditor.updateHistogram(this.image);
+            this._curveHistSource = null;
+            this._updateCurveHistograms();
             this.curveEditor.notifyChange();
         }
 
@@ -16045,12 +17744,13 @@ self.onmessage = async ({ data: { id, url } }) => {
     _backendUnsupportedNotice(container, what) {
         if (this._gpuBackend !== 'webgpu') return false;
         const n = document.createElement('div');
-        n.style.cssText = 'font-size:10px; line-height:1.5; color:#ffb020; font-family:monospace;'
-            + 'padding:8px; margin-bottom:8px; background:rgba(255,176,32,0.06);'
-            + 'border-radius:5px; border-left:2px solid rgba(255,176,32,0.5);';
+        n.style.cssText = 'font-size:var(--radiance-fs-body); line-height:1.5; color:var(--radiance-warn);'
+            + 'padding:8px; margin-bottom:8px; background:rgba(245,165,36,0.08);'
+            + 'border-radius:5px; border-left:2px solid var(--radiance-warn);';
         n.textContent = `${what} are not implemented on the WebGPU backend. `
             + 'The controls below will move and the picture will not change. '
-            + 'Radiance prefers WebGPU whenever the browser offers it.';
+            + 'WebGPU is on because it was chosen under Settings (⚙) > Renderer; switch it '
+            + 'back to WebGL there and reload to use them.';
         container.appendChild(n);
         return true;
     }
@@ -16499,6 +18199,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         if (this.hdrData?.data) {
+            // C3: the node's tag (hdrData.isLinear). An sRGB-encoded float
+            // frame is decoded before it is measured, so Y, EV and nits are
+            // light. It used to be read as if linear: a 0.5 pixel showed
+            // EV +1.47 and 101.5 nits instead of +0.25 and 43.5.
             const isLinear = this.hdrData.isLinear !== false;
             const C = this.hdrData.channels || this.hdrData.shape?.[2] || 3;
             return {
@@ -16506,8 +18210,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 width: this.hdrData.width || this.imageWidth,
                 height: this.hdrData.height || this.imageHeight,
                 channels: C,
-                linear: isLinear,
-                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', display-encoded'}`,
+                linear: true,
+                encoded: !isLinear,
+                label: `Source — float ${C}-channel${isLinear ? ', scene-linear' : ', sRGB-encoded, decoded to linear light'}`,
             };
         }
 
@@ -16536,7 +18241,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const info = this._probeDescribe();
         if (info.error) return info;
         if (info.kind === 'rendered') return { ...info, data: this._probeRendered.data };
-        if (info.kind === 'hdr') return { ...info, data: this.hdrData.data };
+        if (info.kind === 'hdr') return { ...info, data: info.encoded ? this._probeLinearFromHDR(info.channels) : this.hdrData.data };
         return { ...info, data: this._probeLinearFromImageData() };
     }
 
@@ -16564,6 +18269,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this._probeLinearCache = out;
         this._probeLinearCacheFor = this.imageData;
+        return out;
+    }
+
+    /**
+     * An sRGB-encoded float frame decoded to linear, colour channels only,
+     * built for whole-frame or region statistics and cached like the 8-bit
+     * decode above (same cache, same invalidation).
+     */
+    _probeLinearFromHDR(C) {
+        const src = this.hdrData.data;
+        if (this._probeLinearCacheFor === src && this._probeLinearCache) return this._probeLinearCache;
+        const out = new Float32Array(src.length);
+        const colour = Math.min(C, 3);
+        for (let i = 0; i < src.length; i++) out[i] = (i % C) < colour ? _probeSrgbToLinear(src[i]) : src[i];
+        this._probeLinearCache = out;
+        this._probeLinearCacheFor = src;
         return out;
     }
 
@@ -16617,6 +18338,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             const p = _probePixelAt(this.hdrData.data,
                 { width: this.hdrData.width || this.imageWidth, height: this.hdrData.height || this.imageHeight, channels: C },
                 x, y);
+            if (p && this.hdrData.isLinear === false) {
+                // C3: decoded, as the caption says (see _probeDescribe).
+                p.r = _probeSrgbToLinear(p.r); p.g = _probeSrgbToLinear(p.g); p.b = _probeSrgbToLinear(p.b);
+            }
             return p ? { x, y, ...p } : null;
         }
         if (this.imageData) {
@@ -16731,7 +18456,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         srcGroup.appendChild(heading('Values'));
         srcGroup.appendChild(segmented([
             { id: 'source', label: 'Source', hint: 'The pixels as loaded, before the viewer grade.' },
-            { id: 'rendered', label: 'Rendered', hint: 'The pixels as displayed, after the grade and view transform.' },
+            { id: 'rendered', label: 'Rendered', hint: 'The graded pixels, scene-linear, before the view transform (what the 32-bit graded EXR holds).' },
         ], this.probeSource, (id) => {
             this.probeSource = id;
             this._probeStats = null;
@@ -17072,6 +18797,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             encoding: enc,
             colorspace: tag?.colorspace || (enc === 'srgb' ? 'sRGB Encoded Rec.709 (sRGB)' : 'Linear Rec.709 (sRGB)'),
         };
+        if (this._proColor) this._proColor.textContent = this._inputLabel();
         this.renderer?.setSourceEncoding?.(enc);
         this.renderer?.setSourceColorSpace?.(this.sourceTag.colorspace);
         if (!this._userSetIDT) {
@@ -17106,6 +18832,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._ocioAutoOff();
         this._viewApprox = false;
         this.displayLut = value;
+        this._syncLutSelects?.();
         this.render?.();
     }
 
@@ -17147,6 +18874,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.displayLut = v === 'srgb' ? 'sRGB (Display)'
                 : v === 'rec709' ? 'Rec.709 (Broadcast)' : 'ACES Filmic';
         }
+        this._syncLutSelects?.();
         this.render?.();
     }
 
@@ -17278,28 +19006,30 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const head = document.createElement('div');
         head.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:8px;';
+        head.setAttribute('role', 'heading');
+        head.setAttribute('aria-level', '3');
         head.innerHTML = `
-            <div style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:0.6px;">Colour Management</div>
-            <div style="font-size:9px; color:${this.ocioActive ? '#00ffcc' : 'rgba(255,255,255,0.25)'}; font-weight:700; letter-spacing:0.5px;">
+            <div style="color:var(--radiance-text-dim); font-size:var(--radiance-fs-heading); text-transform:uppercase; font-weight:700; letter-spacing:0.6px;">Colour Management</div>
+            <div style="font-size:var(--radiance-fs-heading); color:${this.ocioActive ? 'var(--radiance-accent)' : 'var(--radiance-text-muted)'}; font-weight:700; letter-spacing:0.5px;">
                 ${this.ocioActive ? (this._ocioAutoActive ? 'OCIO AUTO' : 'OCIO ACTIVE') : 'BUILT-IN VIEW'}
             </div>`;
         group.appendChild(head);
 
         const box = document.createElement('div');
-        box.style.cssText = 'background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px;';
+        box.style.cssText = 'background: var(--radiance-surface); border:1px solid var(--radiance-panel-border); padding: 8px; border-radius: 6px; display:flex; flex-direction:column; gap:6px;';
 
         const row = (labelText, node) => {
             const r = document.createElement('div');
             r.style.cssText = 'display:flex; align-items:center; gap:6px;';
             const l = document.createElement('div');
             l.textContent = labelText;
-            l.style.cssText = 'font-size:10px; color:#888; width:64px; flex-shrink:0; font-weight:600;';
+            l.style.cssText = 'font-size:var(--radiance-fs-body); color:var(--radiance-text-dim); width:64px; flex-shrink:0; font-weight:600;';
             r.appendChild(l); r.appendChild(node);
             return r;
         };
         const select = (values, current, onPick) => {
             const s = document.createElement('select');
-            s.style.cssText = 'flex:1; min-width:0; background:rgba(255,255,255,0.06); color:#ddd; border:1px solid rgba(255,255,255,0.14); border-radius:4px; padding:4px 6px; font-size:11px;';
+            s.style.cssText = 'flex:1; min-width:0; background:var(--radiance-control); color:var(--radiance-text); border:1px solid var(--radiance-border-strong); border-radius:4px; padding:4px 6px; font-size:var(--radiance-fs-body); min-height:28px;';
             values.forEach((v) => {
                 const o = document.createElement('option');
                 o.value = v; o.textContent = v;
@@ -17313,9 +19043,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             const b = document.createElement('button');
             b.textContent = label;
             b.disabled = !!this.ocioBusy;
-            b.style.cssText = `flex:1; background:${accent ? 'rgba(0,242,255,0.08)' : '#22222a'}; color:${accent ? '#00f2ff' : '#ddd'};
-                border:1px solid ${accent ? 'rgba(0,242,255,0.28)' : '#3a3a44'}; padding:6px; border-radius:4px;
-                font-size:10px; cursor:${this.ocioBusy ? 'wait' : 'pointer'}; font-weight:700; opacity:${this.ocioBusy ? 0.5 : 1};`;
+            b.style.cssText = `flex:1; background:${accent ? 'var(--radiance-accent-soft)' : 'var(--radiance-control)'}; color:${accent ? 'var(--radiance-accent)' : 'var(--radiance-text)'};
+                border:1px solid ${accent ? 'var(--radiance-accent-glow)' : 'var(--radiance-border-strong)'}; padding:6px; border-radius:4px; min-height:28px;
+                font-size:var(--radiance-fs-body); cursor:${this.ocioBusy ? 'wait' : 'pointer'}; font-weight:700; opacity:${this.ocioBusy ? 0.5 : 1};`;
             b.onclick = onClick;
             return b;
         };
@@ -17359,7 +19089,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const builtins = _ocioReady() ? _ocioBuiltins() : [];
         if (builtins.length) {
             const bSel = document.createElement('select');
-            bSel.style.cssText = 'flex:1; min-width:0; background:rgba(255,255,255,0.06); color:#ddd; border:1px solid rgba(255,255,255,0.14); border-radius:4px; padding:4px 6px; font-size:11px;';
+            bSel.style.cssText = 'flex:1; min-width:0; background:var(--radiance-control); color:var(--radiance-text); border:1px solid var(--radiance-border-strong); border-radius:4px; padding:4px 6px; font-size:var(--radiance-fs-body); min-height:28px;';
             const none = document.createElement('option');
             none.value = ''; none.textContent = 'Bundled ACES config…';
             bSel.appendChild(none);
@@ -17402,27 +19132,27 @@ self.onmessage = async ({ data: { id, url } }) => {
 
             if (this.ocio.looks?.length) {
                 const note = document.createElement('div');
-                note.style.cssText = 'font-size:9px; color:rgba(255,255,255,0.3); line-height:1.4;';
+                note.style.cssText = 'font-size:var(--radiance-fs-body); color:var(--radiance-text-muted); line-height:1.4;';
                 note.textContent = `This config defines ${this.ocio.looks.length} look${this.ocio.looks.length > 1 ? 's' : ''}. `
-                    + 'Looks are not applied yet — only the view\'s own look, where the view carries one.';
+                    + 'Looks are not applied yet, only the view\'s own look, where the view carries one.';
                 box.appendChild(note);
             }
         }
 
         // ── Status ──────────────────────────────────────────────────────────
         if (this.ocioStatus) {
-            const colour = { ok: 'rgba(255,255,255,0.45)', warn: '#ffb020', error: '#ff8080' }[this.ocioStatus.level];
+            const colour = { ok: 'var(--radiance-text-dim)', warn: 'var(--radiance-warn)', error: 'var(--radiance-error)' }[this.ocioStatus.level];
             const s = document.createElement('div');
-            s.style.cssText = `font-size:9px; line-height:1.5; font-family:monospace; color:${colour};
+            s.style.cssText = `font-size:var(--radiance-fs-body); line-height:1.5; font-family:var(--radiance-mono); color:${colour};
                 padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:4px; border-left:2px solid ${colour};`;
             s.textContent = this.ocioStatus.text;
             box.appendChild(s);
         }
 
         const caveat = document.createElement('div');
-        caveat.style.cssText = 'font-size:9px; color:rgba(255,255,255,0.28); line-height:1.4;';
+        caveat.style.cssText = 'font-size:var(--radiance-fs-body); color:var(--radiance-text-muted); line-height:1.4;';
         caveat.textContent = 'A config that references LUT files on disk cannot resolve them from a '
-            + 'file picker — the browser only receives the one file you choose. Configs built from '
+            + 'file picker, the browser only receives the one file you choose. Configs built from '
             + 'built-in transforms, which includes every ACES config, load completely.';
         box.appendChild(caveat);
 
@@ -17779,13 +19509,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         const cubeBtn = document.createElement('button');
         cubeBtn.textContent = '⤒ EXPORT .CUBE';
         cubeBtn.style.cssText = 'background: #1a1a20; color: #ffca28; border: 1px solid #ffca2855; padding: 6px; border-radius: 4px; font-size: 10px; cursor: pointer; flex: 1; font-weight: bold;';
-        cubeBtn.onclick = () => this.exportToCube();
+        cubeBtn.onclick = () => this._exportGradeLUT();
         exportRow.appendChild(cubeBtn);
 
         const cdlExportBtn = document.createElement('button');
         cdlExportBtn.textContent = '⤒ EXPORT .CDL';
         cdlExportBtn.style.cssText = 'background: #1a1a20; color: #88ff88; border: 1px solid #88ff8855; padding: 6px; border-radius: 4px; font-size: 10px; cursor: pointer; flex: 1; font-weight: bold;';
-        cdlExportBtn.onclick = () => this.exportToCDL();
+        cdlExportBtn.onclick = () => this._exportCDL();
         exportRow.appendChild(cdlExportBtn);
 
         const cdlImportBtn = document.createElement('button');
@@ -17859,9 +19589,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.highContrast = e.target.checked;
             localStorage.setItem('radiance_high_contrast', this.highContrast ? '1' : '0');
             if (this.highContrast) {
-                RadianceViewer.singletonHUD?.classList.add('high-contrast');
+                this.controlsPanel?.classList.add('high-contrast');
             } else {
-                RadianceViewer.singletonHUD?.classList.remove('high-contrast');
+                this.controlsPanel?.classList.remove('high-contrast');
             }
         };
         hcRow.appendChild(hcCheck);
@@ -18805,10 +20535,17 @@ self.onmessage = async ({ data: { id, url } }) => {
             `<b style="color:rgba(255,255,255,0.6)">${_escapeHtml(desc.label)}</b> · ${_escapeHtml(desc.levels)}`
             + `<br>${_escapeHtml(desc.detail)}`
             + `<br>Measured ${_escapeHtml(desc.measuredAt)}.`
-            // The scopes read an 8-bit canvas. A 10-bit scale over that shows
-            // the right number on a 256-step signal, not 1024 steps of
-            // precision. Saying so is the difference between a scale and a claim.
-            + '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>'
+            // How the active mode is sampled. Waveform, parade, vectorscope and
+            // histogram count every pixel in float on the GPU (C2). The CPU
+            // fallback and false colour read an 8-bit canvas: a 10-bit scale
+            // over that shows the right number on a 256-step signal, not 1024
+            // steps of precision. Saying so is the difference between a scale
+            // and a claim.
+            + (this._scopeTabGPUReady(this.scopeMode)
+                ? '<br><span style="color:rgba(255,255,255,0.3)">Every pixel, in float; values outside 0 to 1023 plot in the shaded footroom and headroom.</span>'
+                : this.scopeMode === 'chromaticity' && this.hdrData?.data
+                    ? '<br><span style="color:rgba(255,255,255,0.3)">Linear source values, before the view.</span>'
+                    : '<br><span style="color:rgba(255,255,255,0.3)">Sampled at 8 bits — the scale converts the value, it does not add precision.</span>')
             + (this.scopeLogView ? '<br><span style="color:#ffc844">LogC assist is on — the plot is reshaped and the graticule is reshaped with it, so the labels still read true.</span>' : '')
             + (desc.warn ? `<br><span style="color:#ff9040">⚠ ${_escapeHtml(desc.warn)}</span>` : '');
         container.appendChild(measureNote);
@@ -18879,7 +20616,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const canUseGL = !!(this.glCanvas && this.glCanvas.width > 0);
         this._scopeMeasuredTransformed = this.scopeTransformed && canUseGL;
         let imgData = null;
-        if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
+        if (this._scopeTabGPUReady(this.scopeMode)) {
+            imgData = { data: new Uint8ClampedArray(4) };        // the GPU reads the frame itself
+        } else if (this._scopeMeasuredTransformed && this.renderer?.readDisplaySignal) {
             const sig = this.renderer.readDisplaySignal(sampleW, sampleH, this.lutIntensity || 1.0, true);
             if (sig?.data) imgData = { data: sig.data };
         } else if (!this.scopeTransformed && this.hdrData) {
@@ -18905,13 +20644,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         const ctx = canvas.getContext('2d');
 
         // ─── Render Based on Mode ───────────────────────────
+        // C2: the GPU counts the trace from every pixel (null pixels below
+        // tells each draw to add only its graticule and labels on top).
         const logFlag = this.scopeLogView;
+        const gpu = this._scopeTabGPU(canvas, this.scopeMode, logFlag);
+        const px = gpu ? null : pixels;
         switch (this.scopeMode) {
-            case 'parade': this._drawScopeParade(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'waveform': this._drawScopeWaveform(ctx, pixels, sampleW, sampleH, cW, cH, logFlag); break;
-            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag); break;
-            case 'vectorscope': this._drawScopeVectorscope(ctx, pixels, cW, cH); break;
-            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH); break;
+            case 'parade': this._drawScopeParade(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'waveform': this._drawScopeWaveform(ctx, px, sampleW, sampleH, cW, cH, logFlag); break;
+            case 'histogram': this._drawScopeHistogram(ctx, pixels, cW, cH, logFlag, gpu || null); break;
+            case 'vectorscope': this._drawScopeVectorscope(ctx, px, cW, cH); break;
+            case 'chromaticity': this._drawScopeChromaticity(ctx, pixels, cW, cH, this._scopeChromaticitySource()); break;
             case 'falsecolor': this._drawScopeFalseColor(ctx, pixels, sampleW, sampleH, cW, cH); break;
         }
     }
@@ -18962,12 +20705,39 @@ self.onmessage = async ({ data: { id, url } }) => {
      * merely warning that they are not.
      */
     _scopePlotPos(v, logView) {
-        return logView ? _logAssistPos(v) : v;
+        return _plotPos(logView ? _logAssistPos(v) : v);
     }
 
     /** Its inverse — a position on the plot back to a normalised value. */
     _scopePlotInv(p, logView) {
-        return logView ? _logAssistInv(p) : Math.min(Math.max(p, 0), 1);
+        const n = _plotInv(p);
+        return logView ? _logAssistInv(n) : n;
+    }
+
+    /** Whether the Scopes tab's current mode is drawn by the GPU counter. */
+    _scopeTabGPUReady(mode) {
+        return !!(this.renderer?.isWebGL2 && this.renderer.renderScope && this.renderer.textures?.image
+            && this.imageWidth && ['waveform', 'parade', 'vectorscope', 'histogram'].includes(mode));
+    }
+
+    /**
+     * C2: draw the Scopes tab's trace on the GPU from every pixel, in float,
+     * at the measurement point the panel shows. Returns false when it cannot
+     * (no WebGL2), and for the histogram returns its per-channel bins for the
+     * panel's own curves. The tab used to plot an 8-bit, 1000 px wide copy:
+     * a one-pixel line in a 2000 px frame was gone before it was plotted.
+     */
+    _scopeTabGPU(canvas, mode, logView) {
+        if (!this._scopeTabGPUReady(mode)) return false;
+        const r = this.renderer;
+        const src = this._scopeMeasuredTransformed
+            ? this._scopeSource()
+            : { tex: r.textures.image, isLinear: r.isLinearTexture, width: this.imageWidth, height: this.imageHeight };
+        if (!src.tex) return false;
+        const opts = { width: src.width, height: src.height, logAssist: !!logView, graticule: false };
+        if (mode === 'histogram') return r.scopeHistogramBins?.(256, src.tex, src.isLinear, opts) || false;
+        r.renderScope(mode === 'parade' ? 'waveform' : mode, canvas, src.tex, src.isLinear, mode === 'parade', opts);
+        return true;
     }
 
     /**
@@ -19003,8 +20773,10 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _drawScopeParade(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         const secW = Math.floor(w / 3);
         const channels = [
@@ -19018,7 +20790,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         channels.forEach(ch => {
             // Plot dots
             ctx.globalAlpha = 1.0;
-            for (let col = 0; col < imgW; col += step) {
+            for (let col = 0; data && col < imgW; col += step) {
                 const x = ch.x + Math.floor((col / imgW) * secW);
                 const hist = new Uint32Array(256);
                 for (let row = 0; row < imgH; row++) {
@@ -19029,7 +20801,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const intensity = Math.min(hist[v] / (imgH * 0.08), 1.0);
                         const alpha = intensity * 0.7 + 0.15;
                         ctx.fillStyle = ch.color + alpha + ')';
-                        ctx.fillRect(x, h - (v / 255) * h, 1, 2);
+                        ctx.fillRect(x, h - _plotPos(v / 255) * h, 1, 2);
                     }
                 }
             }
@@ -19068,8 +20840,10 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Luma Waveform ───────────────────────────────────────
     _drawScopeWaveform(ctx, data, imgW, imgH, w, h, logView) {
-        ctx.fillStyle = '#050508';
-        ctx.fillRect(0, 0, w, h);
+        if (data) {
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, w, h);
+        }
 
         // The graticule, in the selected scale's units. See _drawScopeParade for
         // why the old nit ruler was removed rather than kept alongside.
@@ -19078,12 +20852,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         // ── Plot luma dots ─────────────────────────────────────────────────────
         const step = Math.max(1, Math.floor(imgW / w));
         ctx.globalAlpha = 0.08;
-        for (let col = 0; col < imgW; col += step) {
+        for (let col = 0; data && col < imgW; col += step) {
             const x = Math.floor((col / imgW) * w);
             for (let row = 0; row < imgH; row += 2) {
                 const idx = (row * imgW + col) * 4;
                 const luma = data[idx] * 0.2126 + data[idx + 1] * 0.7152 + data[idx + 2] * 0.0722;
-                const y = h - (luma / 255) * h;
+                const y = h - _plotPos(luma / 255) * h;
                 const bright = Math.floor(40 + luma * 0.6);
                 ctx.fillStyle = `rgb(${bright}, ${Math.floor(bright * 1.4)}, ${bright})`;
                 ctx.fillRect(x, y, 1, 1);
@@ -19098,19 +20872,29 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     // ─── Histogram ───────────────────────────────────────────
-    _drawScopeHistogram(ctx, data, w, h, logView) {
+    _drawScopeHistogram(ctx, data, w, h, logView, gpuBins = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
-        const hR = new Uint32Array(256), hG = new Uint32Array(256), hB = new Uint32Array(256);
-        for (let i = 0; i < data.length; i += 4) {
-            hR[data[i]]++;
-            hG[data[i + 1]]++;
-            hB[data[i + 2]]++;
+        // GPU bins (every pixel, float) are already on the plot axis, log
+        // assist included. CPU bins are 8-bit codes, placed with plotPos.
+        let hR, hG, hB, xAt;
+        if (gpuBins) {
+            [hR, hG, hB] = gpuBins;
+            xAt = (i) => ((i + 0.5) / hR.length) * w;
+        } else {
+            hR = new Uint32Array(256); hG = new Uint32Array(256); hB = new Uint32Array(256);
+            for (let i = 0; i < data.length; i += 4) {
+                hR[data[i]]++;
+                hG[data[i + 1]]++;
+                hB[data[i + 2]]++;
+            }
+            xAt = (i) => _plotPos(i / 255) * w;
         }
+        const n = hR.length;
 
         let max = 1;
-        for (let i = 0; i < 256; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
+        for (let i = 0; i < n; i++) max = Math.max(max, hR[i], hG[i], hB[i]);
 
         // Grid — the histogram's axis is horizontal, so the same ticks the
         // waveform draws as lines are drawn here as columns. It used to be four
@@ -19134,8 +20918,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
@@ -19147,8 +20931,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             ctx.fillStyle = color;
             ctx.beginPath();
             ctx.moveTo(0, h);
-            for (let i = 0; i < 256; i++) {
-                const x = (i / 255) * w;
+            for (let i = 0; i < n; i++) {
+                const x = xAt(i);
                 const y = h - (hist[i] / max) * h * 0.95;
                 ctx.lineTo(x, y);
             }
@@ -19182,6 +20966,11 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     // ─── Vectorscope ─────────────────────────────────────────
     _drawScopeVectorscope(ctx, data, w, h) {
+        if (!data) {
+            // The GPU drew the trace from every pixel; the targets go on top.
+            _vsGraticule(ctx, w, h, { labels: true, lineWidth: 2 });
+            return;
+        }
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
         // 3.5.0: BT.709 Cb/Cr (see radiance_vectorscope.js). The trace used PAL
@@ -19199,8 +20988,34 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.globalAlpha = 1.0;
     }
 
+    /**
+     * M8: linear light in a known gamut for the chromaticity scope: the float
+     * source, decoded when the node tagged it sRGB-encoded, with the source
+     * gamut's RGB to XYZ matrix. Null when there is no float frame or an
+     * input transform is set (the samples are then camera code values), and
+     * the scope falls back to decoding the 8-bit signal.
+     */
+    _scopeChromaticitySource() {
+        const hdr = this.hdrData;
+        if (!hdr?.data || (this.inputSpace && this.inputSpace !== 'None')) return null;
+        const M = [
+            [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041],   // Rec.709
+            [0.6624541811, 0.1340042065, 0.1561876870, 0.2722287168, 0.6740817658, 0.0536895174,
+                -0.0055746495, 0.0040607335, 1.0103391003],                                                            // AP1
+            [0.9525523959, 0.0, 0.0000936786, 0.3439664498, 0.7281660966, -0.0721325464, 0.0, 0.0, 1.0088251844],   // AP0
+            [0.6369580, 0.1446169, 0.1688810, 0.2627002, 0.6779981, 0.0593017, 0.0, 0.0280727, 1.0609851],         // Rec.2020
+            [0.4865709, 0.2656677, 0.1982173, 0.2289746, 0.6917385, 0.0792869, 0.0, 0.0451134, 1.0439444],         // P3-D65
+        ];
+        const encoded = hdr.isLinear === false;
+        const gamut = encoded ? 0 : (this.renderer?.sourceGamut || 0);
+        return {
+            data: hdr.data, channels: hdr.channels || 3, toXYZ: M[gamut] || M[0],
+            decode: encoded ? _probeSrgbToLinear : null,
+        };
+    }
+
     // ─── Chromaticity (CIE 1931 xy) ──────────────────────────
-    _drawScopeChromaticity(ctx, data, w, h) {
+    _drawScopeChromaticity(ctx, data, w, h, lin = null) {
         ctx.fillStyle = '#050508';
         ctx.fillRect(0, 0, w, h);
 
@@ -19246,21 +21061,41 @@ self.onmessage = async ({ data: { id, url } }) => {
         ctx.closePath();
         ctx.stroke();
 
-        // Plot pixels (CPU fallback for non-renderer mode)
+        // Plot pixels. M8: xy is a property of light, so it is computed from
+        // linear values: the float source in its own gamut when there is one,
+        // else the 8-bit signal decoded from sRGB. It used gamma-encoded,
+        // clamped display values, so orange (1, 0.5, 0) landed at
+        // (0.477, 0.460) instead of (0.544, 0.407), and nothing could ever
+        // plot outside Rec.709.
         ctx.globalAlpha = 0.08;
-        const step = Math.max(1, Math.floor(data.length / 4 / 20000));
-        for (let i = 0; i < data.length; i += 4 * step) {
-            const r = data[i]/255, g = data[i+1]/255, b = data[i+2]/255;
-            // RGB -> XYZ (D65)
-            const X = 0.4124 * r + 0.3576 * g + 0.1805 * b;
-            const Y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-            const Z = 0.0193 * r + 0.1192 * g + 0.9505 * b;
+        const plot = (r, g, b, M, swatch) => {
+            const X = M[0] * r + M[1] * g + M[2] * b;
+            const Y = M[3] * r + M[4] * g + M[5] * b;
+            const Z = M[6] * r + M[7] * g + M[8] * b;
             const sum = X + Y + Z;
-            if (sum > 1e-4) {
-                const x = X / sum, y = Y / sum;
-                const pt = xyToPx(x, y);
-                ctx.fillStyle = `rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`;
+            if (sum > 1e-4 && Number.isFinite(sum)) {
+                const pt = xyToPx(X / sum, Y / sum);
+                ctx.fillStyle = swatch;
                 ctx.fillRect(pt.x, pt.y, 1, 1);
+            }
+        };
+        if (lin) {
+            const { data: src, channels: C, toXYZ, decode } = lin;
+            const n = src.length / C;
+            const step = Math.max(1, Math.floor(n / 20000));
+            const enc = (v) => Math.round(255 * Math.min(1, Math.max(0, _probeLinearToSrgb(v))));
+            for (let p = 0; p < n; p += step) {
+                const i = p * C;
+                let r = src[i], g = C > 1 ? src[i + 1] : r, b = C > 2 ? src[i + 2] : r;
+                if (decode) { r = decode(r); g = decode(g); b = decode(b); }
+                plot(r, g, b, toXYZ, `rgb(${enc(r)}, ${enc(g)}, ${enc(b)})`);
+            }
+        } else {
+            const M709 = [0.4124564, 0.3575761, 0.1804375, 0.2126729, 0.7151522, 0.0721750, 0.0193339, 0.1191920, 0.9503041];
+            const step = Math.max(1, Math.floor(data.length / 4 / 20000));
+            for (let i = 0; i < data.length; i += 4 * step) {
+                plot(_probeSrgbToLinear(data[i] / 255), _probeSrgbToLinear(data[i + 1] / 255), _probeSrgbToLinear(data[i + 2] / 255),
+                    M709, `rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})`);
             }
         }
         ctx.globalAlpha = 1.0;
@@ -19349,112 +21184,251 @@ self.onmessage = async ({ data: { id, url } }) => {
     //                         UNDO / REDO STACK
     // ═══════════════════════════════════════════════════════════════════════════
 
-    _captureGradingState() {
-        return {
-            exposure: this.exposure || 0.0,
-            lift: this.lift ? [...this.lift] : [0, 0, 0],
-            gamma: this.gamma ? (Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma, this.gamma, this.gamma]) : [1, 1, 1],
-            gain: this.gain ? [...this.gain] : [1, 1, 1],
-            temperature: this.temperature || 0.0,
-            tint: this.tint || 0.0,
-            contrast: this.contrast || 1.0,
-            pivot: this.pivot ?? 0.5,
-            saturation: this.saturation || 1.0,
-            grain: this.grain || 0.0,
-            grainSize: this.grainSize || 1.0,
-            grainColor: this.grainColor || 0.0,
-            grainAnimate: this.grainAnimate || false,
-            denoise: this.denoise || 0.0,
-            bloom: this.bloom || 0.0,
-            halation: this.halation || 0.0,
-            diffusion: this.diffusion || 0.0,
-            lensDistortion: this.lensDistortion || 0.0,
-            lensFringe: this.lensFringe || 0.0,
-            vignetteIntensity: this.vignetteIntensity || 0.0,
-            vignetteFalloff: this.vignetteFalloff ?? 0.5,
-            bokehHighlightBias: this.bokehHighlightBias || 0.0,
-            bokehSoapBubble: this.bokehSoapBubble || 0.0,
-            bokehOpticalVig: this.bokehOpticalVig || 0.0,
-            apertureBlades: this.apertureBlades || 0,
-            apertureRotation: this.apertureRotation || 0.0,
-            apertureAnamorphic: this.apertureAnamorphic || 1.0,
-            anamorphicStreaks: this.anamorphicStreaks || 0.0,
-            // v3.4 additions
-            printerR: this.printerR || 0,
-            printerG: this.printerG || 0,
-            printerB: this.printerB || 0,
-            softClip: this.softClip || 0.0,
-        };
+    /**
+     * Every grade field and its neutral value: the one table the Reset buttons,
+     * the double-click on a slider, undo, presets and the workflow save read.
+     * Undo used to capture a third of these and wrote `|| 1.0`, so Saturation 0
+     * (black and white) came back as 1.
+     */
+    static GRADE_DEFAULTS = Object.freeze({
+        // Grade tab
+        exposure: 0, contrast: 1, pivot: _PIVOT_DEFAULT, saturation: 1,
+        temperature: 0, tint: 0,
+        highlights: 0, midDetail: 0, shadows: 0, softClip: 0, lumaMix: 1, colorBoost: 0, hueShift: 0,
+        lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1], offset: [0, 0, 0],
+        logShadow: [0, 0, 0], logMidtone: [0, 0, 0], logHighlight: [0, 0, 0],
+        printerR: 0, printerG: 0, printerB: 0,
+        colorScience: 0, lutIntensity: 1,
+        maskState: { type: 0, center: [0.5, 0.5], scale: [0.3, 0.3], feather: 0.2, rotation: 0, invert: false, showOverlay: false },
+        qualifierState: { enabled: false, showMask: false, h: 0, hW: 0.1, hS: 0.05, s: 0.5, sW: 0.5, sS: 0.1, l: 0.5, lW: 0.5, lS: 0.1 },
+        // Effects tab
+        grain: 0, grainSize: 1, grainColor: 0, grainAnimate: false, activeGrainPreset: 'none',
+        bloom: 0, halation: 0, diffusion: 0, lensDistortion: 0, lensFringe: 0,
+        vignetteIntensity: 0, vignetteFalloff: 0.5, anamorphicStreaks: 0, denoise: 0,
+        dofEnabled: false, focusDistance: 0.5, aperture: 0,
+        apertureBlades: 0, apertureRotation: 0, apertureAnamorphic: 1,
+        bokehHighlightBias: 0, bokehSoapBubble: 0, bokehOpticalVig: 0,
+    });
+
+    /** The fields each section's own Reset button returns to the table. */
+    static GRADE_SECTIONS = Object.freeze({
+        transform: ['inputSpace', 'manualLut'],
+        exposure: ['exposure', 'contrast', 'pivot'],
+        tone: ['highlights', 'midDetail', 'shadows', 'softClip', 'lumaMix'],
+        color: ['temperature', 'tint', 'saturation', 'colorBoost', 'hueShift'],
+        wheels: ['lift', 'gamma', 'gain', 'offset', 'logShadow', 'logMidtone', 'logHighlight'],
+        grain: ['grain', 'grainSize', 'grainColor', 'grainAnimate', 'activeGrainPreset'],
+        lens: ['bloom', 'halation', 'diffusion', 'lensFringe', 'lensDistortion', 'vignetteIntensity',
+            'vignetteFalloff', 'anamorphicStreaks', 'denoise'],
+        depth: ['dofEnabled', 'focusDistance', 'aperture', 'apertureBlades', 'apertureRotation',
+            'apertureAnamorphic', 'bokehHighlightBias', 'bokehSoapBubble', 'bokehOpticalVig'],
+    });
+
+    /** Temperature and Tint range, in stops (see whiteBalanceGains). */
+    static WB_RANGE = 2;
+
+    static _cloneGradeValue(v) {
+        if (Array.isArray(v)) return [...v];
+        if (v && typeof v === 'object') return JSON.parse(JSON.stringify(v));
+        return v;
     }
 
-    _restoreGradingState(snapshot) {
-        this.exposure = snapshot.exposure;
-        this.lift = [...snapshot.lift];
-        this.gamma = [...snapshot.gamma];
-        this.gain = [...snapshot.gain];
-        this.temperature = snapshot.temperature;
-        this.tint = snapshot.tint;
-        this.contrast = snapshot.contrast;
-        this.pivot = snapshot.pivot;
-        this.saturation = snapshot.saturation;
-        this.grain = snapshot.grain;
-        this.grainSize = snapshot.grainSize ?? 1.0;
-        this.grainColor = snapshot.grainColor ?? 0.0;
-        this.grainAnimate = snapshot.grainAnimate ?? false;
-        this.denoise = snapshot.denoise;
-        this.bloom = snapshot.bloom ?? 0.0;
-        this.halation = snapshot.halation ?? 0.0;
-        this.diffusion = snapshot.diffusion ?? 0.0;
-        this.lensDistortion = snapshot.lensDistortion;
-        this.lensFringe = snapshot.lensFringe;
-        this.vignetteIntensity = snapshot.vignetteIntensity;
-        this.vignetteFalloff = snapshot.vignetteFalloff;
-        this.bokehHighlightBias = snapshot.bokehHighlightBias ?? 0.0;
-        this.bokehSoapBubble = snapshot.bokehSoapBubble ?? 0.0;
-        this.bokehOpticalVig = snapshot.bokehOpticalVig ?? 0.0;
-        this.apertureBlades = snapshot.apertureBlades ?? 0;
-        this.apertureRotation = snapshot.apertureRotation ?? 0.0;
-        this.apertureAnamorphic = snapshot.apertureAnamorphic ?? 1.0;
-        this.anamorphicStreaks = snapshot.anamorphicStreaks ?? 0.0;
-        // v3.4: Printer Lights + Soft Clip
-        this.printerR = snapshot.printerR ?? 0;
-        this.printerG = snapshot.printerG ?? 0;
-        this.printerB = snapshot.printerB ?? 0;
-        this.softClip = snapshot.softClip ?? 0.0;
-
-        if (this.renderer) {
-            this.renderer.setExposure(this.exposure);
-            this.renderer.setLift(this.lift[0], this.lift[1], this.lift[2]);
-            this.renderer.setGamma(this.gamma[0], this.gamma[1], this.gamma[2]);
-            this.renderer.setGain(this.gain[0], this.gain[1], this.gain[2]);
-            this.renderer.setTemperature(this.temperature);
-            this.renderer.setTint(this.tint);
-            this.renderer.setContrast(this.contrast);
-            this.renderer.setPivot(this.pivot);
-            this.renderer.setSaturation(this.saturation);
-            this.renderer.setGrain(this.grain);
-            this.renderer.setGrainSize(this.grainSize);
-            this.renderer.setGrainColor(this.grainColor);
-            this.renderer.setGrainAnimate(this.grainAnimate);
-            this.renderer.setDenoise(this.denoise);
-            this.renderer.setBloom(this.bloom);
-            this.renderer.setHalation(this.halation);
-            this.renderer.setDiffusion(this.diffusion);
-            this.renderer.setLensDistortion(this.lensDistortion, this.lensFringe);
-            this.renderer.setVignette(this.vignetteIntensity, this.vignetteFalloff);
-            this.renderer.setBokehPhysics(this.bokehHighlightBias, this.bokehSoapBubble, this.bokehOpticalVig);
-            this.renderer.setApertureShape(this.apertureBlades, this.apertureRotation, this.apertureAnamorphic);
-            if (this.renderer.setAnamorphicStreaks) this.renderer.setAnamorphicStreaks(this.anamorphicStreaks);
-            this.renderer.setPrinterLights(this.printerR, this.printerG, this.printerB);
-            this.renderer.setSoftClip(this.softClip);
+    /**
+     * The complete grade as one plain object. Undo, Reset, presets and the
+     * workflow save all use it, so none of them can drop a field the others
+     * keep. `??`, never `||`: 0 is a real value for most of these.
+     */
+    _captureGradingState() {
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const state = { version: 2 };
+        for (const [k, d] of Object.entries(D)) {
+            const v = this[k];
+            if (Array.isArray(d)) {
+                state[k] = Array.isArray(v) && v.length >= 3 ? v.slice(0, 3).map(Number)
+                    : (typeof v === 'number' ? [v, v, v] : [...d]);
+            } else if (d && typeof d === 'object') {
+                state[k] = RadianceViewer._cloneGradeValue(v ?? d);
+            } else {
+                state[k] = v ?? d;
+            }
         }
-        this.render();
+        state.curves = this._captureCurves();
+        state.inputSpace = this.inputSpace ?? 'None';
+        // The LUT is part of the grade only when it was picked by hand; an auto
+        // view follows the source and the user's view preference instead.
+        state.manualLut = this.viewMode === 'manual' ? (this.displayLut ?? null) : null;
+        return state;
+    }
+
+    /**
+     * Apply a grade object. Missing fields take the table's neutral value, so
+     * an older preset or workflow loads predictably; the input space and LUT
+     * are left as they are when a snapshot does not mention them.
+     */
+    _restoreGradingState(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return;
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        for (const [k, d] of Object.entries(D)) {
+            const v = snapshot[k];
+            if (Array.isArray(d)) {
+                this[k] = Array.isArray(v) && v.length >= 3 && v.slice(0, 3).every((x) => Number.isFinite(Number(x)))
+                    ? v.slice(0, 3).map(Number) : (typeof v === 'number' ? [v, v, v] : [...d]);
+            } else if (d && typeof d === 'object') {
+                this[k] = { ...RadianceViewer._cloneGradeValue(d), ...RadianceViewer._cloneGradeValue(v ?? {}) };
+            } else if (typeof d === 'number') {
+                const n = Number(v);
+                this[k] = v !== undefined && v !== null && Number.isFinite(n) ? n : d;
+            } else {
+                this[k] = v ?? d;
+            }
+        }
+        if ('curves' in snapshot) this._restoreCurves(snapshot.curves);
+        if (typeof snapshot.inputSpace === 'string' && snapshot.inputSpace !== this.inputSpace) {
+            this.inputSpace = snapshot.inputSpace;
+            this._userSetIDT = snapshot.inputSpace !== 'None';
+        }
+        if ('manualLut' in snapshot) {
+            const want = snapshot.manualLut;
+            if (typeof want === 'string' && want) {
+                if (this.viewMode !== 'manual' || this.displayLut !== want) this._setManualDisplayLut?.(want);
+            } else if (this.viewMode === 'manual') {
+                let mode = 'auto';
+                try { mode = localStorage.getItem('radiance_view_mode') || 'auto'; } catch { /* private mode */ }
+                this.setViewMode?.(mode === 'manual' ? 'auto' : mode);
+            }
+        }
+        this._pushGradeToRenderer();
+        this.render?.();
+    }
+
+    /** Send every grade field to the renderer (render() only pushes some each frame). */
+    _pushGradeToRenderer() {
+        const r = this.renderer;
+        if (!r) return;
+        r.setExposure?.(this.exposure);
+        r.setContrast?.(this.contrast);
+        r.setPivot?.(this.pivot);
+        r.setSaturation?.(this.saturation);
+        r.setTemperature?.(this.temperature);
+        r.setTint?.(this.tint);
+        r.setHighlights?.(this.highlights);
+        r.setShadows?.(this.shadows);
+        r.setMidDetail?.(this.midDetail);
+        r.setColorBoost?.(this.colorBoost);
+        r.setSoftClip?.(this.softClip);
+        r.setLumaMix?.(this.lumaMix);
+        r.setHueShift?.(this.hueShift);
+        r.setOffset?.(...this.offset);
+        r.setLift?.(...this.lift);
+        r.setGamma?.(...this.gamma);
+        r.setGain?.(...this.gain);
+        r.setLogShadow?.(...this.logShadow);
+        r.setLogMidtone?.(...this.logMidtone);
+        r.setLogHighlight?.(...this.logHighlight);
+        r.setPrinterLights?.(this.printerR, this.printerG, this.printerB);
+        r.setColorScience?.(this.colorScience);
+        r.setGrain?.(this.grain);
+        r.setGrainSize?.(this.grainSize);
+        r.setGrainColor?.(this.grainColor);
+        r.setGrainAnimate?.(this.grainAnimate);
+        r.setDenoise?.(this.denoise);
+        r.setBloom?.(this.bloom);
+        r.setHalation?.(this.halation);
+        r.setDiffusion?.(this.diffusion);
+        r.setLensDistortion?.(this.lensDistortion, this.lensFringe);
+        r.setVignette?.(this.vignetteIntensity, this.vignetteFalloff);
+        r.setBokehPhysics?.(this.bokehHighlightBias, this.bokehSoapBubble, this.bokehOpticalVig);
+        r.setApertureShape?.(this.apertureBlades, this.apertureRotation, this.apertureAnamorphic);
+        r.setAnamorphicStreaks?.(this.anamorphicStreaks);
+        r.setFocusDistance?.(this.focusDistance);
+        r.setAperture?.(this.aperture);
+    }
+
+    /** The curve editor's points, levels and per-channel strength, or null at identity. */
+    _captureCurves() {
+        const ed = this.refCurveEditor || this.curveEditor;
+        if (!ed) return this._pendingCurves ? RadianceViewer._cloneGradeValue(this._pendingCurves) : null;
+        const out = RadianceViewer._cloneGradeValue({
+            curves: ed.curves, levels: ed.levels, channelGain: ed.channelGain,
+            softClipEnabled: ed.softClipEnabled, softClipParams: ed.softClipParams,
+        });
+        const ident = (pts, y0, y1) => pts?.length === 2 && pts[0].x === 0 && pts[0].y === y0 && pts[1].x === 1 && pts[1].y === y1;
+        const c = out.curves || {};
+        const neutral = ['RGB', 'R', 'G', 'B'].every((k) => ident(c[k], 0, 1))
+            && ['HueVsHue', 'HueVsSat', 'HueVsLuma'].every((k) => ident(c[k], 0.5, 0.5))
+            && (out.levels?.inBlack ?? 0) === 0 && (out.levels?.inWhite ?? 255) === 255
+            && Object.values(out.channelGain || {}).every((g) => g === 100) && !out.softClipEnabled;
+        return neutral ? null : out;
+    }
+
+    /** Put curves back into the editor (creating it when a saved grade has curves) and the renderer. */
+    _restoreCurves(saved) {
+        const editors = [this.refCurveEditor, this.curveEditor].filter(Boolean);
+        if (!saved) {
+            this._pendingCurves = null;
+            editors.forEach((ed) => ed.resetAll?.());
+            return;
+        }
+        if (!editors.length) {
+            const ed = this._ensureCurveEditor?.();
+            if (ed) editors.push(ed);
+        }
+        if (!editors.length) { this._pendingCurves = RadianceViewer._cloneGradeValue(saved); return; }
+        const clone = RadianceViewer._cloneGradeValue(saved);
+        for (const ed of editors) {
+            ed.curves = { ...ed.curves, ...clone.curves };
+            if (clone.levels) ed.levels = { ...clone.levels };
+            if (clone.channelGain) ed.channelGain = { ...clone.channelGain };
+            ed.softClipEnabled = !!clone.softClipEnabled;
+            if (clone.softClipParams) ed.softClipParams = { ...clone.softClipParams };
+        }
+        this._pendingCurves = null;
+        editors[0].notifyChange?.();
+        editors.forEach((ed) => ed.draw?.());
+    }
+
+    _afterGradeRestore() {
+        this._syncGradeControls();
+        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._schedulePersistGrade();
+        this.requestScopeUpdate?.();
+    }
+
+    /** A control changed the grade: draw, refresh scopes, and keep the workflow copy current. */
+    _gradeChanged() {
+        this.requestRender?.();
+        this.requestScopeUpdate?.();
+        this._schedulePersistGrade();
+    }
+
+    /** Move every registered slider, readout and wheel to the current state without rebuilding the panel. */
+    _syncGradeControls() {
+        if (!this._gradeControls) return;
+        for (const c of this._gradeControls.values()) {
+            try { c.sync(); } catch { /* a control from a panel that has since been rebuilt */ }
+        }
+    }
+
+    _schedulePersistGrade() {
+        if (this._persistGradeTimer) clearTimeout(this._persistGradeTimer);
+        this._persistGradeTimer = setTimeout(() => { this._persistGradeTimer = null; this._persistGrade(); }, 250);
+    }
+
+    /**
+     * Keep the grade in the node's properties, which the workflow saves. It
+     * was never written anywhere, so reloading a workflow lost it.
+     */
+    _persistGrade() {
+        if (!this.node) return;
+        this.node.properties = this.node.properties || {};
+        this.node.properties.radiance_grade = this._captureGradingState();
     }
 
     _pushUndo() {
         const state = this._captureGradingState();
+        this._undoStack = this._undoStack || [];
         this._undoStack.push(state);
-        if (this._undoStack.length > this._undoMaxSize) {
+        if (this._undoStack.length > (this._undoMaxSize || 50)) {
             this._undoStack.shift(); // Drop oldest
         }
         this._redoStack = []; // Clear redo on new action
@@ -19471,22 +21445,23 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     undo() {
-        if (this._undoStack.length === 0) return;
+        if (!this._undoStack?.length) return;
         // Save current state to redo before restoring
+        this._redoStack = this._redoStack || [];
         this._redoStack.push(this._captureGradingState());
         const prev = this._undoStack.pop();
         this._restoreGradingState(prev);
         // Re-render the controls panel to update knob visuals
-        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._afterGradeRestore();
     }
 
     redo() {
-        if (this._redoStack.length === 0) return;
+        if (!this._redoStack?.length) return;
         // Save current state to undo before restoring
         this._undoStack.push(this._captureGradingState());
         const next = this._redoStack.pop();
         this._restoreGradingState(next);
-        if (this.controlsPanel && this._lastRenderContent) this._lastRenderContent();
+        this._afterGradeRestore();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -19500,7 +21475,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         const state = this._captureGradingState();
         const presets = RadianceViewer.readJSON('radiance_presets', {});
         presets[name] = state;
-        localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        try {
+            localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        } catch {
+            this._showToast?.('Could not save the preset: browser storage is full or blocked.', 'error');
+            return;
+        }
+        this._selectedPreset = name;
         console.log(`[Radiance] Preset "${name}" saved.`);
         if (this._lastRenderContent) this._lastRenderContent(); // Refresh UI
     }
@@ -19511,6 +21492,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (state) {
             this._pushUndo();
             this._restoreGradingState(state);
+            this._selectedPreset = name;
+            this._afterGradeRestore();
             console.log(`[Radiance] Preset "${name}" applied.`);
         }
     }
@@ -19518,8 +21501,71 @@ self.onmessage = async ({ data: { id, url } }) => {
     deleteGrade(name) {
         const presets = RadianceViewer.readJSON('radiance_presets', {});
         delete presets[name];
-        localStorage.setItem('radiance_presets', JSON.stringify(presets));
+        try { localStorage.setItem('radiance_presets', JSON.stringify(presets)); } catch { /* storage blocked */ }
+        if (this._selectedPreset === name) this._selectedPreset = null;
         if (this._lastRenderContent) this._lastRenderContent();
+    }
+
+    /** The grade plus what the exporters need to know about the frame and the effects. */
+    _gradeExportState() {
+        const sec = this._secondaryCurveTable;
+        return {
+            ...this._captureGradingState(),
+            curveTable: this._curveTable || null,
+            curveMix: this.curveMix ?? 1,
+            secondaryCurveTable: sec || null,
+            secondaryCurveMix: sec && !_isIdentitySecondaryTable(sec) ? 1 : 0,
+            maskActive: (this.maskState?.type || 0) > 0,
+            qualifierActive: !!this.qualifierState?.enabled,
+            creativeLut: !!this.renderer?.lutEnabled,
+        };
+    }
+
+    _downloadText(text, fileName, type) {
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    /**
+     * ASC CDL of the grade. The one CDL exporter: the File menu and the
+     * Inspector both run this. What CDL cannot hold is listed in the file and
+     * shown to the user, rather than silently left out.
+     */
+    _exportCDL() {
+        const cdl = _buildCDL(this._gradeExportState());
+        this._downloadText(cdl.xml, cdl.fileName, 'application/xml');
+        if (cdl.dropped.length) {
+            this._showToast?.(`CDL exported. Not representable in CDL, left out: ${cdl.dropped.join(', ')}.`, 'warn');
+        } else {
+            this._showToast?.('CDL exported.', 'success');
+        }
+        this._termLog?.('success', `[CDL] Exported ${cdl.fileName}${cdl.dropped.length ? ` (left out: ${cdl.dropped.join(', ')})` : ''}`);
+        return cdl;
+    }
+
+    /**
+     * The grade as a 65-point .cube, ACEScct (AP1) in and out, so values above
+     * 1.0 survive. The one LUT exporter: the File menu and the Inspector both
+     * run this.
+     */
+    _exportGradeLUT() {
+        const lut = _buildCubeLUT(this._gradeExportState(), {
+            gamut: this.renderer?.sourceGamut ?? 0,
+            inputTransform: this.inputSpace || 'None',
+            isLinear: this.renderer?.isLinearTexture ?? true,
+        });
+        this._downloadText(lut.text, lut.fileName, 'text/plain');
+        const msg = `Exported a ${lut.size}-point .cube, ACEScct (AP1) in and out.`;
+        if (lut.notBaked.length) this._showToast?.(`${msg} Not baked: ${lut.notBaked.join(', ')}.`, 'warn');
+        else this._showToast?.(msg, 'success');
+        this._termLog?.('success', `[LUT] ${msg}`);
+        return lut;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -19641,8 +21687,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onUp);
             };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+            document.addEventListener('mousemove', onMove, { signal: this._listenerSignal });
+            document.addEventListener('mouseup', onUp, { signal: this._listenerSignal });
         });
         root.appendChild(resizeHandle);
 
@@ -19878,140 +21924,6 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
         };
         reader.readAsText(file);
-    }
-
-    exportToCube() {
-        console.log("[Radiance] Generating 3D LUT (.cube)...");
-        const size = 33;
-        let cube = `TITLE "Radiance Export"\nLUT_3D_SIZE ${size} \nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n\n`;
-
-        // Helper to apply math (matching radiance_webgl.js and Python apply_grading)
-        const applyMath = (c) => {
-            let r = c[0], g = c[1], b = c[2];
-
-            // 1. Offset
-            r += this.offset[0] || 0; g += this.offset[1] || 0; b += this.offset[2] || 0;
-
-            // 2. Exposure (Stops)
-            const expMult = Math.pow(2.0, this.exposure || 0);
-            r *= expMult; g *= expMult; b *= expMult;
-
-            // 3. White Balance (Temp / Tint usually skipped in LUT for neutral grey, but adding for completeness)
-            // Skipping WB here as Temp is usually done globally before grading, but could be added.
-
-            // 4. Lift (Pivoted at White)
-            const luma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-            const liftPivot = Math.max(0.0, Math.min(1.0, 1.0 - luma));
-            r += (this.lift[0] || 0) * liftPivot;
-            g += (this.lift[1] || 0) * liftPivot;
-            b += (this.lift[2] || 0) * liftPivot;
-
-            // 5. Gain
-            r *= (this.gain[0] || 1); g *= (this.gain[1] || 1); b *= (this.gain[2] || 1);
-
-            // 6. Gamma
-            r = Math.sign(r) * Math.pow(Math.abs(r), 1.0 / (this.gamma[0] || 1));
-            g = Math.sign(g) * Math.pow(Math.abs(g), 1.0 / (this.gamma[1] || 1));
-            b = Math.sign(b) * Math.pow(Math.abs(b), 1.0 / (this.gamma[2] || 1));
-
-            // 7. Contrast & Pivot
-            const con = this.contrast || 1.0;
-            const piv = this.pivot || 0.18;
-            r = (r - piv) * con + piv;
-            g = (g - piv) * con + piv;
-            b = (b - piv) * con + piv;
-
-            // 8. Log Wheels (Shadow/Midtone/Highlight)
-            // Precise reimplementation of 'applyLogWheels' from glsl
-            const logLuma = r * 0.2126 + g * 0.7152 + b * 0.0722;
-
-            // Shadow curve log_s(x)
-            let logS = 0;
-            if (logLuma <= 0.45) {
-                if (logLuma <= 0.33) logS = 1.0;
-                else logS = 1.0 - (logLuma - 0.33) / (0.45 - 0.33);
-            }
-
-            // Highlight curve log_h(x)
-            let logH = 0;
-            if (logLuma >= 0.55) {
-                if (logLuma >= 0.66) logH = 1.0;
-                else logH = (logLuma - 0.55) / (0.66 - 0.55);
-            }
-
-            // Midtone curve log_m(x)
-            const logM = 1.0 - logS - logH;
-
-            const ls = this.logShadow || [1, 1, 1];
-            const lm = this.logMidtone || [1, 1, 1];
-            const lh = this.logHighlight || [1, 1, 1];
-
-            r = r * (logS * ls[0] + logM * lm[0] + logH * lh[0]);
-            g = g * (logS * ls[1] + logM * lm[1] + logH * lh[1]);
-            b = b * (logS * ls[2] + logM * lm[2] + logH * lh[2]);
-
-            // 9. Saturation
-            const luma2 = r * 0.2126 + g * 0.7152 + b * 0.0722;
-            const sat = this.saturation || 1.0;
-            r = luma2 + (r - luma2) * sat;
-            g = luma2 + (g - luma2) * sat;
-            b = luma2 + (b - luma2) * sat;
-
-            return [Math.max(0, r), Math.max(0, g), Math.max(0, b)];
-        };
-
-        for (let b = 0; b < size; b++) {
-            for (let g = 0; g < size; g++) {
-                for (let r = 0; r < size; r++) {
-                    const result = applyMath([r / (size - 1), g / (size - 1), b / (size - 1)]);
-                    cube += `${result[0].toFixed(6)} ${result[1].toFixed(6)} ${result[2].toFixed(6)}\n`;
-                }
-            }
-        }
-
-        const blob = new Blob([cube], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "radiance_grade.cube";
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    exportToCDL() {
-        console.log("[Radiance] Generating ASC CDL (.cdl)...");
-        const slope = this.gain || [1.0, 1.0, 1.0];
-        const offset = this.lift || [0.0, 0.0, 0.0];
-        const power = this.gamma || [1.0, 1.0, 1.0];
-        const sat = this.saturation ?? 1.0;
-
-        const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<ColorDecisionList xmlns="urn:ASC:CDL:v1.01">
-  <ColorDecision>
-    <ColorCorrection id="radiance_grade_${Date.now()}">
-      <SOPNode>
-        <Slope>${slope[0].toFixed(6)} ${slope[1].toFixed(6)} ${slope[2].toFixed(6)}</Slope>
-        <Offset>${offset[0].toFixed(6)} ${offset[1].toFixed(6)} ${offset[2].toFixed(6)}</Offset>
-        <Power>${power[0].toFixed(6)} ${power[1].toFixed(6)} ${power[2].toFixed(6)}</Power>
-      </SOPNode>
-      <SatNode>
-        <Saturation>${sat.toFixed(6)}</Saturation>
-      </SatNode>
-    </ColorCorrection>
-  </ColorDecision>
-</ColorDecisionList>`;
-
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `radiance_grade_${Date.now()}.cdl`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        this._termLog?.('success', `[CDL] Exported ASC-CDL XML successfully`);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -20444,7 +22356,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // Pointer click automatically requests focus
         svg.addEventListener('pointerdown', () => {
-            const active = RadianceViewer.activeInstance || this;
+            const active = this;
             active.setFocusedWheel(label);
         });
 
@@ -20571,6 +22483,20 @@ self.onmessage = async ({ data: { id, url } }) => {
         return row;
     }
 
+    /**
+     * M18: high contrast, from the settings popover. It swaps the theme's
+     * secondary text and edge tokens (THEME_HIGH_CONTRAST) on this viewer;
+     * the class it used to set had no CSS behind it.
+     */
+    setHighContrast(on, { persist = true } = {}) {
+        this.highContrast = !!on;
+        this.container?.classList.toggle('radiance-high-contrast', this.highContrast);
+        this.controlsPanel?.classList.toggle('high-contrast', this.highContrast);
+        if (persist) {
+            try { localStorage.setItem('radiance_high_contrast', this.highContrast ? '1' : '0'); } catch { /* private mode */ }
+        }
+    }
+
     toggleControls() {
         this.showControls = !this.showControls;
         // In panel-embedded mode, toggle the entire rightControlPanel (not just the HUD)
@@ -20582,6 +22508,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.controlsToggle) {
             this.controlsToggle.style.color = this.showControls ? this.theme.accent : this.theme.textDim;
         }
+        this._syncPanelButton();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -20813,11 +22740,24 @@ self.onmessage = async ({ data: { id, url } }) => {
                 decompressed.byteOffset,
                 decompressed.byteLength / 4
             );
+            // M7: NaN / Inf pixels, counted here (often in a worker) so the
+            // HUD can report them without a second pass on the main thread.
+            const cc = Math.min(channels, 3);
+            let nan32 = 0, inf32 = 0;
+            for (let i = 0; i < fp32.length; i += channels) {
+                let n = false, f = false;
+                for (let k = 0; k < cc; k++) {
+                    const v = fp32[i + k];
+                    if (v !== v) n = true; else if (v === Infinity || v === -Infinity) f = true;
+                }
+                if (n) nan32++; else if (f) inf32++;
+            }
             console.log(`[Radiance] RHDR fp32 decoded: ${width}×${height}×${channels}ch (${(decompressed.byteLength / 1048576).toFixed(1)} MB)`);
             return {
                 data: fp32,   // Float32Array for CPU reads (probe, scopes)
                 fp16data: null,   // null → viewer uses loadFloat32Texture
                 shape: [height, width, channels],
+                nonFinite: { nan: nan32, inf: inf32 },
                 format: 'rhdr_f32',
                 channel_names: channelNames,
                 metadata
@@ -20825,30 +22765,85 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Legacy fp16 path (flags=0)
-        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload)
+        // Raw float16 as Uint16Array (for WebGL HALF_FLOAT upload). Only this
+        // is kept: every frame used to carry a Float32Array copy as well, so a
+        // 1080p frame cost 50 MB instead of 17. 'data' decodes on first use
+        // (see _lazyHalfFloats), which only the probe and CPU readouts need.
         const fp16Raw = new Uint16Array(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength / 2);
 
-        // Also create Float32Array for CPU-side reads (probe, scopes)
-        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
-        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
-        if (!RadianceViewer._halfTable) {
-            RadianceViewer._halfTable = new Float32Array(65536);
-            for (let h = 0; h < 65536; h++) RadianceViewer._halfTable[h] = this._halfToFloat(h);
-        }
-        const table = RadianceViewer._halfTable;
-        const fp32 = new Float32Array(fp16Raw.length);
-        for (let i = 0; i < fp16Raw.length; i++) {
-            fp32[i] = table[fp16Raw[i]];
+        // M7: NaN / Inf pixels (exponent all ones; NaN has a mantissa).
+        const cc = Math.min(channels, 3);
+        let nan16 = 0, inf16 = 0;
+        for (let i = 0; i < fp16Raw.length; i += channels) {
+            let n = false, f = false;
+            for (let k = 0; k < cc; k++) {
+                const h = fp16Raw[i + k];
+                if ((h & 0x7c00) === 0x7c00) { if (h & 0x03ff) n = true; else f = true; }
+            }
+            if (n) nan16++; else if (f) inf16++;
         }
 
-        return {
-            data: fp32,      // Float32Array for CPU reads
+        return RadianceViewer._lazyHalfFloats({
             fp16data: fp16Raw,   // Uint16Array for GPU HALF_FLOAT upload
             shape: [height, width, channels],
+            nonFinite: { nan: nan16, inf: inf16 },
             format: 'rhdr',
             channel_names: channelNames,
             metadata
-        };
+        });
+    }
+
+    /**
+     * Give an fp16 frame a `data` that decodes to floats when it is read.
+     *
+     * Not enumerable, so a worker's postMessage leaves it behind and a frame
+     * crosses to the main thread as its half floats only. The decoded arrays
+     * live in a small cache for the whole page (_halfFloats), so reading
+     * `hdr.data` on the frame on screen costs one decode, not one per read,
+     * and a window of 16 frames never holds 16 float copies.
+     */
+    static _lazyHalfFloats(parsed) {
+        if (!parsed || !parsed.fp16data) return parsed;
+        Object.defineProperty(parsed, 'data', {
+            configurable: true,
+            enumerable: false,
+            get() { return RadianceViewer._halfFloats(this.fp16data); },
+        });
+        return parsed;
+    }
+
+    /** All 65536 half values as floats, built once. */
+    static _halfFloatTable() {
+        // ALBABIT-FIX: a table of all 65536 half values, built once. Calling
+        // _halfToFloat per sample took 135 ms per 1080p frame, the table 5 ms.
+        if (!RadianceViewer._halfTable) {
+            const table = new Float32Array(65536);
+            for (let h = 0; h < 65536; h++) table[h] = RadianceViewer.prototype._halfToFloat(h);
+            RadianceViewer._halfTable = table;
+        }
+        return RadianceViewer._halfTable;
+    }
+
+    /** Floats for an fp16 array, from the page-wide cache of the last two decoded. */
+    static _halfFloats(fp16) {
+        const cache = RadianceViewer._halfDecoded || (RadianceViewer._halfDecoded = new Map());
+        let f32 = cache.get(fp16);
+        if (f32) {
+            cache.delete(fp16);
+            cache.set(fp16, f32);
+            return f32;
+        }
+        const table = RadianceViewer._halfFloatTable();
+        f32 = new Float32Array(fp16.length);
+        for (let i = 0; i < fp16.length; i++) f32[i] = table[fp16[i]];
+        cache.set(fp16, f32);
+        while (cache.size > 2) cache.delete(cache.keys().next().value);
+        return f32;
+    }
+
+    /** Drop the decoded floats for these fp16 arrays (a deleted viewer's frames). */
+    static _releaseHalfFloats(fp16) {
+        if (fp16 && RadianceViewer._halfDecoded) RadianceViewer._halfDecoded.delete(fp16);
     }
 
     // Legacy .npy parser (backward compatibility)
@@ -21351,8 +23346,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const writer = ds.writable.getWriter();
                 const reader = ds.readable.getReader();
 
-                writer.write(compressed);
-                writer.close();
+                // A corrupt stream rejects these two as well as the read
+                // below. The read's rejection is handled; these were not, so
+                // one bad sidecar raised six uncaught promise errors.
+                writer.write(compressed).catch(() => {});
+                writer.close().catch(() => {});
 
                 const chunks = [];
                 let totalLen = 0;
@@ -21460,13 +23458,12 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     destroy() {
-        // Both of these were added to 'window' and never removed.
-        if (this._seqDockKeyHandler) {
-            window.removeEventListener('keydown', this._seqDockKeyHandler);
-            this._seqDockKeyHandler = null;
-        }
+        this._destroyed = true;
+        // Every window/document listener this viewer added, in one go.
+        this._globalListeners?.abort();
+        this._globalListeners = null;
         if (this._undoKeyHandler) {
-            window.removeEventListener('keydown', this._undoKeyHandler);
+            document.removeEventListener('keydown', this._undoKeyHandler);
             this._undoKeyHandler = null;
         }
         if (this._timelineMouseMoveBound) {
@@ -21487,7 +23484,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._winUpHandler) window.removeEventListener('mouseup', this._winUpHandler);
         if (this._hudResizeListener) window.removeEventListener('resize', this._hudResizeListener);
         if (this._undoKeyListener) { document.removeEventListener('keydown', this._undoKeyListener); this._undoKeyListener = null; }
-        if (this._winMouseUpHandler) window.removeEventListener('mouseup', this._winMouseUpHandler);
+        if (this._winMouseUpHandler) {
+            window.removeEventListener('pointerup', this._winMouseUpHandler);
+            window.removeEventListener('pointercancel', this._winMouseUpHandler);
+        }
         if (this._docAnnotMoveHandler) document.removeEventListener('mousemove', this._docAnnotMoveHandler);
         if (this._docAnnotUpHandler) document.removeEventListener('mouseup', this._docAnnotUpHandler);
         // Video cleanup
@@ -21515,27 +23515,24 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this._grainRAF) { cancelAnimationFrame(this._grainRAF); this._grainRAF = null; }
         if (this._seqRAF) { cancelAnimationFrame(this._seqRAF); this._seqRAF = null; }
         if (this._referenceScopeRAF) { cancelAnimationFrame(this._referenceScopeRAF); this._referenceScopeRAF = null; }
+        if (this._referenceScopeTimer) { clearTimeout(this._referenceScopeTimer); this._referenceScopeTimer = null; }
         if (this._videoRAF) { cancelAnimationFrame(this._videoRAF); this._videoRAF = null; }
         if (this.scopeUpdateTimer) { clearTimeout(this.scopeUpdateTimer); this.scopeUpdateTimer = null; }
         if (this._scopeUpdateTimer) { clearTimeout(this._scopeUpdateTimer); this._scopeUpdateTimer = null; }
 
-        // Remove control panels from DOM.
-        // The HUD is a STATIC SINGLETON shared by every viewer instance
-        // (RadianceViewer.singletonHUD). Detaching it unconditionally here meant
-        // deleting one viewer node ripped the shared control panel out of every
-        // other one, leaving them with an empty right dock -- no exposure, no
-        // curves, no scopes, no delivery -- until a full page reload, because
-        // createHUD() never rebuilds an existing singleton.
-        const _isSharedHUD = this.controlsPanel && this.controlsPanel === RadianceViewer.singletonHUD;
-        const _lastInstance = RadianceViewer.allInstances.size <= 1;
-        if (this.controlsPanel && this.controlsPanel.parentNode && (!_isSharedHUD || _lastInstance)) {
+        // Remove control panels from DOM. Each viewer owns its panel, so this
+        // touches no other viewer's.
+        if (this.controlsPanel && this.controlsPanel.parentNode) {
             this.controlsPanel.parentNode.removeChild(this.controlsPanel);
         }
+        this.controlsPanel = null;
+        this._lastRenderContent = null;
         if (this.rightControlPanel && this.rightControlPanel.parentNode) {
             this.rightControlPanel.parentNode.removeChild(this.rightControlPanel);
         }
         // Disconnect every ResizeObserver, not just the canvas one.
         if (this.resizeObserver) this.resizeObserver.disconnect();
+        this._railResizeObserver?.disconnect();
         // ALBABIT-FIX: an observer keeps a removed viewer alive while it observes.
         this._dockHeightObserver?.disconnect();
         this._dockHeightObserver = null;
@@ -21552,26 +23549,32 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Release the big buffers explicitly rather than waiting for the
         // instance itself to become unreachable.
         if (this._frameWindow) { this._frameWindow.clear(); this._frameWindow = null; }
+        RadianceViewer._releaseHalfFloats(this.hdrData?.fp16data);
         this._hdrFallbackReasons = null;
         this.frameHDRData = null;
         this.frameImages = null;
+        this.frameCompareImages = null;
+        this.frameZdepthImages = null;
+        this.frameBracketImages = { low: [], high: [] };
         this.imageData = null;
+        this.hdrData = null;
+        this.image = null;
+        this.compareImage = null;
+        this.compareHDR = null;
+        this.frameCompareHDR = null;
+        this.zdepthImage = null;
+        this._placeholder = null;
+        this._hdrZoneStats = null;
         this._probeInvalidate();   // the probe measures this frame, not the last one
         // Clear container
         if (this.container) this.container.innerHTML = '';
 
         // ── Instance & HUD Management ──
         RadianceViewer.allInstances.delete(this);
-        if (RadianceViewer.activeInstance === this) {
-            RadianceViewer.activeInstance = Array.from(RadianceViewer.allInstances)[0] || null;
-            if (RadianceViewer.activeInstance && RadianceViewer.activeInstance._lastRenderContent) {
-                RadianceViewer.activeInstance._lastRenderContent();
-            }
-        }
-        if (RadianceViewer.allInstances.size === 0 && RadianceViewer.singletonHUD) {
-            RadianceViewer.singletonHUD.remove();
-            RadianceViewer.singletonHUD = null;
-        }
+        // activeInstance only breaks a keyboard tie between selected viewers
+        // (_ownsKeyboard); it must not keep a deleted one alive.
+        if (RadianceViewer.activeInstance === this) RadianceViewer.activeInstance = null;
+        if (RadianceViewer._activeViewer === this) RadianceViewer._activeViewer = null;
     }
 }
 
@@ -21811,19 +23814,19 @@ app.registerExtension({
 
             this.radianceViewer = new RadianceViewer(this, container);
 
-            // Lifecycle hooks for singleton HUD management
+            // Lifecycle hooks. The node can outlive its viewer (undo, a
+            // graph switch), so it lets go of it once it is destroyed.
             const _prevOnRemoved = this.onRemoved;
             this.onRemoved = function () {
                 _prevOnRemoved?.apply(this, arguments);
                 if (this.radianceViewer) this.radianceViewer.destroy();
+                this.radianceViewer = null;
             };
             const _prevOnSelected = this.onSelected;
             this.onSelected = function () {
                 _prevOnSelected?.apply(this, arguments);
+                // Keyboard tie-break only: each viewer has its own panel.
                 RadianceViewer.activeInstance = this.radianceViewer;
-                if (this.radianceViewer && this.radianceViewer._lastRenderContent) {
-                    this.radianceViewer._lastRenderContent();
-                }
             };
         };
 
@@ -21836,11 +23839,34 @@ app.registerExtension({
             // in Advanced (a converted Lite Viewer carries 'simple').
             const saved = info?.properties?.radiance_viewer_mode;
             this.radianceViewer?.setUIMode?.(saved || 'advanced');
+            // The grade the workflow was saved with (written by _persistGrade
+            // and onSerialize). It used to be lost on every reload.
+            const grade = info?.properties?.radiance_grade;
+            if (grade && typeof grade === 'object') this.radianceViewer?._restoreGradingState?.(grade);
             const video = info?.properties?.radiance_viewer_video;
+            const savedResult = RadianceViewer._expandResult(info?.properties?.radiance_viewer_saved);
             if (typeof video === 'string' && video.startsWith(api.apiURL('/view?'))) {
                 this.radianceViewer?.loadVideo(video);
+            } else if (savedResult?.radiance_images?.length) {
+                this.onExecuted(savedResult);
             } else if (info?.properties?.radiance_viewer_result?.radiance_images?.length) {
+                // A workflow saved before the compact form: the whole list.
                 this.onExecuted(info.properties.radiance_viewer_result);
+            }
+            return result;
+        };
+
+        // Write the grade into the node's properties as the workflow is saved,
+        // so a save straight after a slider move still carries it.
+        const onSerialize = nodeType.prototype.onSerialize;
+        nodeType.prototype.onSerialize = function (o) {
+            const result = onSerialize?.apply(this, arguments);
+            const viewer = this.radianceViewer;
+            if (viewer?._captureGradingState) {
+                const grade = viewer._captureGradingState();
+                this.properties = this.properties || {};
+                this.properties.radiance_grade = grade;
+                if (o) { o.properties = o.properties || {}; o.properties.radiance_grade = grade; }
             }
             return result;
         };
@@ -21889,7 +23915,23 @@ app.registerExtension({
             if (!viewer) return;
             viewer.unloadVideo();
             this.properties ||= {};
-            this.properties.radiance_viewer_result = message;
+            // What the workflow keeps to show this again after a reload: the
+            // run's file token and frame counts, not the whole result list
+            // (about 1.4 KB a frame, so 6 MB for a 5,000-frame shot, copied into
+            // every saved PNG, every prompt and the clipboard). A result that
+            // cannot be rebuilt from its token is kept whole, as before.
+            const compact = RadianceViewer._compactResult(message);
+            if (compact) {
+                this.properties.radiance_viewer_saved = compact;
+                delete this.properties.radiance_viewer_result;
+            } else {
+                this.properties.radiance_viewer_result = message;
+                delete this.properties.radiance_viewer_saved;
+            }
+            if (message.warnings?.length) {
+                for (const w of message.warnings) viewer._termLog?.('warn', `[Viewer] ${w}`);
+                viewer._showToast?.(message.warnings.join(' '), 'warn');
+            }
             if (viewer._sequenceAudio) {
                 viewer._sequenceAudio.pause();
                 viewer._sequenceAudio.removeAttribute('src');
@@ -21920,6 +23962,8 @@ app.registerExtension({
             // Reset frame arrays
             viewer.frameImages = [];
             viewer.frameCompareImages = [];
+            viewer.frameCompareHDR = [];
+            viewer.compareHDR = null;
             viewer.frameZdepthImages = [];
             viewer.frameBracketImages = { low: [], high: [] };
             viewer.frameHDRData = [];
@@ -22007,6 +24051,16 @@ app.registerExtension({
             if (!pageCompare) compareImages.forEach((imgData, idx) => {
                 const cmp = new Image();
                 cmp.crossOrigin = 'anonymous';
+                cmp.source_width = imgData.source_width;
+                cmp.source_height = imgData.source_height;
+                // B's float frame, when the node wrote one: shown through
+                // the same view as A instead of the preview.
+                const float = viewer._loadCompareFloat(imgData).then((hdr) => {
+                    if (viewer.generationID !== currentGen || !hdr) return;
+                    viewer.frameCompareHDR[idx] = hdr;
+                    if (cmp.complete && viewer.frameCompareImages[idx]) viewer._updateCompareForFrame(viewer.currentFrame || 0, true);
+                });
+                void float;
                 cmp.onload = () => {
                     if (viewer.generationID !== currentGen) return;
                     viewer.frameCompareImages[idx] = cmp;
@@ -22179,30 +24233,49 @@ class RadianceCurveEditor {
     }
 
     // ─── Histogram ─────────────────────────────────────────────
-    updateHistogram(img) {
+    // Binned on the axis the curve acts on: scene-linear 0 to 1, values above 1
+    // in the last bin. An 8-bit picture is sRGB-encoded and is decoded first;
+    // binning its code values put mid grey at the middle of an axis on which
+    // the curve puts it at 0.18.
+    updateHistogram(img, { linearize = true } = {}) {
         if (!img) return;
         const scale = Math.min(1.0, 256 / Math.max(img.width, img.height));
-        const w = Math.floor(img.width * scale);
-        const h = Math.floor(img.height * scale);
+        const w = Math.max(1, Math.floor(img.width * scale));
+        const h = Math.max(1, Math.floor(img.height * scale));
 
         const temp = document.createElement('canvas');
         temp.width = w; temp.height = h;
         const tctx = temp.getContext('2d');
         tctx.drawImage(img, 0, 0, w, h);
         const data = tctx.getImageData(0, 0, w, h).data;
+        const f = new Float32Array(w * h * 3);
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        for (let i = 0, o = 0; i < data.length; i += 4, o += 3) {
+            for (let c = 0; c < 3; c++) f[o + c] = linearize ? decode(data[i + c] / 255) : data[i + c] / 255;
+        }
+        this.updateHistogramFromFloat(f, w, h, 3, false);
+    }
 
+    /** The histogram from float pixels (sampled to about 256 x 256), in scene-linear. */
+    updateHistogramFromFloat(data, width, height, channels = 3, srgbEncoded = false) {
+        if (!data || !width || !height) return;
         const buckets = 256;
         const R = new Uint32Array(buckets), G = new Uint32Array(buckets);
         const B = new Uint32Array(buckets), L = new Uint32Array(buckets);
-
-        for (let i = 0; i < data.length; i += 4) {
-            R[data[i]]++;
-            G[data[i + 1]]++;
-            B[data[i + 2]]++;
-            const luma = Math.min(255, Math.floor(
-                data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722
-            ));
-            L[luma]++;
+        const decode = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        const bin = (v) => (v > 0 ? Math.min(buckets - 1, Math.floor(v * (buckets - 1) + 0.5)) : 0);
+        const step = Math.max(1, Math.ceil(Math.max(width, height) / 256));
+        for (let y = 0; y < height; y += step) {
+            for (let x = 0; x < width; x += step) {
+                const i = (y * width + x) * channels;
+                let r = data[i], g = channels > 1 ? data[i + 1] : r, b = channels > 2 ? data[i + 2] : r;
+                if (!(Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b))) continue;
+                if (srgbEncoded) { r = decode(r); g = decode(g); b = decode(b); }
+                R[bin(r)]++;
+                G[bin(g)]++;
+                B[bin(b)]++;
+                L[bin(r * 0.2126 + g * 0.7152 + b * 0.0722)]++;
+            }
         }
 
         let max = 0;
@@ -22360,10 +24433,12 @@ class RadianceCurveEditor {
         };
 
         cvs.onmousedown = (e) => {
-            if (e.button !== 0) return;
+            // Alt+drag pans the view (handled below); it must not also add a point.
+            if (e.button !== 0 || e.altKey) return;
             const { norm, best, px, py } = hitTest(e);
 
             if (best) {
+                this.onEditStart?.();
                 if (!this.selectedPoints.includes(best)) {
                     this.selectedPoints = [best];
                 }
@@ -22371,6 +24446,7 @@ class RadianceCurveEditor {
                 this.lastDragNorm = { ...norm };
                 cvs.style.cursor = 'grabbing';
             } else if (norm.x > -0.05 && norm.x < 1.05) {
+                this.onEditStart?.();
                 this.selectedPoints = [];
                 const pts = this.curves[this.activeChannel];
                 const yMax = (this.activeChannel.startsWith('Hue')) ? 1.0 : this.rangeY;
@@ -22463,6 +24539,7 @@ class RadianceCurveEditor {
             const pts = this.curves[this.activeChannel];
             const idx = pts.indexOf(best);
             if (idx > 0 && idx < pts.length - 1) {
+                this.onEditStart?.();
                 pts.splice(idx, 1);
                 this.hoverPoint = null;
                 this.notifyChange();
@@ -22927,11 +25004,10 @@ class RadianceCurveEditor {
         // 9. Dragging / hover readout
         if (this.draggingPoint || this.hoverPoint) {
             const target = this.draggingPoint || this.hoverPoint;
-            const inVal = Math.round(target.x * 255);
-            const outVal = Math.round(target.y * 255);
+            // Scene-linear in and out: the axis the curve acts on.
             const { cx, cy } = this.normToCanvas(target.x, target.y);
 
-            const text = `${inVal} → ${outVal}`;
+            const text = `${target.x.toFixed(3)} → ${target.y.toFixed(3)}`;
             ctx.font = `bold 10px ${this.theme.mono}`;
             const tw = ctx.measureText(text).width + 12;
             const tx = Math.min(cx + 14, pX + pW - tw - 4);

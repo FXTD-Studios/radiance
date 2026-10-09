@@ -413,6 +413,11 @@ def test_project_slug(value, expected):
     ("SH_0420 comp", "SH0420"),
     ("beauty_pass", "GENERAL"),
     ("sh1", "GENERAL"),          # needs at least 2 digits
+    # The Project Manager node's own names join with "_", a word character, so
+    # a \b-anchored pattern never matched them (code review P2-3).
+    ("sh010_v002", "SH010"),
+    ("sh010_ada_v0003.rad", "SH010"),
+    ("fresh010_v002", "GENERAL"),  # "sh" inside a word is not a shot code
 ])
 def test_shot_from_name(value, expected):
     assert ws_mod._shot_from_name(value) == expected
@@ -423,6 +428,10 @@ def test_shot_from_name(value, expected):
     ("comp v0123 final", "v0123"),
     ("comp_v12", "v001"),        # too few digits
     ("nothing", "v001"),
+    ("sh010_v002", "v002"),
+    ("comp_artist_v0003", "v0003"),
+    ("sh010_ada_v0003.rad", "v0003"),
+    ("dev0003", "v001"),         # "v" inside a word is not a version
 ])
 def test_version_from_name(value, expected):
     assert ws_mod._version_from_name(value) == expected
@@ -1470,6 +1479,33 @@ def test_set_shot_status_rejects_unknown_values(populated, status):
     assert not (populated.root / "SHOW A" / ".shot_status.json").exists()
 
 
+def test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library(ws, tmp_path):
+    """The project name comes from metadata inside any .rad (or its v1 .json
+    sidecar), so a shared file could name its project "../../escaped" and make
+    the status route create .shot_status.json outside the library (code review
+    P3-3)."""
+    (ws.root / "evil.rad").write_text('{"nodes": []}')
+    (ws.root / "evil.rad.json").write_text('{"project": "../../escaped"}')
+
+    resp = run(ws.m.set_shot_status(Req(json_body={"status": "Approved"},
+                                        match_info={"project_id": "escaped", "shot": "SH010"})))
+
+    assert resp.status == 400, body(resp)
+    assert not (tmp_path.parent / "escaped").exists()
+    project, _ = ws.m._find_project("escaped")
+    assert ws.m._load_shot_status(project) == {}
+
+
+def test_a_long_project_name_keeps_its_shot_status(ws):
+    """Only leaving the library is refused; _resolve_safe_path's filename rules
+    (length, control characters) are not the point here."""
+    name = "S" * 190
+    (ws.root / "x.rad").write_text('{"nodes": []}')
+    (ws.root / "x.rad.json").write_text(json.dumps({"project": name}))
+    project, _ = ws.m._find_project(ws.m._project_slug(name))
+    assert ws.m._shot_status_path(project) == ws.root / name / ".shot_status.json"
+
+
 def test_shot_status_loader_ignores_corrupt_and_non_dict_files(populated):
     project, _ = populated.m._find_project("show-a")
     path = populated.m._shot_status_path(project)
@@ -1724,6 +1760,57 @@ def test_upload_saves_allowed_files_and_skips_the_rest(ws):
     assert not (ws.inp.parent.parent / "escape.png").exists()
 
 
+# A second upload with a taken name used to open the existing file with "wb":
+# the first plate was destroyed, and every workflow that referenced it read the
+# new one. An aborted upload left a truncated file under the real name (code
+# review P2-5).
+
+def test_uploading_a_taken_name_keeps_both_files(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"SECOND")])))
+
+    assert resp.status == 200
+    assert body(resp) == {"success": True, "saved": ["plate_1.exr"],
+                          "renamed": {"plate.exr": "plate_1.exr"}}
+    dest = ws.inp / "radiance_assets"
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+    assert (dest / "plate_1.exr").read_bytes() == b"SECOND"
+
+
+def test_the_same_name_twice_in_one_upload_keeps_both(ws):
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("a.png", b"1"), _Part("a.png", b"2")])))
+    assert body(resp)["saved"] == ["a.png", "a_1.png"]
+
+
+class _BrokenPart(_Part):
+    async def read_chunk(self, size: int = 0) -> bytes:
+        if self._pos:
+            raise ConnectionResetError("client went away")
+        return await super().read_chunk(size)
+
+
+def test_an_aborted_upload_leaves_no_partial_file(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_BrokenPart("plate.exr", b"0123456789ABCDEF")])))
+
+    assert resp.status == 500
+    dest = ws.inp / "radiance_assets"
+    assert sorted(p.name for p in dest.iterdir()) == ["plate.exr"]
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+
+
+def test_a_failed_part_takes_the_rest_of_its_request_with_it(ws):
+    """A request is all or nothing: the client gets a 500 and no list of what
+    was saved, so a file kept from an earlier part would be orphaned, and a
+    retry would add a plate_1.exr beside it."""
+    resp = run(ws.m.upload_asset(Req(parts=[
+        _Part("a.png", b"first"),
+        _BrokenPart("b.png", b"0123456789ABCDEF"),
+    ])))
+    assert resp.status == 500
+    assert list((ws.inp / "radiance_assets").iterdir()) == []
+
+
 def test_upload_500_without_an_input_directory(ws, monkeypatch):
     monkeypatch.delattr(ws.m.folder_paths, "get_input_directory")
     resp = run(ws.m.upload_asset(Req(parts=[])))
@@ -1789,6 +1876,42 @@ def test_node_run_writes_a_v3_container_with_metadata(ws):
     assert meta["stats"]["node_count"] == 6
     assert meta["stats"]["is_hdr"] is True
     assert meta["pipeline"]["models"] == ["film_grain.ckpt", "flux_dev.safetensors"]
+
+
+# What ComfyUI actually passes: `prompt` is the API graph ({id: {class_type,
+# inputs}}); the UI workflow, which loadGraphData opens, is in
+# extra_pnginfo["workflow"]. Saving the prompt left node_count at 0 and stored a
+# graph the dashboard could not reopen (code review P2-2).
+API_PROMPT = {
+    "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "flux_dev.safetensors"}},
+    "2": {"class_type": "RadianceHDRTonemap", "inputs": {"image": ["1", 0], "space": "rec2020"}},
+    "3": {"class_type": "PreviewImage", "inputs": {"images": ["2", 0]}},
+}
+
+
+def test_node_run_saves_the_ui_workflow_comfyui_provides(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == GRAPH, "the library opens this with loadGraphData"
+    assert meta["stats"]["node_count"] == 6
+
+
+def test_node_run_with_only_an_api_prompt_still_reports_its_contents(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1, prompt=API_PROMPT)
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == API_PROMPT
+    assert meta["stats"]["node_count"] == 3
+    assert meta["stats"]["is_hdr"] is True
+    assert meta["pipeline"]["models"] == ["flux_dev.safetensors"]
+
+
+def test_a_saved_workflow_is_listed_under_its_own_shot(ws):
+    ws.m.RadianceProjectManager().run(filename="SHOW A/sh010", artist="ada", version=3,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    project, _ = ws.m._find_project("show-a")
+    (version,) = ws.m._versions_for_project(project)
+    assert version["shot"] == "SH010", version
 
 
 def test_node_run_without_a_filename_uses_the_artist(ws):

@@ -1,4 +1,4 @@
-# Known Issues — Radiance 3.5
+# Known Issues — Radiance 4.0 (beta)
 
 Tracked limitations and tech debt. Full production approval remains open: the
 video visual-acceptance failure below blocks production approval of temporal windowing. Other limitations
@@ -19,9 +19,10 @@ These parts of the release gate need checks that cannot run in CI:
   uses the ACES 2.0 100-nit P3-D65 rendering with gamma 2.6.
 - **Saved ACES 2.0 Tonescale nodes** keep `grey_target` 0.10 and run the
   labelled creative curve; set 0 for the reference tone scale.
-- **RGBA on review utilities.** Focus Peaking, Split View, Contact Sheet and
-  Video Assembler still raise on 4-channel input (TEN-007, P1). No colour is
-  changed; they fail rather than run.
+- **RGBA on review utilities (resolved in 4.0).** Focus Peaking keeps alpha
+  on its output; Split View, Contact Sheet, Flipbook GIF and Preview Server
+  show RGB; Video Assembler gives RGB frames opaque alpha when a buffer mixes
+  RGB and RGBA (TEN-007).
 
 ## Architecture / tech debt
 
@@ -39,14 +40,16 @@ These parts of the release gate need checks that cannot run in CI:
 - **Masks and Qualifiers are inert on the WebGPU backend.** `js/radiance_webgpu.js`
   carries no WGSL for either one. The shared base class, `js/radiance_renderer.js`,
   implements `setMask` and `setQualifier` and stores the state, so the Viewer's
-  calls succeed and nothing changes on screen: both tabs are fully interactive
-  and completely inert on that backend. WebGPU is opt-in since 3.4.0
-  (`localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
-  both.
-  OCIO has the same WGSL gap and at least says so, returning "OpenColorIO needs
-  the WebGL backend; this renderer has no WGSL path for it"; these two say
-  nothing. *Planned fix:* none scheduled. The two resolutions are porting the
-  shaders to WGSL, or disabling the tabs on WebGPU with that message. The gap is
+  calls succeed and nothing changes on screen: the panel's Masks tab (power
+  window and HSL qualifier) is fully interactive and completely inert on that
+  backend. WebGPU is opt-in since 3.4.0
+  (Settings (⚙) > Renderer in the viewer header, stored as
+  `localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
+  both. On WebGPU the tab opens with a notice saying so and how to switch
+  back (4.0 corrected its text, which still claimed WebGPU was the default).
+  OCIO has the same WGSL gap and returns "OpenColorIO needs the WebGL backend;
+  this renderer has no WGSL path for it". *Planned fix:* porting the shaders
+  to WGSL; none scheduled. The gap is
   listed in `js/tests/backend_parity.test.mjs`, which fails if this entry and
   the shipped source stop agreeing, so neither resolution can land without
   updating this list.
@@ -78,11 +81,9 @@ These parts of the release gate need checks that cannot run in CI:
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 
-- **SAM Loader / SAM Mask Generator are not shipped.** Radiance bundles no
-  SAM runtime; the generator used to return discs drawn around the click
-  points. Both nodes are hidden from the menu (`DEPRECATED`), still load in
-  saved graphs, and raise a clear error when executed. *Planned fix:* a real
-  SAM2 backend, or removal in 4.0.
+- **No SAM node.** Radiance bundles no SAM runtime. The 3.5 placeholders
+  (SAM Loader, SAM Mask Generator) were removed in 4.0; use a SAM2 node pack
+  and feed its MASK into Radiance.
 - **Upscale `confidence` output is geometric.** 1 at tile centres, lower
   toward tile edges. It locates seam blending; it does not measure
   hallucination, which none of the backends report.
@@ -151,22 +152,24 @@ The six nodes that broke or crawled at production size, ten more that held the c
 
 Writing a tooltip for all 1,259 inputs meant reading the code behind each
 one. The bugs it found are fixed (see the changelog, "Bugs found while
-documenting every input"). These controls still do not do what their name
-says; each tooltip says what really happens.
+documenting every input"). The controls it found that did not do what their
+name said are resolved below; each tooltip says what really happens.
 
-**Controls that do nothing or less than their name**
+**Controls that did nothing or less than their name (resolved in 4.0)**
 
-- Do nothing: Sampler `conditioning_clip_target`; Bit Depth Degrade
-  `restore_from_quantized`.
-- Only label a report: ACES Compliance `output_type` and `peak_nits`; Color
-  Space Info `scene_referred` and `peak_nits`.
-- Narrower than named: `creative_white_scale` is a linear gain;
-  CFG++ "(Perpendicular)" is a cosine cfg
-  scale.
-- Denoise: `motion_compensation` is a ±1 px search.
+- Implemented: Bit Depth Degrade `restore_from_quantized` dequantises;
+  CFG++ "(Perpendicular)" now guides perpendicular to the conditional
+  prediction; Denoise `motion_compensation` is hierarchical block matching
+  (about ±30 px) instead of a ±1 px search.
+- Relabelled, by design: Sampler `conditioning_clip_target` has no effect (the
+  encoder is chosen at encode time; the widget stays so saved workflows load);
+  ACES Compliance `peak_nits` and Color Space Info `scene_referred` and
+  `peak_nits` are labels and metadata; `creative_white_scale` is a linear gain,
+  and both tooltips say so.
+- ACES Compliance `output_type` was listed here by mistake: it chooses the
+  reference the image is compared with.
 
-*Planned fix:* one pass that either implements each control or removes it,
-with a test per item, section by section. Done so far: Color (LUT and LUT
+*Earlier passes,* with a test per item, section by section: Color (LUT and LUT
 Blend `log_space`, HueCurves `grade_info`, OCIO Context) and Upscale (resampling
 kernels, Downscale `antialiasing`, Auto colour space). The production pass also
 fixed ClipDetector channel selection with soft edges, ExposureBlend weighting
@@ -222,11 +225,10 @@ node downloads").
 
 ## Minor
 
-- **Three legacy nodes are hidden, not removed.** HDR Latent Encoder and HDR
-  Turbo Encoder stop with a message naming VAE Encode (HDR), because their
-  decoders were retired and their latents would render clipped. ACES 2.0
-  Output Transform (Legacy) still works. All three stay registered only so
-  saved graphs open. *Planned:* remove them in 3.6.
+- **ACES 2.0 Output Transform (Legacy) is hidden, not removed.** It still
+  renders, so it stays registered for saved graphs; new graphs use the ACES
+  2.0 Output Transform. HDR Latent Encoder and HDR Turbo Encoder, which only
+  stopped with a message naming VAE Encode (HDR), were removed in 4.0.
 - **Learned highlight recovery restores brightness, not colour.** RUDRA's
   released SDR → HDR checkpoints (v5, shadow_v1 and seeds) were trained on
   SDR rendered at -1 EV, which almost never clipped (median clipped fraction

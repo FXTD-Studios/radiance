@@ -315,3 +315,22 @@ def test_nuke_connector_signs_with_the_shared_token_file(mock_socket_cls, monkey
     assert sent_bytes[:5] == b"RCMD\x02"
     assert sent_bytes[5:37] == hmac.new(token.encode(), cmd.encode(), hashlib.sha256).digest()
     assert struct.unpack("<I", sent_bytes[37:41])[0] == len(cmd)
+
+
+@pytest.mark.real_torch
+def test_dcc_bridge_exports_an_image_sequence(tmp_path):
+    # The sequence source passed the colour space "Linear (none)", which the
+    # reader does not know, so source=Sequence always ended in
+    # "Error: failed to read sequence". It now reads the files untransformed.
+    import numpy as np
+    from PIL import Image
+    from radiance.nodes.pipeline.dcc import RadianceMCP
+    src = tmp_path / "src"
+    src.mkdir()
+    for f in (1001, 1002, 1003):
+        Image.fromarray(np.full((8, 8, 3), 60 * (f - 1000), np.uint8)).save(src / f"plate.{f}.png")
+    out = tmp_path / "out"
+    status, _ = RadianceMCP().run(mode="Export Frames", source="Sequence", output_path=str(out),
+                                  sequence_path=str(src / "plate.%04d.png"), frame_start=1001)
+    assert not status.startswith("Error"), status
+    assert len(list(out.glob("*.exr"))) == 3

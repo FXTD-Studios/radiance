@@ -1,0 +1,24 @@
+%% project-mapper:generated, static-analysis map (not a runtime trace), revision 7376f9e
+%% Lifecycle overview. Legend: solid = implemented call or data; dashed = conditional, failure, or optional;
+%% [[ ]] = external process or network. Detailed flows live in diagrams/flows/*.mmd (named in each box).
+flowchart TD
+    start["ComfyUI starts, imports radiance: flows/startup.mmd"] --> nodes["node classes registered (156 when every group imports; a failed group is skipped), routes live, js/ served"]
+    nodes --> q{{"user queues a graph"}}
+    q --> gen["Loader, prompt, SamplerPro: flows/hdr-generation.mmd"]
+    q --> rd["Read node: flows/read-write.mmd"]
+    q --> vid["Video T2V / I2V: flows/video.mmd"]
+    gen -.->|"missing model"| dl[["downloads: flows/model-download.mmd"]]
+    vid -.->|"missing model"| dl
+    rd --> proc["processing nodes: colour, HDR VAE, VFX, multipass, upscale"]
+    gen --> proc
+    vid --> proc
+    proc -.->|"multipass"| mp["flows/multipass.mmd"]
+    proc --> view["Viewer node: flows/viewer-deliver.mmd"]
+    proc --> wr["Write node: flows/read-write.mmd"]
+    proc --> dcc["Nuke / Resolve send: flows/dcc.mmd"]
+    view -->|"ui output + temp files"| js["browser viewer"]
+    js -->|"POST /radiance/deliver"| del["delivery handler"]
+    del --> wr
+    wr --> out[("output files")]
+    dcc --> ext[["Nuke socket / Resolve subprocess"]]
+    js -->|"/radiance/workflows, projects, assets"| ws[("repo/workflows .rad storage")]
