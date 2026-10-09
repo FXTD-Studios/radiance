@@ -43,7 +43,7 @@ These parts of the release gate need checks that cannot run in CI:
   calls succeed and nothing changes on screen: the panel's Masks tab (power
   window and HSL qualifier) is fully interactive and completely inert on that
   backend. WebGPU is opt-in since 3.4.0
-  (View > Framing & Guides > Backend, stored as
+  (Settings (⚙) > Renderer in the viewer header, stored as
   `localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
   both. On WebGPU the tab opens with a notice saying so and how to switch
   back (4.0 corrected its text, which still claimed WebGPU was the default).

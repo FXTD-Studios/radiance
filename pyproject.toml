@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "radiance"
 description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to HDR, HDR VAE encode and decode, OCIO colour management, EXR I/O, a pro Viewer, and Nuke / Resolve handoff."
-# Keep in step with config/constants.py VERSION, package.json and CHANGELOG.md;
+# Keep in step with config/constants.py VERSION, package.json, js/radiance_version.js
+# and CHANGELOG.md;
 # tests/test_version_sync.py fails if they drift.
 version = "4.0.0"
 readme = "README.md"

@@ -107,8 +107,8 @@ anything that fails.
 - [ ] Deliver a graded master: it matches the viewer.
 - [ ] Restart ComfyUI and reopen a workflow: the viewer says its files are
       gone instead of showing a blank canvas.
-- [ ] With WebGPU chosen (View > Framing & Guides > Backend), Masks and Qualifiers open
-      with the notice that names that control; back on WebGL they work.
+- [ ] With WebGPU chosen (Settings (⚙) > Renderer, then reload), the Masks tab opens
+      with the notice that names that control; back on WebGL it works.
 
 ## Sign-off
 

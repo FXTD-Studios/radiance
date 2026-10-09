@@ -41,6 +41,15 @@ def test_readme_badge_is_this_version():
     assert f"badge/version-{_pyproject_version()}-" in text
 
 
+def test_viewer_header_version_is_this_version():
+    """The viewer's header said v3.5 on a 4.0.0 package: it now reads this."""
+    text = (ROOT / "js" / "radiance_version.js").read_text(encoding="utf-8")
+    m = re.search(r'RADIANCE_VERSION\s*=\s*"([^"]+)"', text)
+    assert m and m.group(1) == _pyproject_version()
+    viewer = (ROOT / "js" / "radiance_viewer.js").read_text(encoding="utf-8")
+    assert "'v3.5'" not in viewer and "RADIANCE_VERSION" in viewer
+
+
 def test_no_module_pins_its_own_release_number():
     """Module __version__ strings drifted (3.1.0, 3.2.2); they import VERSION now."""
     offenders = []
