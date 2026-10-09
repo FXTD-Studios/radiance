@@ -304,7 +304,7 @@
     },
     {
       "path": "js/radiance_viewer.js",
-      "sha256": "d4099a4201c83bc374aac935387df210e6dd1ea6d30cff70221970fe8c9245ec"
+      "sha256": "334c6bd06a9e913a73ca8999f92f7fb5e94b5b17bd182edce75d9dc18507cbfa"
     },
     {
       "path": "js/radiance_renderer.js",
@@ -324,7 +324,7 @@
     },
     {
       "path": "pyproject.toml",
-      "sha256": "c45a561ccf2666dc72c3e4b9ad0df300bf0ccefff444699591747842a0327444"
+      "sha256": "ab63a7d769971a1301135bfac16834235e3d52b6d21d12847ce680a0626e6444"
     },
     {
       "path": "package.json",
@@ -340,7 +340,7 @@
     },
     {
       "path": "KNOWN_ISSUES.md",
-      "sha256": "9170f56f069eb957385540dae1408977d74902d6489e18058bc176ecace627e5"
+      "sha256": "c3a0ea5c86115fd96142a77e004367516ad1154bc46262b4482e7ec62c13131c"
     },
     {
       "path": "nodes/vfx/depth.py",
