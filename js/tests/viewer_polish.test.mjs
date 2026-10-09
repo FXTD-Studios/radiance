@@ -688,3 +688,49 @@ test('the header version is the package version', { skip }, async () => {
     assert.deepEqual(errors, []);
     assert.equal(out, `v${PACKAGE_VERSION}`);
 });
+
+test('clip name, format chip and bit depth come from the frame', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const r = {};
+        let { v } = await __advanced();
+        const chip = () => v.proToolbar.querySelector('.radiance-pro-chip');
+        r.unknown = { name: v.sequenceNameLabel.textContent, shown: !!v.sequenceNameLabel.offsetParent,
+            chip: chip().textContent, depth: v._proDepth.textContent,
+            inspectorDepth: (() => {
+                v._setReferenceTab('inspector');
+                const kv = [...v.controlsPanel.querySelectorAll('.radiance-ref-kv .k')].find((k) => k.textContent === 'Bit Depth');
+                return kv?.nextElementSibling?.textContent;
+            })() };
+        ({ v } = await __advanced(640, 360, { source_name: 'A007C003_shot.exr' }));
+        r.named = { name: v.sequenceNameLabel.textContent, shown: !!v.sequenceNameLabel.offsetParent };
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.notEqual(out.unknown.name, 'A001C010');
+    assert.equal(out.unknown.shown, false, 'an unknown clip name is shown');
+    assert.equal(out.unknown.chip, 'RHDR', 'the format chip does not follow the frame');
+    assert.equal(out.unknown.depth, '16-bit half float');
+    assert.equal(out.unknown.inspectorDepth, '16-bit half float');
+    assert.deepEqual(out.named, { name: 'A007C003_shot.exr', shown: true });
+});
+
+test('the proxy badge describes the ACES 2.0 SDR preview the node writes', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('advanced');
+        await __sleep(300);
+        const v = n.radianceViewer;
+        // A corrupt float sidecar: the viewer falls back to the 8-bit PNG.
+        n.onExecuted(__frames(1, 64, 48, { hdr_sidecar: 'bad.rhdr', hdr_filename: 'bad.rhdr', preview_tonemapped: true }));
+        await __until(() => v.image && v.imageWidth === 64, 15000);
+        await __sleep(500);
+        v._updateBitDepthBadge();
+        return { text: v.bitDepthInfo.textContent, title: v.bitDepthInfo.title, chip: v.proToolbar.querySelector('.radiance-pro-chip').textContent,
+            depth: v._proDepth.textContent };
+    });
+    assert.deepEqual(errors.filter((e) => !/RHDR|zlib|decompress|incorrect header/i.test(e)), []);
+    assert.match(out.text, /PROXY 8-BIT/);
+    assert.match(out.title, /ACES 2\.0 SDR/);
+    assert.doesNotMatch(out.title, /x\/\(1\+x\)/);
+    assert.equal(out.chip, 'PNG');
+    assert.equal(out.depth, '8-bit (proxy)');
+});
