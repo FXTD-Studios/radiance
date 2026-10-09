@@ -1659,7 +1659,8 @@ class RadianceViewer {
      * (no DecompressionStream, an RHDR integrity mismatch, and a failed
      * texture creation), each of which used to only console.warn, and what is
      * then on screen is the PNG fallback: 8-bit, capped at FALLBACK_MAX_DIM =
-     * 2048 by the node, and Reinhard tonemapped x/(1+x) whenever d_max > 1.05.
+     * 2048 by the node, and (since 3.5.0) written through the ACES 2.0 SDR view
+     * for a linear source.
      *
      * So a colourist could grade a 4K HDR plate against a 2048px tonemapped
      * 8-bit proxy while the status bar read "FP32 · RGBA32F", and then press
@@ -1695,7 +1696,8 @@ class RadianceViewer {
             const sw = src.source_width, sh = src.source_height;
             const pw = src.naturalWidth || src.width, ph = src.naturalHeight || src.height;
             const parts = ['8-bit PNG fallback, NOT the float source'];
-            if (src.preview_tonemapped) parts.push('tonemapped x/(1+x) by the node');
+            // L2: what the node writes now (it said x/(1+x), the old tone map).
+            if (src.preview_tonemapped) parts.push('ACES 2.0 SDR preview written by the node');
             if (sw && sh && pw && ph && (sw !== pw || sh !== ph)) {
                 parts.push(`downscaled ${pw}x${ph} from ${sw}x${sh}`);
             }
@@ -3058,9 +3060,10 @@ class RadianceViewer {
         this._proFileName = document.createElement('span');
         this._proFileName.className = 'radiance-pro-file-name';
         this._proFileName.textContent = 'No shot loaded';
-        const exrChip = document.createElement('span');
-        exrChip.className = 'radiance-pro-chip';
-        exrChip.textContent = 'EXR';
+        // L2: the format and bit depth of the frame on screen (they were
+        // fixed "EXR" and "32-bit (float)"). Filled by _updateProMetadata.
+        this._proChip = document.createElement('span');
+        this._proChip.className = 'radiance-pro-chip';
         this._proResolution = document.createElement('span');
         this._proResolution.textContent = '— x —';
         this._proAspect = document.createElement('span');
@@ -3070,11 +3073,10 @@ class RadianceViewer {
         this._proColor = document.createElement('span');
         this._proColor.textContent = '-';     // the source tag, once a frame arrives
         this._proDepth = document.createElement('span');
-        this._proDepth.textContent = '32-bit (float)';
         this._engineBadge = document.createElement('span');
         this._engineBadge.className = 'radiance-pro-engine';
         this._engineBadge.textContent = 'GPU: —';
-        [this._proFileName, exrChip, this._proResolution, this._proAspect, this._proFps, this._proColor, this._proDepth, this._engineBadge]
+        [this._proFileName, this._proChip, this._proResolution, this._proAspect, this._proFps, this._proColor, this._proDepth, this._engineBadge]
             .forEach(el => meta.appendChild(el));
         bar.appendChild(meta);
 
@@ -4296,8 +4298,66 @@ class RadianceViewer {
         }
         if (this._proFps) this._proFps.textContent = `${(this.playbackFps || 24).toFixed(2)} FPS`;
         if (this._proColor) this._proColor.textContent = this._inputLabel();
-        if (this._proDepth) this._proDepth.textContent = this.hdrData ? '32-bit (float)' : '8/16-bit';
+        const info = this._frameFormatInfo();
+        if (this._proChip) this._proChip.textContent = info.chip;
+        if (this._proDepth) this._proDepth.textContent = info.depth;
+        if (this.sequenceNameLabel) {
+            const clip = this._clipName();
+            this.sequenceNameLabel.textContent = clip;
+            this.sequenceNameLabel.title = clip;
+        }
         this._updateEngineBadge();
+    }
+
+    /**
+     * L2: what the frame on screen is, for the header chip, the header's bit
+     * depth and the Inspector's Format and Bit Depth rows. A float sidecar
+     * still loading reads as what it will be; one that failed reads as the
+     * 8-bit PNG proxy that is showing instead.
+     */
+    _frameFormatInfo() {
+        const current = this._getCurrentResult?.() || {};
+        const hdr = this.hdrData;
+        if (hdr && (hdr.fp16data || hdr.data)) {
+            if (hdr.format === 'rhdr_f32') return { chip: 'RHDR', format: 'RHDR fp32', depth: '32-bit float' };
+            if (hdr.format === 'rhdr') return { chip: 'RHDR', format: 'RHDR fp16', depth: '16-bit half float' };
+            if (hdr.format === 'tiff_u8') return { chip: 'TIFF', format: 'TIFF 8-bit', depth: '8-bit' };
+            const name = String(hdr.format || 'float').split('_')[0].toUpperCase();
+            return { chip: name, format: name, depth: hdr.fp16data ? '16-bit half float' : '32-bit float' };
+        }
+        if (this.videoMode) return { chip: 'VIDEO', format: 'Video (8-bit)', depth: '8-bit' };
+        if (current.hdr_sidecar && !this._currentFallbackReason?.()) {
+            return current.hdr_fp32
+                ? { chip: 'RHDR', format: 'RHDR fp32', depth: '32-bit float' }
+                : { chip: 'RHDR', format: 'RHDR fp16', depth: '16-bit half float' };
+        }
+        if (this.image) {
+            return current.hdr_sidecar || current.has_hdr
+                ? { chip: 'PNG', format: 'PNG (8-bit preview)', depth: '8-bit (proxy)' }
+                : { chip: 'PNG', format: 'PNG', depth: '8-bit' };
+        }
+        return { chip: '', format: '—', depth: '' };
+    }
+
+    /**
+     * L2: the source's name for the dock: from the frame record when the
+     * node sends one, else a loaded video's file name, else nothing (the
+     * label hides). It was a fixed "A001C010".
+     */
+    _clipName() {
+        const current = this._getCurrentResult?.() || {};
+        const named = current.source_name || current.clip_name;
+        if (named) return String(named);
+        if (this.videoMode) {
+            const src = this.node?.properties?.radiance_viewer_video || this.videoEl?.currentSrc || '';
+            if (typeof src === 'string' && src && !src.startsWith('blob:')) {
+                try {
+                    const u = new URL(src, location.href);
+                    return u.searchParams.get('filename') || decodeURIComponent(u.pathname.split('/').pop() || '');
+                } catch { /* not a URL */ }
+            }
+        }
+        return '';
     }
 
     /**
@@ -13792,11 +13852,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         const durationFrames = Math.max(0, (this.totalFrames || 1) - 1);
         const durationSeconds = durationFrames / fps;
         const duration = `${String(Math.floor(durationSeconds / 60)).padStart(2, '0')}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}:${String(durationFrames % Math.round(fps)).padStart(2, '0')}`;
-        const format = this.hdrData?.format === 'rhdr_f32' ? 'RHDR fp32'
-            : this.hdrData?.format === 'rhdr' ? 'RHDR fp16'
-                : this.hdrData?.format ? String(this.hdrData.format).toUpperCase()
-                    : current.hdr_sidecar ? `RHDR ${current.hdr_fp32 ? 'fp32' : 'fp16'}`
-                        : this.image ? 'PNG (8-bit preview)' : '—';
+        const frameInfo = this._frameFormatInfo();
+        const format = frameInfo.format;
         const dataRange = Array.isArray(current.data_range)
             ? `${Number(current.data_range[0]).toFixed(4)} - ${Number(current.data_range[1]).toFixed(4)}`
             : '—';
@@ -13815,7 +13872,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['Duration', duration],
             ['Input Transform', this.inputSpace && this.inputSpace !== 'None' ? this.inputSpace : `None (source: ${this._inputLabel()})`],
             ['Display', this.displayLut || 'None'],
-            ['Bit Depth', '32-bit (float)'],
+            ['Bit Depth', frameInfo.depth || '—'],
             ['Data Range', dataRange],
             ['Peak', stats?.p999 !== undefined ? Number(stats.p999).toFixed(4) : '—'],
         ].forEach(([k, v]) => {
