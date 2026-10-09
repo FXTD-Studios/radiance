@@ -74,6 +74,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **Viewer temp files** are named `<prefix>_<token>_<frame>` and no `.rpick`
   is written. Saved workflows keep a small reference to the result instead of
   every frame entry; workflows saved by 3.x still load.
+- **Viewer keys and tools moved.** Full Screen is Shift+F (browsers keep
+  F11), the Ref Wipe tool is Shift+R, Alt+1 to Alt+6 open the panel tabs,
+  numpad 0 to 8 zoom (they nudged printer lights), 2 zooms to 200%, and P
+  does nothing. Blade, Adjust (which added a hidden contrast and saturation)
+  and the V1/V2 target are gone from the timeline. Fit now fits the picture
+  above the floating transport, so it is a little smaller. Double-click on
+  the f/ or gamma box selects its text; Alt+click resets it.
 
 ### Removed
 
@@ -161,6 +168,30 @@ are the results.
   the BT.1886 view says it is for an external display, half-float frames
   filter linearly on WebGL2, the grain loop runs only when grain is animated,
   and the renderer initialises once.
+- **Keys:** one keymap drives the keys, the help, the menus and every
+  tooltip, so they agree. Keys match by physical key (macOS Option works),
+  keep working with the scrubber, a slider or a dropdown focused, and no
+  longer reach ComfyUI once the viewer has used them.
+- **Reach:** a Masks tab (power window and HSL qualifier with a colour pick),
+  scope scale, levels and per-scope view in the Scopes tab, and the OCIO
+  config loader in the Grade tab. These were built only in a panel the viewer
+  never showed. The menus list every action with its real key, and Ref Wipe
+  shows its B frame (it had none).
+- **Pointer input:** the wheel honours line and page modes, a trackpad pans
+  with two fingers and pinch-zooms, a pen works like a mouse, touch pans and
+  pinch-zooms, and drag pan keeps up on HiDPI screens. The f/ and gamma boxes
+  stay inside their ranges.
+- **Design:** one theme for colour and type, 12 px text at 4.5:1 contrast or
+  better in the rail and panels, visible keyboard focus, labelled sliders,
+  28 px controls, and a high-contrast setting that changes something. The
+  rail scrolls, shows which tools are on, and has no dead items; Pixel Grid
+  outlines pixels at 800% and up.
+- **Header and status:** the gear opens a settings popover (it hid the
+  panel), Hide Panel is its own button, the header shows the package version
+  (it said v3.5), and the format chip, bit depth and clip name come from the
+  frame. Both zoom readouts agree.
+- **Effects** without a depth map say so and disable depth of field; Blades
+  skips 1 and 2, which drew a round disc.
 
 ### Fixed
 
