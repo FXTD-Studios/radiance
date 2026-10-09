@@ -109,6 +109,15 @@ anything that fails.
       gone instead of showing a blank canvas.
 - [ ] With WebGPU chosen (Settings (⚙) > Renderer, then reload), the Masks tab opens
       with the notice that names that control; back on WebGL it works.
+- [ ] Keys: press H for help and try a few listed keys with the scrubber and
+      a dropdown focused; Ctrl+Z after a grade change undoes it in the viewer
+      and not in the graph. On a Mac, Option shortcuts (Alt+X) work.
+- [ ] A mouse wheel zooms; on a laptop trackpad two fingers pan and a pinch
+      zooms; a pen (Wacom) pans and zooms like a mouse.
+- [ ] Masks tab: a power window limits the grade on screen and in an exported
+      .cube preview; the qualifier's Pick colour selects the picked hue.
+- [ ] Settings (⚙) > High contrast is readable on your monitor, and the rail
+      and panels read comfortably at your usual display scaling.
 
 ## Sign-off
 
