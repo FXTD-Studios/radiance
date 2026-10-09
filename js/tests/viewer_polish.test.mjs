@@ -613,3 +613,68 @@ test('Inspector channel rows can be reached and chosen by keyboard', { skip }, a
     assert.equal(out.channelAfterSpace, 'g');
     assert.equal(out.playing, false, 'Space on a channel row started playback');
 });
+
+test('Fit leaves the whole picture clear of the transport and the panels', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v } = await __advanced(640, 360);
+        const res = {};
+        // The canvas follows its column through a ResizeObserver; under
+        // software GL a rendering step can take a while to come round.
+        const relaid = async (w0) => { await __until(() => v.canvas.width !== w0, 10000); await __sleep(100); };
+        const check = () => {
+            const img = __imageBox(v);
+            const bars = [v.viewerBar, v.sequenceDock].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().top);
+            return { img, barTop: Math.min(...bars), panelLeft: v.rightControlPanel.offsetParent ? v.rightControlPanel.getBoundingClientRect().left : Infinity,
+                railRight: v.proSidebar.getBoundingClientRect().right, readouts: __readouts(v) };
+        };
+        v.fitToView();
+        res.fit = check();
+        let w0 = v.canvas.width;
+        v.toggleControls();
+        await relaid(w0);
+        res.panelHidden = check();
+        w0 = v.canvas.width;
+        v.toggleControls();
+        await relaid(w0);
+        res.panelBack = check();
+        return res;
+    });
+    assert.deepEqual(errors, []);
+    for (const [k, r] of Object.entries(out)) {
+        assert.ok(r.img.bottom <= r.barTop + 0.5, `${k}: picture bottom ${r.img.bottom.toFixed(1)} under the transport at ${r.barTop.toFixed(1)}`);
+        assert.ok(r.img.top >= r.img.canvas.top - 0.5, `${k}: picture top cut off`);
+        assert.ok(r.img.left >= r.railRight - 0.5, `${k}: picture under the rail`);
+        assert.ok(r.img.right <= Math.min(r.panelLeft, r.img.canvas.right) + 0.5, `${k}: picture under the panel`);
+        assert.equal(r.readouts.statusBar, r.readouts.model, `${k}: status bar zoom`);
+        assert.equal(r.readouts.bottomBar, r.readouts.model, `${k}: bottom bar zoom`);
+    }
+    assert.ok(out.panelHidden.readouts.model > out.fit.readouts.model, 'hiding the panel did not refit larger');
+});
+
+test('both zoom readouts agree after fit, zoom, wheel and resize', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const { v, n } = await __advanced();
+        const r = {};
+        v.fitToView(); r.fit = __readouts(v);
+        v.setZoom(1); r.z100 = __readouts(v);
+        v.setZoom(2); r.z200 = __readouts(v);
+        const c = v.canvas.getBoundingClientRect();
+        v.canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: c.left + 50, clientY: c.top + 50, bubbles: true, cancelable: true }));
+        await __sleep(50);
+        r.wheel = __readouts(v);
+        v.fitToView();
+        const w0 = v.canvas.width;
+        n.__host.style.width = '1500px';
+        await __until(() => v.canvas.width !== w0, 10000);
+        await __sleep(100);
+        r.resize = __readouts(v);
+        r.resizedTo = v.canvas.width;
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    for (const [k, r] of Object.entries(out)) {
+        assert.equal(r.statusBar, r.model, `${k}: status bar says ${r.statusBar}% at ${r.model}%`);
+        assert.equal(r.bottomBar, r.model, `${k}: bottom bar says ${r.bottomBar}% at ${r.model}%`);
+    }
+    assert.equal(out.z100.model, 100);
+});
