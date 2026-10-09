@@ -83,6 +83,10 @@ class RadianceViewer {
     static SCOPE_SLOW_UPDATE_MS = 300;
     /** C2: the sidebar scopes refresh at most this often. */
     static SCOPE_MIN_INTERVAL_MS = 100;
+    /** L3: the viewer f-stop runs ±this many stops, from the box, the keys and the code. */
+    static VIEW_EXPOSURE_LIMIT = 16;
+    /** L3: the viewer gamma's range. */
+    static VIEW_GAMMA_RANGE = Object.freeze([0.1, 4]);
     static activeInstance = null;
     static allInstances = new Set();
 
@@ -3040,25 +3044,64 @@ class RadianceViewer {
         left.appendChild(everySelect);
 
         // 3.5.0: viewer-only f-stop and gamma. Grade exposure goes into the
-        // render; these do not (Nuke's viewer gain / gamma). Double-click resets.
-        const mkNum = (label, title, min, max, step, get, set, fmt) => {
+        // render; these do not (Nuke's viewer gain / gamma).
+        // L3: both hold to the range the keys use (they took 100 and 40), a
+        // double-click selects the text to retype it (it used to reset), and
+        // Alt+click resets. Up and Down step; Enter or leaving the box commits.
+        const mkNum = (label, title, [lo, hi], step, neutral, get, apply, fmt) => {
             const wrap = document.createElement('label');
             wrap.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:10px;color:rgba(255,255,255,.55);';
             wrap.textContent = label;
             const inp = document.createElement('input');
-            inp.type = 'number'; inp.min = min; inp.max = max; inp.step = step;
+            inp.type = 'text'; inp.inputMode = 'decimal'; inp.spellcheck = false;
             inp.title = title;
             inp.style.cssText = 'width:52px;background:rgba(255,255,255,.06);color:#ddd;border:1px solid rgba(255,255,255,.14);border-radius:4px;font-size:11px;padding:2px 4px;';
             inp.value = fmt(get());
-            inp.oninput = () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) { set(v); this.render(); } };
-            inp.ondblclick = () => { set(label === 'γ' ? 1 : 0); inp.value = fmt(get()); this.render(); };
+            const clamp = (v) => Math.max(lo, Math.min(hi, v));
+            let committed = null;            // the value before typing, for Escape
+            inp.addEventListener('focus', () => { committed = get(); });
+            // While typing, the picture follows; the text is left alone until commit.
+            inp.addEventListener('input', () => {
+                const v = parseFloat(inp.value);
+                if (Number.isFinite(v)) apply(clamp(v), { live: true });
+            });
+            inp.addEventListener('change', () => {
+                const v = parseFloat(inp.value);
+                apply(Number.isFinite(v) ? clamp(v) : get());
+                inp.value = fmt(get());
+            });
+            inp.addEventListener('keydown', (e) => {
+                e.stopPropagation();                 // typed digits are not viewer shortcuts
+                if (e.key === 'Enter') inp.blur();
+                else if (e.key === 'Escape') { apply(committed ?? get()); inp.value = fmt(get()); inp.blur(); }
+                else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    apply(clamp(get() + (e.key === 'ArrowUp' ? step : -step)));
+                    inp.value = fmt(get());
+                    inp.select();
+                }
+            });
+            inp.addEventListener('dblclick', () => inp.select());
+            inp.addEventListener('click', (e) => {
+                if (!e.altKey) return;
+                e.preventDefault();
+                apply(neutral);
+                inp.value = fmt(get());
+                inp.blur();
+            });
             wrap.appendChild(inp);
             return [wrap, inp];
         };
-        const [evWrap, evInp] = mkNum('f/', 'Viewer exposure in stops (not rendered out). Double-click resets.',
-            -16, 16, 0.5, () => this.viewExposure, (v) => { this.viewExposure = v; }, (v) => v.toFixed(1));
-        const [gWrap, gInp] = mkNum('γ', 'Viewer gamma (not rendered out). Double-click resets.',
-            0.2, 5, 0.1, () => this.viewGamma, (v) => { this.viewGamma = Math.max(0.2, v); }, (v) => v.toFixed(2));
+        const evLim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
+        const [evWrap, evInp] = mkNum('f/', `Viewer exposure in stops, ±${evLim} (not rendered out). Alt+click resets.`,
+            [-evLim, evLim], 0.5, 0, () => this.viewExposure,
+            (v, o) => { if (o?.live) { this.viewExposure = v; this.render(); } else this.setViewExposure(v); },
+            (v) => v.toFixed(1));
+        const [gLo, gHi] = RadianceViewer.VIEW_GAMMA_RANGE;
+        const [gWrap, gInp] = mkNum('γ', `Viewer gamma, ${gLo} to ${gHi} (not rendered out). Alt+click resets.`,
+            [gLo, gHi], 0.1, 1, () => this.viewGamma,
+            (v, o) => { if (o?.live) { this.viewGamma = v; this.render(); } else this.setViewGamma(v); },
+            (v) => v.toFixed(2));
         this._viewEvInput = evInp; this._viewGammaInput = gInp;
         left.appendChild(evWrap);
         left.appendChild(gWrap);
@@ -11229,8 +11272,18 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** 3.5.0: viewer-only f-stop (keys and the bar both land here). */
     setViewExposure(stops) {
-        this.viewExposure = Math.max(-16, Math.min(16, Number(stops) || 0));
+        const lim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
+        this.viewExposure = Math.max(-lim, Math.min(lim, Number(stops) || 0));
         if (this._viewEvInput) this._viewEvInput.value = this.viewExposure.toFixed(1);
+        this.render();
+    }
+
+    /** Viewer gamma (display only), clamped to VIEW_GAMMA_RANGE. */
+    setViewGamma(g) {
+        const [lo, hi] = RadianceViewer.VIEW_GAMMA_RANGE;
+        const v = Number(g);
+        this.viewGamma = Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : 1;
+        if (this._viewGammaInput) this._viewGammaInput.value = this.viewGamma.toFixed(2);
         this.render();
     }
 
