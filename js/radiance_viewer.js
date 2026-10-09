@@ -10121,6 +10121,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (typeof ResizeObserver !== 'undefined') {
             this.resizeObserver = new ResizeObserver(() => this.resize());
             this.resizeObserver.observe(this.canvasWrapper);
+            // M17: the controls floating over the canvas decide what Fit fills.
+            if (this.viewerBar) this.resizeObserver.observe(this.viewerBar);
+            if (this.sequenceDock) this.resizeObserver.observe(this.sequenceDock);
         }
     }
 
@@ -10153,15 +10156,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         // visible viewport stayed black with only the crosshair. A view that
         // is still auto-fitted is refitted to the new size. A view the user
         // has zoomed or panned keeps the same image point at the centre.
+        if (this.image && this._viewIsFit !== false) {
+            // M17: also when only the controls over the canvas changed size.
+            this.fitToView();
+            return;
+        }
         if (this.image && (oldW !== newW || oldH !== newH)) {
-            if (this._viewIsFit !== false) {
-                this.fitToView();
-                return;
-            }
             this.panX += (newW - oldW) / 2;
             this.panY += (newH - oldH) / 2;
         }
         this.render();
+        this._syncZoomReadouts();
     }
 
     updateCursor(e) {
@@ -10324,7 +10329,6 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Update fixed right info stats continuously
-        const zoomPct = Math.round(this.zoom * 100);
         const depth = (this.hdrData && this.hdrData.data) ? '32b FP' : '8b INT';
 
         let indicators = '';
@@ -10337,9 +10341,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             <span>${depth}</span>
             <span>CH: ${this.channel.toUpperCase()}</span>
             <span>RES: ${this.imageWidth}x${this.imageHeight}</span>
-            <span>ZOOM: ${zoomPct}%</span>
+            <span data-readout="zoom"></span>
             <span>FRM: ${this.currentFrame + 1}/${this.totalFrames}</span>
         `;
+        this._syncZoomReadouts();
 
         // Toggle Legend visibility
         if (this.fcLegend) {
@@ -10351,7 +10356,6 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateBottomBar() {
         if (!this.infoRight) return;
         this._updateProMetadata();
-        const zoomPct = Math.round((this.zoom || 1) * 100);
         const w = this.imageWidth || 0;
         const h = this.imageHeight || 0;
         // M7: non-finite pixels in this frame, drawn cyan (NaN) and orange
@@ -10365,9 +10369,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             ${badHtml}
             <span>CH: ${(this.channel || 'rgb').toUpperCase()}</span>
             <span>RES: ${w}x${h}</span>
-            <span>ZOOM: ${zoomPct}%</span>
+            <span data-readout="zoom"></span>
             <span>FRM: ${(this.currentFrame || 0) + 1}/${this.totalFrames || 1}</span>
         `;
+        this._syncZoomReadouts();
     }
 
     /**
@@ -12188,7 +12193,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._termLog?.('info', '[Pin Frame] Reference released.');
     }
 
-    // Existing fitToView...
+    /**
+     * M17: Fit fits the picture inside the part of the canvas nothing covers.
+     * The viewer bar and the sequence dock float over the bottom of the
+     * canvas, and Fit used to centre in the whole of it, so the bottom of
+     * the picture sat under the transport.
+     */
     fitToView() {
         if (!this.image) return;
         const w = this.canvas.width, h = this.canvas.height;
@@ -12198,16 +12208,53 @@ self.onmessage = async ({ data: { id, url } }) => {
             return;
         }
 
-        let z = Math.min(w / this.imageWidth, h / this.imageHeight);
-        // Add a small margin (5%) if it's tight
-        z = z * 0.95;
+        const free = this._freeViewRect();
+        // A small margin (5%) so the frame edge stays visible.
+        const z = Math.min(free.w / this.imageWidth, free.h / this.imageHeight) * 0.95;
 
         this.zoom = z;
-        this.panX = (w - this.imageWidth * this.zoom) / 2;
-        this.panY = (h - this.imageHeight * this.zoom) / 2;
+        this.panX = free.x + (free.w - this.imageWidth * this.zoom) / 2;
+        this.panY = free.y + (free.h - this.imageHeight * this.zoom) / 2;
         this._viewIsFit = true;   // resize() refits a fitted view
         this.updateBottomBar();
         this.render();
+    }
+
+    /**
+     * The canvas area, in canvas pixels, above the controls that float over
+     * it (viewer bar, sequence dock). Hidden controls (Simple mode) take no
+     * room. Never less than a quarter of the canvas, so a very short viewer
+     * still shows a picture.
+     */
+    _freeViewRect() {
+        const w = this.canvas.width, h = this.canvas.height;
+        const box = this.canvas.getBoundingClientRect();
+        if (!(box.height > 0)) return { x: 0, y: 0, w, h };
+        let bottom = box.bottom;
+        for (const el of [this.viewerBar, this.sequenceDock]) {
+            if (!el?.offsetParent) continue;
+            const r = el.getBoundingClientRect();
+            if (r.height > 0 && r.top < bottom && r.bottom > box.top) bottom = Math.min(bottom, r.top);
+        }
+        const freeH = Math.max(h * 0.25, (bottom - box.top) * (h / box.height));
+        return { x: 0, y: 0, w, h: Math.min(h, freeH) };
+    }
+
+    /** M17: the zoom both readouts show; there is one, so they cannot disagree. */
+    _zoomReadout() {
+        return this.image ? `${Math.round((this.zoom || 1) * 100)}%` : '—';
+    }
+
+    /**
+     * M17: writes the zoom into the status row and the bottom bar together.
+     * Every path that changes one (fit, zoom, the wheel, a resize, the panel
+     * toggling) ends here; Fit used to refresh only one of them.
+     */
+    _syncZoomReadouts() {
+        const z = this._zoomReadout();
+        if (this.zoomInfo) this.zoomInfo.textContent = z;
+        const span = this.infoRight?.querySelector('[data-readout="zoom"]');
+        if (span) span.textContent = `ZOOM: ${z}`;
     }
 
     setZoom(z) {
@@ -12897,14 +12944,14 @@ self.onmessage = async ({ data: { id, url } }) => {
     updateInfo() {
         if (!this.image) {
             this.dimensionInfo.textContent = '—×—';
-            this.zoomInfo.textContent = '—';
+            this._syncZoomReadouts();
             if (this.colorspaceInfo) this.colorspaceInfo.textContent = `${this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace} / ${this.displayLut || 'None'}`;
             return;
         }
 
         const z = (this.zoom * 100).toFixed(0);
         this.dimensionInfo.textContent = `${this.imageWidth}×${this.imageHeight}`;
-        this.zoomInfo.textContent = `${z}%`;
+        this._syncZoomReadouts();
         if (this.colorspaceInfo) {
             const input = this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace;
             const output = this.displayLut || 'None';
