@@ -9,6 +9,17 @@ import { RadianceNeuralMonitor } from "./radiance_neural.js";
 
 import { escapeHtml as _escapeHtml } from "./radiance_dom_utils.js";
 import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radiance_timecode.js";
+// One table for the keys, the help overlay, the menus and the tooltips (M4).
+import {
+    matchKey as _matchKey,
+    shortcutLabel as _shortcutLabel,
+    isTextEntry as _isTextEntry,
+    RANGE_KEYS as _RANGE_KEYS,
+    MENU_ORDER as _MENU_ORDER,
+    menuEntries as _menuEntries,
+    helpSections as _helpSections,
+    POINTER_HELP as _POINTER_HELP,
+} from "./radiance_keymap.js";
 import { cbcr as _vsCbCr, toCanvas as _vsToCanvas, drawGraticule as _vsGraticule } from "./radiance_vectorscope.js";
 import {
     sampleStats as _probeSampleStats,
@@ -2426,6 +2437,7 @@ class RadianceViewer {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-pro-menu-item';
+            if (item.id) btn.dataset.action = item.id;
             const label = document.createElement('span');
             label.textContent = item.label;
             const shortcut = document.createElement('span');
@@ -2569,9 +2581,9 @@ class RadianceViewer {
         };
         const transport = document.createElement('div');
         transport.className = 'rsb-group';
-        this._sbPrev = btn('‹', 'Previous frame (Left)', () => this.prevFrame?.());
-        this._sbPlay = btn('▶', 'Play / pause (Space)', () => this.togglePlayback(), 'rsb-play');
-        this._sbNext = btn('›', 'Next frame (Right)', () => this.nextFrame?.());
+        this._sbPrev = btn('‹', `Previous frame (${_shortcutLabel('play.prev')})`, () => this.prevFrame?.());
+        this._sbPlay = btn('▶', `Play / pause (${_shortcutLabel('play.toggle')})`, () => this.togglePlayback(), 'rsb-play');
+        this._sbNext = btn('›', `Next frame (${_shortcutLabel('play.next')})`, () => this.nextFrame?.());
         transport.append(this._sbPrev, this._sbPlay, this._sbNext, this._muteButton());
 
         const scrub = document.createElement('input');
@@ -2608,7 +2620,7 @@ class RadianceViewer {
         // centred, or scaled to fit. It used to be stretched over A.
         this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
             () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
-        const fit = btn('Fit', 'Fit to view (F)', () => this.fitToView?.());
+        const fit = btn('Fit', `Fit to view (${_shortcutLabel('view.fit')})`, () => this.fitToView?.());
         bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
         return bar;
     }
@@ -2807,54 +2819,23 @@ class RadianceViewer {
 
         const menu = document.createElement('div');
         menu.className = 'radiance-pro-menu-items';
-        const menus = {
-            File: [
-                { label: 'Snapshot / Export', shortcut: 'S', action: () => this.showExportMenu?.({ target: this.proToolbar || bar }) },
-                { label: 'Pin Current Frame', shortcut: 'A/B', action: () => this.pinCurrentFrame?.() },
-            ],
-            Edit: [
-                // These two work. Their keyboard shortcuts did not: the only
-                // Ctrl+Z / Ctrl+Y handler in the file sits inside the region of
-                // createHUD() after the unconditional 'return' at ~11753, so it
-                // is never installed. The menu advertised a binding that did not
-                // exist. '_installUndoShortcuts' (called from createUI) restores
-                // it in live code.
-                { label: 'Undo', shortcut: 'Ctrl+Z', action: () => this.undo?.() },
-                { label: 'Redo', shortcut: 'Ctrl+Y', action: () => this.redo?.() },
-                'separator',
-                { label: 'Reset Grade', shortcut: '0', action: () => this.resetControls?.() },
-            ],
-            View: [
-                { label: 'Fit', shortcut: 'F', action: () => this.fitToView() },
-                { label: '100%', shortcut: '1', action: () => this.setZoom(1.0) },
-                { label: '200%', shortcut: '2', action: () => this.setZoom(2.0) },
-                'separator',
-                { label: 'Safe Areas', shortcut: 'S', action: () => this.cycleSafeAreas() },
-                { label: 'Grid', shortcut: 'Shift+G', action: () => this.cycleGridMode() },
-            ],
-            Color: [
-                { label: 'Grade', action: () => this._setReferenceTab('grade') },
-                { label: 'Scopes', action: () => this._setReferenceTab('scopes') },
-                { label: 'Analysis', action: () => this._setReferenceTab('analysis') },
-                'separator',
-                { label: 'False Color', action: () => { this.falseColor = !this.falseColor; this.render(); } },
-                { label: 'Zebra', action: () => { this.zebra = !this.zebra; this.render(); } },
-            ],
-            Tools: [
-                { label: 'Effects + Depth', action: () => this._setReferenceTab('effects') },
-                { label: 'Inspector', action: () => this._setReferenceTab('inspector') },
-                { label: 'Metadata Overlay', action: () => this.toggleMetadata() },
-                { label: 'Depth Overlay', shortcut: 'Z', action: () => { this.showZdepth = !this.showZdepth; this.renderer?.setShowDepth?.(this.showZdepth); this.render(); } },
-            ],
-            Window: [
-                { label: 'Right HUD', action: () => this.toggleControls() },
-                { label: 'Compact Layout', action: () => this.toggleCompactLayout() },
-                { label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen() },
-            ],
-            Help: [
-                { label: 'Keyboard Shortcuts', shortcut: '?', action: () => this.toggleHelp() },
-            ],
-        };
+        // The menus are made from the keymap (radiance_keymap.js): each item is
+        // a keymap action, its shortcut is that action's binding, and clicking
+        // it runs what the key runs. They showed S for Snapshot, A/B for Pin
+        // and 0 for Reset Grade, keys that did other things, and 2 and F11,
+        // which were not bound at all (M4, M18).
+        const menus = {};
+        _MENU_ORDER.forEach((name) => {
+            const items = [];
+            let group = null;
+            for (const entry of _menuEntries(name)) {
+                if (group !== null && entry.group !== group) items.push('separator');
+                group = entry.group;
+                items.push({ id: entry.id, label: entry.label, shortcut: _shortcutLabel(entry.id),
+                    action: () => this._runKeyAction(entry.id) });
+            }
+            menus[name] = items;
+        });
         Object.keys(menus).forEach(label => {
             const btn = document.createElement('button');
             btn.textContent = label;
@@ -2938,11 +2919,12 @@ class RadianceViewer {
             sidebar.appendChild(section);
         };
 
+        // Shortcut labels come from the keymap, so they name bound keys (M4).
         addSection('Viewer', [
-            { label: 'Fit', shortcut: 'F', action: () => this.fitToView(), active: true },
-            { label: '100%', shortcut: '1', action: () => this.setZoom(1.0) },
-            { label: '200%', shortcut: '2', action: () => this.setZoom(2.0) },
-            { label: 'Full Screen', shortcut: 'F11', action: () => this.toggleFullscreen() },
+            { label: 'Fit', shortcut: _shortcutLabel('view.fit'), action: () => this.fitToView(), active: true },
+            { label: '100%', shortcut: _shortcutLabel('view.zoom100'), action: () => this.setZoom(1.0) },
+            { label: '200%', shortcut: _shortcutLabel('view.zoom200'), action: () => this.setZoom(2.0) },
+            { label: 'Full Screen', shortcut: _shortcutLabel('window.fullscreen'), action: () => this.toggleFullscreen() },
         ]);
         addSection('Channels', [
             { label: 'RGB', action: () => { this.showZdepth = false; this.channel = 'rgb'; this.render(); }, active: true },
@@ -2972,11 +2954,14 @@ class RadianceViewer {
             // absolute cd/m2 against BT.2408's 203-nit HDR Reference White.
             { label: 'HDR Heatmap', action: () => { this.toggleHDRHeatmap(); } },
         ]);
+        // H8: each opens the Scopes tab on the scope it names. They all opened
+        // the same four-scope stack, since that tab ignored scopeMode.
+        const showScope = (mode) => { this._referenceScopeShow = mode; this._openPanel('scopes'); this.updateScopes(); };
         addSection('Analysis', [
-            { label: 'Histogram', action: () => { this.scopeMode = 'histogram'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Waveform', action: () => { this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Vectorscope', action: () => { this.scopeMode = 'vectorscope'; this._setReferenceTab('scopes'); this.updateScopes(); } },
-            { label: 'Parade', action: () => { this.waveformParadeMode = true; this.scopeMode = 'waveform'; this._setReferenceTab('scopes'); this.updateScopes(); } },
+            { label: 'Histogram', action: () => showScope('histogram') },
+            { label: 'Waveform', action: () => showScope('waveform') },
+            { label: 'Vectorscope', action: () => showScope('vectorscope') },
+            { label: 'Parade', action: () => showScope('parade') },
         ]);
 
         return sidebar;
@@ -3231,12 +3216,15 @@ class RadianceViewer {
         center.className = 'radiance-pro-timeline-tools';
         center.style.cssText = 'display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px;';
 
+        // H8: only tools that change what plays. Blade, V1 slip and roll trim
+        // only redrew the track, and Adjust added a grade (contrast 1.15,
+        // saturation 1.08) that no slider, export or undo could see; they are
+        // gone, with the V1 / V2 target that only they used. Slip now moves a
+        // Ref Wipe block's B frame. Keys and tooltips come from the keymap.
         const tools = [
-            { id: 'select', label: '⬈ Select', hotkey: 'KeyA' },
-            { id: 'blade', label: '✂ Blade', hotkey: 'KeyB' },
-            { id: 'slip', label: '⇳ Slip', hotkey: 'KeyS' },
-            { id: 'adjust', label: '✚ Adjust', hotkey: 'KeyD' },
-            { id: 'reference', label: '⬄ Ref Wipe', hotkey: 'KeyF' }
+            { id: 'select', label: '⬈ Select', action: 'tool.select', tip: 'Select: click the track to scrub' },
+            { id: 'slip', label: '⇳ Slip', action: 'tool.slip', tip: 'Slip: drag a Ref Wipe block to run its B ahead of or behind the playhead' },
+            { id: 'reference', label: '⬄ Ref Wipe', action: 'tool.reference', tip: 'Ref Wipe: click V2 to place a block that wipes against another frame' },
         ];
 
         const toolButtons = {};
@@ -3245,7 +3233,7 @@ class RadianceViewer {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = t.label;
-            btn.title = `Switch to ${t.id} tool (${t.hotkey.replace('Key', '')})`;
+            btn.title = `${t.tip} (${_shortcutLabel(t.action)})`;
             btn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.5);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;';
 
             const updateVisual = () => {
@@ -3260,24 +3248,22 @@ class RadianceViewer {
                 }
             };
 
-            btn.onclick = () => {
-                this.activeTimelineTool = t.id;
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            };
+            btn.onclick = () => this._setTimelineTool(t.id);
 
             toolButtons[t.id] = { btn, updateVisual };
             center.appendChild(btn);
         });
+        this._timelineToolButtons = toolButtons;
 
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button';
         resetBtn.textContent = '↺ Reset';
-        resetBtn.title = 'Merge all segments and reset timeline';
+        resetBtn.title = 'Remove every Ref Wipe block from V2';
         resetBtn.style.cssText = 'height:20px;padding:0 8px;border:none;background:transparent;color:rgba(255,255,255,0.35);font-size:10px;font-family:var(--radiance-font);font-weight:600;border-radius:3px;cursor:pointer;transition:all 0.15s;margin-left:4px;border-left:1px solid rgba(255,255,255,0.06);';
         resetBtn.onmouseenter = () => resetBtn.style.color = 'rgba(255,255,255,0.8)';
         resetBtn.onmouseleave = () => resetBtn.style.color = 'rgba(255,255,255,0.35)';
         resetBtn.onclick = async () => {
-            if (await this._confirmAction('Merge all clip segments and reset the timeline?', 'Reset')) {
+            if (await this._confirmAction('Remove every Ref Wipe block from the timeline?', 'Reset')) {
                 this.timelineSegments = null;
                 this.v2Segments = null;
                 this._lastFilmstripTotal = null;
@@ -3286,79 +3272,7 @@ class RadianceViewer {
         };
         center.appendChild(resetBtn);
 
-        // Setup V1 / V2 Track Target Selector
-        const trackToggle = document.createElement('div');
-        trackToggle.style.cssText = 'display:flex;align-items:center;margin-left:8px;border-left:1px solid rgba(255,255,255,0.06);padding-left:8px;gap:2px;';
-
-        const trackButtons = {};
-        ['V1', 'V2'].forEach(trk => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = trk;
-            btn.title = `Target active timeline edits to ${trk} track (Key V to toggle)`;
-            btn.style.cssText = 'height:20px;padding:0 6px;border:none;background:transparent;color:rgba(255,255,255,0.4);font-size:9px;font-family:var(--radiance-mono, monospace);font-weight:bold;border-radius:2px;cursor:pointer;transition:all 0.15s;';
-
-            const updateVisual = () => {
-                if (this.activeTimelineTrack === trk) {
-                    btn.style.background = 'rgba(0, 189, 255, 0.22)';
-                    btn.style.color = '#00bdff';
-                    btn.style.boxShadow = '0 0 4px rgba(0, 189, 255, 0.1)';
-                } else {
-                    btn.style.background = 'transparent';
-                    btn.style.color = 'rgba(255,255,255,0.4)';
-                    btn.style.boxShadow = 'none';
-                }
-            };
-
-            btn.onclick = () => {
-                this.activeTimelineTrack = trk;
-                Object.values(trackButtons).forEach(b => b.updateVisual());
-            };
-
-            trackButtons[trk] = { btn, updateVisual };
-            trackToggle.appendChild(btn);
-        });
-        center.appendChild(trackToggle);
-
         Object.values(toolButtons).forEach(b => b.updateVisual());
-        Object.values(trackButtons).forEach(b => b.updateVisual());
-
-        // Named and stored so destroy() can remove it. It used to be an
-        // anonymous listener on 'window' with no reference kept, so it could
-        // never be removed: the closure captured 'this', 'toolButtons' and
-        // 'trackButtons', and kept firing after the node was deleted. Pressing
-        // A/B/S/D/F/V anywhere in ComfyUI ran the handler once per destroyed
-        // viewer, each mutating a dead instance and calling updateVisual() on
-        // detached DOM. One more every time the node executed.
-        this._seqDockKeyHandler = (e) => {
-            if (!this._ownsKeyboard(e)) return;
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
-            // 3.5.0: Shift+letter and only for the active viewer. Bare A/B/S/D/F/V
-            // on the whole page collided with the viewer's own keys (F both
-            // fitted and switched the timeline tool).
-            if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-            if (RadianceViewer._activeViewer && RadianceViewer._activeViewer !== this) return;
-            if (e.code === 'KeyA') {
-                this.activeTimelineTool = 'select';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyB') {
-                this.activeTimelineTool = 'blade';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyS') {
-                this.activeTimelineTool = 'slip';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyD') {
-                this.activeTimelineTool = 'adjust';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyF') {
-                this.activeTimelineTool = 'reference';
-                Object.values(toolButtons).forEach(b => b.updateVisual());
-            } else if (e.code === 'KeyV') {
-                this.activeTimelineTrack = this.activeTimelineTrack === 'V1' ? 'V2' : 'V1';
-                Object.values(trackButtons).forEach(b => b.updateVisual());
-            }
-        };
-        window.addEventListener('keydown', this._seqDockKeyHandler, { signal: this._listenerSignal });
 
         head.append(left, center, right);
         dock.appendChild(head);
@@ -3368,6 +3282,52 @@ class RadianceViewer {
         dock.appendChild(this.sequenceTrack);
         this._refreshSequenceDock();
         return dock;
+    }
+
+    /** Pick a timeline tool ('select', 'slip', 'reference') and show it on the buttons. */
+    _setTimelineTool(id) {
+        this.activeTimelineTool = id;
+        Object.values(this._timelineToolButtons || {}).forEach(b => b.updateVisual());
+    }
+
+    /**
+     * A Ref Wipe block under the playhead wipes A against this sequence's
+     * frame at the playhead plus the block's slip, through the compare path
+     * compare_image uses (its float frame when it is paged in). It used to set
+     * compareImage, which the GPU path never reads, so the wipe had no B. A
+     * pinned B is the user's own choice and wins.
+     */
+    _applyTimelineRefWipe(total) {
+        const cur = this.currentFrame || 0;
+        const seg = this.compareSource === 'pinned' ? null
+            : (this.v2Segments || []).find(s => s.type === 'reference' && cur >= s.startFrame && cur <= s.endFrame);
+        if (seg && total > 0) {
+            const idx = Math.max(0, Math.min(total - 1, cur + (seg.offset || 0)));
+            const img = this.frameImages?.[idx] || null;
+            const hdr = this.frameHDRData?.[idx] || null;
+            if (!img && !hdr) return;                       // not paged in yet; the next refresh tries again
+            if (this._refWipeFrame !== idx || this._refWipeSrc !== (hdr || img)) {
+                this._refWipeFrame = idx;
+                this._refWipeSrc = hdr || img;
+                try { this._pushCompareToRenderer(img, hdr); } catch (e) { /* backend without compare */ }
+            }
+            if (!this._refWipeActive) {
+                this._refWipeActive = true;
+                this._refWipeModeBefore = this.compareMode;
+                this.setCompareMode('wipe');
+            } else {
+                this.requestRender();
+            }
+        } else if (this._refWipeActive) {
+            this._refWipeActive = false;
+            this._refWipeFrame = null;
+            this._refWipeSrc = null;
+            // Back to the compare input when there is one, else no B.
+            if (this.renderer?.setCompareSource) this.renderer.setCompareSource(null);
+            if (this.compareSource === 'input') this._updateCompareForFrame(cur, true);
+            const before = this._refWipeModeBefore;
+            this.setCompareMode(before && before !== 'none' && this._hasCompareB() ? before : 'none');
+        }
     }
 
     _refreshSequenceDock() {
@@ -3420,28 +3380,8 @@ class RadianceViewer {
             this.v2Segments = [];
         }
 
-        // 4. Automatic Reference Comparison Wipe check
-        let hasActiveRef = false;
-        if (this.v2Segments && this.v2Segments.length > 0) {
-            const curFrame = this.currentFrame || 0;
-            const refSeg = this.v2Segments.find(s => s.type === 'reference' && curFrame >= s.startFrame && curFrame <= s.endFrame);
-            if (refSeg) {
-                hasActiveRef = true;
-                const refFrameIdx = Math.max(0, Math.min(total - 1, curFrame + refSeg.offset));
-                const refImg = this.frameImages?.[refFrameIdx];
-                if (refImg && this.compareImage !== refImg) {
-                    this.compareImage = refImg;
-                    this.compareMode = 'wipe';
-                    this.render();
-                }
-            }
-        }
-        if (!hasActiveRef && this._hadActiveRefTimeline) {
-            this.compareMode = 'none';
-            this.compareImage = null;
-            this.render();
-        }
-        this._hadActiveRefTimeline = hasActiveRef;
+        // 4. A Ref Wipe block under the playhead wipes against another frame
+        this._applyTimelineRefWipe(total);
 
         // 5. Build/update the multi-track NLE stacked DOM
         let playhead = this.sequenceTrack.querySelector('.radiance-pro-timeline-playhead');
@@ -3458,7 +3398,7 @@ class RadianceViewer {
 
             if (this.v2Segments.length === 0) {
                 const guide = document.createElement('span');
-                guide.textContent = '✚ Click with Adjust or Ref Wipe tool to place overlays on V2';
+                guide.textContent = '✚ Click here with the Ref Wipe tool to place a block on V2';
                 guide.style.cssText = 'position:absolute; left:12px; font-size:8px; font-family:var(--radiance-mono); font-weight:bold; color:rgba(255,255,255,0.18); pointer-events:none;';
                 v2Lane.appendChild(guide);
             }
@@ -3470,11 +3410,12 @@ class RadianceViewer {
 
                 const block = document.createElement('div');
                 block.className = 'radiance-pro-clip-block v2-block';
-                block.style.cssText = `position:absolute; left:${leftPct}%; width:${widthPct}%; height:100%; border:1px solid ${seg.color}; background:rgba(${seg.type === 'adjustment' ? '197,108,255' : '255,173,38'}, 0.16); border-radius:3px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden; cursor:pointer; box-sizing:border-box;`;
+                block.style.cssText = `position:absolute; left:${leftPct}%; width:${widthPct}%; height:100%; border:1px solid ${seg.color}; background:rgba(255,173,38, 0.16); border-radius:3px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden; cursor:pointer; box-sizing:border-box;`;
+                block.title = `${seg.name}: B is ${seg.offset ? `${seg.offset > 0 ? '+' : ''}${seg.offset} frames from` : 'the same frame as'} the playhead. Slip tool to move B, double-click to remove.`;
 
                 const label = document.createElement('div');
                 label.style.cssText = 'color:#e8e8f0; font:800 7px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none;';
-                label.textContent = `${seg.name} (${segFrames}f)`;
+                label.textContent = `${seg.name} (${segFrames}f${seg.offset ? `, B ${seg.offset > 0 ? '+' : ''}${seg.offset}` : ''})`;
                 block.appendChild(label);
 
                 // V2 Trimming handles (Right handle)
@@ -3491,14 +3432,14 @@ class RadianceViewer {
                 };
                 block.appendChild(rightHandle);
 
+                block.ondblclick = (e) => {
+                    e.stopPropagation();
+                    this.v2Segments.splice(idx, 1);
+                    this._refreshSequenceDock();
+                };
                 block.onmousedown = (e) => {
                     e.stopPropagation();
-                    if (this.activeTimelineTool === 'blade') {
-                        // Erase overlay block
-                        this.v2Segments.splice(idx, 1);
-                        this._termLog?.('info', `[V2 Track] Erased overlay segment`);
-                        this._refreshSequenceDock();
-                    } else if (this.activeTimelineTool === 'slip') {
+                    if (this.activeTimelineTool === 'slip') {
                         this._isSlippingClip = true;
                         this._activeSlipSegment = seg;
                         this._initialSlipX = e.clientX;
@@ -3524,21 +3465,7 @@ class RadianceViewer {
                 const pct = Math.max(0, Math.min(1.0, (clickX - rect.left) / rect.width));
                 const clickFrame = Math.round(pct * (total - 1));
 
-                if (this.activeTimelineTool === 'adjust') {
-                    const start = Math.max(0, clickFrame - 8);
-                    const end = Math.min(total - 1, clickFrame + 8);
-                    this.v2Segments.push({
-                        id: Date.now(),
-                        startFrame: start,
-                        endFrame: end,
-                        type: 'adjustment',
-                        name: 'Global Adjustment',
-                        color: '#c56cff',
-                        gradeProps: { contrast: 1.15, saturation: 1.08, gain: [1.03, 1.0, 0.97] }
-                    });
-                    this.v2Segments.sort((a,b) => a.startFrame - b.startFrame);
-                    this._refreshSequenceDock();
-                } else if (this.activeTimelineTool === 'reference') {
+                if (this.activeTimelineTool === 'reference') {
                     const start = Math.max(0, clickFrame - 10);
                     const end = Math.min(total - 1, clickFrame + 10);
                     this.v2Segments.push({
@@ -3600,61 +3527,14 @@ class RadianceViewer {
                 label.textContent = `${seg.name} (${segFrames}f)`;
                 block.appendChild(label);
 
-                // Edge Roll/Ripple Trimming
-                if (idx < this.timelineSegments.length - 1) {
-                    const rightHandle = document.createElement('div');
-                    rightHandle.className = 'radiance-pro-right-handle';
-                    rightHandle.style.cssText = 'position:absolute; right:0; top:0; width:5px; height:100%; cursor:ew-resize; z-index:10; background:transparent;';
-                    rightHandle.onmousedown = (e) => {
-                        e.stopPropagation();
-                        this._isDraggingEdge = true;
-                        this._activeDragTrack = 'V1';
-                        this._activeDragSegmentIdx = idx;
-                        this._initialDragX = e.clientX;
-                        this._initSegEndFrame = seg.endFrame;
-                        this._initNextSegStartFrame = this.timelineSegments[idx + 1].startFrame;
-                    };
-                    block.appendChild(rightHandle);
-                }
-
+                // V1 is the sequence as it plays: clicking it scrubs. Its blade,
+                // slip and roll trim only redrew this lane (H8), so they are gone.
                 block.onmousedown = (e) => {
                     const rect = this.sequenceTrack.getBoundingClientRect();
-                    const clickX = e.clientX;
-                    const pct = Math.max(0, Math.min(1.0, (clickX - rect.left) / rect.width));
+                    const pct = Math.max(0, Math.min(1.0, (e.clientX - rect.left) / rect.width));
                     const clickFrame = Math.round(pct * (total - 1));
-
-                    if (this.activeTimelineTool === 'blade') {
-                        e.stopPropagation();
-                        if (clickFrame > seg.startFrame && clickFrame < seg.endFrame) {
-                            const leftSeg = {
-                                id: Date.now(),
-                                startFrame: seg.startFrame,
-                                endFrame: clickFrame,
-                                offset: seg.offset,
-                                name: seg.name + '_A',
-                                color: seg.color
-                            };
-                            const rightSeg = {
-                                id: Date.now() + 1,
-                                startFrame: clickFrame + 1,
-                                endFrame: seg.endFrame,
-                                offset: seg.offset,
-                                name: seg.name + '_B',
-                                color: ['#00bdff', '#d45cff', '#59d86f', '#ffad26', '#ff8060', '#56c7ff'][Math.floor(Math.random() * 6)]
-                            };
-                            this.timelineSegments.splice(idx, 1, leftSeg, rightSeg);
-                            this._refreshSequenceDock();
-                        }
-                    } else if (this.activeTimelineTool === 'slip') {
-                        e.stopPropagation();
-                        this._isSlippingClip = true;
-                        this._activeSlipSegment = seg;
-                        this._initialSlipX = clickX;
-                        this._initSlipOffset = seg.offset;
-                    } else {
-                        this._isScrubbingTimeline = true;
-                        this.setFrame(Math.max(seg.startFrame, Math.min(seg.endFrame, clickFrame)));
-                    }
+                    this._isScrubbingTimeline = true;
+                    this.setFrame(Math.max(seg.startFrame, Math.min(seg.endFrame, clickFrame)));
                 };
 
                 v1Lane.appendChild(block);
@@ -3704,16 +3584,7 @@ class RadianceViewer {
                     const dx = e.clientX - this._initialDragX;
                     const df = Math.round((dx / rect.width) * total);
 
-                    if (this._activeDragTrack === 'V1') {
-                        // Roll Trim V1
-                        const seg = this.timelineSegments[this._activeDragSegmentIdx];
-                        const nextSeg = this.timelineSegments[this._activeDragSegmentIdx + 1];
-                        const minEnd = seg.startFrame + 1;
-                        const maxEnd = nextSeg.endFrame - 1;
-                        const targetEnd = Math.max(minEnd, Math.min(maxEnd, this._initSegEndFrame + df));
-                        seg.endFrame = targetEnd;
-                        nextSeg.startFrame = targetEnd + 1;
-                    } else if (this._activeDragTrack === 'V2') {
+                    if (this._activeDragTrack === 'V2') {
                         // Resize V2 Block
                         const seg = this.v2Segments[this._activeDragSegmentIdx];
                         const minEnd = seg.startFrame + 1;
@@ -7544,9 +7415,17 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _ownsKeyboard(e) {
         if (e.defaultPrevented || !this.container?.isConnected || this.container.style.display === 'none') return false;
-        if (e.target?.isContentEditable || e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return false;
+        // Only a field that takes typed text keeps the keys. A slider or a
+        // select does not: after a click on the scrubber or on a dropdown,
+        // Space and J/K/L still drive the viewer (M4).
+        if (_isTextEntry(e.target)) return false;
         const fullscreen = [...RadianceViewer.allInstances].find(v => v.isFullscreen && v.container?.isConnected);
         if (fullscreen) return fullscreen === this;
+        // Focus inside a viewer (its scrubber, a slider, a tab) names it.
+        const focused = e.target && e.target !== document.body
+            ? [...RadianceViewer.allInstances].find(v => v.container?.isConnected && v.container.contains(e.target))
+            : null;
+        if (focused) return focused === this;
         const hovered = RadianceViewer._hoveredViewer;
         if (hovered?.container?.isConnected) return hovered === this;
         const selected = app.canvas?.selected_nodes;
@@ -7572,150 +7451,78 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
         this.container.addEventListener('focusin', claim);
         if (!RadianceViewer._activeViewer) RadianceViewer._activeViewer = this;
+        // A select gives the keys back once a value is picked; with it still
+        // focused the arrows changed the frame rate instead of the frame.
+        this.container.addEventListener('change', (e) => {
+            if (e.target?.tagName === 'SELECT') e.target.blur();
+        }, true);
         this._docKeyHandler = (e) => {
-            const t = e.target;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-            if (e.ctrlKey || e.metaKey) return;
             if (!this._ownsKeyboard(e)) return;
-            if (this.container.style.display === 'none' || !this.container.isConnected) return;
             this.handleKey(e);
         };
         document.addEventListener('keydown', this._docKeyHandler, { signal: this._listenerSignal });
     }
 
+    /**
+     * One key, looked up in the keymap (radiance_keymap.js), which also writes
+     * the help overlay, the menu labels and the tooltips. A key the viewer
+     * acts on is consumed: preventDefault, and stopPropagation so ComfyUI's
+     * own single-key shortcuts do not run as well. Returns true when handled.
+     */
     handleKey(e) {
-        // Printer Lights (Numpad) mapped to Offset for Scene-Linear manipulation
-        if (e.code && e.code.startsWith('Numpad')) {
-            const step = 0.01;
-            const prevOffset = [...this.offset];
+        const hit = _matchKey(e);
+        if (!hit) return false;
+        const { entry, key } = hit;
+        // Undo and redo have their own handler (_installUndoShortcuts), which
+        // also serves a grade slider that still has focus after a drag.
+        if (entry.id === 'edit.undo' || entry.id === 'edit.redo') return false;
+        // A focused slider (the scrubber, a grade slider) steps itself.
+        const t = e.target;
+        if (t?.tagName === 'INPUT' && t.type === 'range' && _RANGE_KEYS.has(key.code)) return false;
+        if (this._runKeyAction(entry.id, key.arg, e) === false) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+    }
 
-            switch (e.code) {
-                // Red
-                case 'Numpad7': this.offset[0] -= step; break;
-                case 'Numpad9': this.offset[0] += step; break;
-                // Green
-                case 'Numpad4': this.offset[1] -= step; break;
-                case 'Numpad6': this.offset[1] += step; break;
-                // Blue
-                case 'Numpad1': this.offset[2] -= step; break;
-                case 'Numpad3': this.offset[2] += step; break;
-                // Master (All Channels)
-                case 'Numpad8': this.offset[0] += step; this.offset[1] += step; this.offset[2] += step; break;
-                case 'Numpad2': this.offset[0] -= step; this.offset[1] -= step; this.offset[2] -= step; break;
-                // Exposure
-                case 'NumpadAdd': this.adjustEV(0.25); return;
-                case 'NumpadSubtract': this.adjustEV(-0.25); return;
-            }
+    /** Show the right panel on a tab, scrolled to a section when one is named. */
+    _openPanel(tab, section = null) {
+        this.showControls = true;
+        this._setReferenceTab(tab);
+        if (!section || !this.controlsPanel) return;
+        const heading = [...this.controlsPanel.querySelectorAll('.radiance-ref-title')]
+            .find((h) => (h.firstChild?.textContent || '').trim() === section);
+        heading?.parentElement?.scrollIntoView?.({ block: 'start' });
+    }
 
-            // Only update if changed
-            if (this.offset[0] !== prevOffset[0] || this.offset[1] !== prevOffset[1] || this.offset[2] !== prevOffset[2]) {
-                if (this.renderer) {
-                    this.renderer.setOffset(this.offset[0], this.offset[1], this.offset[2]);
-                    this._pushUndoDebounced();
-                }
-                if (this._lastRenderContent) this._lastRenderContent(); // Update HUD wheels
-                this.render();
-                return; // Handled
-            }
-        }
-
-        const key = e.key.toLowerCase();
-
-        // 1. Alt + 1..6: fast swap navigation tabs
-        if (e.altKey && ['1', '2', '3', '4', '5', '6'].includes(key)) {
-            e.preventDefault();
-            const tabMap = {
-                '1': 'prompt',
-                '2': 'primaries',
-                '3': 'curves',
-                '4': 'effects',
-                '5': 'masks',
-                '6': 'view'
-            };
-            this.switchTab(tabMap[key]);
-            return;
-        }
-
-        // 2. Alt + W: swap primaries wheel mode (PRIMARY vs LOG)
-        if (e.altKey && key === 'w') {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                this.activeWheelTab = this.activeWheelTab === 'PRIMARY' ? 'LOG' : 'PRIMARY';
-                // Trigger tab rebuild so wheels deck updates
-                if (typeof this._triggerRenderTabs === 'function') {
-                    this._triggerRenderTabs();
-                }
-            }
-            return;
-        }
-
-        // 3. Alt + Focus Wheel keys
-        if (e.altKey && ['l', 'g', 'a', 'o'].includes(key)) {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                const isLog = this.activeWheelTab === 'LOG';
-                const wheelMap = {
-                    'l': isLog ? 'SHADOW' : 'LIFT',
-                    'g': isLog ? 'MIDTONE' : 'GAMMA',
-                    'a': isLog ? 'HILIGHT' : 'GAIN',
-                    'o': 'OFFSET'
-                };
-                this.setFocusedWheel(wheelMap[key]);
-            }
-            return;
-        }
-
-        // 4. Alt + ArrowUp / ArrowDown: adjust focused wheel master ring (luma)
-        if (e.altKey && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) {
-            e.preventDefault();
-            if (this.activeTab === 'primaries') {
-                const delta = e.code === 'ArrowUp' ? 0.005 : -0.005;
-                this.adjustFocusedWheelMaster(delta, e);
-            }
-            return;
-        }
-
-        // v4.1: Alt+B — cycle pipeline bit depth (INT 8 / FLOAT 16 / FLOAT 32)
-        if (e.altKey && key === 'b') {
-            e.preventDefault();
-            this._cyclePipelinePrecision();
-            return;
-        }
-
-        switch (key) {
-            case '?': case '/': if (e.shiftKey) this.toggleHelp(); break;
-            case 'f': this.fitToView(); break;
-            case '1': this.setZoom(1.0); break;
-            case 'r': if (e.shiftKey) break; this.channel = 'r'; this.showZdepth = false; this.render(); break;
-            case 'g': if (e.shiftKey) { this.cycleGridMode(); } else if (!e.ctrlKey) { this.channel = 'g'; this.showZdepth = false; this.render(); } break;
-            case 'b': if (e.shiftKey) break; this.channel = 'b'; this.showZdepth = false; this.render(); break;
-            // 3.5.0: Y = luma (L is Resolve/Avid "play forward" now, with J/K).
-            case 'y': this.channel = 'luma'; this.showZdepth = false; this.render(); break;
-            case 'c': this.channel = 'rgb'; this.showZdepth = false; this.render(); break;
-            case 'j': if (!e.shiftKey) this.shuttle(-1); break;
-            case 'l': if (!e.shiftKey) this.shuttle(+1); break;
-            case 'i': this.setInPoint(); break;
-            case 'o': this.setOutPoint(); break;
-            case 'x':
-                if (e.altKey) { e.preventDefault(); this.clearInOut(); }
-                else this.cycleCompareMode();
-                break;
-            case 'home': e.preventDefault(); this.setFrame(this.inPoint ?? 0); break;
-            case 'end': e.preventDefault(); this.setFrame(this.outPoint ?? Math.max(0, (this.totalFrames || 1) - 1)); break;
-            // RV binds nearest-neighbour to 'n'. Pixel-peeping through a
-            // bilinear filter shows a blend of neighbours rather than pixels.
-            case 'n': this.togglePixelFilter(); break;
-            case 'h': this.toggleHelp(); break;
-            case 'w': this.toggleScope('waveform'); break;
-            case 'm': this.toggleParadeMode(); break;
-            case 'v': this.toggleScope('vectorscope'); break;
-            case 'e': this.falseColor = !this.falseColor; this.zebra = false; this.focusPeaking = false; this.showZdepth = false; this.render(); break;
-            case 'k':
-                if (e.shiftKey) { this.focusPeaking = !this.focusPeaking; this.falseColor = false; this.zebra = false; this.showZdepth = false; this.render(); }
-                else this.shuttle(0);          // K: stop (J/K/L)
-                break;
-            case 'z': this.toggleZdepth(); break;
-            case 'q':
+    /**
+     * Run one keymap action, from a key or a menu. Returns false when the
+     * action did not apply (Esc with nothing to close), so the key is left
+     * for the page.
+     */
+    _runKeyAction(id, arg = undefined) {
+        const channel = (c) => { this.channel = c; this.showZdepth = false; this.render(); };
+        switch (id) {
+            // File
+            case 'file.export': this.showExportMenu?.({ target: this.proToolbar || this.container }); break;
+            case 'file.savePNG': this._saveResultPNG?.(); break;
+            case 'file.exportCDL': this._exportCDL(); break;
+            case 'file.exportCUBE': this._exportGradeLUT(); break;
+            case 'file.pinB': this.pinCurrentFrame(); break;
+            // Edit
+            case 'edit.undo': this.undo?.(); break;
+            case 'edit.redo': this.redo?.(); break;
+            case 'edit.resetGrade': this.resetControls(); break;
+            case 'edit.resetAll': this.resetGradeAll(); break;
+            // View
+            case 'view.fit': this.fitToView(); break;
+            case 'view.zoom100': this.setZoom(1.0); break;
+            case 'view.zoom200': this.setZoom(2.0); break;
+            case 'view.zoomPreset': if (arg) this.setZoom(arg); else this.fitToView(); break;
+            case 'view.safeAreas': this.cycleSafeAreas(); break;
+            case 'view.grid': this.cycleGridMode(); break;
+            case 'view.pixelFilter': this.togglePixelFilter(); break;
+            case 'view.loupe':
                 this.showLoupe = !this.showLoupe;
                 if (this.loupeBtn) {
                     this.loupeBtn.classList.toggle('active', this.showLoupe);
@@ -7723,65 +7530,78 @@ self.onmessage = async ({ data: { id, url } }) => {
                 }
                 this.renderOverlay();
                 break;
-            case 'a':
-                // 3.5.0: A = alpha channel, as in RV (compare moved to X).
-                if (e.shiftKey) break;
-                this.channel = this.channel === 'a' ? 'rgb' : 'a'; this.render();
+            case 'view.exposureUp': this.setViewExposure((this.viewExposure || 0) + 0.5); break;
+            case 'view.exposureDown': this.setViewExposure((this.viewExposure || 0) - 0.5); break;
+            case 'view.resetViewer': this.setViewGamma(1); this.setViewExposure(0); break;
+            case 'view.compare': this.cycleCompareMode(); break;
+            case 'view.falseColor':
+                this.falseColor = !this.falseColor; this.zebra = false; this.focusPeaking = false; this.showZdepth = false;
+                this.render();
                 break;
-            case 's': if (!e.ctrlKey && !e.shiftKey) this.cycleSafeAreas(); break;
-            case 'arrowleft':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(-0.005, 0, e);
-                } else {
-                    this.prevFrame();
-                }
+            case 'view.zebra': this.zebra = !this.zebra; this.render(); break;
+            case 'view.heatmap': this.toggleHDRHeatmap(); break;
+            case 'view.focusPeaking':
+                this.focusPeaking = !this.focusPeaking; this.falseColor = false; this.zebra = false; this.showZdepth = false;
+                this.render();
                 break;
-            case 'arrowright':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0.005, 0, e);
-                } else {
-                    this.nextFrame();
-                }
+            case 'view.metadata': this.toggleMetadata(); break;
+            case 'view.depth': this.toggleZdepth(); break;
+            // Channels
+            case 'channel.r': channel('r'); break;
+            case 'channel.g': channel('g'); break;
+            case 'channel.b': channel('b'); break;
+            case 'channel.luma': channel('luma'); break;
+            case 'channel.rgb': channel('rgb'); break;
+            case 'channel.alpha': channel(this.channel === 'a' ? 'rgb' : 'a'); break;
+            // Panel
+            case 'panel.inspector': this._openPanel('inspector'); break;
+            case 'panel.grade': this._openPanel('grade'); break;
+            case 'panel.masks': this._openPanel('masks'); break;
+            case 'panel.effects': this._openPanel('effects'); break;
+            case 'panel.scopes': this._openPanel('scopes'); this.updateScopes?.(); break;
+            case 'panel.analysis': this._openPanel('analysis'); break;
+            case 'panel.curves': this._openPanel('inspector', 'COLOR CURVES'); break;
+            case 'panel.presets': this._openPanel('grade', 'PRESETS'); break;
+            case 'panel.ocio': this._openPanel('grade', 'COLOR TRANSFORM'); break;
+            case 'grade.exposureUp': this.adjustEV(0.25); break;
+            case 'grade.exposureDown': this.adjustEV(-0.25); break;
+            // Scopes over the picture
+            case 'scope.waveform': this.toggleScope('waveform'); break;
+            case 'scope.parade': this.toggleParadeMode(); break;
+            case 'scope.vectorscope': this.toggleScope('vectorscope'); break;
+            // Tools
+            case 'tools.precision': this._cyclePipelinePrecision(); break;
+            case 'tools.terminal': this.toggleTerminal(); break;
+            // Playback
+            case 'play.toggle': this.togglePlayback(); break;
+            case 'play.prev': this.prevFrame(); break;
+            case 'play.next': this.nextFrame(); break;
+            case 'play.reverse': this.shuttle(-1); break;
+            case 'play.stop': this.shuttle(0); break;
+            case 'play.forward': this.shuttle(+1); break;
+            case 'play.in': this.setInPoint(); break;
+            case 'play.out': this.setOutPoint(); break;
+            case 'play.clearInOut': this.clearInOut(); break;
+            case 'play.first': this.setFrame(this.inPoint ?? 0); break;
+            case 'play.last': this.setFrame(this.outPoint ?? Math.max(0, (this.totalFrames || 1) - 1)); break;
+            // Timeline tools
+            case 'tool.select': this._setTimelineTool('select'); break;
+            case 'tool.slip': this._setTimelineTool('slip'); break;
+            case 'tool.reference': this._setTimelineTool('reference'); break;
+            // Window and general
+            case 'window.panel': this.toggleControls(); break;
+            case 'window.compact': this.toggleCompactLayout(); break;
+            case 'window.fullscreen': this.toggleFullscreen(); break;
+            case 'general.run': this.runWorkflow(); break;
+            case 'general.escape':
+                if (this.showHelp) this.toggleHelp();
+                else if (this.isFullscreen) this.exitFullscreen();
+                else return false;
                 break;
-            case 'arrowup':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0, -0.005, e);
-                }
-                break;
-            case 'arrowdown':
-                if (this.activeTab === 'primaries') {
-                    e.preventDefault();
-                    this.adjustFocusedWheelChroma(0, 0.005, e);
-                }
-                break;
-            case ' ':
-                e.preventDefault(); // Stop default scroll
-                this.togglePlayback();
-                break;
-            case 'escape':
-                if (this.showHelp) { this.toggleHelp(); }
-                else if (this.isFullscreen) { this.exitFullscreen(); }
-                else if (this.showPromptPanel) { this.togglePromptPanel(); }
-                break;
-            // 3.5.0: -/= nudge the VIEWER f-stop (display only); the grade's
-            // exposure stays on Numpad +/-. [ ] set in/out (RV). 0 resets the
-            // viewer f-stop and gamma; it used to wipe the whole grade.
-            case '=': case '+': this.setViewExposure((this.viewExposure || 0) + 0.5); break;
-            case '-': this.setViewExposure((this.viewExposure || 0) - 0.5); break;
-            case '[': this.setInPoint(); break;
-            case ']': this.setOutPoint(); break;
-            case '0':
-                this.viewGamma = 1;
-                if (this._viewGammaInput) this._viewGammaInput.value = '1.00';
-                this.setViewExposure(0);
-                break;
-            case 'p': if (!e.ctrlKey) this.togglePromptPanel(); break;
-            case '`': case '~': this.toggleTerminal(); e.preventDefault(); break;
-            case 'enter': if (e.shiftKey) this.runWorkflow(); break;
+            case 'help.toggle': this.toggleHelp(); break;
+            default: return false;
         }
+        return true;
     }
 
     /**
@@ -8324,74 +8144,28 @@ self.onmessage = async ({ data: { id, url } }) => {
             box-shadow: 0 8px 32px rgba(0,0,0,0.8);
         `;
 
-        const shortcuts = [
-            {
-                category: 'Navigation', items: [
-                    ['F', 'Fit to view'],
-                    ['1', '1:1 pixel zoom'],
-                    ['Mouse Wheel', 'Zoom in/out'],
-                    ['Shift+Drag', 'Pan image'],
-                    ['← →', 'Previous/Next frame'],
-                    ['Space', 'Play / pause'],
-                    ['J / K / L', 'Play reverse / stop / play forward'],
-                    ['I or [ / O or ]', 'Set in / out point'],
-                    ['Alt+X', 'Clear in/out'],
-                    ['Home / End', 'First / last frame (in / out)']
-                ]
-            },
-            {
-                category: 'Display', items: [
-                    ['R/G/B/Y', 'View R/G/B/Luma channel'],
-                    ['C', 'RGB (color) view'],
-                    ['A', 'Alpha channel'],
-                    ['+/−', 'Viewer f-stop (display only)'],
-                    ['Numpad +/−', 'Grade exposure'],
-                    ['0', 'Reset viewer f-stop and gamma'],
-                    ['N', 'Nearest / linear magnification'],
-                    ['E', 'False color (ARRI)'],
-                    ['Shift+K', 'Focus peaking (GPU)'],
-                    ['Q', 'Pixel loupe'],
-                    ['Z', 'Z-Depth / Zebra']
-                ]
-            },
-            {
-                category: 'Analysis', items: [
-                    ['H', 'Histogram (HDR-aware)'],
-                    ['W', 'Waveform'],
-                    ['M', 'Toggle Parade mode'],
-                    ['V', 'Vectorscope'],
-                    ['Shift+G', 'Cycle grid modes'],
-                    ['G', 'Green channel'],
-                    ['S', 'Safe areas'],
-                    ['X', 'A/B compare mode'],
-                ]
-            },
-            {
-                category: 'General', items: [
-                    ['⛶', 'Fullscreen'],
-                    ['Shift+Enter', 'Run workflow'],
-                    ['P', 'Prompt editor'],
-                    ['?', 'This help'],
-                    ['Esc', 'Close help/Exit fullscreen']
-                ]
-            }
-        ];
+        // Made from the keymap, so it lists every bound key and no other (it
+        // said H was Histogram while H opened this, and listed P, which opened
+        // nothing). Pointer gestures follow; they are not keys.
+        const shortcuts = _helpSections().map(({ section, items }) => ({ category: section, items }));
+        shortcuts.push({ category: 'Mouse, trackpad, pen and touch', items: _POINTER_HELP.map(([k, d]) => [k, d]) });
+        const esc = RadianceViewer.escapeHtml;
 
         let html = `<div style="color: ${this.theme.accent}; font-size: 18px; font-weight: bold; margin-bottom: 16px; text-align: center;">◎ Keyboard Shortcuts</div>`;
 
         shortcuts.forEach(section => {
             html += `<div style="margin-bottom: 16px;">`;
-            html += `<div style="color: ${this.theme.accent}; font-size: 12px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid ${this.theme.panelBorder}; padding-bottom: 4px;">${section.category}</div>`;
+            html += `<div style="color: ${this.theme.accent}; font-size: 12px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid ${this.theme.panelBorder}; padding-bottom: 4px;">${esc(section.category)}</div>`;
             section.items.forEach(([key, desc]) => {
                 html += `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">`;
-                html += `<span style="background: #1a1a28; padding: 2px 8px; border-radius: 3px; font-family: monospace; color: ${this.theme.text};">${key}</span>`;
-                html += `<span style="color: ${this.theme.textDim}; margin-left: 12px;">${desc}</span>`;
+                html += `<span style="background: #1a1a28; padding: 2px 8px; border-radius: 3px; font-family: monospace; color: ${this.theme.text};">${esc(key)}</span>`;
+                html += `<span style="color: ${this.theme.textDim}; margin-left: 12px;">${esc(desc)}</span>`;
                 html += `</div>`;
             });
             html += `</div>`;
         });
 
-        html += `<div style="text-align: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid ${this.theme.panelBorder}; color: ${this.theme.textDim}; font-size: 9px;">Press ? or Esc to close</div>`;
+        html += `<div style="text-align: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid ${this.theme.panelBorder}; color: ${this.theme.textDim}; font-size: 9px;">Press ${esc(_shortcutLabel('help.toggle', { all: true }))} or Esc to close</div>`;
 
         this.helpPanel.innerHTML = html;
         this.canvasWrapper.appendChild(this.helpPanel);
@@ -11940,40 +11714,15 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.glCanvas.height = glH;
             }
 
-            // 2. Update renderer state from UI controls (GPU parameters)
-            // 2. Accumulate and chain stacked grading parameters (V1 + V2 Adjustment Layers)
-            let finalExposure = this.exposure || 0.0;
-            let finalSaturation = this.saturation !== undefined ? this.saturation : 1.0;
-            let finalContrast = this.contrast !== undefined ? this.contrast : 1.0;
-            let finalLift = Array.isArray(this.lift) ? [...this.lift] : [0, 0, 0];
-            let finalGain = Array.isArray(this.gain) ? [...this.gain] : [1, 1, 1];
-            let finalGamma = Array.isArray(this.gamma) ? [...this.gamma] : [1, 1, 1];
-
-            if (this.v2Segments && this.v2Segments.length > 0) {
-                const curFrame = this.currentFrame || 0;
-                const activeAdj = this.v2Segments.find(s => s.type === 'adjustment' && curFrame >= s.startFrame && curFrame <= s.endFrame);
-                if (activeAdj && activeAdj.gradeProps) {
-                    const p = activeAdj.gradeProps;
-                    if (p.exposure !== undefined) finalExposure += p.exposure;
-                    if (p.saturation !== undefined) finalSaturation *= p.saturation;
-                    if (p.contrast !== undefined) finalContrast *= p.contrast;
-                    if (p.lift) {
-                        finalLift[0] += p.lift[0];
-                        finalLift[1] += p.lift[1];
-                        finalLift[2] += p.lift[2];
-                    }
-                    if (p.gain) {
-                        finalGain[0] *= p.gain[0];
-                        finalGain[1] *= p.gain[1];
-                        finalGain[2] *= p.gain[2];
-                    }
-                    if (p.gamma) {
-                        finalGamma[0] *= p.gamma[0];
-                        finalGamma[1] *= p.gamma[1];
-                        finalGamma[2] *= p.gamma[2];
-                    }
-                }
-            }
+            // 2. Update renderer state from UI controls (GPU parameters).
+            // The grade on screen is the grade in the panel: the timeline's
+            // Adjust blocks added a hidden one here, and are gone (H8).
+            const finalExposure = this.exposure || 0.0;
+            const finalSaturation = this.saturation !== undefined ? this.saturation : 1.0;
+            const finalContrast = this.contrast !== undefined ? this.contrast : 1.0;
+            const finalLift = Array.isArray(this.lift) ? this.lift : [0, 0, 0];
+            const finalGain = Array.isArray(this.gain) ? this.gain : [1, 1, 1];
+            const finalGamma = Array.isArray(this.gamma) ? this.gamma : [1, 1, 1];
 
             this.renderer.setExposure(finalExposure);
             this.renderer.setGamma(finalGamma[0], finalGamma[1], finalGamma[2]);
@@ -12004,7 +11753,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             // v3.4 FIX: Qualifier must be pushed every frame, not just when the masks tab is open.
             // Pass showMask=true only while the masks tab is active — switching away hides the overlay.
             if (this.renderer.setQualifier && this.qualifierState) {
-                const qState = this.activeTab === 'masks'
+                const qState = this._referenceRightTab === 'masks'
                     ? this.qualifierState
                     : { ...this.qualifierState, showMask: false };
                 this.renderer.setQualifier(qState);
@@ -13200,6 +12949,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (activeTab === 'grade') {
                 // The full control set, not the read-only summary.
                 this._renderReferenceGrade(col);
+            } else if (activeTab === 'masks') {
+                this._renderReferenceMasks(col);
             } else if (activeTab === 'effects') {
                 this._renderReferenceEffects(col);
             } else if (activeTab === 'scopes') {
@@ -13215,18 +12966,21 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._lastRenderContent = render;
         };
 
+        // In Alt+1 to Alt+6 order (radiance_keymap.js).
         [
-            ['inspector', 'INSPECTOR'],
-            ['grade', 'GRADE'],
-            ['effects', 'EFFECTS'],
-            ['scopes', 'SCOPES'],
-            ['analysis', 'ANALYSIS'],
-        ].forEach(([id, label]) => {
+            ['inspector', 'INSPECTOR', 'panel.inspector'],
+            ['grade', 'GRADE', 'panel.grade'],
+            ['masks', 'MASKS', 'panel.masks'],
+            ['effects', 'EFFECTS', 'panel.effects'],
+            ['scopes', 'SCOPES', 'panel.scopes'],
+            ['analysis', 'ANALYSIS', 'panel.analysis'],
+        ].forEach(([id, label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-ref-tab';
             btn.dataset.tabId = id;
             btn.textContent = label;
+            btn.title = `${label.charAt(0)}${label.slice(1).toLowerCase()} (${_shortcutLabel(action)})`;
             const activate = () => {
                 activeTab = id;
                 this._referenceRightTab = id;
@@ -13259,29 +13013,28 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _installUndoShortcuts() {
-        // The Edit menu offers Undo and Redo and labels them Ctrl+Z / Ctrl+Y.
-        // The handler that implemented those labels lives after the
-        // unconditional 'return' in createHUD(), so it was never installed and
-        // the labels were a promise the app did not keep -- while _pushUndo()
-        // kept filling a 50-deep stack from live code the whole time.
+        // The Edit menu offers Undo and Redo with the keymap's labels, and this
+        // is the handler behind them (the one in createHUD() sits after its
+        // unconditional 'return' and was never installed). On the document,
+        // like the other keys, so stopPropagation keeps a handled Ctrl+Z from
+        // ComfyUI's own undo on the window.
         if (this._undoKeyHandler) return;
         this._undoKeyHandler = (e) => {
+            const hit = _matchKey(e);
+            const id = hit?.entry.id;
+            if (id !== 'edit.undo' && id !== 'edit.redo') return;
             const t = e.target;
             // A grade slider keeps focus after a drag, and Ctrl+Z there has to
             // undo the drag. Text fields keep their own undo.
             const onSlider = t?.tagName === 'INPUT' && t.type === 'range'
                 && !!(this.container?.contains(t) || this.controlsPanel?.contains(t));
-            if (!onSlider) {
-                if (!this._ownsKeyboard(e)) return;
-                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-            }
-            if (!(e.ctrlKey || e.metaKey)) return;
-            const active = this;
-            const k = (e.key || '').toLowerCase();
-            if (k === 'z' && !e.shiftKey) { e.preventDefault(); active.undo?.(); }
-            else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); active.redo?.(); }
+            if (!onSlider && !this._ownsKeyboard(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (id === 'edit.undo') this.undo?.();
+            else this.redo?.();
         };
-        window.addEventListener('keydown', this._undoKeyHandler, { signal: this._listenerSignal });
+        document.addEventListener('keydown', this._undoKeyHandler, { signal: this._listenerSignal });
     }
 
     _renderReferenceSection(parent, title, onReset = null) {
@@ -13808,6 +13561,14 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this._gradeOutputSelect = transform.querySelector('select[data-radiance-param="output_transform"]');
         this._syncLutSelects();
+        // H8: the OCIO config loader (bundled ACES configs, a .ocio file, and
+        // its input, display and view). It was built only in the old View tab,
+        // after createHUD()'s return. Color > OCIO Config opens it here.
+        const ocio = document.createElement('div');
+        ocio.dataset.radianceParam = 'ocio';
+        ocio.style.marginTop = '10px';
+        transform.appendChild(ocio);
+        this.renderOcioSection(ocio);
 
         const S = RadianceViewer.GRADE_SECTIONS;
         const exposure = this._renderReferenceSection(parent, 'EXPOSURE', () => this._resetGradeFields(S.exposure));
@@ -14034,9 +13795,11 @@ self.onmessage = async ({ data: { id, url } }) => {
      * typed value; a drag is one undo step; a double-click returns it to the
      * defaults table.
      */
-    _refSlider(parentEl, { label, key, min, max, step, get, set, cls = '', title = '' }) {
+    _refSlider(parentEl, { label, key, min, max, step, get, set, cls = '', title = '', param: paramName = null, neutral: neutralValue = undefined }) {
         const D = RadianceViewer.GRADE_DEFAULTS;
-        const param = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        // A control inside a grade object (the mask, the qualifier) names its
+        // own param and neutral; the rest are read off the label and the table.
+        const param = paramName || label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
         const row = document.createElement('div');
         row.className = `radiance-ref-slider ${cls}`;
         row.dataset.radianceParam = param;
@@ -14057,7 +13820,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         readout.dataset.radianceReadout = param;
         readout.setAttribute('aria-label', `${label} value`);
         const decimals = String(step).includes('.') ? String(step).split('.')[1].length : 0;
-        const neutral = D[key] ?? 0;
+        const neutral = neutralValue ?? D[key] ?? 0;
         const read = () => {
             const v = Number(get());
             return Number.isFinite(v) ? v : neutral;
@@ -14140,6 +13903,167 @@ self.onmessage = async ({ data: { id, url } }) => {
         section.appendChild(actions);
     }
 
+    /**
+     * H8: the power window and the HSL qualifier, in the live panel. Their
+     * only controls were in the old panel after createHUD()'s unconditional
+     * return, so the shader's mask and qualifier could not be reached. These
+     * drive the same maskState and qualifierState that render() sends every
+     * frame; each change is one undo step and is saved with the grade.
+     */
+    _renderReferenceMasks(parent) {
+        this._gradeControls = new Map();
+        this._backendUnsupportedNotice(parent, 'Masks and qualifiers');
+        const D = RadianceViewer.GRADE_DEFAULTS;
+        const m = () => this.maskState;
+        const q = () => this.qualifierState;
+        const pushMask = () => this.renderer?.setMask?.(this.maskState);
+        const pushQual = () => this.renderer?.setQualifier?.(this.qualifierState);
+
+        const toggle = (parentEl, label, param, get, set) => {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-toggle-row';
+            const l = document.createElement('span');
+            l.textContent = label;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'radiance-ref-toggle';
+            b.dataset.radianceParam = param;
+            b.setAttribute('aria-label', label);
+            const sync = () => {
+                const on = !!get();
+                b.classList.toggle('is-on', on);
+                b.setAttribute('aria-pressed', String(on));
+            };
+            b.onclick = () => { this._pushUndo(); set(!get()); sync(); this._gradeChanged(); };
+            sync();
+            row.append(l, b);
+            parentEl.appendChild(row);
+            this._gradeControls.set(`toggle:${param}`, { sync });
+        };
+        const slider = (parentEl, push, label, param, min, max, step, neutral, get, set, title = '') =>
+            this._refSlider(parentEl, { label, key: param, param, min, max, step, neutral, title, get,
+                set: (v) => { set(v); push(); } });
+        const hint = (parentEl, text) => {
+            const h = document.createElement('div');
+            h.style.cssText = 'font-size:10px;line-height:1.45;color:var(--radiance-text-dim);margin:2px 0 8px;';
+            h.textContent = text;
+            parentEl.appendChild(h);
+        };
+
+        // ── Power window ──
+        const win = this._renderReferenceSection(parent, 'POWER WINDOW', () => this._resetGradeFields(['maskState']));
+        hint(win, 'Limits the grade to a shape. With Show window on, drag its handles on the picture to move, size and turn it.');
+        {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-field';
+            const l = document.createElement('label');
+            l.textContent = 'Shape';
+            const sel = document.createElement('select');
+            sel.dataset.radianceParam = 'mask_type';
+            sel.setAttribute('aria-label', 'Window shape');
+            [['0', 'None'], ['1', 'Circle'], ['2', 'Box']].forEach(([v, t]) => {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = t;
+                sel.appendChild(o);
+            });
+            const sync = () => { sel.value = String(m().type || 0); };
+            sel.onchange = () => {
+                this._pushUndo();
+                m().type = parseInt(sel.value, 10) || 0;
+                pushMask();
+                this._gradeChanged();
+            };
+            sync();
+            row.append(l, sel);
+            win.appendChild(row);
+            this._gradeControls.set('select:mask_type', { sync });
+        }
+        toggle(win, 'Invert', 'mask_invert', () => m().invert, (v) => { m().invert = v; pushMask(); });
+        toggle(win, 'Show window', 'mask_overlay', () => m().showOverlay, (v) => { m().showOverlay = v; pushMask(); });
+        const W = D.maskState;
+        slider(win, pushMask, 'Center X', 'mask_center_x', 0, 1, 0.01, W.center[0], () => m().center[0], (v) => { m().center[0] = v; });
+        slider(win, pushMask, 'Center Y', 'mask_center_y', 0, 1, 0.01, W.center[1], () => m().center[1], (v) => { m().center[1] = v; });
+        slider(win, pushMask, 'Size X', 'mask_scale_x', 0.01, 2, 0.01, W.scale[0], () => m().scale[0], (v) => { m().scale[0] = v; });
+        slider(win, pushMask, 'Size Y', 'mask_scale_y', 0.01, 2, 0.01, W.scale[1], () => m().scale[1], (v) => { m().scale[1] = v; });
+        slider(win, pushMask, 'Rotation', 'mask_rotation', -3.14, 3.14, 0.01, W.rotation, () => m().rotation, (v) => { m().rotation = v; },
+            'Radians');
+        slider(win, pushMask, 'Feather', 'mask_feather', 0, 1, 0.01, W.feather, () => m().feather, (v) => { m().feather = v; });
+
+        // ── HSL qualifier ──
+        const qual = this._renderReferenceSection(parent, 'HSL QUALIFIER', () => this._resetGradeFields(['qualifierState']));
+        hint(qual, 'Limits the grade to a hue, saturation and lightness range of the source. Show matte draws what it selects in white.');
+        toggle(qual, 'Active', 'qualifier_enabled', () => q().enabled, (v) => { q().enabled = v; pushQual(); });
+        toggle(qual, 'Show matte', 'qualifier_matte', () => q().showMask, (v) => { q().showMask = v; pushQual(); });
+        {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-actions';
+            row.style.cssText = 'justify-content:flex-start;padding-top:0;margin:0 0 6px;';
+            const pick = document.createElement('button');
+            pick.type = 'button';
+            pick.textContent = 'Pick colour';
+            pick.dataset.radianceParam = 'qualifier_pick';
+            pick.title = 'Click a colour in the picture to centre the qualifier on it';
+            pick.setAttribute('aria-pressed', String(!!this._qualifierPickArmed));
+            pick.onclick = () => this._armQualifierPick(pick);
+            row.appendChild(pick);
+            qual.appendChild(row);
+        }
+        const Q = D.qualifierState;
+        [['Hue', 'hue', 'h'], ['Saturation', 'sat', 's'], ['Lightness', 'luma', 'l']].forEach(([name, p, k]) => {
+            slider(qual, pushQual, name, `qualifier_${p}`, 0, 1, 0.01, Q[k], () => q()[k], (v) => { q()[k] = v; });
+            slider(qual, pushQual, `${name} width`, `qualifier_${p}_width`, 0, 1, 0.01, Q[`${k}W`], () => q()[`${k}W`], (v) => { q()[`${k}W`] = v; });
+            slider(qual, pushQual, `${name} soft`, `qualifier_${p}_soft`, 0, 0.5, 0.01, Q[`${k}S`], () => q()[`${k}S`], (v) => { q()[`${k}S`] = v; });
+        });
+    }
+
+    /**
+     * The qualifier's colour from the source, as the shader measures it:
+     * hue, saturation and lightness of the linear value (rgb2hsl in
+     * radiance_webgl.js), so a pick lands the centre where the matte looks.
+     */
+    static _qualifierHSL([r, g, b]) {
+        const P = g < b ? [b, g, -1, 2 / 3] : [g, b, 0, -1 / 3];
+        const Q = r < P[0] ? [P[0], P[1], P[3], r] : [r, P[1], P[2], P[0]];
+        const C = Q[0] - Math.min(Q[3], Q[1]);
+        const H = Math.abs((Q[3] - Q[1]) / (6 * C + 1e-10) + Q[2]);
+        const L = Q[0] - C * 0.5;
+        const S = C / (1 - Math.abs(L * 2 - 1) + 1e-10);
+        return [H, S, L];
+    }
+
+    /** One click on the picture sets the qualifier's centre from the source colour there. */
+    _armQualifierPick(btn) {
+        if (this._qualifierPickHandler) {
+            this.canvas.removeEventListener('pointerdown', this._qualifierPickHandler, true);
+            this._qualifierPickHandler = null;
+            btn?.setAttribute('aria-pressed', 'false');
+            return;
+        }
+        btn?.setAttribute('aria-pressed', 'true');
+        this.canvas.style.cursor = 'crosshair';
+        this._qualifierPickHandler = (e) => {
+            if (e.button !== 0) return;
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            this.canvas.removeEventListener('pointerdown', this._qualifierPickHandler, true);
+            this._qualifierPickHandler = null;
+            btn?.setAttribute('aria-pressed', 'false');
+            const rect = this.canvas.getBoundingClientRect();
+            const sx = this.canvas.width / (rect.width || 1), sy = this.canvas.height / (rect.height || 1);
+            const u = ((e.clientX - rect.left) * sx - this.panX) / (this.imageWidth * this.zoom);
+            const v = ((e.clientY - rect.top) * sy - this.panY) / (this.imageHeight * this.zoom);
+            if (!(u >= 0 && u <= 1 && v >= 0 && v <= 1)) return;
+            const rgb = this._wbSampleLinear(u, v);
+            if (!rgb) return;
+            const [h, s, l] = RadianceViewer._qualifierHSL(rgb);
+            this._pushUndo();
+            Object.assign(this.qualifierState, { h, s: Math.min(1, s), l: Math.min(1, l), enabled: true });
+            this.renderer?.setQualifier?.(this.qualifierState);
+            this._syncGradeControls();
+            this._gradeChanged();
+        };
+        this.canvas.addEventListener('pointerdown', this._qualifierPickHandler, true);
+    }
     /** Keep the viewer bar's LUT select and the Grade tab's Output Transform on the same value. */
     _syncLutSelects() {
         const value = this.displayLut || 'None';
@@ -14157,6 +14081,59 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _renderReferenceScopes(parent) {
+        // H8: what the scopes show and in which unit. The scale and levels
+        // selectors lived only in the old Scopes tab after createHUD()'s
+        // return, so every scope read 10-bit code values with no way to
+        // change it; the rail's four scope buttons all opened this stack.
+        const opts = this._renderReferenceSection(parent, 'SCOPE OPTIONS');
+        const field = (label, param, options, value, onChange, title = '') => {
+            const row = document.createElement('div');
+            row.className = 'radiance-ref-field';
+            if (title) row.title = title;
+            const l = document.createElement('label');
+            l.textContent = label;
+            const sel = document.createElement('select');
+            sel.dataset.radianceParam = param;
+            sel.setAttribute('aria-label', label);
+            options.forEach(([v, t]) => {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = t;
+                sel.appendChild(o);
+            });
+            sel.value = value;
+            sel.onchange = () => { onChange(sel.value); this._renderReferenceRightHUD(); this.updateScopes(); };
+            row.append(l, sel);
+            opts.appendChild(row);
+            return sel;
+        };
+        const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage is optional */ } };
+        const show = this._referenceScopeShow || 'all';
+        field('Show', 'scope_show', [['all', 'All four'], ['histogram', 'Histogram'], ['waveform', 'Waveform'],
+            ['parade', 'Parade'], ['vectorscope', 'Vectorscope']], show, (v) => { this._referenceScopeShow = v; });
+        field('Scale', 'scope_scale', _SCOPE_SCALES.map((s) => [s.id, `${s.label} (${s.unit})`]), this.scopeScale || 'cv10',
+            (v) => { this.scopeScale = v; store('radiance_scope_scale', v); });
+        if (this.scopeScale === 'nits-hlg') {
+            field('HLG peak', 'scope_hlg_peak', [400, 600, 1000, 2000, 4000].map((p) => [String(p), `${p} nits`]),
+                String(this.scopeHlgPeak || 1000), (v) => { this.scopeHlgPeak = parseInt(v, 10) || 1000; store('radiance_scope_hlg_peak', v); },
+                'HLG nominal peak luminance; the system gamma follows it (BT.2100).');
+        }
+        const levelsHint = (_SCOPE_LEVELS.find((l) => l.id === this.scopeLevels) || _SCOPE_LEVELS[0]).hint;
+        field('Levels', 'scope_levels', _SCOPE_LEVELS.map((l) => [l.id, l.label]), this.scopeLevels || 'data',
+            (v) => { this.scopeLevels = v; store('radiance_scope_levels', v); }, levelsHint);
+        // What the numbers mean. A nit scale only applies when the output is
+        // PQ or HLG; otherwise the scopes fall back to 10-bit code value and
+        // say so here (see _scopeOpts).
+        const desc = _scopeDescribe(this.scopeScale || 'cv10', this._scopeCtx());
+        const interprets = (_SCOPE_SCALES.find((s) => s.id === this.scopeScale) || {}).interprets;
+        const fallback = interprets && interprets.toLowerCase() !== this._activeDisplayEncoding();
+        const note = document.createElement('div');
+        note.dataset.radianceParam = 'scope_note';
+        note.style.cssText = 'font-size:10px;line-height:1.45;color:var(--radiance-text-dim);margin-top:2px;';
+        note.textContent = fallback
+            ? `${desc.label} needs a ${interprets} output; the view is not ${interprets}, so the scopes read 10-bit code values.`
+            : `${desc.label} · ${desc.levels}. ${desc.detail}`;
+        opts.appendChild(note);
+
         const section = this._renderReferenceSection(parent, 'SCOPES');
         const scopes = document.createElement('div');
         scopes.className = 'radiance-ref-scopes-grid';
@@ -14168,9 +14145,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['waveform', 'Waveform', false],
             ['parade', 'Parade', false],
             ['vectorscope', 'Vectorscope', true],
-        ].forEach(([mode, label, square]) => {
+        ].filter(([mode]) => show === 'all' || show === mode).forEach(([mode, label, square]) => {
             const box = document.createElement('div');
             box.className = `radiance-ref-scope-box ${square ? 'is-square' : ''}`;
+            box.dataset.scope = mode;
             const head = document.createElement('div');
             head.className = 'radiance-ref-scope-head';
             const title = document.createElement('span');
@@ -22814,13 +22792,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Every window/document listener this viewer added, in one go.
         this._globalListeners?.abort();
         this._globalListeners = null;
-        // Both of these were added to 'window' and never removed.
-        if (this._seqDockKeyHandler) {
-            window.removeEventListener('keydown', this._seqDockKeyHandler);
-            this._seqDockKeyHandler = null;
-        }
         if (this._undoKeyHandler) {
-            window.removeEventListener('keydown', this._undoKeyHandler);
+            document.removeEventListener('keydown', this._undoKeyHandler);
             this._undoKeyHandler = null;
         }
         if (this._timelineMouseMoveBound) {
