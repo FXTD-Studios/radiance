@@ -3197,7 +3197,7 @@ class RadianceVAE4KDecode:
                     # ALBABIT-FIX: a 1-2 latent-frame overlap still shows the dissolve; when Auto
                     # has to split time anyway, blend over at least a quarter of the chunk.
                     if temporal_size == "Auto":
-                        temporal_overlap = max(temporal_overlap, temporal_lat // 4)
+                        temporal_overlap = max(temporal_overlap, (temporal_lat + 3) // 4)
                     t_overlap_lat = min(temporal_overlap, temporal_lat // 2) if needs_temporal_chunking else None
                     logger.info(
                         f"[Radiance 4K Decode] {pix_w}x{pix_h} x {lat_T}f -> "
