@@ -287,7 +287,7 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
         call = self._decode(8)
         self.assertEqual(call["tile_x"], 512 // 32)
         self.assertEqual(call["tile_t"], 22)
-        self.assertEqual(call["overlap_t"], 22 // 4)
+        self.assertEqual(call["overlap_t"], 6)  # a quarter of 22, rounded up
 
     def test_clip_longer_than_64_latent_frames_is_not_split_when_it_fits(self):
         call = self._decode(32, lat_frames=80)
