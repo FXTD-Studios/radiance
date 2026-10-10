@@ -970,7 +970,12 @@ function _isAutoDetectedLtx25(node) {
 // which one was actually supposed to be authoritative.
 function _markLinkedWidget(widget, linked, inSync) {
     if (!widget) return false;
+    // ALBABIT-FIX: a widget neither linked now nor before belongs to the preset
+    // markers. Resetting its label here wiped their "✎" on every poll, and the
+    // label flip re-rendered the widget mid-typing (a typed cfg reverted).
+    const wasLinked = widget._radMetaLinked;
     widget._radMetaLinked = linked;
+    if (!linked && !wasLinked) return false;
     const markerText = linked ? (inSync ? LINKED_MARKER : PRESET_MARKER) : null;
     if (widget._radOrigLabel === undefined && !markerText) return false;
     if (widget._radOrigLabel === undefined) widget._radOrigLabel = widget.label ?? widget.name;
