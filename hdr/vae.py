@@ -581,11 +581,9 @@ def detect_vae_factor(vae: Any) -> int:
       vae.downscale_ratio          (int, most models)
       vae.latent_format.downscale_factor  (some wrappers)
     """
-    # ALBABIT-FIX: downscale_ratio is a plain int for most models, but a
-    # (temporal_formula, h, w) tuple for LTX -- the int-only checks below
-    # silently fell through to VAE_FACTOR_DEFAULT (8) instead of LTX's real
-    # 32. spacial_compression_decode() already unwraps both forms; for a
-    # plain-int ratio it returns the same value the checks below would.
+    # ALBABIT-FIX: LTX gives downscale_ratio as a (temporal, h, w) tuple, which the
+    # int-only checks below read as the default 8 instead of 32.
+    # spacial_compression_decode() unwraps both forms.
     compression_decode = getattr(vae, "spacial_compression_decode", None)
     if callable(compression_decode):
         try:
@@ -672,7 +670,8 @@ def detect_latent_format(vae: Any) -> str:
     return "sd_4ch"  # Safe default
 
 
-def _resolve_temporal_frames(temporal_size: Any, ts_px: Optional[int], temporal_compression: int) -> int:
+def _resolve_temporal_frames(temporal_size: Any, ts_px: Optional[int], temporal_compression: int,
+                             vram_budget_gb: Optional[float] = None) -> int:
     """
     Resolve the temporal_size widget value to a count of LATENT frames.
 
@@ -688,8 +687,24 @@ def _resolve_temporal_frames(temporal_size: Any, ts_px: Optional[int], temporal_
     if temporal_size == "Auto":
         if ts_px is None:
             return 0
-        return TileEngine.get_optimal_temporal_size(ts_px, temporal_compression)
+        return TileEngine.get_optimal_temporal_size(ts_px, temporal_compression, vram_budget_gb=vram_budget_gb)
     return int(temporal_size)
+
+
+def _auto_video_tile(ts_px: int, lat_frames: int, temporal_compression: int, vram_budget_gb: float) -> Tuple[int, int]:
+    """
+    Auto tile and temporal chunk for a video decode, as (tile_px, latent_frames).
+
+    ALBABIT-FIX: every temporal chunk boundary shows as a short dissolve, so
+    shrink the spatial tile through the widget presets until the whole clip
+    fits one chunk, and keep the smallest tile's chunk when none does.
+    """
+    for tile in [ts_px] + [t for t in (1280, 1024, 768, 512) if t < ts_px]:
+        frames = TileEngine.get_optimal_temporal_size(tile, temporal_compression, max_frames=lat_frames,
+                                                      vram_budget_gb=vram_budget_gb)
+        if frames >= lat_frames:
+            break
+    return tile, frames
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1876,10 +1891,8 @@ class RadianceVAE4KDecode:
                         "tooltip": "Overlap between tiles. 128px optimal for cosine blending.",
                     },
                 ),
-                # ALBABIT-FIX: Temporal chunking for video VAE decode, integrated
-                # with spatial tiling via comfy's own vae.decode_tiled() instead
-                # of Radiance's own stacked chunk-then-tile loop. See
-                # project_radiance_vae_tiling_seams memory.
+                # ALBABIT-FIX: video temporal chunking, tiled together with space by
+                # comfy's own vae.decode_tiled().
                 "temporal_size": (
                     ["Auto", "2", "4", "8", "16", "32", "64"],
                     {
@@ -1888,8 +1901,9 @@ class RadianceVAE4KDecode:
                             "Temporal chunk size in LATENT frames (not pixel frames — unlike "
                             "ComfyUI's native 'VAE Decode (Tiled)', which counts pixel frames and "
                             "divides internally by the VAE's temporal compression). "
-                            "Auto sizes it from the same VRAM budget as tile_size, computed "
-                            "jointly since a larger spatial tile leaves less room per frame. "
+                            "Auto (with tile_size Auto) shrinks the spatial tile first so the "
+                            "whole clip decodes in one pass, and splits time only when it still "
+                            "does not fit. "
                             "A manual value forces chunking at that many latent frames "
                             "regardless of tile_size. Images (4D latents) are not affected."
                         ),
@@ -1907,7 +1921,8 @@ class RadianceVAE4KDecode:
                             "at chunk boundaries. A small value (1–2) blends them instead. "
                             "Only active when the video actually needs temporal chunking "
                             "(temporal_size='Auto' decides on its own, or set a manual value "
-                            "smaller than the clip's latent frame count)."
+                            "smaller than the clip's latent frame count). With temporal_size "
+                            "Auto, at least a quarter of the chunk."
                         ),
                     },
                 ),
@@ -3150,13 +3165,16 @@ class RadianceVAE4KDecode:
         _temporal_metadata = None  # Set when the decode_tiled() path resolves a temporal decision
         with torch.no_grad():
             if latent.ndim == 5:
-                # ALBABIT-FIX: integrated spatial+temporal tiling via comfy's
-                # vae.decode_tiled(), replacing the old stacked tiler that
-                # re-decoded a full spatial tile per temporal chunk. This is
-                # what let LTX-2.5 crash at settings the native "VAE Decode
-                # (Tiled)" node handles fine. See project_radiance_vae_tiling_seams.
+                # ALBABIT-FIX: space and time are tiled together by comfy's vae.decode_tiled().
+                # The old tiler re-decoded a full spatial tile per temporal chunk and crashed LTX-2.5.
                 lat_T = latent.shape[2]
-                temporal_lat = _resolve_temporal_frames(temporal_size, ts_px, _temporal_compression)
+                # ALBABIT-FIX: decode_tiled() unloads the sampler's model before decoding, so
+                # size on the card's total VRAM, not on what that model leaves free right now.
+                video_budget_gb = comfy.model_management.get_total_memory(target_device) * 0.6 / (1024**3)
+                if tile_size == "Auto" and temporal_size == "Auto":
+                    ts_px, temporal_lat = _auto_video_tile(ts_px, lat_T, _temporal_compression, video_budget_gb)
+                else:
+                    temporal_lat = _resolve_temporal_frames(temporal_size, ts_px, _temporal_compression, video_budget_gb)
                 needs_spatial_tiling = not (pix_h <= ts_px and pix_w <= ts_px)
                 # temporal_lat==0 means explicitly disabled (see
                 # _resolve_temporal_frames); must not be read as "chunk size
@@ -3176,6 +3194,10 @@ class RadianceVAE4KDecode:
                     # dispatcher) means "no temporal limit"; correct when
                     # only spatial tiling is actually needed.
                     tile_t = temporal_lat if needs_temporal_chunking else None
+                    # ALBABIT-FIX: a 1-2 latent-frame overlap still shows the dissolve; when Auto
+                    # has to split time anyway, blend over at least a quarter of the chunk.
+                    if temporal_size == "Auto":
+                        temporal_overlap = max(temporal_overlap, (temporal_lat + 3) // 4)
                     t_overlap_lat = min(temporal_overlap, temporal_lat // 2) if needs_temporal_chunking else None
                     logger.info(
                         f"[Radiance 4K Decode] {pix_w}x{pix_h} x {lat_T}f -> "
@@ -3242,11 +3264,9 @@ class RadianceVAE4KDecode:
                     type(_exc).__name__, _exc,
                 )
 
-        # ALBABIT-FIX: the colour transform runs in chunks of frames on ComfyUI's
-        # device, written back into the decoded clip. ComfyUI hands the clip back
-        # in RAM, and it went through whole on the CPU: +38 GB of RAM and 11 s for
-        # 241 1080p frames. Every step is per frame; the RHDR scene-linear capture
-        # needs the whole clip, which then stays in one chunk on its own device.
+        # ALBABIT-FIX: the colour transform runs in chunks of frames on ComfyUI's device;
+        # the whole clip on the CPU cost +38 GB of RAM and 11 s for 241 1080p frames.
+        # The RHDR scene-linear capture needs the whole clip, so it stays one chunk.
         n_frames = int(img.shape[0])
         if self._want_scene_linear and hdr_mode == "Compress (Log)":
             chunk_device, chunk = img.device, max(n_frames, 1)
