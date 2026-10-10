@@ -23,6 +23,7 @@ import json
 import types
 import importlib
 import unittest
+import unittest.mock
 
 import pytest
 
@@ -249,6 +250,51 @@ class TestMetadataExposesTemporalDecision(unittest.TestCase):
         metadata = json.loads(meta)
         self.assertNotIn("temporal_size", metadata)
         self.assertNotIn("temporal_chunking", metadata)
+
+
+@pytest.mark.real_torch
+class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
+    """LTX 2.3 at 1920x1088, 241 frames (31 latent frames). Auto used to keep
+    a 1536 px tile and cut time into 3-4 latent-frame chunks, sized on the VRAM
+    the sampler's model left free; every chunk boundary showed as a dissolve.
+    Auto now sizes on total VRAM and shrinks the tile until the clip fits."""
+
+    def _decode(self, total_gb, tile_size="Auto"):
+        vae_mod = _import_vae()
+        vae = _FakeVideoVAE(downscale_ratio=32, temporal_compression=8)
+        latent = torch.zeros(1, 4, 31, 34, 60)
+        with unittest.mock.patch.object(vae_mod.comfy.model_management, "get_total_memory",
+                                        return_value=total_gb * 1024**3, create=True):
+            vae_mod.RadianceVAE4KDecode().decode(
+                {"samples": latent}, vae=vae,
+                tile_size=tile_size, overlap=128,
+                hdr_mode="Clip (SDR)", source_space="sRGB",
+                display_tonemap="None", hdr_output=False,
+                temporal_size="Auto", temporal_overlap=2,
+            )
+        self.assertEqual(len(vae.decode_tiled_calls), 1)
+        return vae.decode_tiled_calls[0]
+
+    def test_32gb_card_decodes_whole_clip_with_768_tiles(self):
+        call = self._decode(32)
+        self.assertEqual(call["tile_x"], 768 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_16gb_card_goes_down_to_512_tiles(self):
+        call = self._decode(16)
+        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_small_card_splits_time_with_a_quarter_chunk_overlap(self):
+        call = self._decode(8)
+        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertEqual(call["tile_t"], 22)
+        self.assertEqual(call["overlap_t"], 22 // 4)
+
+    def test_manual_tile_size_is_kept(self):
+        call = self._decode(32, tile_size="1536")
+        self.assertEqual(call["tile_x"], 1536 // 32)
+        self.assertEqual(call["tile_t"], 9)
 
 
 if __name__ == "__main__":
