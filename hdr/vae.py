@@ -702,7 +702,8 @@ def _auto_video_tile(ts_px: int, lat_frames: int, temporal_compression: int, vra
     fits one chunk, and keep the smallest tile's chunk when none does.
     """
     for tile in [ts_px] + [t for t in (1280, 1024, 768, 512) if t < ts_px]:
-        frames = TileEngine.get_optimal_temporal_size(tile, temporal_compression, vram_budget_gb=vram_budget_gb)
+        frames = TileEngine.get_optimal_temporal_size(tile, temporal_compression, max_frames=lat_frames,
+                                                      vram_budget_gb=vram_budget_gb)
         if frames >= lat_frames:
             break
     return tile, frames
