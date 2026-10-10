@@ -259,10 +259,10 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
     the sampler's model left free; every chunk boundary showed as a dissolve.
     Auto now sizes on total VRAM and shrinks the tile until the clip fits."""
 
-    def _decode(self, total_gb, tile_size="Auto"):
+    def _decode(self, total_gb, tile_size="Auto", lat_frames=31):
         vae_mod = _import_vae()
         vae = _FakeVideoVAE(downscale_ratio=32, temporal_compression=8)
-        latent = torch.zeros(1, 4, 31, 34, 60)
+        latent = torch.zeros(1, 4, lat_frames, 34, 60)
         with unittest.mock.patch.object(vae_mod.comfy.model_management, "get_total_memory",
                                         return_value=total_gb * 1024**3, create=True):
             vae_mod.RadianceVAE4KDecode().decode(
@@ -290,6 +290,11 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
         self.assertEqual(call["tile_x"], 512 // 32)
         self.assertEqual(call["tile_t"], 22)
         self.assertEqual(call["overlap_t"], 22 // 4)
+
+    def test_clip_longer_than_64_latent_frames_is_not_split_when_it_fits(self):
+        call = self._decode(32, lat_frames=80)
+        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertIsNone(call["tile_t"])
 
     def test_manual_tile_size_is_kept(self):
         call = self._decode(32, tile_size="1536")
