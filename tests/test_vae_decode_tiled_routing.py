@@ -9,10 +9,8 @@ place under the VAE tiling integration:
     vae.decode() when neither is actually needed. (3.5: the latent RUDRA
     decoders and their separate recursive chunking path are gone.)
 
-See project_radiance_vae_tiling_seams memory for the investigation this
-integration replaced (Radiance's own stacked spatial-tile-per-temporal-chunk
-decode, which re-decoded a full spatial tile's worth of activations for
-every temporal chunk independently).
+This integration replaced Radiance's own stacked decode, which re-decoded a
+full spatial tile's worth of activations for every temporal chunk.
 """
 
 from __future__ import annotations

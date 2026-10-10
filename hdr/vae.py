@@ -581,11 +581,9 @@ def detect_vae_factor(vae: Any) -> int:
       vae.downscale_ratio          (int, most models)
       vae.latent_format.downscale_factor  (some wrappers)
     """
-    # ALBABIT-FIX: downscale_ratio is a plain int for most models, but a
-    # (temporal_formula, h, w) tuple for LTX -- the int-only checks below
-    # silently fell through to VAE_FACTOR_DEFAULT (8) instead of LTX's real
-    # 32. spacial_compression_decode() already unwraps both forms; for a
-    # plain-int ratio it returns the same value the checks below would.
+    # ALBABIT-FIX: LTX gives downscale_ratio as a (temporal, h, w) tuple, which the
+    # int-only checks below read as the default 8 instead of 32.
+    # spacial_compression_decode() unwraps both forms.
     compression_decode = getattr(vae, "spacial_compression_decode", None)
     if callable(compression_decode):
         try:
@@ -1893,10 +1891,8 @@ class RadianceVAE4KDecode:
                         "tooltip": "Overlap between tiles. 128px optimal for cosine blending.",
                     },
                 ),
-                # ALBABIT-FIX: Temporal chunking for video VAE decode, integrated
-                # with spatial tiling via comfy's own vae.decode_tiled() instead
-                # of Radiance's own stacked chunk-then-tile loop. See
-                # project_radiance_vae_tiling_seams memory.
+                # ALBABIT-FIX: video temporal chunking, tiled together with space by
+                # comfy's own vae.decode_tiled().
                 "temporal_size": (
                     ["Auto", "2", "4", "8", "16", "32", "64"],
                     {
@@ -3169,11 +3165,8 @@ class RadianceVAE4KDecode:
         _temporal_metadata = None  # Set when the decode_tiled() path resolves a temporal decision
         with torch.no_grad():
             if latent.ndim == 5:
-                # ALBABIT-FIX: integrated spatial+temporal tiling via comfy's
-                # vae.decode_tiled(), replacing the old stacked tiler that
-                # re-decoded a full spatial tile per temporal chunk. This is
-                # what let LTX-2.5 crash at settings the native "VAE Decode
-                # (Tiled)" node handles fine. See project_radiance_vae_tiling_seams.
+                # ALBABIT-FIX: space and time are tiled together by comfy's vae.decode_tiled().
+                # The old tiler re-decoded a full spatial tile per temporal chunk and crashed LTX-2.5.
                 lat_T = latent.shape[2]
                 # ALBABIT-FIX: decode_tiled() unloads the sampler's model before decoding, so
                 # size on the card's total VRAM, not on what that model leaves free right now.
@@ -3271,11 +3264,9 @@ class RadianceVAE4KDecode:
                     type(_exc).__name__, _exc,
                 )
 
-        # ALBABIT-FIX: the colour transform runs in chunks of frames on ComfyUI's
-        # device, written back into the decoded clip. ComfyUI hands the clip back
-        # in RAM, and it went through whole on the CPU: +38 GB of RAM and 11 s for
-        # 241 1080p frames. Every step is per frame; the RHDR scene-linear capture
-        # needs the whole clip, which then stays in one chunk on its own device.
+        # ALBABIT-FIX: the colour transform runs in chunks of frames on ComfyUI's device;
+        # the whole clip on the CPU cost +38 GB of RAM and 11 s for 241 1080p frames.
+        # The RHDR scene-linear capture needs the whole clip, so it stays one chunk.
         n_frames = int(img.shape[0])
         if self._want_scene_linear and hdr_mode == "Compress (Log)":
             chunk_device, chunk = img.device, max(n_frames, 1)
