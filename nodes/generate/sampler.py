@@ -841,7 +841,8 @@ class RadianceSamplerPro:
 
                 "preview_method": (PREVIEW_METHODS, {"default": "None", "tooltip": (
                     "Live preview during sampling. TAESD needs the taesd weights in models/vae_approx and "
-                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar.")}),
+                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar. "
+                    "Video models show their first frame, or every frame with VideoHelperSuite's animated previews.")}),
 
                 "noise_type": (
                     NOISE_TYPES,
