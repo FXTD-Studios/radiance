@@ -2228,19 +2228,12 @@ class RadianceSamplerPro:
         # sample_custom draws its bar in the console, never on the node.
         pbar_ref = comfy.utils.ProgressBar(len(sigmas) - 1)
         previewer_ref = None
-        use_custom_preview = False
         if preview_method != "None":
             previewer_ref = _resolve_latent_previewer(model, preview_method)
 
             if previewer_ref is not None:
-                use_custom_preview = True
                 logger.debug(f"Preview callback active: {preview_method}")
             else:
-                # DEFECT GUARD: disable_pbar was wired to a flag that went True
-                # whenever the widget was not "None", so a previewer that could
-                # not be built left the run with no Radiance preview AND
-                # ComfyUI's console progress bar switched off. use_custom_preview
-                # stays False, so the console bar stays on.
                 logger.warning(
                     "[Radiance] preview_method='%s' produced no previewer; "
                     "sampling runs without a preview.",
@@ -2613,7 +2606,9 @@ class RadianceSamplerPro:
                         latent_image=stage_latent,
                         noise_mask=noise_mask,
                         callback=create_phase_callback(s_start),
-                        disable_pbar=use_custom_preview,
+                        # ALBABIT-FIX: the console bar stays on with a preview, as in
+                        # ComfyUI's KSampler; turning it off hid the step count.
+                        disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED,
                         seed=seed,
                     )
                     current_latent = result
