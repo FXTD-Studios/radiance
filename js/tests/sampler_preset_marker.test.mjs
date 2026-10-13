@@ -57,6 +57,19 @@ test('a cfg edited away from a named preset keeps its pencil, with no label chur
     assert.equal(writes, 0);
 });
 
+test('Auto on LTX 2.5 Dev follows the 30-step LowRes preset, audio_cfg included', () => {
+    const context = samplerContext();
+    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-dev-transformer-bf16.safetensors' }] });`, context);
+    const node = ltxNode('Auto', 3.0);
+    node.widgets[2].value = 'euler_ancestral';
+    node.widgets.push({ name: 'audio_cfg', value: 0.0 });
+    context.metaDefaults(node);
+    const value = (name) => node.widgets.find(w => w.name === name).value;
+    assert.equal(value('steps'), 30);
+    assert.equal(value('sampler'), 'euler');
+    assert.equal(value('audio_cfg'), 1.0);
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);

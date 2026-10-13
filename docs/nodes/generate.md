@@ -364,7 +364,7 @@ Universal diffusion sampler. Auto-detects model type (Flux, SD3, SDXL, WAN, LTX,
 | `start_step` | int | 0 | 0 to 200, step 1 | Start step (0 = beginning) |
 | `end_step` | int | 0 | 0 to 200, step 1 | End step (0 = use total steps) |
 | `cfg` | float | 1 | 0 to 20, step 0.1 | Classifier-free guidance scale. 1.0 runs one model pass per step and ignores the negative; above 1.0 adds a negative pass (about twice the time). Keep 1.0 for Flux and distilled or turbo models and use flux_guidance instead. |
-| `audio_cfg` | float | 0 | 0 to 100, step 0.1 | LTX-AV only (e.g. LTX 2.5): separate CFG scale for the audio half of the latent. 0 = same as cfg (single-CFG, pre-2.5 behavior). |
+| `audio_cfg` | float | 0 | 0 to 100, step 0.1 | LTX-AV only (LTX 2.3, LTX 2.5): separate CFG scale for the audio half of the latent. 0 = same as cfg. 1 keeps the ambience under the voice. |
 | `sampler` | choice |  | ComfyUI's samplers | ComfyUI sampling algorithm. With preset Auto or Custom, 'euler' is replaced by the detected model's recommended sampler, if it has one. |
 | `sampler_mode` | choice | `Standard` | `Standard`, `Phase-Shift (Euler >> DPM)`, `Phase-Shift (Euler >> SGM)`, `CFG++ (Perpendicular)` | Standard: one sampler throughout. Phase-Shift: switch at phase_split to dpmpp_2m (DPM) or to the same sampler on the sgm_uniform schedule (SGM); not used for video models. CFG++: scales cfg toward 1.0 by a cosine of each stage's starting sigma, so a plain single-stage run keeps cfg unchanged. |
 | `phase_split` | float | 0.4 | 0 to 1, step 0.05 | Phase-Shift modes only: fraction of the total steps at which the second sampler takes over (0.4 of 20 steps = step 8). |
