@@ -198,6 +198,10 @@ const PRESET_CONFIGS = {
     },
 };
 
+// ALBABIT-FIX: the LTX 2.5 LowRes preset's former name, migrated on load so a
+// saved graph keeps its values and does not land on an invalid combo value.
+const LEGACY_LTX25_LOWRES = "[V] LTX 2.5 LowRes (20 steps)";
+
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
     "▶ LTX 2.3 HighRes (40 steps)",
@@ -1403,6 +1407,8 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function (info) {
             if (onConfigure) onConfigure.apply(this, arguments);
             const self = this;
+            const loadedPresetW = self.widgets?.find(w => w.name === "preset");
+            if (loadedPresetW?.value === LEGACY_LTX25_LOWRES) loadedPresetW.value = "[V] LTX 2.5 LowRes (30 steps)";
             // ALBABIT-FIX: signal to the onNodeCreated timer that onConfigure ran,
             // so the timer skips and avoids a potential race with in-progress configuration.
             self._configuredByLoad = true;
