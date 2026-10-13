@@ -737,8 +737,8 @@ class RadianceSamplerPro:
                         "min": 0.0,
                         "max": 100.0,
                         "step": 0.1,
-                        "tooltip": "LTX-AV only (e.g. LTX 2.5): separate CFG scale for the audio "
-                                   "half of the latent. 0 = same as cfg (single-CFG, pre-2.5 behavior).",
+                        "tooltip": "LTX-AV only (LTX 2.3, LTX 2.5): separate CFG scale for the audio "
+                                   "half of the latent. 0 = same as cfg. 1 keeps the ambience under the voice.",
                     },
                 ),
                 "sampler": (comfy.samplers.KSampler.SAMPLERS, {"tooltip": (

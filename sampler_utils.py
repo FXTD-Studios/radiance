@@ -1010,7 +1010,7 @@ WORKFLOW_PRESETS = [
     "[V] LTX-Video (25 steps)",
     "[V] LTX 2.3 LowRes (20 steps)",
     "[V] LTX 2.3 HighRes (40 steps)",
-    "[V] LTX 2.5 LowRes (20 steps)",
+    "[V] LTX 2.5 LowRes (30 steps)",
     "[V] LTX 2.5 HighRes (40 steps)",
     "[V] HunyuanVideo (30 steps)",
     "[V] MiniMax H3 T2V (20 steps)",

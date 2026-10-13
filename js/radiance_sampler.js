@@ -85,8 +85,10 @@ const PRESET_CONFIGS = {
     },
     // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
     // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
+    // ALBABIT-FIX: audio_cfg 1 on the LowRes stages: the audio at cfg 3 lost its
+    // ambience (silent background behind the voice) and clipped above 0 dBFS.
     "▶ LTX 2.3 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, sampler: "euler",
+        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
@@ -100,7 +102,7 @@ const PRESET_CONFIGS = {
     },
     "▶ LTX 2.3 HighRes (40 steps)": {
         // ALBABIT-FIX: cfg=1 matches old Radiance and skips the negative-prompt forward pass
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, sampler: "euler",
+        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: idem
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
@@ -112,12 +114,11 @@ const PRESET_CONFIGS = {
         terminal_sigma_to_zero: true, force_exact_steps: true,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
-    // ALBABIT-FIX: same steps/cfg/denoise/flux_shift as the LTX 2.3 pair --
-    // Dev has no official Comfy-Org template to source from. sampler is the
-    // one field NOT mirrored: verified against the official 2.5 T2V template
-    // (KSamplerSelect nodes), which uses euler_ancestral for both stages.
-    "▶ LTX 2.5 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+    // ALBABIT-FIX: the official 2.5 templates are distilled (8 steps,
+    // euler_ancestral). Tested on Dev: euler gives a natural face where
+    // euler_ancestral smooths it, and 30 LowRes steps add fine detail.
+    "▶ LTX 2.5 LowRes (30 steps)": {
+        steps: 30, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
@@ -127,10 +128,10 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) LowRes. Same base settings as LTX 2.3 LowRes — 20-step base generation.",
+        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice.",
     },
     "▶ LTX 2.5 HighRes (40 steps)": {
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
@@ -140,7 +141,7 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) HighRes upscale. Same base settings as LTX 2.3 HighRes — will likely move to Manual Sigmas later.",
+        description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
     },
     "▶ HunyuanVideo (30 steps)": {
         steps: 30, cfg: 6.0, sampler: "euler", scheduler: "simple",
@@ -200,7 +201,7 @@ const PRESET_CONFIGS = {
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
     "▶ LTX 2.3 HighRes (40 steps)",
-    "▶ LTX 2.5 LowRes (20 steps)",
+    "▶ LTX 2.5 LowRes (30 steps)",
     "▶ LTX 2.5 HighRes (40 steps)"
 ];
 
@@ -539,12 +540,9 @@ function applyFolding(node) {
         LTX_INCOMPATIBLE_WIDGETS.forEach(name => hiddenNames.add(name));
     }
 
-    // 3.5f. audio_cfg (LTX 2.5 dual-CFG) is default-hidden -- shown for the
-    // two dedicated LTX 2.5 presets, or under "Auto" when model_meta detects
-    // an LTX 2.5 filename. LTX 2.3 keeps plain cfg (no separate audio scale).
-    const showAudioCfg = presetVal.toLowerCase().includes("ltx 2.5")
-        || (presetVal === "Auto" && _isAutoDetectedLtx25(node));
-    if (!showAudioCfg) hiddenNames.add("audio_cfg");
+    // 3.5f. audio_cfg (LTX-AV dual-CFG) is hidden for every other model. The
+    // backend applies it to all LTX-AV models, LTX 2.3 included.
+    if (effectiveModel !== "ltxav") hiddenNames.add("audio_cfg");
 
     // ── Apply the final state in one pass (preset_info / control_after_generate
     // are never added to hiddenNames, so they stay visible automatically) ──
@@ -840,10 +838,9 @@ function _resolveLtxAvStageDefaults(unetName, isHighRes) {
     const f = unetName.toLowerCase();
     const version = f.includes("2.5") ? "2.5" : f.includes("2.3") ? "2.3" : null;
     if (!version) return null;
-    const key = isHighRes
-        ? `▶ LTX ${version} HighRes (40 steps)`
-        : `▶ LTX ${version} LowRes (20 steps)`;
-    return PRESET_CONFIGS[key] ?? null;
+    // ALBABIT-FIX: matched without the step count, which differs per version.
+    const prefix = `▶ LTX ${version} ${isHighRes ? "HighRes" : "LowRes"} (`;
+    return PRESET_CONFIGS[LTX_PRESETS.find(k => k.startsWith(prefix))] ?? null;
 }
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
@@ -953,16 +950,6 @@ function _isSdTurboActive(node) {
     return detectedType === "sdxl" && unetName.toLowerCase().includes("turbo");
 }
 
-// ALBABIT-FIX: same re-resolve-don't-cache pattern as _isSdTurboActive above.
-// Used to auto-show audio_cfg under "Auto" (no named preset) when model_meta
-// is wired to a Loader with an LTX 2.5 filename -- named presets already
-// handle their own visibility via presetVal, this only covers Auto.
-function _isAutoDetectedLtx25(node) {
-    const sourceNode = _findModelMetaSourceNode(node);
-    const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
-    return unetName.toLowerCase().includes("2.5");
-}
-
 // ALBABIT-FIX: _radMetaLinked marks this widget as owned by the model_meta
 // system (🧲 or its own ✎ divergence) so updatePresetDivergenceMarkers()
 // leaves its label alone -- both systems write the same widget.label, and
@@ -985,11 +972,9 @@ function _markLinkedWidget(widget, linked, inSync) {
     return true;
 }
 
-// ALBABIT-FIX: extends the guidance/steps sync (above) to model_type/cfg/
-// sampler/scheduler/denoise (plus, for LTX-AV, which Sampler
-// stage this node is -- see _isLtxAvHighResStage). Gated on preset
-// (Auto/Custom) only; the per-field checks in syncAutoValue() already
-// protect any field the user deliberately set.
+// ALBABIT-FIX: under Auto/Custom, syncs model_type, guidance, steps, cfg,
+// sampler, scheduler, denoise and audio_cfg (per LTX-AV stage);
+// syncAutoValue() keeps any value the user set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
     const presetW = node.widgets.find(w => w.name === "preset");
@@ -1031,6 +1016,7 @@ function updateModelMetaDefaults(node) {
         // split so far) -- undefined everywhere else, same as any other
         // unresolved field above.
         [node.widgets.find(w => w.name === "denoise"), ltxavStage?.denoise],
+        [node.widgets.find(w => w.name === "audio_cfg"), ltxavStage?.audio_cfg],
     ];
 
     let changed = false;
