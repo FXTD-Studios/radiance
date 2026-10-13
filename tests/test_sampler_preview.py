@@ -15,8 +15,8 @@ ComfyUI's own preview:
      protocol wants (format, PIL.Image, max_size).  server.py's
      send_image_with_metadata() indexes image_data[2], so every previewed
      step raised IndexError server side.
-  4. disable_pbar was wired to a flag that was True whenever the widget
-     was not "None", so a failed previewer also killed Comfy's own bar.
+  4. disable_pbar was wired to the preview, so any preview (a failed one
+     too) switched off Comfy's console bar and its step count.
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Defect 4 — disable_pbar must not fire without a working previewer
+#  Defect 4 — the preview must not switch off the console bar
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestProgressBarWiring(unittest.TestCase):
@@ -279,13 +279,11 @@ class TestProgressBarWiring(unittest.TestCase):
     def setUp(self):
         self.source = inspect.getsource(RadianceSamplerPro.sample)
 
-    def test_use_custom_preview_requires_a_previewer(self):
-        """It must be set inside the `previewer_ref is not None` branch only."""
+    def test_console_bar_follows_comfy_setting_only(self):
+        """Like ComfyUI's KSampler: on unless Comfy's progress bar is off."""
         self.assertIn("previewer_ref = _resolve_latent_previewer(", self.source)
-        before, _, after = self.source.partition("use_custom_preview = True")
-        self.assertIn("if previewer_ref is not None:", before)
-        # Nothing else may flip the flag on.
-        self.assertNotIn("use_custom_preview = True", after)
+        self.assertIn("disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED", self.source)
+        self.assertNotIn("use_custom_preview", self.source)
 
     def test_the_node_bar_exists_without_a_preview(self):
         """sample_custom only draws a console bar, so the node had no progress
