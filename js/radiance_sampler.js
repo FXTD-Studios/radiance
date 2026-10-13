@@ -94,7 +94,7 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
@@ -108,7 +108,7 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
@@ -124,7 +124,7 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
@@ -137,7 +137,7 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
@@ -300,7 +300,6 @@ function resolveModelType(presetVal, modelTypeVal) {
 const LTX_INCOMPATIBLE_WIDGETS = [
     "flux_guidance",
     "flux_guidance_profile",
-    "preview_method",
     "tile_mode",
     "tile_size",
     "tile_overlap",
@@ -535,7 +534,7 @@ function applyFolding(node) {
         hiddenNames.add("guidance_rescale_phi");
     }
 
-    // 3.5e. LTX models can't use the flux-style guidance / tiling / preview widgets.
+    // 3.5e. LTX models can't use the flux-style guidance / tiling widgets.
     if (isLTX) {
         LTX_INCOMPATIBLE_WIDGETS.forEach(name => hiddenNames.add(name));
     }
