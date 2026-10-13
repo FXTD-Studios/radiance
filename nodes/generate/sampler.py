@@ -399,11 +399,8 @@ def _make_energy_cfg_patch(layers, latent_shapes=None):
         uncond = args["uncond_denoised"]
         cfg_val = args["cond_scale"]
 
-        # ALBABIT-FIX: a packed multi-modality latent (e.g. LTX-AV) arrives
-        # as a flat (B, 1, N) tensor with no spatial grid to overlay the mask
-        # against. Unpack (using shapes captured at registration time) to
-        # recover the video stream's real grid, mask that alone, leave any
-        # other stream (audio) untouched, then re-pack.
+        # ALBABIT-FIX: a packed LTX-AV latent is a flat (B, 1, N) tensor: unpack it
+        # with the registered shapes, mask the video stream only, then re-pack.
         if latent_shapes and len(latent_shapes) > 1 and cond.ndim < 4 and cond.shape == uncond.shape:
             try:
                 cond_parts = comfy.utils.unpack_latents(cond, latent_shapes)
@@ -737,8 +734,8 @@ class RadianceSamplerPro:
                         "min": 0.0,
                         "max": 100.0,
                         "step": 0.1,
-                        "tooltip": "LTX-AV only (e.g. LTX 2.5): separate CFG scale for the audio "
-                                   "half of the latent. 0 = same as cfg (single-CFG, pre-2.5 behavior).",
+                        "tooltip": "LTX-AV only (LTX 2.3, LTX 2.5): separate CFG scale for the audio "
+                                   "half of the latent. 0 = same as cfg. 1 keeps the ambience under the voice.",
                     },
                 ),
                 "sampler": (comfy.samplers.KSampler.SAMPLERS, {"tooltip": (
@@ -842,7 +839,8 @@ class RadianceSamplerPro:
 
                 "preview_method": (PREVIEW_METHODS, {"default": "None", "tooltip": (
                     "Live preview during sampling. TAESD needs the taesd weights in models/vae_approx and "
-                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar.")}),
+                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar. "
+                    "Video models show their first frame, or every frame with VideoHelperSuite's animated previews.")}),
 
                 "noise_type": (
                     NOISE_TYPES,
@@ -1208,11 +1206,8 @@ class RadianceSamplerPro:
                 if model_default_guidance > 0 or defaults.get("guidance_type") != "embedding":
                     kwargs['flux_guidance'] = model_default_guidance
 
-            # ALBABIT-FIX: "steps" isn't always present in either dict (e.g.
-            # Krea Dev's override is guidance-only; most architectures have no
-            # generic default at all, steps stays manual) -- distilled takes
-            # priority, defaults is a generic per-architecture fallback (only
-            # a few architectures define one, e.g. Chroma).
+            # ALBABIT-FIX: neither dict always has "steps" (Krea Dev's override is
+            # guidance-only); the distilled value wins over the architecture one.
             if kwargs.get('steps') == 20:
                 model_default_steps = (distilled or {}).get("steps", defaults.get("steps"))
                 if model_default_steps is not None:
@@ -1618,11 +1613,9 @@ class RadianceSamplerPro:
         t_start = time.time()
         timings: Dict[str, float] = {}
 
-        # ALBABIT-FIX: refiner_model swaps only the MODEL mid-run, never the
-        # CONDITIONING -- a mismatched context_dim crashes deep in the sampling
-        # loop with a cryptic PyTorch shape error. Fail early and clearly
-        # instead (e.g. SDXL Base's 2048-dim clip_l+clip_g conditioning vs
-        # Refiner's 1280-dim clip_g-only).
+        # ALBABIT-FIX: refiner_model swaps the MODEL only, so a conditioning of
+        # another width (SDXL Base 2048 vs Refiner 1280) crashed deep in
+        # sampling. Fail early with a clear message.
         if refiner_model is not None and positive:
             try:
                 refiner_dim = refiner_model.model.model_config.unet_config.get("context_dim")
@@ -1658,11 +1651,8 @@ class RadianceSamplerPro:
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
         sampler, scheduler, steps = params['sampler'], params['scheduler'], params['steps']
 
-        # ALBABIT-FIX: SD-Turbo/SDXL-Turbo were only distilled at 10 fixed
-        # discrete timesteps -- standard continuous schedulers pick sigma
-        # values the model was never trained to be good at (see
-        # get_sd_turbo_sigmas). Same "sdxl" + "turbo" filename detection
-        # already used for the cfg/steps/sampler override above.
+        # ALBABIT-FIX: SD/SDXL-Turbo were distilled on 10 discrete timesteps only,
+        # so they get get_sd_turbo_sigmas (same "sdxl" + "turbo" file name test).
         use_sd_turbo_schedule = detected_type == "sdxl" and "turbo" in meta_unet_file.lower()
 
         # The seed default moved to 1 for this, but decrement, randomize or a
@@ -2008,11 +1998,9 @@ class RadianceSamplerPro:
         if guidance_rescale_phi > 0.0 and cfg > 1.0:
             phi = guidance_rescale_phi
 
-            # ALBABIT-FIX: was on set_model_sampler_cfg_function (noise-space
-            # single slot), but this math is denoised-space -- cfg_result
-            # silently became x - denoised. Moved to the correct API,
-            # set_model_sampler_post_cfg_function (comfy/samplers.py:600-603),
-            # and now reads args["denoised"] directly instead of recomputing.
+            # ALBABIT-FIX: this math is denoised-space, so it moved from the
+            # noise-space cfg function (it returned x - denoised) to
+            # set_model_sampler_post_cfg_function, reading args["denoised"].
             def guidance_rescale_patch(args):
                 guided = args["denoised"]
                 cond = args["cond_denoised"]
@@ -2263,19 +2251,12 @@ class RadianceSamplerPro:
         # sample_custom draws its bar in the console, never on the node.
         pbar_ref = comfy.utils.ProgressBar(len(sigmas) - 1)
         previewer_ref = None
-        use_custom_preview = False
         if preview_method != "None":
             previewer_ref = _resolve_latent_previewer(model, preview_method)
 
             if previewer_ref is not None:
-                use_custom_preview = True
                 logger.debug(f"Preview callback active: {preview_method}")
             else:
-                # DEFECT GUARD: disable_pbar was wired to a flag that went True
-                # whenever the widget was not "None", so a previewer that could
-                # not be built left the run with no Radiance preview AND
-                # ComfyUI's console progress bar switched off. use_custom_preview
-                # stays False, so the console bar stays on.
                 logger.warning(
                     "[Radiance] preview_method='%s' produced no previewer; "
                     "sampling runs without a preview.",
@@ -2604,10 +2585,8 @@ class RadianceSamplerPro:
                             new_noises = []
                             for idx, sub_t in enumerate(current_latent.tensors):
                                 if is_first_stage and add_noise:
-                                    # ALBABIT-FIX: use pre-seeded noise sub-tensor from
-                                    # _prepare_noise instead of torch.randn_like, which
-                                    # ignores the seed and produces non-deterministic noise
-                                    # mismatched from native RandomNoise — root cause of
+                                    # ALBABIT-FIX: the seeded sub-tensor from _prepare_noise,
+                                    # not the unseeded torch.randn_like, whose mismatch caused
                                     # black bars in LTX-AV NestedTensor inference.
                                     if (
                                         isinstance(noise, _NestedTensor)
@@ -2648,7 +2627,9 @@ class RadianceSamplerPro:
                         latent_image=stage_latent,
                         noise_mask=noise_mask,
                         callback=create_phase_callback(s_start),
-                        disable_pbar=use_custom_preview,
+                        # ALBABIT-FIX: the console bar stays on with a preview, as in
+                        # ComfyUI's KSampler; turning it off hid the step count.
+                        disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED,
                         seed=seed,
                     )
                     current_latent = result
