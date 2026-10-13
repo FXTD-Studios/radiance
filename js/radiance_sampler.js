@@ -588,11 +588,8 @@ function applyFolding(node) {
 
 function updateUILocks(node, presetName) {
     if (!node.widgets) return;
-    // ALBABIT-FIX: LTX_PRESETS holds the unicode-marker keys ("▶ LTX 2.3 …"),
-    // but presetName here is the raw backend combo value ("[V] LTX 2.3 …"),
-    // so this literal-equality check was always false -- dead code, no LTX
-    // widget was ever actually locked. resolveModelType() already does the
-    // real (substring-based) match; reuse it instead of a second stale check.
+    // ALBABIT-FIX: presetName is the backend value ("[V] LTX 2.3 …"), never an
+    // LTX_PRESETS key ("▶ …"), so the old equality check never locked anything.
     const isLTX = resolveModelType(presetName, "auto") === "ltxav";
     const isCustom = presetName === "Auto" || presetName === "Custom";
 
@@ -636,11 +633,8 @@ function updateSigmaLocks(node) {
     if (!node.widgets) return;
     const locked = isSigmaOverrideActive(node);
 
-    // ALBABIT-FIX: same bug class as setWidgetVisible -- this runs every 250ms
-    // via the polling loop, and reassigning widget.disabled/inputEl styling
-    // even when "locked" hasn't changed was enough to interrupt in-progress
-    // typing in "steps"/"denoise"/"scheduler"/etc. (SIGMA_OVERRIDE_WIDGETS).
-    // Skip entirely per-widget when already in the desired state.
+    // ALBABIT-FIX: runs every 250 ms; rewriting an unchanged disabled state
+    // interrupted typing in these widgets, so skip the ones already in place.
     let changed = false;
     node.widgets.forEach(widget => {
         if (!SIGMA_OVERRIDE_WIDGETS.includes(widget.name)) return;
@@ -737,11 +731,8 @@ function updatePresetDivergenceMarkers(node) {
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
 
-// ALBABIT-FIX: LTXVConcatAVLatent sits directly in front of latent_image on
-// BOTH pipeline stages, not just HighRes, so a one-hop check always found it
-// first and misclassified every stage as HighRes. LTXVLatentUpsampler is the
-// only unambiguous HighRes signal; walk back a bounded number of hops through
-// the video_latent chain looking for it (never audio_latent).
+// ALBABIT-FIX: LTXVConcatAVLatent feeds latent_image on both stages, so only
+// LTXVLatentUpsampler marks HighRes: walk back a few hops of the video chain.
 const LTX_AV_UPSCALE_STAGE_MAX_HOPS = 6;
 function _nextLatentInputName(node) {
     if (!node.inputs) return null;
@@ -908,11 +899,8 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // ALBABIT-FIX: steps=64, verified against Genmo's official Mochi 1
     // model card (cfg was already exact).
     mochi:         { cfg: 4.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 64 },
-    // ALBABIT-FIX: previously fell back to "sd1.5" (cfg=7.0/dpmpp_2m/normal) --
-    // verified against AuraFlow's own official ComfyUI workflow, which
-    // contradicts all three. No shift node present (unlike Lumina2, which
-    // reuses the same ModelSamplingAuraFlow node but at shift=6.0 -- confirmed
-    // NOT applicable to AuraFlow's own workflow, checked directly).
+    // ALBABIT-FIX: was the sd1.5 fallback; values from AuraFlow's official
+    // ComfyUI workflow, which has no shift node (unlike Lumina2).
     aura_flow:     { cfg: 3.48, sampler: "euler",   scheduler: "sgm_uniform", guidance: 0.0, steps: 20 },
     // ALBABIT-FIX: used to fall back to "sd1.5". No official ComfyUI workflow
     // exists: cfg/sampler from community sources, steps 20 from the diffusers
@@ -937,11 +925,8 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     kandinsky5_image:   { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
 };
 
-// ALBABIT-FIX: shared by updateModelMetaDefaults() (value sync) and
-// applyFolding() (Auto visibility) -- mirrors nodes_sampler.py's
-// use_sd_turbo_schedule. Re-resolves the Loader link/unet_name itself
-// rather than caching -- cheap, and avoids relying on call order between
-// the two functions (toggleFields() calls updateModelMetaDefaults() first).
+// ALBABIT-FIX: shared by updateModelMetaDefaults() and applyFolding(); mirrors
+// use_sd_turbo_schedule and re-reads the Loader instead of caching.
 function _isSdTurboActive(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
@@ -949,11 +934,8 @@ function _isSdTurboActive(node) {
     return detectedType === "sdxl" && unetName.toLowerCase().includes("turbo");
 }
 
-// ALBABIT-FIX: _radMetaLinked marks this widget as owned by the model_meta
-// system (🧲 or its own ✎ divergence) so updatePresetDivergenceMarkers()
-// leaves its label alone -- both systems write the same widget.label, and
-// without an explicit flag, whichever ran last silently won regardless of
-// which one was actually supposed to be authoritative.
+// ALBABIT-FIX: _radMetaLinked hands the label to the model_meta markers (🧲 or
+// its ✎): both systems write widget.label, and the last one used to win.
 function _markLinkedWidget(widget, linked, inSync) {
     if (!widget) return false;
     // ALBABIT-FIX: a widget neither linked now nor before belongs to the preset
@@ -1397,11 +1379,9 @@ app.registerExtension({
                 updateDescription(val);
             }
 
-            // ALBABIT-FIX: _configuredByLoad is set in onConfigure (loaded workflow).
-            // For a loaded node, onConfigure fires right after onNodeCreated with correct values;
-            // its 150ms timer handles initial folding so we skip this one to avoid a race where
-            // this fires while configure() is still running (large workflows take > 100ms).
-            // For a freshly added node, onConfigure never fires, so this timer is the only one.
+            // ALBABIT-FIX: a loaded node folds in onConfigure's 150 ms timer; skipping
+            // here avoids racing configure() on large workflows. A new node never
+            // gets onConfigure, so this timer is its only one.
             const nodeRef = this;
             setTimeout(() => {
                 if (nodeRef._configuredByLoad) return;

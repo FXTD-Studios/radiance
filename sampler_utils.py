@@ -208,11 +208,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 20,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps=30 added (was previously "faible confiance" from a
-    # Lightricks model card, now upgraded to "haute" -- confirmed by
-    # ComfyUI's own official LTX Video example workflow, corroborated by
-    # Lightricks' own 13B-dev first-pass config). The 2B-0.9.6-dev config
-    # suggests 40 instead -- our entry doesn't distinguish 2B/13B currently.
+    # ALBABIT-FIX: steps=30 from ComfyUI's official LTX Video workflow and
+    # Lightricks' 13B-dev config (the 2B-0.9.6-dev config suggests 40).
     "ltxv": {
         "cfg": 1.0,
         "scheduler": "simple",
@@ -290,11 +287,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 50,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: cfg/scheduler/steps verified against lodestones' own official
-    # Chroma1-HD ComfyUI workflow (cfg was 1.0, wrong; scheduler was "simple",
-    # wrong -- should be "beta"). "steps" is a generic (non-distillation)
-    # fallback -- new for this architecture, see refine_distillation_from_meta's
-    # docstring/_configure_model_and_defaults for how it's resolved.
+    # ALBABIT-FIX: cfg, scheduler "beta" and steps from lodestones' official
+    # Chroma1-HD workflow; steps is a generic fallback (see
+    # refine_distillation_from_meta).
     "chroma": {
         "cfg": 3.8,
         "scheduler": "beta",
@@ -440,11 +435,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 50,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: previously fell back to "sd1.5" (cfg=7.0/dpmpp_2m/normal) --
-    # verified against AuraFlow's own official ComfyUI workflow, which
-    # contradicts all three. No shift node present (unlike Lumina2, which
-    # reuses the same ModelSamplingAuraFlow node but at shift=6.0 -- confirmed
-    # NOT applicable to AuraFlow's own workflow, checked directly).
+    # ALBABIT-FIX: was the sd1.5 fallback; values from AuraFlow's official
+    # ComfyUI workflow, which has no shift node (unlike Lumina2).
     "aura_flow": {
         "cfg": 3.48,
         "scheduler": "sgm_uniform",
