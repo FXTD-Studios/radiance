@@ -35,7 +35,9 @@ function methodSource(name) {
 
 const METHODS = ['setCompareMode', '_applyCompareToRenderer', '_hasCompareB', 'pinReference',
     'releaseReference', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode'];
-const Proto = new Function(`return class { ${METHODS.map(methodSource).join('\n')} }`)();
+import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from '../radiance_compare.js';
+const Proto = new Function('_mapCompareFrame', '_compareGeometry',
+    `return class { ${METHODS.map(methodSource).join('\n')} }`)(_mapCompareFrame, _compareGeometry);
 
 const timers = [];
 globalThis.setInterval = (fn, ms) => { timers.push(fn); return timers.length; };
