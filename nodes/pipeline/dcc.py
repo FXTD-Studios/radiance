@@ -14,6 +14,7 @@ import torch
 import numpy as np
 
 from radiance.nodes.io.write import _save_exr, _save_video_ffmpeg, _load_video_to_numpy, _read_sequence
+from radiance.core.sequence_safety import stale_sequence_frames, stale_warning, write_atomic
 from radiance.path_utils import strip_path_quotes
 
 logger = logging.getLogger("radiance.dcc_bridge")
@@ -576,10 +577,15 @@ class RadianceMCP:
             frame_num = frame_start + i
             fname = f"{filename_prefix}_{frame_num:04d}.exr"
             fpath = out_dir / fname
-            _save_exr(frames[i], fpath, half=half)
+            write_atomic(fpath, lambda tmp, _f=frames[i]: _save_exr(_f, tmp, half=half))
             written.append(str(fpath))
 
         status = f"{len(written)} EXR frames → {out_dir}"
+        _stale = stale_warning(stale_sequence_frames(
+            out_dir, filename_prefix, "_", ".exr",
+            range(frame_start, frame_start + len(frames))), filename_prefix)
+        if _stale:
+            status += " | " + _stale
         render_path = str(out_dir)
 
         if make_video:
