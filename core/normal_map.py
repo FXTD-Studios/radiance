@@ -7,7 +7,7 @@ choice is made from the values and reported in `info["input"]`; the Viewer
 shows it so a wrong guess is visible, not silent.
 
 The result is always unit-length signed vectors plus the 0..1 display encoding.
-Pixels with no usable direction (zero length, NaN or Inf) are reported in
+Pixels with no usable direction (all zero, zero length, NaN or Inf) are reported in
 `info["invalid_pixels"]`, decoded as (0, 0, 0) and shown as mid grey.
 """
 from __future__ import annotations
@@ -35,7 +35,9 @@ def prepare_normal(frame: np.ndarray) -> Tuple[np.ndarray, np.ndarray, Dict[str,
     v = a if signed else a * 2.0 - 1.0
 
     length = np.sqrt((v * v).sum(axis=-1, keepdims=True))
-    usable = (length[..., 0] > _EPS) & finite
+    # An all-zero pixel is background (no surface) in either encoding; it is not
+    # the direction (-1, -1, -1) that an encoded zero would decode to.
+    usable = (length[..., 0] > _EPS) & finite & (np.abs(a).sum(axis=-1) > 0.0)
     unit = np.zeros_like(v)
     np.divide(v, length, out=unit, where=usable[..., None])
 
