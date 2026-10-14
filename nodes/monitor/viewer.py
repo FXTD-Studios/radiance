@@ -1324,18 +1324,24 @@ class RadianceViewer:
         file_token: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Normal pass: a display PNG (n * 0.5 + 0.5) and, optionally, the unit vectors."""
-        from ...core.normal_map import prepare_normal
+        from ...core.normal_map import detect_encoding, prepare_normal
 
         validation_error = self._validate_image(normal, "normal")
         if validation_error:
             logger.warning(validation_error)
             return []
         batch = normal.shape[0] if normal.dim() == 4 else 1
+        # One reading for the whole sequence, decided on the first frame.
+        try:
+            encoding = detect_encoding(safe_tensor_to_numpy(normal[0] if normal.dim() == 4 else normal))
+        except (RuntimeError, ValueError) as e:
+            logger.warning(f"Normal pass not usable: {e}")
+            return []
 
         def normal_entry(idx: int) -> Optional[Dict[str, Any]]:
             try:
                 frame = safe_tensor_to_numpy(normal[idx] if normal.dim() == 4 else normal)
-                unit, display, info = prepare_normal(frame)
+                unit, display, info = prepare_normal(frame, encoding)
                 unique_id = file_token or uuid.uuid4().hex[:12]
                 filename = f"Radiance_normal_{unique_id}_{idx}.png"
                 try:

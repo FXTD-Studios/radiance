@@ -83,3 +83,18 @@ test('corrupt saved value loads as empty', () => {
 test('the old canvas-pixel annotation state is gone', () => {
     assert.ok(!/_annotationLines/.test(src));
 });
+
+test('a live stroke shows only on the frame it was started on', () => {
+    const v = viewer();
+    const line = { frame: 2, color: '#fff', uv: [{ u: 0, v: 0 }, { u: 0.5, v: 0.5 }] };
+    v.currentFrame = 3;
+    assert.equal(v._reviewStrokesForView([line]).length, 0);
+    v.currentFrame = 2;
+    assert.equal(v._reviewStrokesForView([line]).length, 1);
+});
+
+test('a stroke is stored on the frame where it started, and Shift+Alt+click clears one frame', () => {
+    assert.match(src, /addStroke\(this\._annotationCurrentLine\.frame,/);
+    assert.match(src, /this\._review\.clearFrame\(f, 'stroke'\)/);
+    assert.doesNotMatch(src, /this\._review\.clear\('stroke'\)/);
+});

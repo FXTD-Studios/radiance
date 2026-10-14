@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from radiance.core.normal_map import prepare_normal
+from radiance.core.normal_map import detect_encoding, prepare_normal
 
 
 def _frame(vec, shape=(2, 2)):
@@ -51,3 +51,28 @@ def test_alpha_is_ignored_and_shape_checked():
 def test_all_invalid_frame_does_not_crash():
     _, _, info = prepare_normal(np.full((2, 2, 3), np.nan, np.float32))
     assert info["invalid_pixels"] == 4 and info["input"] == "unsigned_0_1"
+
+
+def test_signed_pass_without_negatives_is_still_signed():
+    # A world-space pass of a floor: (0, 1, 0) everywhere, no negative component.
+    unit, _, info = prepare_normal(_frame([0.0, 1.0, 0.0]))
+    assert info["input"] == "signed"
+    np.testing.assert_allclose(unit[0, 0], [0, 1, 0])
+
+
+def test_encoded_flat_normal_is_not_taken_as_signed():
+    assert detect_encoding(_frame([0.5, 0.5, 1.0])) == "unsigned_0_1"
+
+
+def test_forced_encoding_skips_detection():
+    unit, _, info = prepare_normal(_frame([0.5, 0.5, 1.0]), "signed")
+    assert info["input"] == "signed"
+    np.testing.assert_allclose(unit[0, 0], np.array([0.5, 0.5, 1.0]) / np.linalg.norm([0.5, 0.5, 1.0]), rtol=1e-6)
+    with pytest.raises(ValueError):
+        prepare_normal(_frame([0, 0, 1.0]), "bogus")
+
+
+def test_viewer_decides_once_per_sequence():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "nodes" / "monitor" / "viewer.py").read_text(encoding="utf-8")
+    assert "prepare_normal(frame, encoding)" in src
