@@ -180,7 +180,7 @@ class RadianceProjectManager:
 
         # Use v3 container for richer metadata
         binary = _pack_rad_v3(graph_json, metadata)
-        filepath.write_bytes(binary)
+        _atomic_write_bytes(filepath, binary)
 
         count = tech_profile.get("node_count", 0)
         return ()
@@ -387,7 +387,7 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
         "timestamp": time.time(),
         "original_filename": filepath.name
     }
-    meta_path.write_text(json.dumps(commit_info, indent=2), encoding="utf-8")
+    _atomic_write_text(meta_path, json.dumps(commit_info, indent=2))
     
     logger.info(f"[Radiance] Commit: {message} ({backup_name})")
 
@@ -609,7 +609,12 @@ def _unpack_rad_v2(data: bytes) -> tuple[str, dict]:
     graph_start = meta_end
     # FIX 5: use graph_len from the header to slice exactly — previously
     # payload[graph_start:] was used which silently accepted any trailing bytes.
-    graph_data  = zlib.decompress(payload[graph_start:graph_start + graph_len])
+    # Bounded: a few KB of zlib can expand to gigabytes. A real workflow is far
+    # below MAX_WORKFLOW_SIZE_BYTES, so cap the output there plus one byte.
+    _dz = zlib.decompressobj()
+    graph_data = _dz.decompress(payload[graph_start:graph_start + graph_len], MAX_WORKFLOW_SIZE_BYTES + 1)
+    if len(graph_data) > MAX_WORKFLOW_SIZE_BYTES or _dz.unconsumed_tail:
+        raise ValueError(f"Workflow expands beyond the {MAX_WORKFLOW_SIZE_MB}MB limit")
     return graph_data.decode("utf-8"), metadata
 
 
@@ -635,6 +640,46 @@ def _route(method: str, path: str):
         return lambda f: f
     _reg.add(_key)
     return getattr(PromptServer.instance.routes, method)(path)
+
+
+def _atomic_write_bytes(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` through a hidden sibling and ``os.replace``.
+
+    A crash, full disk or kill mid-write leaves the previous file whole instead
+    of a truncated one. Raises on failure so the caller can say so.
+    """
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.partial-{os.getpid()}")
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                pass
+        os.replace(tmp, path)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+
+
+def _set_aside_corrupt(path) -> None:
+    """Copy an unreadable JSON file aside before an empty default replaces it."""
+    try:
+        path = Path(path)
+        if path.is_file():
+            shutil.copy2(path, path.with_name(f"{path.name}.corrupt-{int(time.time())}"))
+            logger.warning("[Radiance] %s is not valid JSON; kept a copy as .corrupt-*", path.name)
+    except OSError:
+        pass
+
+
+def _atomic_write_text(path, text: str) -> None:
+    _atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def _format_bytes(size: int | float) -> str:
@@ -833,6 +878,9 @@ def _load_shot_status(project: dict) -> dict:
             data = json.loads(sp.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
+            _set_aside_corrupt(sp)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(sp)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_shot_status(): ignoring %s from `sp = _shot_status_path(project)`: %s",
@@ -842,12 +890,11 @@ def _load_shot_status(project: dict) -> dict:
 
 
 def _save_shot_status(project: dict, mapping: dict) -> None:
-    try:
-        sp = _shot_status_path(project)
-        sp.parent.mkdir(parents=True, exist_ok=True)
-        sp.write_text(json.dumps(mapping, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save shot status: %s", exc)
+    """Persist shot status atomically. Raises on failure: the route must not
+    report success for a status that was not saved."""
+    sp = _shot_status_path(project)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(sp, json.dumps(mapping, indent=2))
 
 
 def _versions_for_project(project: dict) -> list[dict]:
@@ -1157,7 +1204,7 @@ async def save_workflow(request):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         _create_version_backup(filepath, message=commit_message, author=author)
 
-        filepath.write_bytes(binary_rad)
+        _atomic_write_bytes(filepath, binary_rad)
 
         # Clean up legacy sidecar if it exists
         meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1311,7 +1358,7 @@ async def save_project_version(request):
                 "saved_at": time.time(),
                 "pipeline": _inspect_graph_content(content),
             }
-            filepath.write_bytes(_pack_rad_v3(content, metadata))
+            _atomic_write_bytes(filepath, _pack_rad_v3(content, metadata))
             
             # Clean up legacy sidecar if it exists
             meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1633,6 +1680,9 @@ def _load_bins() -> "list[dict]":
             data = json.loads(_ASSETS_BINS_PATH.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return data
+            _set_aside_corrupt(_ASSETS_BINS_PATH)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(_ASSETS_BINS_PATH)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_bins(): ignoring %s from `if _ASSETS_BINS_PATH.exists():`: %s",
@@ -1642,10 +1692,8 @@ def _load_bins() -> "list[dict]":
 
 
 def _save_bins(bins: "list[dict]") -> None:
-    try:
-        _ASSETS_BINS_PATH.write_text(json.dumps(bins, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save asset bins: %s", exc)
+    """Persist asset bins atomically. Raises on failure (see _save_shot_status)."""
+    _atomic_write_text(_ASSETS_BINS_PATH, json.dumps(bins, indent=2))
 
 
 def _scan_assets() -> "list[dict]":
@@ -1771,7 +1819,11 @@ async def create_asset_bin(request):
     bin_id = _hashlib.sha1((name + str(time.time())).encode()).hexdigest()[:10]
     new_bin = {"id": bin_id, "name": name[:60], "assets": []}
     bins.append(new_bin)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True, "bin": new_bin})
 
 
@@ -1799,7 +1851,11 @@ async def modify_asset_bin(request):
         bins = [b for b in bins if b.get("id") != bin_id]
     else:
         return web.json_response({"error": "Unknown action"}, status=400)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True})
 
 
@@ -1907,6 +1963,21 @@ def _claim_upload_path(dest_dir: Path, name: str):
     raise FileExistsError(f"No free name for {name} in {dest_dir}")
 
 
+class _UploadTooLarge(Exception):
+    pass
+
+
+def _upload_limit_bytes() -> int:
+    try:
+        mb = int(os.environ.get("RADIANCE_UPLOAD_MAX_MB", "4096"))
+    except ValueError:
+        mb = 4096
+    return max(1, mb) * 1024 * 1024
+
+
+_MAX_UPLOAD_BYTES = _upload_limit_bytes()
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1929,11 +2000,15 @@ async def upload_asset(request):
                     # name, so a workflow that referenced it read the new one.
                     dest, fh = _claim_upload_path(dest_dir, safe_name)
                     claimed.append(dest)
+                    written = 0
                     with fh:
                         while True:
                             chunk = await part.read_chunk()
                             if not chunk:
                                 break
+                            written += len(chunk)
+                            if written > _MAX_UPLOAD_BYTES:
+                                raise _UploadTooLarge(safe_name)
                             fh.write(chunk)
                     saved.append(dest.name)
                     if dest.name != safe_name:
@@ -1948,6 +2023,10 @@ async def upload_asset(request):
         if renamed:
             result["renamed"] = renamed
         return web.json_response(result)
+    except _UploadTooLarge as e:
+        return web.json_response(
+            {"error": f"{e.args[0]} is larger than the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit "
+                      "(RADIANCE_UPLOAD_MAX_MB raises it)"}, status=413)
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")
         return web.json_response({"error": str(e)}, status=500)

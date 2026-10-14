@@ -385,6 +385,21 @@ def _progress_refuse(instance_key, message: str) -> None:
         logger.debug("[Radiance] could not set refusal progress: %s", _exc)
 
 
+def _path_inside(path: str, root: str) -> bool:
+    """True when ``path`` resolves to ``root`` or somewhere under it.
+
+    Both sides go through ``realpath`` so a symlink under the output folder that
+    points to another volume does not pass, and ``commonpath`` so a sibling such
+    as ``output_evil`` or a folder named ``..x`` is judged correctly.
+    """
+    try:
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+        return os.path.normcase(os.path.commonpath([real_path, real_root])) == os.path.normcase(real_root)
+    except ValueError:
+        return False
+
+
 async def radiance_deliver_endpoint(request):
     """
     VFX Delivery Endpoint: Receives grading state + export settings from HUD.
@@ -464,11 +479,7 @@ async def radiance_deliver_endpoint(request):
             except Exception:
                 _allowed_root = None
             if _allowed_root:
-                try:
-                    _rel = os.path.relpath(output_path, _allowed_root)
-                    _outside = _rel.startswith("..")
-                except ValueError:
-                    _outside = True
+                _outside = not _path_inside(output_path, _allowed_root)
                 if _outside:
                     logger.warning(f"[Deliver] Rejected output path outside ComfyUI output dir: {output_path[:120]}")
                     _progress_refuse(instance_key, "Output path outside the output directory")
