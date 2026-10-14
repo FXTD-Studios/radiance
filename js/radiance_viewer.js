@@ -2752,10 +2752,8 @@ class RadianceViewer {
         if (!ws || !ws.available) return;
         this.workspace = ws.id;
         this.setUIMode(ws.layout, { persist, grow });
-        if (ws.layout === 'advanced') {
-            if (ws.tab) this._focusTab(ws.tab);
-            if (ws.compare && this._hasCompareB?.() && this.compareMode === 'none') this.setCompareMode('wipe');
-        }
+        // Focus only: the compare mode is left as the person set it.
+        if (ws.layout === 'advanced' && ws.tab) this._focusTab(ws.tab);
     }
 
     /** Select a right-panel tab the way a click on it does. */
@@ -8560,6 +8558,21 @@ self.onmessage = async ({ data: { id, url } }) => {
      * sRGB; the file name and the log say which.
      */
     _saveResultPNG() {
+        // On the Normal channel the thing on screen is the normal pass: save that,
+        // as data, named for what it is (encoded n * 0.5 + 0.5, 8 bits per channel).
+        if (this.channel === 'normal' && this.normalImage && !this._normalHiddenByCompare()) {
+            const img = this.normalImage;
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth || img.width;
+            c.height = img.naturalHeight || img.height;
+            c.getContext('2d').drawImage(img, 0, 0);
+            const a = document.createElement('a');
+            a.download = `radiance_${Date.now()}_normal_encoded_8bit.png`;
+            a.href = c.toDataURL('image/png');
+            a.click();
+            this._termLog?.('success', `[Export] Saved the normal pass: ${c.width}\u00D7${c.height}, encoded n*0.5+0.5, 8-bit (the float vectors are in the node's sidecar)`);
+            return;
+        }
         const p3 = this.renderer?.displayColorSpace === 'display-p3';
         const space = p3 ? 'display-p3' : 'srgb';
         const exp = document.createElement('canvas');
@@ -9462,13 +9475,47 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
     }
 
+    /** True while the picture on screen is B (or A against B), where A's normal pass does not belong. */
+    _normalHiddenByCompare() {
+        const cm = this.compareMode || 'none';
+        return cm === 'b' || cm === 'difference' || cm === 'sidebyside' || (cm === 'blink' && !!this._blinkB);
+    }
+
+    /**
+     * The normal pass is A's. It is not drawn while B is shown, and in a wipe
+     * only on A's side (x >= the wipe line, as the renderer splits it).
+     */
     _drawNormalChannel(ctx) {
         const img = this.normalImage;
-        if (!img || !this.imageWidth || !this.imageHeight) return;
+        const W = this.imageWidth, H = this.imageHeight;
+        if (!img || !W || !H || this._normalHiddenByCompare()) return;
+        const x0 = this.compareMode === 'wipe' ? Math.min(1, Math.max(0, this.wipePosition ?? 0.5)) * W : 0;
+        if (x0 >= W) return;
+        const iw = img.naturalWidth || img.width || W, ih = img.naturalHeight || img.height || H;
         ctx.save();
         ctx.imageSmoothingEnabled = this.zoom < 1;
-        ctx.drawImage(img, this.panX, this.panY, this.imageWidth * this.zoom, this.imageHeight * this.zoom);
+        ctx.drawImage(img, x0 * iw / W, 0, (W - x0) * iw / W, ih,
+            this.panX + x0 * this.zoom, this.panY, (W - x0) * this.zoom, H * this.zoom);
         ctx.restore();
+    }
+
+    /** The normal at an image pixel, decoded from the preview (8-bit precision), or null. */
+    _sampleNormalAt(imgX, imgY) {
+        const img = this.normalImage;
+        if (!img || !this.imageWidth || !this.imageHeight) return null;
+        const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+        if (!iw || !ih) return null;
+        try {
+            if (!this._normalPick) {
+                const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+                this._normalPick = c.getContext('2d', { willReadFrequently: true });
+            }
+            const sx = Math.floor(imgX * iw / this.imageWidth), sy = Math.floor(imgY * ih / this.imageHeight);
+            this._normalPick.clearRect(0, 0, 1, 1);
+            this._normalPick.drawImage(img, sx, sy, 1, 1, 0, 0, 1, 1);
+            const d = this._normalPick.getImageData(0, 0, 1, 1).data;
+            return [d[0], d[1], d[2]].map((c) => (c / 255) * 2 - 1);
+        } catch { return null; }
     }
 
     _reviewView() {
@@ -10417,6 +10464,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 <span style="color:${isHDRPick ? this.theme.accent : '#888'}; margin-right:6px;" title="${pickLabel}: scene-linear float values">${pickLabel}: ${linStr}</span>
                 <span style="color:#777">Hex: ${hex} | L: ${luma}</span>
             `;
+            if (this.channel === 'normal') {
+                const n = this._sampleNormalAt(imgX, imgY);
+                if (n) this.infoLeft.insertAdjacentHTML('beforeend',
+                    `<span style="color:#aab4ff; margin-left:6px;" title="Normal pass at this pixel, decoded from its 8-bit preview">N: ${n.map((c) => c.toFixed(3)).join(' ')}</span>`);
+            }
 
             // Store probe for multi-probe display (Sprint 4)
             this._lastProbe = { imgX, imgY, dispStr, linStr, hex, isHDRPick };
@@ -11075,7 +11127,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const bw = b.width || b.source_width || b.naturalWidth;
         const bh = b.height || b.source_height || b.naturalHeight;
         return _compareGeometry({ width: this.imageWidth, height: this.imageHeight }, { width: bw, height: bh },
-            this.compareFit).note;
+            this.compareFit, { stretched: typeof this.renderer?.setCompareFit !== 'function' }).note;
     }
 
     /**
@@ -12729,7 +12781,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         else if (this.zebra) { borderColor = '#FF4444'; label = 'ZEBRA'; }
         else if (this.focusPeaking) { borderColor = '#FF6600'; label = 'FOCUS PEAK'; }
         else if (this.showZdepth) { borderColor = '#00BBFF'; label = 'Z-DEPTH'; }
-        else if (this.channel === 'normal') { borderColor = '#8888FF'; label = 'NORMAL'; }
+        else if (this.channel === 'normal') { borderColor = '#8888FF'; label = this._normalHiddenByCompare() ? 'NORMAL (A) HIDDEN WHILE B SHOWN' : 'NORMAL (scopes read the picture)'; }
         else if (this.gamutWarning) { borderColor = '#FF00FF'; label = 'GAMUT WARN'; }
         else if (this.clippingMonitor) { borderColor = '#FF2222'; label = 'CLIPPING'; }
 

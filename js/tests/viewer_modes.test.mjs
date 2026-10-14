@@ -115,16 +115,13 @@ test('Inspect uses the Advanced layout, focuses the probe tab, and grows the nod
     assert.deepEqual(v.node.size, [1180, 760]);
 });
 
-test('Compare turns on wipe only when a B exists and nothing is shown yet', () => {
-    const withB = viewer({ hasB: true });
-    withB.setWorkspace('compare');
-    assert.equal(withB.compareMode, 'wipe');
-    const noB = viewer({ hasB: false });
-    noB.setWorkspace('compare');
-    assert.equal(noB.compareMode, 'none');           // no phantom reference
-    const keep = viewer({ hasB: true, compareMode: 'blink' });
-    keep.setWorkspace('compare');
-    assert.equal(keep.compareMode, 'blink');         // an active choice is never overridden
+test('Compare never changes the compare mode by itself', () => {
+    for (const [hasB, mode] of [[true, 'none'], [false, 'none'], [true, 'blink']]) {
+        const v = viewer({ hasB, compareMode: mode });
+        v.setWorkspace('compare');
+        assert.equal(v.compareMode, mode);
+        assert.equal(v.workspace, 'compare');
+    }
 });
 
 test('QC and unknown workspaces do nothing', () => {

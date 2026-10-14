@@ -62,3 +62,9 @@ test('the viewer uses the mapping and shows a held B and a size mismatch', () =>
     assert.doesNotMatch(src, /const i = Math\.min\(idx, n - 1\);\n\s+const img = list\[i\] \|\| null, hdr = floats\[i\]/,
         'the silent clamp must be gone');
 });
+
+test('a renderer with no size-aware placement is described as stretching B', () => {
+    const note = compareGeometry({ width: 100, height: 50 }, { width: 50, height: 50 }, 'pixel', { stretched: true }).note;
+    assert.match(note, /stretched to A's frame/);
+    assert.match(src, /stretched: typeof this\.renderer\?\.setCompareFit !== 'function'/);
+});
