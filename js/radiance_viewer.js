@@ -17,6 +17,7 @@ import {
     defaultWorkspaceFor as _defaultWorkspaceFor,
 } from "./radiance_viewer_modes.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
+import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -2866,6 +2867,13 @@ class RadianceViewer {
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
             if (cm === 'blink') this._sbBLabel.textContent += this._blinkB ? '  [B]' : '  [A]';
+            // B shorter than A: say that its last frame is being held.
+            if (this.compareSource === 'input' && this._compareHeld) {
+                this._sbBLabel.textContent += `  (ended at ${this._compareCount}, held)`;
+                this._sbBLabel.title += `. B has ${this._compareCount} frame(s); the last one is held past that.`;
+            }
+            const geom = this._compareGeometryNote?.();
+            if (geom) this._sbBLabel.title += `. ${geom}`;
         }
         if (this._sbBFit) {
             const fitted = this.compareFit === 'fit';
@@ -10979,15 +10987,29 @@ self.onmessage = async ({ data: { id, url } }) => {
         const n = Math.max(list.length, floats.length);
         if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const i = Math.min(idx, n - 1);
+        const { index: i, held } = _mapCompareFrame(idx, n, { aFps: this.frameRate, bFps: this.compareFrameRate });
         const img = list[i] || null, hdr = floats[i] || null;
         if (!img && !hdr) return;
+        const heldChanged = held !== this._compareHeld || n !== this._compareCount;
+        this._compareHeld = held;
+        this._compareCount = n;
+        if (heldChanged) this._syncCompareUI?.();
         if (img === this.compareImage && hdr === this.compareHDR && !force) return;
         this.compareSource = 'input';
         if (img) this.compareImage = img;
         this.compareHDR = hdr;
         this.diffCanvas = null;
         try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /** A sentence when B is not A's size, else null. */
+    _compareGeometryNote() {
+        const b = this.compareHDR || this.compareImage;
+        if (!b || !this.imageWidth) return null;
+        const bw = b.width || b.source_width || b.naturalWidth;
+        const bh = b.height || b.source_height || b.naturalHeight;
+        return _compareGeometry({ width: this.imageWidth, height: this.imageHeight }, { width: bw, height: bh },
+            this.compareFit).note;
     }
 
     /**
