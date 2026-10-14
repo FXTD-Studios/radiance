@@ -1099,7 +1099,7 @@ class RadianceViewer {
         this.frameCompareHDR = [];          // B's float frames, when the node sent them
         // Saved display preferences: one validated read (radiance_viewer_state.js)
         // instead of a localStorage call and a default for each.
-        const _prefs = _loadViewerPrefs(localStorage);
+        const _prefs = _loadViewerPrefs((() => { try { return localStorage; } catch { return null; } })());
         this.compareFit = _prefs.compareFit;
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
@@ -7742,7 +7742,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         const depthEntry = this._zdepthEntries ? this._zdepthEntries[idx] : null;
-        const compareEntry = this._compareEntries ? this._compareEntries[idx] : null;
+        // Paged B is stored in A's slot, so load the B frame that goes with A's frame (by time when the rates differ).
+        const cmpN = this._compareEntries ? this._compareEntries.length : 0;
+        const cmpIdx = cmpN ? _mapCompareFrame(idx, cmpN, this._compareRates()).index : -1;
+        const compareEntry = cmpIdx >= 0 ? this._compareEntries[cmpIdx] : null;
         const normalEntry = this._normalEntries ? this._normalEntries[idx] : null;
 
         return Promise.all([
@@ -7880,7 +7883,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const token = message?.file_token?.[0];
         const images = message?.radiance_images;
         if (!token || !Array.isArray(images) || !images.length) return null;
-        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
+        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range', 'normal_invalid_pixels'];
         const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_normal ? 'normal' : e.is_compare ? 'compare'
             : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
         const groups = new Map();
@@ -9475,8 +9478,9 @@ self.onmessage = async ({ data: { id, url } }) => {
     _reviewStrokesForView(extraLive = []) {
         if (!this._review) return [];
         const view = this._reviewView();
-        const live = extraLive.map(l => ({ color: l.color, pts: l.uv || [] }));
-        return this._review.canvasStrokes(this.currentFrame || 0, view, live);
+        const frame = this.currentFrame || 0;
+        const live = extraLive.filter(l => (l.frame ?? frame) === frame).map(l => ({ color: l.color, pts: l.uv || [] }));
+        return this._review.canvasStrokes(frame, view, live);
     }
 
     // Persist review marks with the node. A mark set over the size cap keeps the previous saved copy.
@@ -10187,9 +10191,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const my = (eAnn.clientY - rect.top) * (this._canvasScaleY || 1);
                 const colors = ['#ff4', '#f55', '#5f5', '#55f', '#f5f', '#5ff'];
                 const uv0 = _canvasToUV(mx, my, this._reviewView());
+                const frame0 = this.currentFrame || 0;
                 this._annotationCurrentLine = {
+                    frame: frame0,
                     uv: uv0 ? [uv0] : [],
-                    color: colors[this._review.forFrame(this.currentFrame || 0, 'stroke').length % colors.length]
+                    color: colors[this._review.forFrame(frame0, 'stroke').length % colors.length]
                 };
             }
         }, { capture: true });
@@ -10207,7 +10213,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         this._docAnnotUpHandler = () => {
             if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.uv.length > 1) {
-                if (this._review.addStroke(this.currentFrame || 0, this._annotationCurrentLine.uv, this._annotationCurrentLine.color)) {
+                if (this._review.addStroke(this._annotationCurrentLine.frame, this._annotationCurrentLine.uv, this._annotationCurrentLine.color)) {
                     this._persistReview();
                 } else {
                     this._termLog?.('warn', '[Review] Mark limit reached; stroke not added.');
@@ -10218,14 +10224,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         };
         document.addEventListener('mouseup', this._docAnnotUpHandler, { signal: this._listenerSignal });
 
-        // Shift+Alt+Click clears all annotations
+        // Shift+Alt+Click clears this frame's strokes (marks on other frames are kept) and the probes.
         this.canvas.addEventListener('click', (eAnn) => {
             if (eAnn.altKey && eAnn.shiftKey) {
-                this._review.clear('stroke');
+                const f = this.currentFrame || 0;
+                const n = this._review.clearFrame(f, 'stroke');
                 this._persistReview();
                 this._probeMemory = [];
                 this.renderOverlay();
-                this._termLog?.('info', '[Annotation] All annotations and probes cleared.');
+                this._termLog?.('info', `[Annotation] ${n} stroke(s) on frame ${f + 1} and all probes cleared.`);
             }
         });
 
@@ -11039,7 +11046,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         const n = Math.max(list.length, floats.length);
         if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const { index: i, held } = _mapCompareFrame(idx, n, { aFps: this._sourceFps || this.frameRate, bFps: this.compareFrameRate });
+        const { index: mapped, held } = _mapCompareFrame(idx, n, this._compareRates());
+        // Paged B frames sit in A's slot (see _loadSequenceFrame); a B loaded whole is indexed by its own frame.
+        const i = this._compareEntries?.length ? idx : mapped;
         const img = list[i] || null, hdr = floats[i] || null;
         if (!img && !hdr) return;
         const heldChanged = held !== this._compareHeld || n !== this._compareCount;
@@ -11052,6 +11061,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.compareHDR = hdr;
         this.diffCanvas = null;
         try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /** A's rate and B's own rate for compare pairing. B's is known only for a VIDEO input. */
+    _compareRates() {
+        return { aFps: this._sourceFps || this.frameRate, bFps: this.compareFrameRate };
     }
 
     /** A sentence when B is not A's size, else null. */

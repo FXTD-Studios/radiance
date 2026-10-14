@@ -56,7 +56,7 @@ test('a size mismatch is named, with both sizes and how B is placed', () => {
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
 
 test('the viewer uses the mapping and shows a held B and a size mismatch', () => {
-    assert.match(src, /_mapCompareFrame\(idx, n, \{ aFps: this\._sourceFps || this\.frameRate, bFps: this\.compareFrameRate \}\)/);
+    assert.match(src, /_mapCompareFrame\(idx, n, this\._compareRates\(\)\)/);
     assert.match(src, /\(ended at \$\{this\._compareCount\}, held\)/);
     assert.match(src, /_compareGeometryNote\(\) \{/);
     assert.doesNotMatch(src, /const i = Math\.min\(idx, n - 1\);\n\s+const img = list\[i\] \|\| null, hdr = floats\[i\]/,
