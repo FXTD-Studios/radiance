@@ -150,7 +150,7 @@ jobs:
             "opencv-python-headless>=4.7" "tqdm>=4.66" \
             "OpenEXR>=3.2.0" \
             "OpenImageIO>=3.0.0" \
-            "opencolorio>=2.3.0" "colour-science>=0.4.4" \
+            "opencolorio>=2.5.0" "colour-science>=0.4.4" \
             "einops>=0.7.0" "safetensors>=0.4.0" \
             "huggingface-hub>=0.23" \
             "pytest>=7.4" "pytest-timeout>=2.1" "pytest-cov>=4.0" \
