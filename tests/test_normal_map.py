@@ -24,8 +24,8 @@ def test_encoded_input_is_decoded():
 
 
 def test_vectors_are_renormalised():
-    unit, _, _ = prepare_normal(_frame([3.0, 4.0, 0.0]))
-    np.testing.assert_allclose(unit[0, 0], [0.6, 0.8, 0.0], atol=1e-6)
+    unit, _, _ = prepare_normal(_frame([3.0, -4.0, 0.0]))
+    np.testing.assert_allclose(unit[0, 0], [0.6, -0.8, 0.0], atol=1e-6)
 
 
 def test_invalid_pixels_are_counted_and_grey():
