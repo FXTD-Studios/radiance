@@ -4,6 +4,7 @@ import math
 import logging
 import gc
 import errno
+import os
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
@@ -11,6 +12,8 @@ import comfy.samplers
 import comfy.sample
 import comfy.model_management
 import comfy.utils
+import folder_paths
+from radiance.core.model_fetch import ModelFetchError, fetch
 from radiance.core.tiling import clamp_overlap
 try:
     from ...tensor_contract import ensure_4d, ensure_5d
@@ -530,6 +533,53 @@ def make_temporal_window_wrapper(
     return wrapper
 
 
+# ALBABIT-FIX: the decoders "TAESD" reads from models/vae_approx, by the name
+# ComfyUI looks for, pinned so a missing one can be fetched on first use.
+_TAESD_URL = "https://raw.githubusercontent.com/madebyollin/taesd/027d3ef404a04a141e60d5ec0fee149c2c8bdd74/"
+_TAEHV_URL = "https://raw.githubusercontent.com/madebyollin/taehv/011dfc2112197741c540e0bdd5b7b67bcc930771/safetensors/"
+_LIGHTTAE_URL = "https://huggingface.co/lightx2v/Autoencoders/resolve/02cbfd1a0a336bbd87da49fd8cc155ed11ff123e/"
+_TAESD_DECODERS = {
+    "taesd_decoder": (_TAESD_URL + "taesd_decoder.pth", "02873377c3f4659cd9f9adb2f718dcb434ba4c7bba3af3ee7bb95cbdabe2d3cf", 4913399),
+    "taesdxl_decoder": (_TAESD_URL + "taesdxl_decoder.pth", "a3956b8a7a763f251c7357aad6375dacdb6d971121c73e97a3069fc33a94fe1e", 4913541),
+    "taesd3_decoder": (_TAESD_URL + "taesd3_decoder.pth", "178fbb90c8c3bab4fe5e30dcba3b85d8bd2c9a203f71239c3a3223720c310b58", 4940671),
+    "taef1_decoder": (_TAESD_URL + "taef1_decoder.pth", "beae86f2eeaf0cea884dc8ffe639fb297dac8c984441bb53420f07d767785104", 4943336),
+    "taef2_decoder": (_TAESD_URL + "taef2_decoder.pth", "0a44a31e1ae59eb9dbf9359d24942fd3ef5928162c1800d97a28c61d51be0ab5", 2704756),
+    "taeqi2_1_decoder": (_TAESD_URL + "taeqi2_1_decoder.pth", "53c2212f4ea6c8ad06a30d4969d891f80339ff87bb3f77fe793848613d3a9042", 15314938),
+    "taehv": (_TAEHV_URL + "taehv.safetensors", "032ad4ddc689513287ce02fcc099b5278592526ed1eac0324a7fab94bb690ed9", 22642902),
+    "taeh3": (_TAEHV_URL + "taeh3.safetensors", "4fd022bfcab08772fe0536b17ea1a3bbb5625be11e397868d1c5d891863d4c13", 22709752),
+    "taeltx2_3": (_TAEHV_URL + "taeltx2_3.safetensors", "f0773b4e3e57318e6aa4dd4a35e1d16213a5f160fbc0376163f06888bbcbe246", 23531296),
+    "lighttaew2_1": (_LIGHTTAE_URL + "lighttaew2_1.safetensors", "8666e769f449f2d955651564bcadb0c5e12461b50480e67b7241f32c15f11a19", 45274004),
+    "lighttaew2_2": (_LIGHTTAE_URL + "lighttaew2_2.safetensors", "10124099e0c9864db4e6bcd0f09d822282753e553d344fcf2748cf50140ba16a", 45684280),
+    "lighttaehy1_5": (_LIGHTTAE_URL + "lighttaehy1_5.safetensors", "cdb8cfd653c769046748f87fd44a065cf0a92501c3588a506bbcab383c2f27ad", 45499896),
+}
+# ALBABIT-FIX: decoders whose fetch failed, not retried until ComfyUI restarts,
+# so an offline machine warns once instead of on every run.
+_TAESD_FAILED = set()
+
+
+def _ensure_taesd_decoder(name: str) -> Optional[str]:
+    """Path of the models/vae_approx file ComfyUI uses for *name*, after
+    fetching it when it is missing and pinned above. None when there is none."""
+    found = next((f for f in folder_paths.get_filename_list("vae_approx") if f.startswith(name)), None)
+    if found is not None:
+        return folder_paths.get_full_path("vae_approx", found)
+    if name not in _TAESD_DECODERS or name in _TAESD_FAILED:
+        return None
+    url, sha256, size = _TAESD_DECODERS[name]
+    # ALBABIT-FIX: a folder the user added (Stability Matrix's ApproxVAE, any
+    # extra_model_paths.yaml entry) comes after ComfyUI's own: it gets the file.
+    own = os.path.join(os.path.normcase(os.path.abspath(folder_paths.models_dir)), "")
+    folders = folder_paths.get_folder_paths("vae_approx")
+    folder = next((f for f in folders if not os.path.normcase(os.path.abspath(f)).startswith(own)), folders[0])
+    dest = os.path.join(folder, url.rsplit("/", 1)[1])
+    try:
+        return fetch(url, dest, sha256=sha256, size=size, label=f"Preview decoder {name}")
+    except ModelFetchError as exc:
+        _TAESD_FAILED.add(name)
+        logger.warning("%s\n[Radiance] The preview falls back to Latent2RGB until ComfyUI restarts.", exc)
+        return None
+
+
 def _resolve_latent_previewer(model, preview_method: str):
     """Build a ComfyUI latent previewer for *preview_method*, or None.
 
@@ -549,6 +599,8 @@ def _resolve_latent_previewer(model, preview_method: str):
     try:
         import latent_preview  # ComfyUI top-level module
         from comfy.cli_args import args as comfy_args, LatentPreviewMethod
+        from comfy.latent_formats import LTXAV
+        from comfy.sd import VAE
     except ImportError as exc:
         logger.warning(
             "[Radiance] Latent preview unavailable (%s: %s).", type(exc).__name__, exc
@@ -574,13 +626,35 @@ def _resolve_latent_previewer(model, preview_method: str):
     if device is None:
         device = comfy.model_management.get_torch_device()
 
+    # ALBABIT-FIX: "TAESD" fetches the model's missing decoder first, and is
+    # Latent2RGB without one. ComfyUI wires none to LTX-2 latents; taeltx2_3
+    # reads LTX 2.3 and 2.5 ones, through ComfyUI's own video previewer.
+    ltx2_decoder = None
+    shown = preview_method
+    if method == LatentPreviewMethod.TAESD:
+        ltx2 = isinstance(latent_format, LTXAV)
+        name = "taeltx2_3" if ltx2 else latent_format.taesd_decoder_name
+        decoder = _ensure_taesd_decoder(name) if name else None
+        if decoder is None:
+            method = LatentPreviewMethod.Latent2RGB
+            shown = f"Latent2RGB ({name} unavailable)" if name else "Latent2RGB (no TAESD decoder for this model)"
+        else:
+            shown = f"TAESD ({os.path.basename(decoder)})"
+            if ltx2:
+                ltx2_decoder = decoder
+
     # get_previewer() reads the global --preview-method. Override it for the
     # duration of the call so the node's widget wins, then put the launch
     # setting back so other nodes in the same prompt are unaffected.
     previous_method = getattr(comfy_args, "preview_method", None)
     try:
-        comfy_args.preview_method = method
-        previewer = latent_preview.get_previewer(device, latent_format)
+        if ltx2_decoder is not None:
+            taesd = VAE(comfy.utils.load_torch_file(ltx2_decoder))
+            taesd.first_stage_model.show_progress_bar = False
+            previewer = latent_preview.TAEHVPreviewerImpl(taesd)
+        else:
+            comfy_args.preview_method = method
+            previewer = latent_preview.get_previewer(device, latent_format)
     except Exception as exc:
         logger.warning(
             "[Radiance] Could not build the '%s' previewer (%s: %s).",
@@ -596,6 +670,8 @@ def _resolve_latent_previewer(model, preview_method: str):
             "[Radiance] ComfyUI has no previewer for this model's latent format "
             "with preview_method='%s'.", preview_method,
         )
+    else:
+        logger.info("[Radiance] Preview: %s", shown)
     return previewer
 
 
@@ -837,9 +913,11 @@ class RadianceSamplerPro:
                     },
                 ),
 
-                "preview_method": (PREVIEW_METHODS, {"default": "None", "tooltip": (
-                    "Live preview during sampling. TAESD needs the taesd weights in models/vae_approx and "
-                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar. "
+                "preview_method": (PREVIEW_METHODS, {"default": "TAESD", "tooltip": (
+                    "Live preview during sampling. TAESD decodes it with the model's small preview decoder from models/vae_approx, "
+                    "downloaded once (3 to 46 MB) when it is missing unless RADIANCE_ALLOW_DOWNLOADS=0, and falls back to "
+                    "Latent2RGB for a model that has none. Latent2RGB is a coarse color preview that needs no file. "
+                    "None sends no Radiance preview, only ComfyUI's progress bar. "
                     "Video models show their first frame, or every frame with VideoHelperSuite's animated previews.")}),
 
                 "noise_type": (
@@ -2254,9 +2332,7 @@ class RadianceSamplerPro:
         if preview_method != "None":
             previewer_ref = _resolve_latent_previewer(model, preview_method)
 
-            if previewer_ref is not None:
-                logger.debug(f"Preview callback active: {preview_method}")
-            else:
+            if previewer_ref is None:
                 logger.warning(
                     "[Radiance] preview_method='%s' produced no previewer; "
                     "sampling runs without a preview.",
