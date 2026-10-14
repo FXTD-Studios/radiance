@@ -16,6 +16,7 @@ import {
     workspaceById as _workspaceById,
     defaultWorkspaceFor as _defaultWorkspaceFor,
 } from "./radiance_viewer_modes.js";
+import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -1094,9 +1095,10 @@ class RadianceViewer {
         this._hdrFallbackReasons = [];
         this.frameCompareImages = [];
         this.frameCompareHDR = [];          // B's float frames, when the node sent them
-        this.compareFit = (() => {
-            try { return localStorage.getItem('radiance_compare_fit') === 'fit' ? 'fit' : 'pixel'; } catch { return 'pixel'; }
-        })();
+        // Saved display preferences: one validated read (radiance_viewer_state.js)
+        // instead of a localStorage call and a default for each.
+        const _prefs = _loadViewerPrefs(localStorage);
+        this.compareFit = _prefs.compareFit;
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
@@ -1147,17 +1149,17 @@ class RadianceViewer {
         this.showVectorscope = false;
         this.scopeOverlay = false;
         this.waveformParadeMode = true; // true = RGB parade
-        this.scopeMode = localStorage.getItem('radiance_scope_mode') || 'parade'; // parade|waveform|histogram|vectorscope|falsecolor
+        this.scopeMode = _prefs.scopeMode;   // parade|waveform|histogram|vectorscope|chromaticity|falsecolor
 
         // Scope scale and measurement point. The scopes used to draw a graticule
         // labelled 0/25/50/75/100 under a caption that read "Linear · 0–255" --
         // two units in one panel, neither of them stated. These say which.
         // 10-bit code value is the default because that is what a delivery spec
         // is written in.
-        this.scopeScale = localStorage.getItem('radiance_scope_scale') || 'cv10';
-        this.scopeLevels = localStorage.getItem('radiance_scope_levels') || 'data';
-        this.scopeTransformed = localStorage.getItem('radiance_scope_xform') !== '0';
-        this.scopeHlgPeak = parseInt(localStorage.getItem('radiance_scope_hlg_peak') || '1000', 10) || 1000;
+        this.scopeScale = _prefs.scopeScale;
+        this.scopeLevels = _prefs.scopeLevels;
+        this.scopeTransformed = _prefs.scopeTransformed;
+        this.scopeHlgPeak = _prefs.scopeHlgPeak;
 
         // OpenColorIO. Null until a config is loaded, and Radiance's own ACES
         // 1.3 pipeline runs until then -- OCIO is a capability, not a
@@ -1179,18 +1181,18 @@ class RadianceViewer {
 
         // Which published safe-area spec the boxes come from, and the framing
         // matte, which is a separate question from delivery safety.
-        this.safeAreaPreset = localStorage.getItem('radiance_safe_preset') || 'modern';
-        this.matteMode = localStorage.getItem('radiance_matte') || 'off';
+        this.safeAreaPreset = _prefs.safeAreaPreset;
+        this.matteMode = _prefs.matteMode;
         this.matteOpacity = 0.7;
 
         // Nearest-neighbour vs linear magnification. RV binds this to 'n', and
         // pixel-level inspection is meaningless through a bilinear filter.
         // 3.5.0: nearest from 1:1 up by default (Nuke / RV pixel inspection); N toggles.
-        this.pixelFilter = localStorage.getItem('radiance_pixel_filter') || 'nearest';
+        this.pixelFilter = _prefs.pixelFilter;
 
         // How the frame counter reads. Frames for a technical conversation,
         // timecode for a delivery one.
-        this.timeDisplay = localStorage.getItem('radiance_time_display') || 'frames';
+        this.timeDisplay = _prefs.timeDisplay;
         this.frameRate = 24;
 
         // Fullscreen
@@ -1242,12 +1244,11 @@ class RadianceViewer {
         this.displayLut = 'None';
         this.inputSpace = 'None';
         this._userSetIDT = false;
-        try { this.displayTarget = localStorage.getItem('radiance_display_target') || 'sRGB'; } catch { this.displayTarget = 'sRGB'; }
+        this.displayTarget = _prefs.displayTarget;
         this.viewExposure = 0;    // 3.5.0: viewer f-stops, like Nuke's viewer gain
         this.viewGamma = 1;       // 3.5.0: viewer gamma
         this.sourceTag = { encoding: 'linear', colorspace: 'Linear Rec.709 (sRGB)' };
-        try { this.viewMode = localStorage.getItem('radiance_view_mode') || 'auto'; } catch { this.viewMode = 'auto'; }
-        if (this.viewMode === 'manual') this.viewMode = 'auto';
+        this.viewMode = _prefs.viewMode;   // a saved 'manual' loads as 'auto'
         this.lutOptions = [
             "None",
             "sRGB (Display)",
