@@ -1360,7 +1360,8 @@ class RadianceViewer:
                 if save_hdr_sidecar:
                     rhdr_name = f"Radiance_normal_{unique_id}_{idx}_float.rhdr"
                     try:
-                        _rhdr.write(safe_join(output_dir, rhdr_name), unit, fp32=use_32bit, level=0)
+                        rhdr_path = safe_join(output_dir, rhdr_name)
+                        _rhdr.write(rhdr_path, unit, fp32=use_32bit, level=0)
                         meta["hdr_sidecar"] = rhdr_name
                     except (IOError, OSError, ValueError) as e:
                         logger.warning(f"Failed to save normal sidecar {idx}: {e}")
