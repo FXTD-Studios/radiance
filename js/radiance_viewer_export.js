@@ -188,7 +188,7 @@ function install(RV) {
         if (!this.image) return;
 
         if (format === 'exr') {
-            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth);
+            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal);
             if (imgData && imgData.exr_filename) {
                 const sub = imgData.exr_subfolder ?? imgData.subfolder ?? '';
                 const type = imgData.exr_type ?? imgData.type ?? 'temp';
