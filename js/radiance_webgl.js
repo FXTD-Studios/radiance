@@ -3647,12 +3647,15 @@ vec3 getDenoiseColor(vec2 uv) {
             finalMatte *= calculateMask(v_texcoord);
         }
 
-        if (u_maskType > 0 && u_maskShowOverlay) {
+        // Positioning aids (window overlay, show-matte) are for the eye only:
+        // the scopes and the graded exports measure/save the picture, not the aid.
+        bool previewAids = !u_scopeSignal && !u_exportSceneLinear;
+        if (previewAids && u_maskType > 0 && u_maskShowOverlay) {
              // Show mask as grayscale overlay for positioning
              float m = calculateMask(v_texcoord);
              color = mix(preGrade * 0.3, color, m);
         } else if (u_qualifierEnabled || u_maskType > 0) {
-             if (u_qualifierShowMask) {
+             if (previewAids && u_qualifierShowMask) {
                  color = vec3(finalMatte);
              } else {
                  color = mix(preGrade, color, finalMatte);

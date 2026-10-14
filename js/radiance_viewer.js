@@ -5415,7 +5415,17 @@ class RadianceViewer {
                 // requested step was not (FX bake, CDL/AMF sidecar, upscale, a
                 // degraded EXR). That is not a failure and not a clean success:
                 // show what was skipped instead of "FAILED undefined".
-                const _dvWarnings = Array.isArray(result.warnings) ? result.warnings : [];
+                const _dvWarnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+                // The baked grade is whole-frame. A power window or qualifier is
+                // a viewer-side matte the payload does not carry, so the master
+                // can differ from what the viewer shows. Say so.
+                if (dvBakeGrade.checked) {
+                    const _r = this.renderer;
+                    const _aids = [];
+                    if (_r?.maskType > 0) _aids.push('power window');
+                    if (_r?.qualifierEnabled) _aids.push('qualifier');
+                    if (_aids.length) _dvWarnings.push(`Not baked: ${_aids.join(' and ')} (the master carries the whole-frame grade only).`);
+                }
                 if (result.status === 'success' || result.status === 'partial') {
                     const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
                     dvProgressBar.style.width = '100%';
@@ -8471,13 +8481,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         } else {
             this.renderImage(ctx, this.image);
         }
-        const tag = p3 ? 'DisplayP3' : 'sRGB';
+        // No display-signal read (WebGPU, or no GL): what was drawn is the plain
+        // 8-bit source preview, not the graded result. Name it that way.
+        const ungraded = !sig?.data;
+        const tag = (p3 ? 'DisplayP3' : 'sRGB') + (ungraded ? '_ungraded_preview' : '');
         const link = document.createElement('a');
         link.download = `radiance_${Date.now()}_${tag}.png`;
         link.href = exp.toDataURL('image/png');
         link.click();
         const view = this.ocioActive ? `${this.ocioDisplay} / ${this.ocioView}` : (this.displayLut || 'no view');
-        this._termLog?.('success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
+        if (ungraded) this._termLog?.('warn', '[Export] This renderer cannot read the graded display signal; the PNG is the ungraded 8-bit preview, not the graded result.');
+        this._termLog?.(ungraded ? 'warn' : 'success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
             + `(view: ${view}; no viewer f-stop, gamma or overlays)`);
     }
 
