@@ -29,7 +29,7 @@ export const WORKSPACES = Object.freeze([
       tip: 'Grade, curves, effects and scopes' },
     { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true, tab: 'probe',
       tip: 'Pixel probe, channels and values' },
-    { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true, compare: true,
+    { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true,
       tip: 'A/B, wipe, difference and blink against a reference' },
     { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: false,
       tip: 'Measured checks (not implemented yet)' },
