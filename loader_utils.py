@@ -553,6 +553,26 @@ def load_clip_stack(
 
     clip_paths = assemble_clip_paths(resolved_type, unet_path=unet_path, clip_l=clip_l, clip_g=clip_g, t5xxl=t5xxl, llm_encoder=llm_encoder, text_projection=text_projection)
 
+    # assemble_clip_paths drops a selected file it cannot find (downloads off, a
+    # failed download, a renamed file) with only a log line, and ComfyUI then
+    # loads whatever encoder the remaining files imply. A file the user chose
+    # that is not on disk is an error, not a smaller stack.
+    _chosen = {"clip_l": clip_l, "clip_g": clip_g, "t5xxl": t5xxl,
+               "llm_encoder": llm_encoder, "text_projection": text_projection}
+    _not_found = [
+        f"{slot}: {val}"
+        for slot in CLIP_SLOT_ORDER.get(resolved_type, list(_chosen))
+        for val in [_chosen.get(slot)]
+        if val not in (None, "", "None", "Baked (from UNET)")
+        and not folder_paths.get_full_path("text_encoders", val)
+    ]
+    if _not_found:
+        raise ValueError(
+            f"❌ {resolved_type} text encoder file(s) not found on disk: {'; '.join(_not_found)}. "
+            f"Loading with the remaining files would make ComfyUI pick a different encoder and "
+            f"encode the prompt wrongly. Download the file(s) (or allow downloads) and try again."
+        )
+
     if not clip_paths:
         raise ValueError(
             f"❌ No CLIP encoders provided for architecture '{resolved_type}'. "

@@ -570,6 +570,20 @@ class RadianceModelRegistry:
                 if res: return res
             except Exception as e:
                 logger.debug(f"Detector {detector.__name__} failed: {e}")
+        # Not recognised: the sampler applies 'sd1.5' defaults. Say so where it
+        # is visible; this used to be silent, and a newer model family then ran
+        # with SD1.5 steps, cfg and sampler without any indication.
+        # Warn only for a model whose config class is not one of the SD
+        # families, which are the ones this default is right for.
+        try:
+            _cfg = type(model.model.model_config).__name__
+        except Exception:
+            _cfg = ""
+        if not _cfg.startswith(("SD", "SSD", "Segmind")):
+            logger.warning(
+                "[Radiance] Model family not recognised (config class %r); using generic "
+                "'sd1.5' sampler defaults. Set model_type on the sampler (or wire model_meta "
+                "from the Loader) if this is wrong.", _cfg or "unknown")
         return "sd1.5"
 
 @RadianceModelRegistry.register(priority=1)
