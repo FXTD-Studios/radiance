@@ -18,6 +18,7 @@ import {
 } from "./radiance_viewer_modes.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
+import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV } from "./radiance_review.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -9438,10 +9439,30 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Sprint 4: Render annotations (persistent lines)
-        this._renderAnnotationLines(ctx, this._annotationLines || []);
-        if (this._isAnnotating && this._annotationCurrentLine) {
-            this._renderAnnotationLines(ctx, [this._annotationCurrentLine]);
+        // Strokes are stored per frame in image UV, so they follow zoom, pan and frame changes.
+        const _live = (this._isAnnotating && this._annotationCurrentLine) ? [this._annotationCurrentLine] : [];
+        this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
+    }
+
+    _reviewView() {
+        return { zoom: this.zoom, panX: this.panX, panY: this.panY, width: this.imageWidth, height: this.imageHeight };
+    }
+
+    _reviewStrokesForView(extraLive = []) {
+        if (!this._review) return [];
+        const view = this._reviewView();
+        const live = extraLive.map(l => ({ color: l.color, pts: l.uv || [] }));
+        return this._review.canvasStrokes(this.currentFrame || 0, view, live);
+    }
+
+    // Persist review marks with the node. A mark set over the size cap keeps the previous saved copy.
+    _persistReview() {
+        const json = this._review?.serialize();
+        if (json == null) {
+            this._termLog?.('warn', '[Review] Marks are too large to save; the last saved copy was kept.');
+            return;
         }
+        if (this.node?.properties) this.node.properties.radiance_viewer_review = json;
     }
 
     // Render a set of annotation line objects onto the given 2D canvas context
@@ -10129,7 +10150,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         // Alt+drag annotation drawing (Sprint 4)
-        this._annotationLines = [];
+        this._review = _ReviewStore.parse(this.node?.properties?.radiance_viewer_review);
         this._isAnnotating = false;
         this._annotationCurrentLine = null;
 
@@ -10141,9 +10162,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const mx = (eAnn.clientX - rect.left) * (this._canvasScaleX || 1);
                 const my = (eAnn.clientY - rect.top) * (this._canvasScaleY || 1);
                 const colors = ['#ff4', '#f55', '#5f5', '#55f', '#f5f', '#5ff'];
+                const uv0 = _canvasToUV(mx, my, this._reviewView());
                 this._annotationCurrentLine = {
-                    pts: [{ x: mx, y: my }],
-                    color: colors[this._annotationLines.length % colors.length]
+                    uv: uv0 ? [uv0] : [],
+                    color: colors[this._review.forFrame(this.currentFrame || 0, 'stroke').length % colors.length]
                 };
             }
         }, { capture: true });
@@ -10153,14 +10175,19 @@ self.onmessage = async ({ data: { id, url } }) => {
             const rect = this.canvas.getBoundingClientRect();
             const mx = (eAnn.clientX - rect.left) * (this._canvasScaleX || 1);
             const my = (eAnn.clientY - rect.top) * (this._canvasScaleY || 1);
-            this._annotationCurrentLine.pts.push({ x: mx, y: my });
+            const uv = _canvasToUV(mx, my, this._reviewView());
+            if (uv) this._annotationCurrentLine.uv.push(uv);
             this._drawAnnotations();
         };
         document.addEventListener('mousemove', this._docAnnotMoveHandler, { signal: this._listenerSignal });
 
         this._docAnnotUpHandler = () => {
-            if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.pts.length > 1) {
-                this._annotationLines.push(this._annotationCurrentLine);
+            if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.uv.length > 1) {
+                if (this._review.addStroke(this.currentFrame || 0, this._annotationCurrentLine.uv, this._annotationCurrentLine.color)) {
+                    this._persistReview();
+                } else {
+                    this._termLog?.('warn', '[Review] Mark limit reached; stroke not added.');
+                }
             }
             this._isAnnotating = false;
             this._annotationCurrentLine = null;
@@ -10170,7 +10197,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Shift+Alt+Click clears all annotations
         this.canvas.addEventListener('click', (eAnn) => {
             if (eAnn.altKey && eAnn.shiftKey) {
-                this._annotationLines = [];
+                this._review.clear('stroke');
+                this._persistReview();
                 this._probeMemory = [];
                 this.renderOverlay();
                 this._termLog?.('info', '[Annotation] All annotations and probes cleared.');
