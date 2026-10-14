@@ -27,7 +27,8 @@ export function mapCompareFrame(idx, countB, { aFps, bFps } = {}) {
     if (!(countB > 0)) return { index: -1, held: false };
     let i = Number.isFinite(idx) ? Math.max(0, Math.floor(idx)) : 0;
     if (finitePositive(aFps) && finitePositive(bFps) && Math.abs(aFps - bFps) > FPS_TOLERANCE) {
-        i = Math.round((i / aFps) * bFps);
+        // The B frame on screen at A's frame start: floor, not round (round picks a frame that has not started).
+        i = Math.floor((i / aFps) * bFps + 1e-6);
     }
     if (i > countB - 1) return { index: countB - 1, held: true };
     return { index: i, held: false };

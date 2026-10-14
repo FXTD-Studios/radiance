@@ -86,7 +86,7 @@ export function analyzeFrame(frame, options = {}) {
     const pixels = width * height;
     const colourCh = channels === 4 ? 3 : channels;
     let bad = 0, over = 0, under = 0, finiteSamples = 0, maxVal = -Infinity, minVal = Infinity;
-    let alphaOut = 0, alphaPixels = 0, premultBad = 0;
+    let alphaOut = 0, alphaPixels = 0, partial = 0, premultBad = 0;
 
     for (let i = 0; i < pixels; i++) {
         const base = i * channels;
@@ -107,8 +107,10 @@ export function analyzeFrame(frame, options = {}) {
             // premultiplied colour cannot exceed its alpha: a result above it is
             // either straight (unpremultiplied) data or a bad composite
             const r = data[base], g = data[base + 1], b = data[base + 2];
-            if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)
-                && Math.max(r, g, b) > a + o.alpha.tolerance && a < 1 - o.alpha.tolerance) premultBad++;
+            if (a < 1 - o.alpha.tolerance && Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                partial++;
+                if (Math.max(r, g, b) > a + o.alpha.tolerance) premultBad++;
+            }
         }
     }
 
@@ -138,17 +140,29 @@ export function analyzeFrame(frame, options = {}) {
     if (channels !== 4) {
         out.push(result('alpha_range', Status.NOT_APPLICABLE, { reason: 'no alpha channel' }),
             result('alpha_premultiplied', Status.NOT_APPLICABLE, { reason: 'no alpha channel' }));
+    } else if (alphaPixels === 0) {
+        out.push(notRun('alpha_range', 'no finite alpha samples'), notRun('alpha_premultiplied', 'no finite alpha samples'));
     } else {
         out.push(result('alpha_range', grade(alphaOut / alphaPixels, o.alpha.warnFraction, o.alpha.failFraction), {
             metric: `fraction of pixels with alpha outside 0..1 (tolerance ${o.alpha.tolerance})`,
             value: alphaOut / alphaPixels, threshold: { warn: o.alpha.warnFraction, fail: o.alpha.failFraction },
             limitations: 'Says nothing about whether the matte is correct, only that it is in range.',
         }));
-        const frac = premultBad / alphaPixels;
-        out.push(result('alpha_premultiplied', grade(frac, o.alpha.warnFraction, o.alpha.failFraction), {
+        const frac = partial ? premultBad / partial : 0;
+        if (partial === 0) {
+            out.push(result('alpha_premultiplied', Status.NOT_APPLICABLE, { reason: 'no partly transparent pixels' }));
+        } else if (maxVal > 1 + o.alpha.tolerance) {
+            // Premultiplied scene-linear colour may legitimately exceed alpha
+            // (a straight value of 4.0 at alpha 0.5 is 2.0), so the rule only
+            // holds for data in 0..1. Report the count, claim nothing.
+            out.push(result('alpha_premultiplied', Status.INDETERMINATE, {
+                reason: 'colour values above 1.0: colour above alpha is legitimate in premultiplied HDR, so the test cannot decide',
+                value: frac,
+            }));
+        } else out.push(result('alpha_premultiplied', grade(frac, o.alpha.warnFraction, o.alpha.failFraction), {
             metric: 'fraction of partly transparent pixels whose colour exceeds alpha',
             value: frac, threshold: { warn: o.alpha.warnFraction, fail: o.alpha.failFraction },
-            limitations: 'Straight (unpremultiplied) alpha fails this on purpose; it is a test of the premultiplied assumption, not of the image.',
+            limitations: 'Straight (unpremultiplied) alpha fails this on purpose; it is a test of the premultiplied assumption, not of the image. Only meaningful for data in 0..1.',
         }));
     }
     return out;

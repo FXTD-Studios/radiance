@@ -136,7 +136,7 @@ test('parse/serialize are inverses for every preference default', () => {
 
 test('the viewer reads its preferences through the module, not key by key', () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
-    assert.match(src, /_loadViewerPrefs\(localStorage\)/);
+    assert.match(src, /_loadViewerPrefs\(\(\(\) => \{ try \{ return localStorage; \} catch \{ return null; \} \}\)\(\)\)/);
     for (const key of ['radiance_scope_mode', 'radiance_scope_scale', 'radiance_pixel_filter', 'radiance_time_display']) {
         assert.doesNotMatch(src, new RegExp(`=\\s*localStorage\\.getItem\\('${key}'\\)`), `${key} is still read directly`);
     }

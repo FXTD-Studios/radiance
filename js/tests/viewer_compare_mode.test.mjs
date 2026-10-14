@@ -34,7 +34,7 @@ function methodSource(name) {
 }
 
 const METHODS = ['setCompareMode', '_applyCompareToRenderer', '_hasCompareB', 'pinReference',
-    'releaseReference', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode'];
+    'releaseReference', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode', '_compareRates'];
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from '../radiance_compare.js';
 const Proto = new Function('_mapCompareFrame', '_compareGeometry',
     `return class { ${METHODS.map(methodSource).join('\n')} }`)(_mapCompareFrame, _compareGeometry);
@@ -217,7 +217,33 @@ test('releasing the context on teardown is not reported as a failure', () => {
 
 test('B frame rate comes from the node message and retimes compare', () => {
     assert.match(src, /viewer\.compareFrameRate = Number\(message\.compare_fps\?\.\[0\]\) \|\| null/);
-    assert.match(src, /aFps: this\._sourceFps \|\| this\.frameRate, bFps: this\.compareFrameRate/);
+    assert.match(src, /_compareRates\(\) \{\n\s+return \{ aFps: this\._sourceFps \|\| this\.frameRate, bFps: this\.compareFrameRate \};/);
     assert.deepEqual(_mapCompareFrame(30, 100, { aFps: 30, bFps: 24 }), { index: 24, held: false });
+    // floor, not round: A frame 3 at 24 fps (0.125 s) shows B frame 3 at 30 fps (0.100-0.133 s), not 4
+    assert.equal(_mapCompareFrame(3, 100, { aFps: 24, bFps: 30 }).index, 3);
     assert.deepEqual(_mapCompareFrame(30, 100, { aFps: 30, bFps: null }).index, 30);
+});
+
+test('paged B is read from A\'s slot when the rates differ (loaded already retimed)', () => {
+    // Paged: frameCompareImages[a] holds the B frame that goes with A frame a.
+    const frames = Array.from({ length: 10 }, (_, i) => ({ tag: `B-for-A${i}`, width: 4, height: 4 }));
+    const v = viewer({ compareFrames: frames });
+    Object.assign(v, { _compareEntries: frames.map(() => ({})), _sourceFps: 24, compareFrameRate: 30,
+        compareImage: null, compareHDR: null, frameCompareHDR: [] });
+    v._updateCompareForFrame(3, true);
+    assert.equal(v.compareImage.tag, 'B-for-A3');
+});
+
+test('B loaded whole is read at its own (retimed) index', () => {
+    const frames = Array.from({ length: 10 }, (_, i) => ({ tag: `B${i}`, width: 4, height: 4 }));
+    const v = viewer({ compareFrames: frames });
+    Object.assign(v, { _compareEntries: [], _sourceFps: 30, compareFrameRate: 24,
+        compareImage: null, compareHDR: null, frameCompareHDR: [] });
+    v._updateCompareForFrame(5, true);
+    assert.equal(v.compareImage.tag, 'B4');
+});
+
+test('the sequence loader loads the retimed B entry for a paged A frame', () => {
+    assert.match(src, /const cmpIdx = cmpN \? _mapCompareFrame\(idx, cmpN, this\._compareRates\(\)\)\.index : -1;/);
+    assert.match(src, /const i = this\._compareEntries\?\.length \? idx : mapped;/);
 });
