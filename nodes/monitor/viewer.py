@@ -491,6 +491,8 @@ class RadianceViewer:
         else:
             source_fps = _video_fps(image)
             image = _extract_tensor(image)
+        # B's own frame rate (VIDEO only) so the viewer can follow A by time, not by frame number.
+        compare_fps = _video_fps(compare_image) if compare_image is not None else None
         if compare_image is not None:
             compare_image = _extract_tensor(compare_image)
         if zdepth is not None:
@@ -804,6 +806,8 @@ class RadianceViewer:
                 "cut_indices": cut_indices,
                 "file_token": [file_token],
             }
+            if compare_fps:
+                ui_payload["compare_fps"] = [compare_fps]
             if warnings:
                 ui_payload["warnings"] = warnings
 
