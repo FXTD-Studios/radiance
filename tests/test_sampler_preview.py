@@ -18,20 +18,25 @@ ComfyUI's own preview:
   4. disable_pbar was wired to the preview, so any preview (a failed one
      too) switched off Comfy's console bar and its step count.
 
-Also covers "TAESD" fetching a missing decoder into models/vae_approx and
-previewing LTX-2 latents through taeltx2_3, which ComfyUI does not wire.
+Also covers "TAESD" fetching a missing decoder into models/vae_approx,
+previewing LTX-2 latents through taeltx2_3, which ComfyUI does not wire, and
+sending every latent frame of a video to the node's player.
 """
 
 from __future__ import annotations
 
+import base64
 import enum
 import inspect
+import io
 import os
 import re
 import sys
 import types
 import unittest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 import radiance.nodes.generate.sampler as sampler_mod
 from radiance.core.model_fetch import ModelFetchError
@@ -41,6 +46,7 @@ from radiance.nodes.generate.sampler import (
     _ensure_taesd_decoder,
     _make_phase_preview_callback,
     _resolve_latent_previewer,
+    _video_preview_frames,
 )
 
 
@@ -95,6 +101,21 @@ class _FakeTAEHVPreviewer(_FakePreviewer):
         self.taesd = taesd
 
 
+class _FakeLatent2RGB:
+    """Stands in for latent_preview.Latent2RGBPreviewer."""
+
+    def __init__(self, factors, bias=None, reshape=None):
+        self.latent_rgb_factors = factors
+        self.latent_rgb_factors_bias = bias
+        self.latent_rgb_factors_reshape = reshape
+
+
+def _jpeg_size(url):
+    from PIL import Image
+
+    return Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).size
+
+
 class _PreviewEnv:
     """Installs fake `latent_preview`, `comfy.cli_args`, `comfy.latent_formats`
     and `comfy.sd` modules, and a decoder lookup that finds *decoder*."""
@@ -118,6 +139,8 @@ class _PreviewEnv:
         lp = types.ModuleType("latent_preview")
         lp.get_previewer = self._get_previewer
         lp.TAEHVPreviewerImpl = _FakeTAEHVPreviewer
+        lp.Latent2RGBPreviewer = _FakeLatent2RGB
+        lp.MAX_PREVIEW_RESOLUTION = 512
 
         cli_args = types.ModuleType("comfy.cli_args")
         cli_args.args = self.args
@@ -428,6 +451,48 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
         self.assertEqual(pbar.updates, [(1, None, None)])
 
+    def test_a_video_latent_goes_to_the_node_player(self):
+        sent = []
+        server = types.ModuleType("server")
+        server.PromptServer = types.SimpleNamespace(instance=types.SimpleNamespace(
+            client_id="client", send_sync=lambda event, data, sid: sent.append((event, data, sid))))
+        pbar = _PbarRecorder()
+        with patch.dict(sys.modules, {"server": server}), \
+                patch.object(sampler_mod, "_video_preview_frames", return_value=["data:a", "data:b"]):
+            _make_phase_preview_callback(pbar, _FakePreviewer(), 0, "12:538", 3.0)(0, "latent", "x", 5)
+        self.assertEqual(sent, [("radiance.sampler.preview",
+                                 {"node": "12:538", "fps": 3.0, "frames": ["data:a", "data:b"]}, "client")])
+        self.assertEqual(pbar.updates, [(1, None, None)])
+
+    def test_the_loop_refreshes_near_5_percent_of_the_time_and_on_the_last_step(self):
+        """Every LTX 2.5 step cost 12 % of the sampling with a refresh each."""
+        sent = []
+        server = types.ModuleType("server")
+        server.PromptServer = types.SimpleNamespace(instance=types.SimpleNamespace(
+            client_id="client", send_sync=lambda event, data, sid: sent.append(data)))
+        previewer = _FakePreviewer()
+        pbar = _PbarRecorder()
+        # step 0 refreshes in 1 s (next at 20), step 1 at 5 waits, step 2 at 21
+        # refreshes, step 3 is the last one and refreshes anyway.
+        clock = [0.0, 1.0, 5.0, 21.0, 22.0, 23.0, 23.5]
+        with patch.dict(sys.modules, {"server": server}), \
+                patch.object(sampler_mod, "_video_preview_frames", return_value=["data:a"]), \
+                patch.object(sampler_mod.time, "perf_counter", side_effect=clock):
+            callback = _make_phase_preview_callback(pbar, previewer, 0, "538", 3.0)
+            for step in range(4):
+                callback(step, "latent", "x", 4)
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(previewer.calls, [])
+        self.assertEqual(pbar.updates, [(1, None, None), (2, None, None), (3, None, None), (4, None, None)])
+
+    def test_an_image_latent_keeps_its_preview_at_every_step(self):
+        previewer = _FakePreviewer()
+        with patch.object(sampler_mod, "_video_preview_frames", return_value=None):
+            callback = _make_phase_preview_callback(_PbarRecorder(), previewer, 0, "538", 24.0)
+            callback(0, "a", "x", 3)
+            callback(1, "b", "x", 3)
+        self.assertEqual(previewer.calls, [("JPEG", "a"), ("JPEG", "b")])
+
     def test_no_previewer_still_reports_progress(self):
         pbar = _PbarRecorder()
         callback = _make_phase_preview_callback(pbar, None, 0)
@@ -445,6 +510,58 @@ class TestPreviewCallbackPayload(unittest.TestCase):
         callback(2, "latent", "x", 10)
 
         self.assertEqual(pbar.updates, [(13, None, None)])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Every latent frame of a video, for the node's player
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestVideoPreviewFrames(unittest.TestCase):
+
+    @pytest.mark.real_torch
+    def test_an_image_latent_keeps_the_single_preview(self):
+        import torch
+
+        with _PreviewEnv():
+            self.assertIsNone(_video_preview_frames(_FakeLatent2RGB(torch.ones(3, 4)), torch.zeros(1, 4, 8, 8)))
+
+    @pytest.mark.real_torch
+    def test_latent2rgb_sends_every_latent_frame(self):
+        import torch
+
+        with _PreviewEnv():
+            urls = _video_preview_frames(_FakeLatent2RGB(torch.ones(3, 4)), torch.zeros(1, 4, 3, 6, 10))
+        self.assertEqual(len(urls), 3)
+        self.assertEqual(_jpeg_size(urls[0]), (10, 6))
+
+    @pytest.mark.real_torch
+    def test_taesd_decodes_about_2_mp_at_a_time_and_shrinks_the_frames(self):
+        """Four 1080p LTX frames per decode took 6 GB of VRAM mid-sampling."""
+        import torch
+
+        decoded = []
+
+        class _TAE:
+            def decode(self, x):
+                decoded.append(tuple(x.shape[:3]))
+                return torch.rand(x.shape[0], 1, x.shape[-2] * 32, x.shape[-1] * 32, 3)
+
+        with _PreviewEnv():
+            low = _video_preview_frames(_FakeTAEHVPreviewer(_TAE()), torch.zeros(1, 128, 6, 17, 30))
+            self.assertEqual(decoded, [(4, 128, 1), (2, 128, 1)])
+            decoded.clear()
+            high = _video_preview_frames(_FakeTAEHVPreviewer(_TAE()), torch.zeros(1, 128, 2, 34, 60))
+            self.assertEqual(decoded, [(1, 128, 1), (1, 128, 1)])
+        self.assertEqual(len(low), 6)
+        self.assertEqual(_jpeg_size(low[0]), (512, 290))
+        self.assertEqual(_jpeg_size(high[0]), (512, 290))
+
+    @pytest.mark.real_torch
+    def test_a_previewer_another_node_wrapped_keeps_its_own_preview(self):
+        import torch
+
+        with _PreviewEnv():
+            self.assertIsNone(_video_preview_frames(_FakePreviewer(), torch.zeros(1, 4, 3, 8, 8)))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -470,6 +587,10 @@ class TestProgressBarWiring(unittest.TestCase):
         self.assertIn("pbar_ref = comfy.utils.ProgressBar(", before)
         self.assertNotIn("if pbar_ref is None:", self.source)
         self.assertIn("_make_phase_preview_callback(", self.source)
+
+    def test_the_player_gets_the_node_id_and_a_real_time_rate(self):
+        self.assertIn("phase_start_step, unique_id, preview_fps", self.source)
+        self.assertIn("24 / model.model.latent_format.temporal_downscale_ratio", self.source)
 
     def test_raw_latent_tuple_is_no_longer_sent(self):
         self.assertNotIn("total_steps, (x0,)", self.source)
