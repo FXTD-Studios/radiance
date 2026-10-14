@@ -5,9 +5,12 @@ import logging
 import gc
 import errno
 import os
+import io
+import base64
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
+from PIL import Image
 import comfy.samplers
 import comfy.sample
 import comfy.model_management
@@ -675,7 +678,45 @@ def _resolve_latent_previewer(model, preview_method: str):
     return previewer
 
 
-def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
+# ALBABIT-FIX: a video latent previews as a loop of its latent frames in the
+# node's player (js/radiance_sampler_preview.js), not as its first frame.
+def _video_preview_frames(previewer, latent) -> Optional[List[str]]:
+    """Every latent frame of a 5D video latent as a JPEG data URL, or None when
+    *previewer* decodes a single image (an image latent, a previewer another
+    custom node wrapped)."""
+    import latent_preview  # ComfyUI top-level module
+
+    if latent.ndim != 5 or latent.shape[2] < 2:
+        return None
+    frames = latent[0].movedim(1, 0)  # [T, C, H, W]
+    if isinstance(previewer, latent_preview.TAEHVPreviewerImpl):
+        # ALBABIT-FIX: about 2 MP of LTX output per decode (4 frames at 960x544,
+        # 1 at 1080p): four 1080p frames at once took 6 GB of VRAM mid-sampling.
+        per_decode = max(1, 2048 // (frames.shape[-2] * frames.shape[-1]))
+        chunks = (previewer.taesd.decode(chunk.unsqueeze(2))[:, 0] for chunk in frames.split(per_decode))
+    elif isinstance(previewer, latent_preview.Latent2RGBPreviewer) and previewer.latent_rgb_factors_reshape is None:
+        bias = previewer.latent_rgb_factors_bias
+        rgb = torch.nn.functional.linear(frames.movedim(1, -1), previewer.latent_rgb_factors.to(frames),
+                                         None if bias is None else bias.to(frames))
+        chunks = [(rgb + 1.0) / 2.0]
+    else:
+        return None
+
+    urls = []
+    for chunk in chunks:
+        chunk = chunk.float()
+        scale = latent_preview.MAX_PREVIEW_RESOLUTION / max(chunk.shape[1:3])
+        if scale < 1:
+            chunk = torch.nn.functional.interpolate(chunk.movedim(-1, 1), scale_factor=scale, mode="bilinear",
+                                                    antialias=True).movedim(1, -1)
+        for frame in (chunk.clamp(0, 1) * 255).to(device="cpu", dtype=torch.uint8).numpy():
+            buf = io.BytesIO()
+            Image.fromarray(frame).save(buf, format="JPEG", quality=85)
+            urls.append("data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii"))
+    return urls
+
+
+def _make_phase_preview_callback(pbar, previewer, phase_start_step: int, node_id=None, fps: float = 3.0):
     """Progress callback that reports a global step and a real preview image.
 
     DEFECT GUARD: the old callback handed ProgressBar.update_absolute a bare
@@ -684,8 +725,10 @@ def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
     side. decode_latent_to_preview_image() returns the 3-tuple the protocol
     defines (PreviewImageTuple in comfy_execution/progress.py).
     """
+    next_loop = 0.0
 
     def callback(step, x0, x1, total_steps):
+        nonlocal next_loop
         global_step = step + phase_start_step
         preview = None
         if previewer is not None:
@@ -693,7 +736,21 @@ def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
                 latent = x0
                 if getattr(latent, "is_nested", False):
                     latent = latent.tensors[0]
-                preview = previewer.decode_latent_to_preview_image("JPEG", latent)
+                started = time.perf_counter()
+                frames = None
+                if node_id is not None and (started >= next_loop or step + 1 == total_steps):
+                    frames = _video_preview_frames(previewer, latent)
+                if frames is not None:
+                    from server import PromptServer
+                    server = PromptServer.instance
+                    server.send_sync("radiance.sampler.preview", {"node": node_id, "fps": fps, "frames": frames},
+                                     server.client_id)
+                    # ALBABIT-FIX: the loop refreshes once 19 times its own cost has passed,
+                    # about 5 % of the sampling: at every LTX 2.5 step it cost 12 %.
+                    ended = time.perf_counter()
+                    next_loop = ended + 19 * (ended - started)
+                elif started >= next_loop:  # between refreshes, a still frame would cover the loop
+                    preview = previewer.decode_latent_to_preview_image("JPEG", latent)
             except Exception as exc:
                 logger.debug(
                     "[Radiance] Preview decode failed at step %d (%s: %s); "
@@ -918,7 +975,7 @@ class RadianceSamplerPro:
                     "downloaded once (3 to 46 MB) when it is missing unless RADIANCE_ALLOW_DOWNLOADS=0, and falls back to "
                     "Latent2RGB for a model that has none. Latent2RGB is a coarse color preview that needs no file. "
                     "None sends no Radiance preview, only ComfyUI's progress bar. "
-                    "Video models show their first frame, or every frame with VideoHelperSuite's animated previews.")}),
+                    "Video models play their latent frames in a loop under the node: click it to pause, drag the bar to pick a moment.")}),
 
                 "noise_type": (
                     NOISE_TYPES,
@@ -2339,9 +2396,13 @@ class RadianceSamplerPro:
                     preview_method,
                 )
 
+        # ALBABIT-FIX: a video loop plays 24 fps over the latent's temporal
+        # compression: 3 latent frames a second for LTX, its real time.
+        preview_fps = 24 / model.model.latent_format.temporal_downscale_ratio if previewer_ref is not None else None
+
         def create_phase_callback(phase_start_step):
             return _make_phase_preview_callback(
-                pbar_ref, previewer_ref, phase_start_step
+                pbar_ref, previewer_ref, phase_start_step, unique_id, preview_fps
             )
 
         current_latent = work_latent
