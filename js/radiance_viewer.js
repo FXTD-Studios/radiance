@@ -1104,6 +1104,9 @@ class RadianceViewer {
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
+        this.frameNormalImages = [];   // Normal pass frames (display-encoded)
+        this.normalImage = null;       // Current normal frame; drawn when channel === 'normal'
+        this._normalEntries = [];
         this.showZdepth = false;       // Toggle for zdepth display
 
         // ── Real-time Video Playback ──────────────────────────────────────────
@@ -7436,12 +7439,13 @@ else:
      * eviction the slots are nulled, which is what actually releases the
      * Float32Array and lets the tab survive a 10,000-frame shot.
      */
-    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null) {
+    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null, normalEntries = null) {
         if (this._frameWindow) this._frameWindow.clear();
         this._hdrFallbackReasons = [];
         this._bracketByFrame = bracketByFrame || new Map();
         this._zdepthEntries = Array.isArray(zdepthEntries) ? zdepthEntries : [];
         this._compareEntries = Array.isArray(compareEntries) ? compareEntries : [];
+        this._normalEntries = Array.isArray(normalEntries) ? normalEntries : [];
         this._compareShown = false;
 
         this._frameWindow = new _RadianceFrameWindow({
@@ -7456,6 +7460,7 @@ else:
                 this.frameBracketImages.low[idx] = payload.bracketLow || null;
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
+                this.frameNormalImages[idx] = payload.normal || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
                 if (payload.compareHdr) this.frameCompareHDR[idx] = payload.compareHdr;
                 if (payload.compare) {
@@ -7485,6 +7490,7 @@ else:
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
+                this.frameNormalImages[idx] = null;
                 if (this._compareEntries.length) {
                     this.frameCompareImages[idx] = null;
                     if (this.frameCompareHDR) this.frameCompareHDR[idx] = null;
@@ -7737,6 +7743,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const depthEntry = this._zdepthEntries ? this._zdepthEntries[idx] : null;
         const compareEntry = this._compareEntries ? this._compareEntries[idx] : null;
+        const normalEntry = this._normalEntries ? this._normalEntries[idx] : null;
 
         return Promise.all([
             imgPromise,
@@ -7746,7 +7753,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(depthEntry),
             loadBracket(compareEntry),
             this._loadCompareFloat(compareEntry),
-        ]).then(([img, hdr, low, high, depth, compare, compareHdr]) => {
+            loadBracket(normalEntry),
+        ]).then(([img, hdr, low, high, depth, compare, compareHdr, normalImg]) => {
             if (this.generationID !== generation) return null;
             if (!img && !hdr) {
                 // Neither the picture nor its proxy: say why, rather than
@@ -7764,6 +7772,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
+            payload.normal = normalImg;
             payload.compare = compare;
             if (compare && compareEntry) {
                 compare.source_width = compareEntry.source_width;
@@ -7832,6 +7841,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         const depth = this.frameZdepthImages && this.frameZdepthImages[idx];
         this.zdepthImage = depth || null;
         if (depth && this.renderer) this.renderer.loadDepthTexture(depth);
+        this.normalImage = (this.frameNormalImages && this.frameNormalImages[idx]) || null;
+        if (this.channel === 'normal') this.renderOverlay();
 
         this._probeInvalidate && this._probeInvalidate();
 
@@ -7870,7 +7881,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const images = message?.radiance_images;
         if (!token || !Array.isArray(images) || !images.length) return null;
         const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
-        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_compare ? 'compare'
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_normal ? 'normal' : e.is_compare ? 'compare'
             : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
         const groups = new Map();
         for (const e of images) {
@@ -8453,7 +8464,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!this.image) return;
 
         if (format === 'exr') {
-            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth);
+            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal);
             if (imgData && imgData.exr_filename) {
                 // Use dedicated EXR location metadata when available.
                 // Falls back to the PNG thumbnail's subfolder/type so older
@@ -9398,6 +9409,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         const w = this.overlayCanvas.width, h = this.overlayCanvas.height;
         ctx.clearRect(0, 0, w, h);
 
+        // 3D Normal channel: the encoded normal pass drawn as data, with no view
+        // transform, grade or scope applied. Scopes and probe still read the picture.
+        if (this.channel === 'normal' && this.normalImage) this._drawNormalChannel(ctx);
+
         // Aspect matte first: it dims the picture, and the guides drawn after
         // it must stay legible on top.
         if (this.matteMode && this.matteMode !== 'off') this.drawAspectMatte(ctx);
@@ -9442,6 +9457,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Strokes are stored per frame in image UV, so they follow zoom, pan and frame changes.
         const _live = (this._isAnnotating && this._annotationCurrentLine) ? [this._annotationCurrentLine] : [];
         this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
+    }
+
+    _drawNormalChannel(ctx) {
+        const img = this.normalImage;
+        if (!img || !this.imageWidth || !this.imageHeight) return;
+        ctx.save();
+        ctx.imageSmoothingEnabled = this.zoom < 1;
+        ctx.drawImage(img, this.panX, this.panY, this.imageWidth * this.zoom, this.imageHeight * this.zoom);
+        ctx.restore();
     }
 
     _reviewView() {
@@ -12691,6 +12715,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         else if (this.zebra) { borderColor = '#FF4444'; label = 'ZEBRA'; }
         else if (this.focusPeaking) { borderColor = '#FF6600'; label = 'FOCUS PEAK'; }
         else if (this.showZdepth) { borderColor = '#00BBFF'; label = 'Z-DEPTH'; }
+        else if (this.channel === 'normal') { borderColor = '#8888FF'; label = 'NORMAL'; }
         else if (this.gamutWarning) { borderColor = '#FF00FF'; label = 'GAMUT WARN'; }
         else if (this.clippingMonitor) { borderColor = '#FF2222'; label = 'CLIPPING'; }
 
@@ -13808,8 +13833,8 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _getCurrentResult() {
-        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth)
-            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth)
+        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal)
+            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth && !d.is_normal)
             || {};
     }
 
@@ -13834,6 +13859,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         add('Luma', 'Y', 'luma', ch >= 1);
         const hasDepth = !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
         add('Depth', 'Z', 'depth', hasDepth, 'depth');
+        add('Normal', 'N', 'normal', !!(this.normalImage || this.frameNormalImages?.some(Boolean)), 'normal');
 
         const metaChannels = this.hdrData?.metadata?.channels || this.hdrData?.channel_names || [];
         if (Array.isArray(metaChannels)) {
@@ -23703,6 +23729,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.frameImages = null;
         this.frameCompareImages = null;
         this.frameZdepthImages = null;
+        this.frameNormalImages = null;
+        this.normalImage = null;
         this.frameBracketImages = { low: [], high: [] };
         this.imageData = null;
         this.hdrData = null;
@@ -24103,9 +24131,10 @@ app.registerExtension({
             // Separate main images from compare, brackets, and zdepth images.
             // Exposure brackets are support frames, not timeline frames.
             const bracketImages = message.radiance_images.filter(img => img.bracket_label);
-            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.bracket_label);
+            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.is_normal && !img.bracket_label);
             const compareImages = message.radiance_images.filter(img => img.is_compare);
             const zdepthImages = message.radiance_images.filter(img => img.is_zdepth);
+            const normalImages = message.radiance_images.filter(img => img.is_normal);
 
             // Reset frame arrays
             viewer.frameImages = [];
@@ -24113,6 +24142,9 @@ app.registerExtension({
             viewer.frameCompareHDR = [];
             viewer.compareHDR = null;
             viewer.frameZdepthImages = [];
+            viewer.frameNormalImages = [];
+            viewer.normalImage = null;
+            if (viewer.channel === 'normal' && !normalImages.length) viewer.channel = 'rgb';
             viewer.frameBracketImages = { low: [], high: [] };
             viewer.frameHDRData = [];
             viewer.totalFrames = mainImages.length;
@@ -24193,7 +24225,7 @@ app.registerExtension({
             const pageCompare = compareImages.length >= mainImages.length;
             if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
             viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
-                pageCompare ? compareImages : null);
+                pageCompare ? compareImages : null, normalImages);
 
             // Load compare images
             if (!pageCompare) compareImages.forEach((imgData, idx) => {

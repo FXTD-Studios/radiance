@@ -322,6 +322,11 @@ class RadianceViewer:
                     image_video_type,
                     {"tooltip": "Z-Depth map to display when pressing Z button"},
                 ),
+                "normal": (
+                    image_video_type,
+                    {"tooltip": "Normal pass for the 3D Normal channel. Signed (-1..1) or "
+                                "encoded (0..1) is detected from the values and shown in the viewer."},
+                ),
                 # ── Exposure bracketing ────────────────────────────────────
                 # This was a function default of True with no entry in
                 # INPUT_TYPES at all, so there was no widget and no way to turn
@@ -447,6 +452,7 @@ class RadianceViewer:
         # Compare / Depth
         compare_image: Optional[Any] = None,
         zdepth: Optional[Any] = None,
+        normal: Optional[Any] = None,
         # Defaults to off and now matches the INPUT_TYPES widget. It used to
         # default to True with no widget behind it, so it could not be turned
         # off from the graph.
@@ -489,6 +495,8 @@ class RadianceViewer:
             compare_image = _extract_tensor(compare_image)
         if zdepth is not None:
             zdepth = _extract_tensor(zdepth)
+        if normal is not None:
+            normal = _extract_tensor(normal)
 
         # 3.5.0: float_precision is the visible widget. The legacy bit_depth
         # keyword is still accepted from scripts. Half is the default: RHDR
@@ -655,6 +663,12 @@ class RadianceViewer:
                 )
                 images_list.extend(zdepth_list)
 
+            # Normals: data, never through a view transform (see _process_normal_image).
+            if normal is not None:
+                images_list.extend(self._process_normal_image(
+                    normal, output_dir, use_16bit=use_16bit, use_32bit=use_32bit,
+                    save_hdr_sidecar=save_hdr_sidecar, file_token=file_token))
+
             # ── Build output IMAGE ──
             output_image = image
 
@@ -768,7 +782,7 @@ class RadianceViewer:
             cmp_enc, cmp_cs = (resolve_viewer_input_space(input_space, compare_image)
                                if compare_image is not None else (source_encoding, source_colorspace))
             for _entry in images_list:
-                if not isinstance(_entry, dict) or _entry.get("is_zdepth"):
+                if not isinstance(_entry, dict) or _entry.get("is_zdepth") or _entry.get("is_normal"):
                     continue
                 if _entry.get("is_compare"):
                     _entry["source_encoding"], _entry["source_colorspace"] = cmp_enc, cmp_cs
@@ -1295,6 +1309,67 @@ class RadianceViewer:
         result.extend(meta for meta in _prepare_in_order(depth_entry, depth_batch) if meta)
 
         return result
+
+    def _process_normal_image(
+        self,
+        normal: torch.Tensor,
+        output_dir: str,
+        use_16bit: bool = True,
+        use_32bit: bool = False,
+        save_hdr_sidecar: bool = False,
+        file_token: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Normal pass: a display PNG (n * 0.5 + 0.5) and, optionally, the unit vectors."""
+        from ...core.normal_map import prepare_normal
+
+        validation_error = self._validate_image(normal, "normal")
+        if validation_error:
+            logger.warning(validation_error)
+            return []
+        batch = normal.shape[0] if normal.dim() == 4 else 1
+
+        def normal_entry(idx: int) -> Optional[Dict[str, Any]]:
+            try:
+                frame = safe_tensor_to_numpy(normal[idx] if normal.dim() == 4 else normal)
+                unit, display, info = prepare_normal(frame)
+                unique_id = file_token or uuid.uuid4().hex[:12]
+                filename = f"Radiance_normal_{unique_id}_{idx}.png"
+                try:
+                    filepath = safe_join(output_dir, filename)
+                except ValueError as e:
+                    logger.error(f"Invalid normal path: {e}")
+                    return None
+                try:
+                    ok = False
+                    if use_16bit:
+                        ok = save_16bit_png(filepath, (display * BIT_16_MAX).astype(np.uint16))
+                    if not ok:
+                        from PIL import Image as PILImage
+                        PILImage.fromarray((display * BIT_8_MAX).astype(np.uint8), mode="RGB").save(
+                            filepath, compress_level=DEFAULT_PNG_COMPRESSION)
+                except (IOError, OSError) as e:
+                    logger.warning(f"Failed to save normal frame {idx}: {e}")
+                    return None
+                meta: Dict[str, Any] = {
+                    "filename": filename, "subfolder": "", "type": "temp",
+                    "is_normal": True, "frame": idx,
+                    "bit_depth": 16 if use_16bit else 8,
+                    "normal_input": info["input"],
+                    "normal_invalid_pixels": info["invalid_pixels"],
+                }
+                if save_hdr_sidecar:
+                    rhdr_name = f"Radiance_normal_{unique_id}_{idx}_float.rhdr"
+                    try:
+                        _rhdr.write(safe_join(output_dir, rhdr_name), unit, fp32=use_32bit, level=0)
+                        meta["hdr_sidecar"] = rhdr_name
+                    except (IOError, OSError, ValueError) as e:
+                        logger.warning(f"Failed to save normal sidecar {idx}: {e}")
+                return meta
+            except (RuntimeError, ValueError) as e:
+                logger.warning(f"Error processing normal frame {idx}: {e}")
+                return None
+
+        return [m for m in _prepare_in_order(normal_entry, batch) if m]
 
     # ─────────────────────────────────────────────────────────────────────
     # Bit Depth Conversion
