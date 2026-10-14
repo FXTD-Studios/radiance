@@ -37,6 +37,16 @@ else:
     if not hasattr(fp, "get_annotated_filepath"): fp.get_annotated_filepath = lambda name: name
     if not hasattr(fp, "exists_annotated_filepath"): fp.exists_annotated_filepath = lambda name: True
 
+def _fake_writer(*args, **kwargs):
+    """Stands in for _save_exr / _save_pil_image: the real ones write the file they are given.
+
+    The nodes now write to a hidden temporary sibling and replace the final
+    name only if the file exists, so a mock that writes nothing no longer
+    passes for a writer.
+    """
+    Path(args[1]).write_bytes(b"x")
+
+
 from radiance.tools.nuke_connector import NukeConnector, validate_nuke_identifier, _sanitize_nuke_string
 from radiance.nodes.pipeline.dcc import RadianceMCP, _push_to_nuke
 from radiance.nodes.pipeline.studio_integrations import RadianceNukeSend, RadianceDaVinciSend
@@ -133,7 +143,7 @@ def test_nuke_connector_load_exr(mock_socket_cls):
 #  2. RadianceNukeSend Node Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-@patch("radiance.nodes.pipeline.studio_integrations._save_exr")
+@patch("radiance.nodes.pipeline.studio_integrations._save_exr", side_effect=_fake_writer)
 @patch("radiance.tools.nuke_connector.NukeConnector.load_exr")
 @pytest.mark.real_torch
 def test_nuke_send_single_frame(mock_load_exr, mock_save_exr, tmp_path):
@@ -172,8 +182,8 @@ def test_nuke_send_single_frame(mock_load_exr, mock_save_exr, tmp_path):
 #  3. RadianceDaVinciSend Node Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-@patch("radiance.nodes.pipeline.studio_integrations._save_exr")
-@patch("radiance.nodes.pipeline.studio_integrations._save_pil_image")
+@patch("radiance.nodes.pipeline.studio_integrations._save_exr", side_effect=_fake_writer)
+@patch("radiance.nodes.pipeline.studio_integrations._save_pil_image", side_effect=_fake_writer)
 @pytest.mark.real_torch
 def test_davinci_send_formats(mock_save_pil, mock_save_exr, tmp_path):
     """Verify RadianceDaVinciSend successfully exports 8-bit PNG, 16-bit TIFF, and EXR."""
@@ -183,15 +193,21 @@ def test_davinci_send_formats(mock_save_pil, mock_save_exr, tmp_path):
     
     # 1. Test 8-bit PNG
     node.run(fake_image, folder, "test_png", "8bit", 1001)
-    mock_save_pil.assert_called_with(ANY, Path(folder) / "test_png.png", "8-bit PNG")
+    assert mock_save_pil.call_args.args[1].suffix == ".png"
+    assert mock_save_pil.call_args.args[2] == "8-bit PNG"
+    assert (Path(folder) / "test_png.png").is_file()
     
     # 2. Test 16-bit TIFF
     node.run(fake_image, folder, "test_tif", "16bit", 1001)
-    mock_save_pil.assert_called_with(ANY, Path(folder) / "test_tif.tif", "16-bit TIFF")
+    assert mock_save_pil.call_args.args[1].suffix == ".tif"
+    assert mock_save_pil.call_args.args[2] == "16-bit TIFF"
+    assert (Path(folder) / "test_tif.tif").is_file()
     
     # 3. Test EXR
     node.run(fake_image, folder, "test_exr", "EXR", 1001)
-    mock_save_exr.assert_called_with(ANY, Path(folder) / "test_exr.exr", half=True)
+    assert mock_save_exr.call_args.args[1].suffix == ".exr"
+    assert mock_save_exr.call_args.kwargs == {"half": True}
+    assert (Path(folder) / "test_exr.exr").is_file()
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  4. DCC Bridge (RadianceMCP) & Sequence Path Pattern Regex Fix Tests
@@ -217,7 +233,7 @@ def test_mcp_push_to_nuke_sequence_regex_fix():
         args, kwargs = mock_load.call_args
         assert kwargs["filepath"] == "C:/renders/frame.####.exr"
 
-@patch("radiance.nodes.pipeline.dcc._save_exr")
+@patch("radiance.nodes.pipeline.dcc._save_exr", side_effect=_fake_writer)
 @patch("radiance.tools.nuke_connector.NukeConnector.load_exr")
 @pytest.mark.real_torch
 def test_mcp_export_frames_flow(mock_load_exr, mock_save_exr, tmp_path):
