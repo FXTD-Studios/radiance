@@ -4185,11 +4185,17 @@ class RadianceViewer {
     _updateEngineBadge() {
         if (this._engineBadge) {
             const backend = (this._gpuBackend || 'none').toUpperCase();
-            this._engineBadge.textContent = backend === 'NONE' ? 'GPU: 2D' : `GPU: ${backend}`;
             const isWebGPU = this._gpuBackend === 'webgpu';
-            this._engineBadge.style.color = isWebGPU ? '#4ade80' : '#8fc7ff';
-            this._engineBadge.style.borderColor = isWebGPU ? 'rgba(74,222,128,0.36)' : 'rgba(143,199,255,0.32)';
-            this._engineBadge.style.background = isWebGPU ? 'rgba(74,222,128,0.1)' : 'rgba(143,199,255,0.08)';
+            // WebGPU is opt-in and incomplete (no masks, qualifiers, heatmap or
+            // OCIO), so it is labelled and drawn in the warning colour, not green.
+            this._engineBadge.textContent = backend === 'NONE' ? 'GPU: 2D'
+                : isWebGPU ? 'GPU: WEBGPU (experimental)' : `GPU: ${backend}`;
+            this._engineBadge.title = isWebGPU
+                ? 'WebGPU is experimental here: masks, qualifiers, the HDR heatmap and OpenColorIO are not implemented. Switch back under Settings > Renderer.'
+                : '';
+            this._engineBadge.style.color = isWebGPU ? '#f5a524' : '#8fc7ff';
+            this._engineBadge.style.borderColor = isWebGPU ? 'rgba(245,165,36,0.45)' : 'rgba(143,199,255,0.32)';
+            this._engineBadge.style.background = isWebGPU ? 'rgba(245,165,36,0.1)' : 'rgba(143,199,255,0.08)';
         }
     }
 
@@ -4508,6 +4514,7 @@ class RadianceViewer {
     // without blocking the initial UI render. WebGL remains the fallback for
     // browsers or driver stacks that cannot create a stable WebGPU device.
     async _tryWebGPUUpgrade() {
+        let _rollback = null;
         try {
             if (!navigator.gpu || typeof RadianceWebGPURenderer === 'undefined') return;
             if (!RadianceWebGPURenderer.isAvailable?.()) return;
@@ -4527,6 +4534,19 @@ class RadianceViewer {
             console.log('[Radiance] WebGPU renderer active; WebGL retained only as fallback.');
             const oldRenderer = this.renderer;
             const oldCanvas = this.glCanvas;
+            const oldBackend = this._gpuBackend;
+            const oldUseWebGL = this.useWebGL;
+            // Anything that throws between here and the end of the swap puts the
+            // WebGL renderer back; the old renderer is only destroyed last.
+            _rollback = () => {
+                this.glCanvas = oldCanvas;
+                this.renderer = oldRenderer;
+                this._gpuBackend = oldBackend;
+                this.useWebGL = oldUseWebGL;
+                try { wgpu.destroy?.(); } catch { /* already gone */ }
+                webgpuCanvas.remove();
+            };
+            wgpu.onDeviceLost = (info) => this._onGPUDeviceLost(info);
             this.glCanvas = webgpuCanvas;
             this.renderer = wgpu;
             this._gpuBackend = 'webgpu';
@@ -4555,9 +4575,27 @@ class RadianceViewer {
             this._updateBitDepthBadge();
             this.render();
         } catch (e) {
-            console.warn('[Radiance] WebGPU upgrade deferred:', e);
+            console.warn('[Radiance] WebGPU upgrade failed; staying on WebGL:', e);
+            if (_rollback) {
+                try { _rollback(); this.render(); } catch (e2) { console.warn('[Radiance] WebGPU rollback failed:', e2); }
+            }
             this._updateEngineBadge();
         }
+    }
+
+    /**
+     * The WebGPU device went away while it was the active renderer. There is no
+     * live fallback renderer to swap to, so say so instead of leaving a canvas
+     * that stopped drawing, and turn the preference off so the next load is WebGL.
+     */
+    _onGPUDeviceLost(info) {
+        if (this._gpuBackend !== 'webgpu') return;
+        try { localStorage.removeItem('radiance_prefer_webgpu'); } catch { /* storage blocked */ }
+        const why = info?.message || info?.reason || 'unknown reason';
+        this._showViewerMessage('context',
+            `The WebGPU device was lost (${why}), so the picture cannot be drawn. `
+            + 'WebGPU has been switched off for this browser: reload the page to continue on WebGL.');
+        this._termLog?.('error', `[Viewer] WebGPU device lost: ${why}. Reload to use WebGL.`);
     }
 
     // createUI continues — overlay, scope panel, terminal, etc.

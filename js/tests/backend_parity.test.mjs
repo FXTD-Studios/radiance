@@ -1,8 +1,8 @@
 /**
  * The two rendering backends must agree.
  *
- * Radiance ships a WebGL renderer and a WebGPU renderer, and WebGPU is the
- * *preferred* one — `_tryWebGPUUpgrade()` runs whenever `navigator.gpu` exists.
+ * Radiance ships a WebGL renderer (the default) and an opt-in WebGPU renderer:
+ * `_tryWebGPUUpgrade()` runs only when `radiance_prefer_webgpu` is set.
  * Nothing has ever compared their output. An audit of the two files found the
  * grade maths implemented four separate times, and they do not all agree:
  *

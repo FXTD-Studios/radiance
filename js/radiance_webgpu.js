@@ -712,6 +712,16 @@ class RadianceWebGPURenderer extends RadianceRenderer {
             this.device = await adapter.requestDevice({ requiredFeatures: features });
             this._textureFloatFormat = features.includes('float32-filterable') ? 'rgba32float' : 'rgba16float';
             this._cleanup.push(() => this.device.destroy());
+            // A lost device (driver reset, GPU removed, tab backgrounded too long)
+            // leaves a canvas that silently stops drawing. Tell the owner. A
+            // device we destroyed ourselves is not a loss: destroy() clears
+            // this.device first, so the identity check filters it out.
+            const lostDevice = this.device;
+            lostDevice.lost?.then((info) => {
+                if (this.device !== lostDevice) return;
+                this.lost = true;
+                try { this.onDeviceLost?.(info); } catch (e) { console.warn('[Radiance] onDeviceLost handler failed:', e); }
+            });
 
             this.context = this.canvas.getContext('webgpu');
             if (!this.context) {
