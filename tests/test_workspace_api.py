@@ -2040,21 +2040,23 @@ def test_version_list_survives_a_corrupt_backup_sidecar(ws):
     assert [v["status"] for v in versions] == ["WIP", "Backup"]
 
 
-def test_save_shot_status_swallows_a_write_failure(ws, monkeypatch):
+def test_save_shot_status_raises_on_a_write_failure(ws, monkeypatch):
+    """Phase 5 (E-10): a status that was not saved must not be reported as saved."""
     blocker = ws.root / "blocker"
     blocker.write_bytes(b"file, not a directory")
     monkeypatch.setattr(ws.m, "_shot_status_path",
                         lambda project: blocker / "sub" / ".shot_status.json")
 
-    ws.m._save_shot_status({"name": "X"}, {"SH010": "Final"})   # must not raise
+    with pytest.raises(OSError):
+        ws.m._save_shot_status({"name": "X"}, {"SH010": "Final"})
     assert blocker.read_bytes() == b"file, not a directory"
 
 
-def test_save_bins_swallows_a_write_failure(ws, monkeypatch):
+def test_save_bins_failure_is_reported_not_swallowed(ws, monkeypatch):
     monkeypatch.setattr(ws.m, "_ASSETS_BINS_PATH", ws.root)   # a directory
     resp = run(ws.m.create_asset_bin(Req(json_body={"name": "B"})))
-    assert resp.status == 200            # the failure is logged, not raised
-    assert ws.m._load_bins() == []       # ...and nothing was persisted
+    assert resp.status == 500, body(resp)    # the client is told, not given a success
+    assert ws.m._load_bins() == []           # ...and nothing was persisted
 
 
 def test_asset_roots_skips_a_getter_that_raises(ws, monkeypatch):
