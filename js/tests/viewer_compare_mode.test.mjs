@@ -214,3 +214,10 @@ test('releasing the context on teardown is not reported as a failure', () => {
     assert.match(gl, /if \(this\._destroyed\) return;[\s\S]{0,80}e\.preventDefault\(\)/);
     assert.match(gl, /this\._destroyed = true;\s*\n\s*try \{ this\.gl\.getExtension\('WEBGL_lose_context'\)/);
 });
+
+test('B frame rate comes from the node message and retimes compare', () => {
+    assert.match(src, /viewer\.compareFrameRate = Number\(message\.compare_fps\?\.\[0\]\) \|\| null/);
+    assert.match(src, /aFps: this\._sourceFps \|\| this\.frameRate, bFps: this\.compareFrameRate/);
+    assert.deepEqual(_mapCompareFrame(30, 100, { aFps: 30, bFps: 24 }), { index: 24, held: false });
+    assert.deepEqual(_mapCompareFrame(30, 100, { aFps: 30, bFps: null }).index, 30);
+});

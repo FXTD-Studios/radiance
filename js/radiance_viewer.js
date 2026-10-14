@@ -11039,7 +11039,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const n = Math.max(list.length, floats.length);
         if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const { index: i, held } = _mapCompareFrame(idx, n, { aFps: this.frameRate, bFps: this.compareFrameRate });
+        const { index: i, held } = _mapCompareFrame(idx, n, { aFps: this._sourceFps || this.frameRate, bFps: this.compareFrameRate });
         const img = list[i] || null, hdr = floats[i] || null;
         if (!img && !hdr) return;
         const heldChanged = held !== this._compareHeld || n !== this._compareCount;
@@ -24115,6 +24115,9 @@ app.registerExtension({
             }
             viewer._sequenceAudio = null;
             viewer._audioBlocked = false;
+            // A's rate and B's own rate (VIDEO inputs): compare follows A by time, not by frame number.
+            viewer._sourceFps = Number(message.audio_fps?.[0]) || Number(message.fps?.[0]) || null;
+            viewer.compareFrameRate = Number(message.compare_fps?.[0]) || null;
             const audio = message.audio?.[0];
             if (audio?.filename) {
                 viewer._sequenceAudio = new Audio(api.apiURL('/view?' + new URLSearchParams(audio)));
