@@ -11,6 +11,11 @@ import { escapeHtml as _escapeHtml } from "./radiance_dom_utils.js";
 // L1: the header's version, kept equal to pyproject by test_version_sync.py.
 import { RADIANCE_VERSION as _RADIANCE_VERSION } from "./radiance_version.js";
 import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radiance_timecode.js";
+import {
+    availableWorkspaces as _availableWorkspaces, resolveSaved as _resolveSavedMode,
+    workspaceById as _workspaceById,
+    defaultWorkspaceFor as _defaultWorkspaceFor,
+} from "./radiance_viewer_modes.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -2712,13 +2717,12 @@ class RadianceViewer {
         sw.setAttribute('role', 'group');
         sw.setAttribute('aria-label', 'Viewer mode');
         this._modeBtns = new Map();
-        [['simple', 'Simple', 'Picture, compare and playback only'],
-         ['advanced', 'Advanced', 'Every panel: grade, scopes, inspector, timeline tools']].forEach(([m, label, tip]) => {
+        _availableWorkspaces().forEach((w) => {
             const b = document.createElement('button');
-            b.type = 'button'; b.textContent = label; b.title = tip;
-            b.onclick = () => this.setUIMode(m, { grow: true });
+            b.type = 'button'; b.textContent = w.label; b.title = w.tip;
+            b.onclick = () => this.setWorkspace(w.id, { grow: true });
             sw.appendChild(b);
-            this._modeBtns.set(m, b);
+            this._modeBtns.set(w.id, b);
         });
         const brand = this.proMenuBar?.querySelector('.radiance-pro-brand');
         if (brand) brand.after(sw); else this.proMenuBar?.appendChild(sw);
@@ -2727,12 +2731,41 @@ class RadianceViewer {
         this.container.appendChild(this.simpleBar);
 
         const saved = this.node?.properties?.radiance_viewer_mode;
-        this.setUIMode(saved === 'advanced' ? 'advanced' : 'simple', { persist: !!saved });
+        const resolved = _resolveSavedMode(this.node?.properties);
+        this.workspace = resolved.workspace;
+        this.setUIMode(resolved.layout, { persist: !!saved });
     }
 
-    /** Switch between Simple and Advanced. Saved on the node unless `persist` is false. */
+    /**
+     * Go to a workspace. Review is the Simple layout; Color, Inspect and Compare
+     * are the Advanced layout and differ in what they focus first. Nothing is
+     * hidden or reset: the grade, compare state and loaded media are untouched.
+     */
+    setWorkspace(id, { persist = true, grow = false } = {}) {
+        const ws = _workspaceById(id);
+        if (!ws || !ws.available) return;
+        this.workspace = ws.id;
+        this.setUIMode(ws.layout, { persist, grow });
+        if (ws.layout === 'advanced') {
+            if (ws.tab) this._focusTab(ws.tab);
+            if (ws.compare && this._hasCompareB?.() && this.compareMode === 'none') this.setCompareMode('wipe');
+        }
+    }
+
+    /** Select a right-panel tab the way a click on it does. */
+    _focusTab(tabId) {
+        this.activeTab = tabId;
+        this.showZdepth = false;
+        this.renderer?.setShowDepth?.(false);
+        this._triggerRenderTabs?.();
+        this.render();
+    }
+
+    /** Switch between the Simple and Advanced layouts. Saved on the node unless `persist` is false. */
     setUIMode(mode, { persist = true, grow = false } = {}) {
         mode = mode === 'advanced' ? 'advanced' : 'simple';
+        // Keep the workspace in step with the layout it belongs to.
+        if (_workspaceById(this.workspace)?.layout !== mode) this.workspace = _defaultWorkspaceFor(mode);
         // Advanced lays out a menu, a tool rail and a 520 px panel beside the
         // picture; give it room when the user asks for it.
         if (grow && mode === 'advanced' && this.node?.size) {
@@ -2744,10 +2777,11 @@ class RadianceViewer {
         if (persist && this.node) {
             this.node.properties = this.node.properties || {};
             this.node.properties.radiance_viewer_mode = mode;
+            this.node.properties.radiance_viewer_workspace = this.workspace;
         }
-        this._modeBtns?.forEach((b, m) => {
-            b.classList.toggle('is-active', m === mode);
-            b.setAttribute('aria-pressed', String(m === mode));
+        this._modeBtns?.forEach((b, id) => {
+            b.classList.toggle('is-active', id === this.workspace);
+            b.setAttribute('aria-pressed', String(id === this.workspace));
         });
         this._syncCompareUI();
         this._syncSimpleTransport();
