@@ -5411,10 +5411,21 @@ class RadianceViewer {
                 const result = await response.json();
                 clearInterval(progressInterval);
 
-                if (result.status === 'success') {
+                // The server answers 'partial' when the master was written but a
+                // requested step was not (FX bake, CDL/AMF sidecar, upscale, a
+                // degraded EXR). That is not a failure and not a clean success:
+                // show what was skipped instead of "FAILED undefined".
+                const _dvWarnings = Array.isArray(result.warnings) ? result.warnings : [];
+                if (result.status === 'success' || result.status === 'partial') {
+                    const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
                     dvProgressBar.style.width = '100%';
-                    dvProgressLabel.textContent = '◎ EXPORT COMPLETE';
-                    this._termLog('success', `[DELIVERY] ${result.message}`);
+                    dvProgressLabel.textContent = _dvPartial
+                        ? '◎ EXPORT COMPLETE WITH WARNINGS'
+                        : '◎ EXPORT COMPLETE';
+                    if (_dvPartial) dvProgressBar.style.background = '#ffaa00';
+                    this._termLog(_dvPartial ? 'warn' : 'success', `[DELIVERY] ${result.message}`);
+                    for (const w of _dvWarnings) this._termLog('warn', `[DELIVERY] ${w}`);
+                    if (_dvPartial) this._showToast?.(`Delivered with ${_dvWarnings.length} warning(s): ${_dvWarnings.join(' ')}`, 'warn');
                     if (result.qc) {
                         const qcColor = result.qc.includes('[QC PASS]') ? '#00ff88' : '#ff4444';
                         this._termLog('system', `<span style="color: ${qcColor}">${result.qc}</span>`);
@@ -5429,7 +5440,7 @@ class RadianceViewer {
 
                     tabTerm.onclick(); // Show success in terminal
                 } else {
-                    this._termLog('error', `[DELIVERY FAILED] ${result.error}`);
+                    this._termLog('error', `[DELIVERY FAILED] ${result.error || result.message || 'no reason given'}`);
                     dvProgressLabel.textContent = '◎ EXPORT FAILED';
                     dvProgressBar.style.background = '#ff4444';
                     tabTerm.onclick();
