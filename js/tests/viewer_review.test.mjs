@@ -157,9 +157,11 @@ test('loading re-validates each mark and caps the count', () => {
 
 test('serialize refuses output over the size cap instead of writing it', () => {
     const s = new ReviewStore();
-    for (let i = 0; i < LIMITS.maxMarks; i++) s.addNote(i, 0.5, 0.5, 'y'.repeat(LIMITS.maxNoteChars));
-    // 500 notes x 500 chars is ~270 kB: under the cap, so it is written
+    for (let i = 0; i < 200; i++) s.addNote(i, 0.5, 0.5, 'y'.repeat(LIMITS.maxNoteChars));
+    // 200 full notes is ~110 kB: under the cap, so it is written
     assert.ok(s.serialize());
+    for (let i = 200; i < LIMITS.maxMarks; i++) s.addNote(i, 0.5, 0.5, 'y'.repeat(LIMITS.maxNoteChars));
+    assert.equal(s.serialize(), null);   // 500 full notes is over: refused, not truncated
     const big = new ReviewStore();
     for (let i = 0; i < 150; i++) big.addStroke(i, Array.from({ length: LIMITS.maxPointsPerStroke }, (_, k) => ({ u: k / 400, v: 0.123456789 })));
     assert.equal(big.serialize(), null);                               // too big: caller keeps the old saved copy
@@ -168,4 +170,11 @@ test('serialize refuses output over the size cap instead of writing it', () => {
 test('the marks are drawn, not baked: no pixel buffer is touched', () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_review.js'), 'utf8');
     assert.doesNotMatch(src, /getImageData|putImageData|\.data\[/);
+});
+
+test('stroke points are stored to 1e-4 of the frame, so saved marks stay small', () => {
+    const s = new ReviewStore();
+    const m = s.addStroke(0, [{ u: 0.123456789, v: 0.987654321 }, { u: 0.5, v: 0.5 }]);
+    assert.deepEqual(m.pts[0], { u: 0.1235, v: 0.9877 });
+    assert.ok(LIMITS.maxJsonChars <= 150000);
 });

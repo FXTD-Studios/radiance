@@ -36,14 +36,17 @@ export function mapCompareFrame(idx, countB, { aFps, bFps } = {}) {
 
 /**
  * How B sits against A. `fit` is the viewer's compareFit ('pixel' or 'fit').
+ * `stretched` is true for a renderer that ignores fit (WebGPU).
  * Returns { match, note }; note is null when the sizes agree.
  */
-export function compareGeometry(a, b, fit = 'pixel') {
+export function compareGeometry(a, b, fit = 'pixel', { stretched = false } = {}) {
     const aw = a?.width, ah = a?.height, bw = b?.width, bh = b?.height;
     if (![aw, ah, bw, bh].every((v) => Number.isFinite(v) && v > 0)) {
         return { match: true, note: null };            // sizes unknown: say nothing
     }
     if (aw === bw && ah === bh) return { match: true, note: null };
-    const how = fit === 'fit' ? 'scaled to fit A' : 'shown pixel for pixel, centred on A';
+    // `stretched`: the backend samples B across A's frame with no size-aware placement (WebGPU today).
+    const how = stretched ? 'stretched to A\'s frame (this renderer has no fit or pixel placement)'
+        : fit === 'fit' ? 'scaled to fit A' : 'shown pixel for pixel, centred on A';
     return { match: false, note: `B is ${bw}×${bh}, A is ${aw}×${ah}: B is ${how}.` };
 }

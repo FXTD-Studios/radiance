@@ -15,12 +15,15 @@
 
 export const REVIEW_VERSION = 1;
 export const LIMITS = Object.freeze({
-    maxMarks: 500, maxPointsPerStroke: 400, maxNoteChars: 500, maxLabelChars: 80, maxJsonChars: 400000,
+    // The saved JSON rides in the workflow, and so in every PNG ComfyUI writes
+    // with it: keep it small. 1e-4 of the frame is under half a pixel at 4K.
+    maxMarks: 500, maxPointsPerStroke: 200, maxNoteChars: 500, maxLabelChars: 80, maxJsonChars: 150000,
 });
 
 const KINDS = ['stroke', 'note', 'bookmark'];
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
+const round4 = (v) => Math.round(v * 1e4) / 1e4;
 
 /** view = { zoom, panX, panY, width, height }: canvas = uv * size * zoom + pan. */
 export function canvasToUV(x, y, view) {
@@ -60,7 +63,7 @@ export class ReviewStore {
     /** A stroke of UV points on a frame. Needs two points; returns the mark or null. */
     addStroke(frame, pts, color = '#ffee44') {
         if (!Number.isInteger(frame) || frame < 0 || !Array.isArray(pts)) return null;
-        const clean = pts.filter((p) => p && num(p.u) && num(p.v)).map((p) => ({ u: p.u, v: p.v }));
+        const clean = pts.filter((p) => p && num(p.u) && num(p.v)).map((p) => ({ u: round4(p.u), v: round4(p.v) }));
         if (clean.length < 2) return null;
         return this._add({ id: this._id(), kind: 'stroke', frame, color: String(color).slice(0, 16), pts: thinPoints(clean) });
     }
