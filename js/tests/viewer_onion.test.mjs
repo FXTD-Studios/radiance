@@ -44,10 +44,10 @@ test('settings are clamped and bad values fall back', () => {
 
 test('difference spec states its domain and gain, and rejects unknown values', () => {
     const s = differenceSpec({ domain: 'weird', gain: 3 });
-    assert.equal(s.domain, 'scene-linear');
+    assert.equal(s.domain, 'display');
     assert.equal(s.gain, 4);
-    assert.match(s.label, /\|A - B\| x4, scene-linear/);
-    assert.match(differenceSpec({ domain: 'display', gain: 8, mode: 'signed' }).label, /A - B x8, display-referred/);
+    assert.match(s.label, /\|A - B\| x4, display-referred/);
+    assert.match(differenceSpec({ domain: 'scene-linear', gain: 8, mode: 'signed' }).label, /A - B \(grey = equal\) x8, scene-linear/);
 });
 
 test('difference value', () => {
