@@ -70,8 +70,8 @@ function methodSource(name) {
     return rest.slice(0, rest.search(/\n    \}\n/)) + '\n    }';
 }
 
-const Proto = new Function('_workspaceById', '_defaultWorkspaceFor',
-    `return class { ${['setWorkspace', '_focusTab', 'setUIMode'].map(methodSource).join('\n')} }`)(_workspaceById, _defaultWorkspaceFor);
+const Proto = new Function('_workspaceById', '_defaultWorkspaceFor', '_suggestWorkspace',
+    `return class { ${['setWorkspace', '_focusTab', 'setUIMode', '_syncWorkspaceHint'].map(methodSource).join('\n')} }`)(_workspaceById, _defaultWorkspaceFor, suggestWorkspace);
 
 globalThis.requestAnimationFrame = () => 0;
 
@@ -82,8 +82,8 @@ function viewer({ hasB = false, compareMode = 'none' } = {}) {
         node: { properties: {}, size: [900, 600], setSize(s) { this.size = s; } },
         container: { classList: { toggle: (c, on) => (on ? cls.add(c) : cls.delete(c)), has: (c) => cls.has(c) } },
         _modeBtns: new Map(['review', 'color', 'inspect', 'compare'].map((id) => {
-            const b = { setAttribute() {} };
-            b.classList = { toggle(c, on) { b.on = on; } };
+            const b = { setAttribute() {}, classes: new Set(), title: '' };
+            b.classList = { toggle(c, on) { if (c === 'is-active') b.on = on; if (on) b.classes.add(c); else b.classes.delete(c); } };
             return [id, b];
         })),
         compareMode, activeTab: 'primaries', showZdepth: true, renderer: { setShowDepth() {} },
@@ -154,4 +154,33 @@ test('the switcher is built from the module, and the restore path is unchanged',
     assert.match(src, /_availableWorkspaces\(\)\.forEach\(\(w\) =>/);
     assert.match(src, /_resolveSavedMode\(this\.node\?\.properties\)/);
     assert.match(src, /setUIMode\?\.\(saved \|\| 'advanced'\)/);
+});
+
+test('a connected B puts a hint on Compare, never switches, and clears once Compare is opened', () => {
+    const v = viewer();
+    v.setWorkspace('review');
+    v._hasCompareInput = true;
+    v._compareHintSeen = false;
+    v._syncWorkspaceHint();
+    const cmp = v._modeBtns.get('compare');
+    assert.ok(cmp.classes.has('has-hint'));
+    assert.match(cmp.title, /A reference \(B\) is connected/);
+    assert.equal(v.workspace, 'review');                    // nothing switched
+    assert.equal(v.compareMode, 'none');
+    v.setWorkspace('compare');
+    v.setWorkspace('color');
+    assert.ok(!cmp.classes.has('has-hint'));                // seen for this run
+});
+
+test('no B, no hint', () => {
+    const v = viewer();
+    v._hasCompareInput = false;
+    v._syncWorkspaceHint();
+    assert.ok([...v._modeBtns.values()].every((b) => !b.classes.has('has-hint')));
+});
+
+test('a new run resets the hint unless Compare is already open', () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
+    assert.match(src, /viewer\._hasCompareInput = compareImages\.length > 0;/);
+    assert.match(src, /viewer\._compareHintSeen = viewer\.workspace === 'compare';/);
 });
