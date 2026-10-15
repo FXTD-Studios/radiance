@@ -204,3 +204,74 @@ test('a deleted viewer whose Grade and Inspector panels were open can be collect
         await page.close();
     }
 });
+
+test('Difference gain and signed mode change what the renderer draws', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        const msg = __frames(2, 64, 48);
+        for (let i = 0; i < 2; i++) msg.radiance_images.push({ filename: 'b_64x48_46.png', subfolder: '', type: 'temp', is_compare: true, frame: i });
+        n.onExecuted(msg);
+        await __until(() => v.image && v._hasCompareB(), 15000);
+        await __sleep(200);
+        const gl = v.renderer.gl;
+        const read = () => { v.render(); const px = new Uint8Array(4); gl.readPixels(32, 24, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return px[0]; };
+        const r = {};
+        v.setCompareMode('none'); r.a = read();
+        v.setCompareMode('b'); r.b = read();
+        v.setCompareMode('difference');
+        v.setDifference({ gain: 1, mode: 'abs' }); r.abs1 = read();
+        v.setDifference({ gain: 2 }); r.abs2 = read();
+        v.setDifference({ gain: 1, mode: 'signed' }); r.signed1 = read();
+        r.gainLabel = v._sbDiffGain.textContent; r.signLabel = v._sbDiffSigned.textContent;
+        r.shown = v._sbDiffGain.style.display !== 'none';
+        v.setDifference({ gain: 3 }); r.badGain = v.diffSpec.gain;      // not a step: falls back to 4
+        // equal A and B: pin A as B
+        v.setCompareMode('none'); v.pinReference(); v.setCompareMode('difference');
+        v.setDifference({ gain: 4, mode: 'abs' }); r.equalAbs = read();
+        v.setDifference({ mode: 'signed' }); r.equalSigned = read();
+        v.setCompareMode('none'); r.hiddenOff = v._sbDiffGain.style.display === 'none';
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    const d = Math.abs(out.a - out.b);
+    assert.ok(d > 10, `test premise: A ${out.a} and B ${out.b} differ`);
+    assert.ok(Math.abs(out.abs1 - d) <= 2, `|A-B| x1 is ${out.abs1}, expected ${d}`);
+    assert.ok(Math.abs(out.abs2 - Math.min(255, 2 * d)) <= 3, `|A-B| x2 is ${out.abs2}, expected ${2 * d}`);
+    const expectSigned = Math.round(127.5 + 0.5 * (out.a - out.b));
+    assert.ok(Math.abs(out.signed1 - expectSigned) <= 3, `signed x1 is ${out.signed1}, expected ${expectSigned}`);
+    assert.equal(out.gainLabel, 'x1'); assert.equal(out.signLabel, 'A-B'); assert.equal(out.shown, true);
+    assert.equal(out.badGain, 4);
+    assert.ok(out.equalAbs <= 2, `A against itself, |A-B| is ${out.equalAbs}`);
+    assert.ok(Math.abs(out.equalSigned - 128) <= 2, `A against itself, signed is ${out.equalSigned}, expected mid grey`);
+    assert.equal(out.hiddenOff, true, 'the difference controls show outside Difference');
+});
+
+test('onion skin draws the neighbouring frames, at their opacity, and not while comparing', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(5, 64, 48));
+        await __until(() => v.frameImages?.[0] && v.frameImages?.[1] && v.frameImages?.[2], 15000);
+        v.setFrame(1); await __sleep(100);
+        const ox = Math.round(v.panX + 32 * v.zoom), oy = Math.round(v.panY + 24 * v.zoom);
+        const px = () => Array.from(v.overlayCtx.getImageData(ox, oy, 1, 1).data);
+        const r = {};
+        v.setOnion({ enabled: true, before: 1, after: 0, tint: false, opacity: 0.4 }); v.renderOverlay();
+        r.one = px(); r.count = { ...v._onionDrawn };
+        v.setOnion({ before: 1, after: 1, tint: true }); v.renderOverlay();
+        r.two = { ...v._onionDrawn }; r.tinted = px();
+        v.setCompareMode('b'); v.renderOverlay(); r.whileB = { ...v._onionDrawn };
+        v.setCompareMode('none');
+        v.setOnion({ enabled: false }); v.renderOverlay(); r.off = px()[3];
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    // frame 0's preview is grey 100; at opacity 0.4 the overlay holds it with alpha ~102
+    assert.ok(Math.abs(out.one[0] - 100) <= 3 && Math.abs(out.one[3] - 102) <= 3, `onion pixel ${out.one}`);
+    assert.deepEqual(out.count, { drawn: 1, wanted: 1 });
+    assert.deepEqual(out.two, { drawn: 2, wanted: 2 });
+    assert.ok(out.tinted[0] > out.tinted[2], `tinted layers ${out.tinted}: before is red, after green, so blue is lowest`);
+    assert.deepEqual(out.whileB, { drawn: 0, wanted: 0 });
+    assert.equal(out.off, 0);
+});

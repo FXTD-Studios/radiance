@@ -9,7 +9,8 @@ export const ONION_DEFAULTS = Object.freeze({
 });
 export const DIFF_DOMAINS = Object.freeze(['scene-linear', 'display']);
 export const DIFF_GAINS = Object.freeze([1, 2, 4, 8, 16]);
-export const DIFF_DEFAULTS = Object.freeze({ domain: 'scene-linear', gain: 4, mode: 'abs' });
+// Display-referred is what the renderer measures today (A and B after the same view).
+export const DIFF_DEFAULTS = Object.freeze({ domain: 'display', gain: 4, mode: 'abs' });
 
 const clampInt = (v, lo, hi, d) => {
     const n = Math.trunc(Number(v));
@@ -59,7 +60,7 @@ export function differenceSpec(s = {}) {
     const mode = s.mode === 'signed' ? 'signed' : 'abs';
     return {
         domain, gain, mode,
-        label: `${mode === 'abs' ? '|A - B|' : 'A - B'} x${gain}, ${domain === 'display' ? 'display-referred' : 'scene-linear'}`,
+        label: `${mode === 'abs' ? '|A - B|' : 'A - B (grey = equal)'} x${gain}, ${domain === 'display' ? 'display-referred' : 'scene-linear'}`,
     };
 }
 
