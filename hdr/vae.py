@@ -95,7 +95,7 @@ import torch.nn.functional as F
 import json
 import logging
 import uuid
-from typing import Tuple, Dict, Any, Optional
+from typing import Callable, Tuple, Dict, Any, Optional
 
 from tqdm import tqdm
 
@@ -689,20 +689,26 @@ def _resolve_temporal_frames(temporal_size: Any, ts_px: Optional[int], temporal_
     return int(temporal_size)
 
 
-def _auto_video_tile(ts_px: int, lat_frames: int, temporal_compression: int, vram_budget_gb: float) -> Tuple[int, int]:
+def _auto_video_tile(ts_px: int, lat_frames: int, temporal_compression: int, vram_budget_gb: float,
+                     vae_fits: Callable[[int], bool]) -> Tuple[int, int]:
     """
     Auto tile and temporal chunk for a video decode, as (tile_px, latent_frames).
 
     ALBABIT-FIX: every temporal chunk boundary shows as a short dissolve, so
     shrink the spatial tile through the widget presets until the whole clip
     fits one chunk, and keep the smallest tile's chunk when none does.
+    ALBABIT-FIX: among those, prefer a tile the VAE's own decode estimate fits
+    (vae_fits); when none does, keep the first one, never split time for it.
     """
+    first_whole = None
     for tile in [ts_px] + [t for t in (1280, 1024, 768, 512) if t < ts_px]:
         frames = TileEngine.get_optimal_temporal_size(tile, temporal_compression, max_frames=lat_frames,
                                                       vram_budget_gb=vram_budget_gb)
         if frames >= lat_frames:
-            break
-    return tile, frames
+            if vae_fits(tile):
+                return tile, frames
+            first_whole = first_whole or (tile, frames)
+    return first_whole or (tile, frames)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2925,7 +2931,16 @@ class RadianceVAE4KDecode:
                 # size on the card's total VRAM, not on what that model leaves free right now.
                 video_budget_gb = comfy.model_management.get_total_memory(target_device) * 0.6 / (1024**3)
                 if tile_size == "Auto" and temporal_size == "Auto":
-                    ts_px, temporal_lat = _auto_video_tile(ts_px, lat_T, _temporal_compression, video_budget_gb)
+                    # ALBABIT-FIX: LTX-2.5's diffusion decoder fills a 32 GB card at 768 px and runs
+                    # at half speed; check the VAE's own estimate against comfy's 80% tiled budget.
+                    vae_budget = comfy.model_management.get_total_memory(target_device) * 0.8
+
+                    def vae_fits(px):
+                        lat_px = px // vae_factor
+                        shape = tuple(latent.shape[:3]) + (min(latent.shape[3], lat_px), min(latent.shape[4], lat_px))
+                        return vae.memory_used_decode(shape, vae.vae_dtype) <= vae_budget
+
+                    ts_px, temporal_lat = _auto_video_tile(ts_px, lat_T, _temporal_compression, video_budget_gb, vae_fits)
                 else:
                     temporal_lat = _resolve_temporal_frames(temporal_size, ts_px, _temporal_compression, video_budget_gb)
                 needs_spatial_tiling = not (pix_h <= ts_px and pix_w <= ts_px)
