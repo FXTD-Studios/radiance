@@ -54,14 +54,17 @@ These parts of the release gate need checks that cannot run in CI:
   the shipped source stop agreeing, so neither resolution can land without
   updating this list.
   Beyond masks, qualifiers and OCIO (3.5.0 audit), the WebGPU backend also
-  differs from WebGL in: no sRGB decode for 8-bit input; a 3D LUT read with the
-  wrong stride; the red curve applied to every channel; a transposed hue
-  matrix; misregistered bloom; and no heatmap, gamut/clip warnings, scope
+  differs from WebGL in: no sRGB decode for 8-bit input; the red curve
+  applied to every channel; a transposed hue matrix; misregistered bloom; and no heatmap, gamut/clip warnings, scope
   signal, viewer f-stop or scene-linear graded EXR, and compare shows only
   wipe there (B, Difference and Blink need `setCompareShow`, WebGL only).
   `FEATURE_PARITY` now says
   false. Porting these to WGSL is the remaining work; until then WebGL is the
   default and the tested path.
+  (4.0: the 3D LUT upload, which read RGB data with an RGBA stride and replaced
+  zeros with identity values, is fixed. Every gap above is listed once in
+  `js/radiance_backend_gaps.js`, which the viewer's WebGPU badge and its
+  Settings note are built from; the Scopes panel says what its scopes read.)
 
 - **Monolithic files.** `hdr/vae.py` (3324 lines), `nodes/io/write.py` (2972)
   and `nodes/monitor/viewer.py` (1220, with dynamic `globals().update()`
