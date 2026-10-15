@@ -388,6 +388,10 @@ jobs:
           js/tests/viewer_polish.test.mjs
           js/tests/grade_render.test.mjs
           js/tests/grade_panel_dom.test.mjs
+          js/tests/viewer_color.test.mjs
+          js/tests/sequence_load.test.mjs
+          js/tests/panel_dom.test.mjs
+          js/tests/viewer_v4_browser.test.mjs
 
   # ── YAML / TOML lint ────────────────────────────────────────────────────────
   lint-config:

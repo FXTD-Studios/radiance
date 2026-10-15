@@ -14,7 +14,7 @@ import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radian
 import {
     availableWorkspaces as _availableWorkspaces, resolveSaved as _resolveSavedMode,
     workspaceById as _workspaceById,
-    defaultWorkspaceFor as _defaultWorkspaceFor,
+    defaultWorkspaceFor as _defaultWorkspaceFor, suggestWorkspace as _suggestWorkspace,
 } from "./radiance_viewer_modes.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
@@ -2682,6 +2682,8 @@ class RadianceViewer {
                 background: transparent; border: 0; border-radius: 4px; padding: 0 10px; height: 26px; cursor: pointer; }
             .radiance-mode-switch button.is-active, .radiance-simple-bar button.is-active {
                 background: #1f3b57; color: #fff; }
+            .radiance-mode-switch button.has-hint::after { content: ''; display: inline-block; width: 6px; height: 6px;
+                border-radius: 50%; background: #f5a524; margin-left: 5px; vertical-align: middle; }
             .radiance-mode-switch button:focus-visible, .radiance-simple-bar button:focus-visible,
             .radiance-simple-bar input:focus-visible { outline: 2px solid #39aaff; outline-offset: 1px; }
             .radiance-simple-bar { display: none; flex: 0 0 auto; align-items: center; gap: 10px;
@@ -2787,9 +2789,28 @@ class RadianceViewer {
             b.classList.toggle('is-active', id === this.workspace);
             b.setAttribute('aria-pressed', String(id === this.workspace));
         });
+        if (this.workspace === 'compare') this._compareHintSeen = true;
+        this._syncWorkspaceHint();
         this._syncCompareUI();
         this._syncSimpleTransport();
         requestAnimationFrame(() => { this.resize?.(); if (this.image) this.fitToView?.(); });
+    }
+
+    /**
+     * A dot on a workspace button when the loaded media suggests it (a B input
+     * is connected: Compare). Only a hint: nothing switches. It goes once the
+     * person has opened that workspace for this run, and comes back on a new run.
+     */
+    _syncWorkspaceHint() {
+        if (!this._modeBtns) return;
+        const sug = this._compareHintSeen ? null
+            : _suggestWorkspace({ hasB: !!this._hasCompareInput }, this.workspace);
+        this._modeBtns.forEach((b, id) => {
+            const on = !!sug && sug.workspace === id;
+            b.classList.toggle('has-hint', on);
+            const base = _workspaceById(id)?.tip || '';
+            b.title = on ? `${base}. ${sug.reason}` : base;
+        });
     }
 
     _createSimpleBar() {
@@ -24295,6 +24316,10 @@ app.registerExtension({
             if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
             viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
                 pageCompare ? compareImages : null, normalImages);
+            // The node's compare_image (not a pinned still): hint at Compare for this run.
+            viewer._hasCompareInput = compareImages.length > 0;
+            viewer._compareHintSeen = viewer.workspace === 'compare';
+            viewer._syncWorkspaceHint?.();
 
             // Load compare images
             if (!pageCompare) compareImages.forEach((imgData, idx) => {
