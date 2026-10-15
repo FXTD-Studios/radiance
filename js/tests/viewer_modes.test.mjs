@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     WORKSPACES, availableWorkspaces, normalizeLayout, defaultWorkspaceFor,
-    resolveSaved, propsFor, suggestWorkspace, workspaceById,
+    resolveSaved, propsFor, suggestWorkspace, workspaceById, tabsFor, workspaceForTab, PANEL_TABS,
 } from '../radiance_viewer_modes.js';
 
 test('QC is defined but never offered', () => {
@@ -70,8 +70,9 @@ function methodSource(name) {
     return rest.slice(0, rest.search(/\n    \}\n/)) + '\n    }';
 }
 
-const Proto = new Function('_workspaceById', '_defaultWorkspaceFor', '_suggestWorkspace',
-    `return class { ${['setWorkspace', '_focusTab', 'setUIMode', '_syncWorkspaceHint'].map(methodSource).join('\n')} }`)(_workspaceById, _defaultWorkspaceFor, suggestWorkspace);
+const Proto = new Function('_workspaceById', '_defaultWorkspaceFor', '_suggestWorkspace', '_tabsFor', '_workspaceForTab',
+    `return class { ${['setWorkspace', '_visibleReferenceTab', '_setReferenceTab', 'setUIMode', '_syncWorkspaceHint'].map(methodSource).join('\n')} }`)(
+    _workspaceById, _defaultWorkspaceFor, suggestWorkspace, tabsFor, workspaceForTab);
 
 globalThis.requestAnimationFrame = () => 0;
 
@@ -89,6 +90,7 @@ function viewer({ hasB = false, compareMode = 'none' } = {}) {
         compareMode, activeTab: 'primaries', showZdepth: true, renderer: { setShowDepth() {} },
         calls: [], _syncCompareUI() {}, _syncSimpleTransport() {}, render() { this.calls.push('render'); },
         _triggerRenderTabs() { this.calls.push('tabs'); },
+        _renderReferenceRightHUD() { this.calls.push('hud'); }, _syncPanelButton() {}, _syncRail() {},
         _hasCompareB: () => hasB,
         setCompareMode(m) { this.compareMode = m; },
     });
@@ -105,12 +107,12 @@ test('Review is the Simple layout and stores the old key', () => {
     assert.equal(v.node.properties.radiance_viewer_workspace, 'review');
 });
 
-test('Inspect uses the Advanced layout, focuses the probe tab, and grows the node', () => {
+test('Inspect uses the Advanced layout, opens the Inspector tab, and grows the node', () => {
     const v = viewer();
     v.setWorkspace('inspect', { grow: true });
     assert.ok(!v._cls.has('radiance-mode-simple'));
-    assert.equal(v.activeTab, 'probe');
-    assert.equal(v.showZdepth, false);
+    assert.equal(v._referenceRightTab, 'inspector');
+    assert.ok(v.calls.includes('hud'), 'the right panel was not redrawn for the workspace');
     assert.equal(v.node.properties.radiance_viewer_mode, 'advanced');
     assert.deepEqual(v.node.size, [1180, 760]);
 });
@@ -183,4 +185,39 @@ test('a new run resets the hint unless Compare is already open', () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
     assert.match(src, /viewer\._hasCompareInput = compareImages\.length > 0;/);
     assert.match(src, /viewer\._compareHintSeen = viewer\.workspace === 'compare';/);
+});
+
+test('each Advanced workspace shows its own panel tabs, in panel order', () => {
+    assert.deepEqual(tabsFor('color'), ['grade', 'masks', 'effects', 'scopes']);
+    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(tabsFor('compare'), ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(tabsFor('nope'), [...PANEL_TABS]);
+    for (const w of WORKSPACES.filter((x) => x.tabs)) assert.ok(w.tabs.includes(w.tab), `${w.id} opens on a tab it hides`);
+    // every tab is reachable from some workspace
+    for (const t of PANEL_TABS) assert.ok(workspaceForTab(t, 'review'), `${t} is in no workspace`);
+});
+
+test('a shortcut to a hidden tab moves to the workspace that has it', () => {
+    const v = viewer();
+    v.setWorkspace('inspect');
+    v._setReferenceTab('grade');                        // Alt+2 from Inspect
+    assert.equal(v.workspace, 'color');
+    assert.equal(v._referenceRightTab, 'grade');
+    v._setReferenceTab('scopes');                       // shown in Color: stays
+    assert.equal(v.workspace, 'color');
+    assert.equal(v._referenceRightTab, 'scopes');
+    assert.equal(v.compareMode, 'none');
+});
+
+test('a saved tab the workspace hides falls back to its first tab', () => {
+    const v = viewer();
+    v.setWorkspace('color');
+    assert.equal(v._visibleReferenceTab('inspector'), 'grade');
+    assert.equal(v._visibleReferenceTab('masks'), 'masks');
+});
+
+test('the panel only builds the buttons of the workspace\'s tabs', () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
+    assert.match(src, /\]\.filter\(\(\[id\]\) => !shown \|\| shown\.includes\(id\)\)\.forEach\(\(\[id, label, action\]\)/);
+    assert.doesNotMatch(src, /_focusTab\(/, 'the dead legacy-HUD tab focus is back');
 });

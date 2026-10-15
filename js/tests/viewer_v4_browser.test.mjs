@@ -149,3 +149,58 @@ test('a paged B at another frame rate is loaded and shown by time', { skip }, as
     assert.match(out.slot8, /b_64x48_50\.png/, `A's slot 8 holds ${out.slot8}`);
     assert.match(out.shown, /b_64x48_50\.png/, `B shows ${out.shown}`);
 });
+
+test('each workspace shows only its panel tabs, and a hidden tab moves to the workspace that has it', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('advanced'); const v = n.radianceViewer;
+        n.onExecuted(__frames(2, 64, 48));
+        await __until(() => v.image, 10000);
+        const labels = () => [...v.controlsPanel.querySelectorAll('.radiance-ref-tab')].map((b) => b.dataset.tabId);
+        const active = () => v.controlsPanel.querySelector('.radiance-ref-tab.is-active')?.dataset.tabId;
+        const r = {};
+        v.setWorkspace('inspect'); r.inspect = labels(); r.inspectActive = active();
+        v.setWorkspace('color'); r.color = labels(); r.colorActive = active();
+        v.setWorkspace('compare'); r.compare = labels(); r.compareActive = active();
+        v.setWorkspace('inspect');
+        v._setReferenceTab('grade');
+        r.afterShortcut = { ws: v.workspace, tabs: labels(), active: active() };
+        r.compareMode = v.compareMode;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis']);
+    assert.equal(out.inspectActive, 'inspector');
+    assert.deepEqual(out.color, ['grade', 'masks', 'effects', 'scopes']);
+    assert.equal(out.colorActive, 'grade');
+    assert.deepEqual(out.compare, ['inspector', 'scopes', 'analysis']);
+    assert.equal(out.compareActive, 'scopes');
+    assert.deepEqual(out.afterShortcut, { ws: 'color', tabs: ['grade', 'masks', 'effects', 'scopes'], active: 'grade' });
+    assert.equal(out.compareMode, 'none');
+});
+
+test('a deleted viewer whose Grade and Inspector panels were open can be collected', { skip }, async () => {
+    const page = await session.open();
+    try {
+        await page.evaluate(async () => {
+            const n = __make(); const v = n.radianceViewer;
+            n.onExecuted(__frames(3, 64, 48));
+            await __until(() => v.hdrData);
+            v._setReferenceTab('grade'); await __sleep(100);
+            v._setReferenceTab('inspector'); await __sleep(100);   // rebuilds the panel: the old preset <select> goes
+            window.__ref = new WeakRef(v);
+            __remove(n);
+        });
+        const cdp = await page.context().newCDPSession(page);
+        let collected = false;
+        for (let i = 0; i < 40 && !collected; i++) {
+            await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+            await cdp.send('HeapProfiler.collectGarbage');
+            collected = await page.evaluate(() => window.__ref.deref() === undefined);
+        }
+        assert.deepEqual(page.errors, []);
+        assert.ok(collected, 'the deleted viewer is still reachable (a detached <select> keeps the panel alive)');
+    } finally {
+        await page.close();
+    }
+});

@@ -10,9 +10,10 @@
  *  - `radiance_viewer_workspace` (new) records which workspace the person was in.
  *    It is only read when it agrees with the layout; a missing or unknown value
  *    falls back to the layout's default workspace.
- *  - Review is the old Simple layout. Color, Inspect and Compare all use the old
- *    Advanced layout (every panel) and differ only in what they focus first.
- *    Hiding panels per workspace is a later step.
+ *  - Review is the old Simple layout. Color, Inspect and Compare use the old
+ *    Advanced layout and each shows the right-panel tabs it needs (`tabs`).
+ *    Hiding a tab hides only its button: no state is reset, and a shortcut to a
+ *    hidden tab moves to the workspace that has it instead of doing nothing.
  */
 
 export const LAYOUT_SIMPLE = 'simple';
@@ -25,15 +26,21 @@ export const LAYOUT_ADVANCED = 'advanced';
 export const WORKSPACES = Object.freeze([
     { id: 'review', label: 'Review', layout: LAYOUT_SIMPLE, available: true,
       tip: 'Picture, compare and playback only' },
-    { id: 'color', label: 'Color', layout: LAYOUT_ADVANCED, available: true, tab: 'primaries',
-      tip: 'Grade, curves, effects and scopes' },
-    { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true, tab: 'probe',
-      tip: 'Pixel probe, channels and values' },
+    { id: 'color', label: 'Color', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'],
+      tip: 'Grade, masks, effects and scopes' },
+    { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis'],
+      tip: 'Frame inspector, channels, scopes and analysis' },
     { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis'],
       tip: 'A/B, wipe, difference and blink against a reference' },
     { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: false,
       tip: 'Measured checks (not implemented yet)' },
 ]);
+
+/** Every right-panel tab of the Advanced layout, in Alt+1..6 order. */
+export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis']);
 
 const BY_ID = new Map(WORKSPACES.map((w) => [w.id, w]));
 
@@ -89,4 +96,23 @@ export function suggestWorkspace(facts, current) {
         return { workspace: 'compare', reason: 'A reference (B) is connected.' };
     }
     return null;
+}
+
+/** The right-panel tabs a workspace shows, in panel order. All of them for a workspace that names none. */
+export function tabsFor(workspaceId) {
+    const ws = workspaceById(workspaceId);
+    if (!ws || !Array.isArray(ws.tabs)) return PANEL_TABS.slice();
+    return PANEL_TABS.filter((t) => ws.tabs.includes(t));
+}
+
+/**
+ * Where a request for a panel tab should land. The current workspace if it
+ * shows the tab; otherwise the first available Advanced workspace that does
+ * (Alt+2 for Grade from Inspect goes to Color). null for an unknown tab.
+ */
+export function workspaceForTab(tabId, current) {
+    if (!PANEL_TABS.includes(tabId)) return null;
+    if (tabsFor(current).includes(tabId) && workspaceById(current)?.layout === LAYOUT_ADVANCED) return current;
+    const ws = WORKSPACES.find((w) => w.available && w.layout === LAYOUT_ADVANCED && tabsFor(w.id).includes(tabId));
+    return ws ? ws.id : null;
 }
