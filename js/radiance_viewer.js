@@ -15,6 +15,7 @@ import {
     availableWorkspaces as _availableWorkspaces, resolveSaved as _resolveSavedMode,
     workspaceById as _workspaceById,
     defaultWorkspaceFor as _defaultWorkspaceFor, suggestWorkspace as _suggestWorkspace,
+    tabsFor as _tabsFor, workspaceForTab as _workspaceForTab,
 } from "./radiance_viewer_modes.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
@@ -2611,6 +2612,12 @@ class RadianceViewer {
     }
 
     _setReferenceTab(tabId) {
+        // A tab this workspace hides (a shortcut, a menu item, the rail) moves to
+        // the workspace that shows it, rather than selecting an invisible tab.
+        if (this.uiMode === 'advanced' && !_tabsFor(this.workspace).includes(tabId)) {
+            const ws = _workspaceForTab(tabId, this.workspace);
+            if (ws && ws !== this.workspace) { this.setWorkspace(ws, { tab: tabId }); return; }
+        }
         this._referenceRightTab = tabId;
         if (this.rightControlPanel) this.rightControlPanel.style.display = 'flex';
         this.showControls = true;
@@ -2746,25 +2753,22 @@ class RadianceViewer {
 
     /**
      * Go to a workspace. Review is the Simple layout; Color, Inspect and Compare
-     * are the Advanced layout and differ in what they focus first. Nothing is
-     * hidden or reset: the grade, compare state and loaded media are untouched.
+     * are the Advanced layout, each showing its own right-panel tabs and opening
+     * on its first one. Only tab buttons are hidden: the grade, compare state
+     * and loaded media are untouched, and the compare mode is left as it was.
      */
-    setWorkspace(id, { persist = true, grow = false } = {}) {
+    setWorkspace(id, { persist = true, grow = false, tab = null } = {}) {
         const ws = _workspaceById(id);
         if (!ws || !ws.available) return;
         this.workspace = ws.id;
         this.setUIMode(ws.layout, { persist, grow });
-        // Focus only: the compare mode is left as the person set it.
-        if (ws.layout === 'advanced' && ws.tab) this._focusTab(ws.tab);
+        if (ws.layout === 'advanced') this._setReferenceTab(tab || ws.tab || 'inspector');
     }
 
-    /** Select a right-panel tab the way a click on it does. */
-    _focusTab(tabId) {
-        this.activeTab = tabId;
-        this.showZdepth = false;
-        this.renderer?.setShowDepth?.(false);
-        this._triggerRenderTabs?.();
-        this.render();
+    /** The right-panel tab to show: the requested one if this workspace has it, else its first. */
+    _visibleReferenceTab(tabId) {
+        const tabs = _tabsFor(this.workspace);
+        return tabs.includes(tabId) ? tabId : (_workspaceById(this.workspace)?.tab || tabs[0]);
     }
 
     /** Switch between the Simple and Advanced layouts. Saved on the node unless `persist` is false. */
@@ -13611,6 +13615,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!panel) return;
         if (this._referenceRebuildDeferred()) return;
 
+        // A rebuilt panel's old <select>s stay rooted in Chromium and would keep
+        // this viewer alive through their handlers (see destroy).
+        RadianceViewer._releaseSelects(panel);
         panel.innerHTML = '';
         panel.classList.add('radiance-panel-embedded');
         panel.style.cssText = `
@@ -13799,9 +13806,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         col.className = 'radiance-ref-col';
         body.appendChild(col);
 
-        let activeTab = this._referenceRightTab || 'inspector';
+        const shown = this.uiMode === 'advanced' ? _tabsFor(this.workspace) : null;
+        let activeTab = shown ? this._visibleReferenceTab(this._referenceRightTab || 'inspector')
+            : (this._referenceRightTab || 'inspector');
+        this._referenceRightTab = activeTab;
         const render = () => {
             if (this._referenceRebuildDeferred()) return;
+            RadianceViewer._releaseSelects(col);
             col.innerHTML = '';
             [...tabs.children].forEach(btn => btn.classList.toggle('is-active', btn.dataset.tabId === activeTab));
             if (activeTab === 'grade') {
@@ -13832,7 +13843,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['effects', 'EFFECTS', 'panel.effects'],
             ['scopes', 'SCOPES', 'panel.scopes'],
             ['analysis', 'ANALYSIS', 'panel.analysis'],
-        ].forEach(([id, label, action]) => {
+        ].filter(([id]) => !shown || shown.includes(id)).forEach(([id, label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-ref-tab';
@@ -14775,7 +14786,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             b.onclick = onClick;
             actions.appendChild(b);
         };
-        button('Load', 'Apply the selected preset (one undo step)', () => select.value && this.loadGrade(select.value), !names.length);
+        button('Load', 'Apply the selected preset as one undo step', () => select.value && this.loadGrade(select.value), !names.length);
         button('Save', 'Save the whole grade as a preset', () => this.saveGrade());
         button('Delete', 'Delete the selected preset', () => select.value && this.deleteGrade(select.value), !names.length);
         section.appendChild(actions);
@@ -23718,8 +23729,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._addApiListener("status", onStatus);
     }
 
+    /** Cut every <select> under `root` out of the tree and drop its handlers (see destroy). */
+    static _releaseSelects(root) {
+        root?.querySelectorAll?.('select').forEach((el) => {
+            el.onchange = null; el.oninput = null; el.onclick = null;
+            el.remove();
+        });
+    }
+
     destroy() {
         this._destroyed = true;
+        // Chromium can keep a <select> reachable from a native root after the
+        // page drops it (form-control tracking). Through its parent chain that
+        // held the whole panel, every handler in it and so this viewer: a
+        // deleted viewer whose Grade tab had been open was never collected.
+        // Cut each select out of the tree and drop its handlers.
+        for (const root of [this.container, this.controlsPanel]) RadianceViewer._releaseSelects(root);
         // Every window/document listener this viewer added, in one go.
         this._globalListeners?.abort();
         this._globalListeners = null;
