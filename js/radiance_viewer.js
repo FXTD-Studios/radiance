@@ -20,6 +20,7 @@ import {
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
 import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV } from "./radiance_review.js";
+import { differenceSpec as _differenceSpec, DIFF_GAINS as _DIFF_GAINS, onionLayers as _onionLayers, normalizeOnion as _normalizeOnion } from "./radiance_onion.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -1142,7 +1143,13 @@ class RadianceViewer {
         // playhead) or 'pinned' (a still of A the user pinned).
         this.compareMode = 'none';
         this.compareSource = null;
-        this.diffGain = 4;
+        // What Difference measures: gain and abs/signed. Display-referred only:
+        // the renderer compares A and B after the same view transform.
+        this.diffSpec = _differenceSpec({});
+        this.diffGain = this.diffSpec.gain;
+        // Onion skin: neighbouring frames' previews drawn over the picture.
+        this.onionEnabled = false;
+        this.onion = _normalizeOnion({});
         this.blinkMs = 500;
         this._blinkB = false;
         this._blinkTimer = null;
@@ -2852,11 +2859,20 @@ class RadianceViewer {
         cmp.setAttribute('aria-label', 'Compare');
         this._sbCompare = new Map();
         [['none', 'A', 'Show A'], ['b', 'B', 'Show B'], ['wipe', 'Wipe', 'Wipe between B (left) and A (right); drag the line'],
-         ['difference', 'Diff', 'Difference |A - B|, x4'], ['blink', 'Blink', 'Flip between A and B']].forEach(([m, label, tip]) => {
+         ['difference', 'Diff', `Difference: ${this.diffSpec.label}`], ['blink', 'Blink', 'Flip between A and B']].forEach(([m, label, tip]) => {
             const b = btn(label, tip, () => this.setCompareMode(m));
             cmp.appendChild(b);
             this._sbCompare.set(m, b);
         });
+        // Difference controls, shown while Difference is on.
+        this._sbDiffGain = btn(`x${this.diffSpec.gain}`, 'Difference gain: click for the next step',
+            () => {
+                const i = _DIFF_GAINS.indexOf(this.diffSpec.gain);
+                this.setDifference({ gain: _DIFF_GAINS[(i + 1) % _DIFF_GAINS.length] });
+            }, 'rsb-diffgain');
+        this._sbDiffSigned = btn('|A-B|', 'Show A - B around mid grey instead of |A - B|',
+            () => this.setDifference({ mode: this.diffSpec.mode === 'signed' ? 'abs' : 'signed' }), 'rsb-diffsigned');
+        cmp.append(this._sbDiffGain, this._sbDiffSigned);
 
         this._sbBLabel = document.createElement('span');
         this._sbBLabel.className = 'rsb-b';
@@ -2870,13 +2886,90 @@ class RadianceViewer {
         this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
             () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
         const fit = btn('Fit', `Fit to view (${_shortcutLabel('view.fit')})`, () => this.fitToView?.());
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
+        this._sbOnion = btn('Onion', 'Onion skin: the frames before (red) and after (green), from their previews', () => this.setOnion({ enabled: !this.onionEnabled }), 'rsb-onion');
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, this._sbOnion, fit);
         return bar;
+    }
+
+    /**
+     * Set what Difference measures ({ gain, mode }). Unknown values fall back
+     * (radiance_onion.js differenceSpec); the domain is always display-referred.
+     */
+    setDifference(opts = {}) {
+        this.diffSpec = _differenceSpec({ ...this.diffSpec, ...opts, domain: 'display' });
+        this.diffGain = this.diffSpec.gain;
+        this.renderer?.setDiffSigned?.(this.diffSpec.mode === 'signed');
+        this._syncCompareUI();
+    }
+
+    /**
+     * Onion skin on or off, and its settings ({ enabled, before, after, step,
+     * opacity, falloff, tint }); bad values fall back (normalizeOnion).
+     */
+    setOnion(opts = {}) {
+        if (typeof opts.enabled === 'boolean') this.onionEnabled = opts.enabled;
+        this.onion = _normalizeOnion({ ...this.onion, ...opts });
+        if (this._sbOnion) {
+            this._sbOnion.classList.toggle('is-active', this.onionEnabled);
+            this._sbOnion.setAttribute('aria-pressed', String(this.onionEnabled));
+        }
+        this.render();
+    }
+
+    /**
+     * Onion layers on the overlay. They are the frames' preview images (8-bit,
+     * ungraded), so they show motion and shape, not colour. Not drawn while
+     * comparing: B already occupies the picture. Returns { drawn, wanted }.
+     */
+    _drawOnionSkin(ctx) {
+        if (!this.onionEnabled || (this.compareMode && this.compareMode !== 'none')) {
+            this._onionDrawn = { drawn: 0, wanted: 0 };
+            return this._onionDrawn;
+        }
+        const W = this.imageWidth, H = this.imageHeight;
+        const layers = _onionLayers(this.currentFrame || 0, this.totalFrames || 0, this.onion);
+        let drawn = 0;
+        for (const l of layers) {
+            const img = this.frameImages?.[l.frame];
+            const iw = img?.naturalWidth || img?.width, ih = img?.naturalHeight || img?.height;
+            if (!img || !iw || !ih || !W || !H) continue;
+            let src = img;
+            if (l.tint) {
+                const c = (this._onionCanvas ||= document.createElement('canvas'));
+                if (c.width !== iw || c.height !== ih) { c.width = iw; c.height = ih; }
+                const g = c.getContext('2d');
+                g.globalCompositeOperation = 'copy';
+                g.drawImage(img, 0, 0);
+                g.globalCompositeOperation = 'multiply';
+                g.fillStyle = `rgb(${l.tint.map((t) => Math.round(t * 255)).join(',')})`;
+                g.fillRect(0, 0, iw, ih);
+                g.globalCompositeOperation = 'source-over';
+                src = c;
+            }
+            ctx.save();
+            ctx.globalAlpha = l.opacity;
+            ctx.imageSmoothingEnabled = this.zoom < 1;
+            ctx.drawImage(src, 0, 0, iw, ih, this.panX, this.panY, W * this.zoom, H * this.zoom);
+            ctx.restore();
+            drawn++;
+        }
+        this._onionDrawn = { drawn, wanted: layers.length };
+        return this._onionDrawn;
     }
 
     /** Simple bar and viewer bar buttons follow the compare state. */
     _syncCompareUI() {
         this._syncViewerBarBtns?.();
+        if (this._sbDiffGain) {
+            const on = this.compareMode === 'difference';
+            this._sbDiffGain.style.display = on ? '' : 'none';
+            this._sbDiffSigned.style.display = on ? '' : 'none';
+            this._sbDiffGain.textContent = `x${this.diffSpec.gain}`;
+            this._sbDiffSigned.textContent = this.diffSpec.mode === 'signed' ? 'A-B' : '|A-B|';
+            const diffBtn = this._sbCompare?.get('difference');
+            if (diffBtn) diffBtn.title = `Difference: ${this.diffSpec.label}`
+                + (typeof this.renderer?.setDiffSigned === 'function' ? '' : ' (not drawn by this renderer)');
+        }
         if (!this._sbCompare) return;
         const cm = this.compareMode || 'none';
         this._sbCompare.forEach((b, m) => {
@@ -9115,6 +9208,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         r.setWipe?.(this.wipePosition ?? 0.5, mode === 'wipe');
         const show = mode === 'b' || (mode === 'blink' && this._blinkB) ? 1 : mode === 'difference' ? 2 : 0;
         r.setCompareShow?.(show, this.diffGain);
+        r.setDiffSigned?.(this.diffSpec?.mode === 'signed');
     }
 
     /**
@@ -9453,6 +9547,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // 3D Normal channel: the encoded normal pass drawn as data, with no view
         // transform, grade or scope applied. Scopes and probe still read the picture.
         if (this.channel === 'normal' && this.normalImage) this._drawNormalChannel(ctx);
+        else this._drawOnionSkin(ctx);
 
         // Aspect matte first: it dims the picture, and the guides drawn after
         // it must stay legible on top.
@@ -12806,6 +12901,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         else if (this.zebra) { borderColor = '#FF4444'; label = 'ZEBRA'; }
         else if (this.focusPeaking) { borderColor = '#FF6600'; label = 'FOCUS PEAK'; }
         else if (this.showZdepth) { borderColor = '#00BBFF'; label = 'Z-DEPTH'; }
+        else if (this.onionEnabled && (!this.compareMode || this.compareMode === 'none')) { borderColor = '#C58AFF'; label = `ONION SKIN (previews, ungraded)${this._onionDrawn && this._onionDrawn.drawn < this._onionDrawn.wanted ? ` ${this._onionDrawn.drawn}/${this._onionDrawn.wanted} loaded` : ''}`; }
         else if (this.channel === 'normal') { borderColor = '#8888FF'; label = this._normalHiddenByCompare() ? 'NORMAL (A) HIDDEN WHILE B SHOWN' : 'NORMAL (scopes read the picture)'; }
         else if (this.gamutWarning) { borderColor = '#FF00FF'; label = 'GAMUT WARN'; }
         else if (this.clippingMonitor) { borderColor = '#FF2222'; label = 'CLIPPING'; }

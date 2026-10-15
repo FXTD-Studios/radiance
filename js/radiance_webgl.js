@@ -116,6 +116,9 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this.diffGain = Number.isFinite(gain) ? gain : 4;
     }
 
+    /** Difference as A - B around mid grey (true) or |A - B| (false). */
+    setDiffSigned(on) { this.diffSigned = !!on; }
+
     setDisplayLutStrength(v) {
         this.displayLutStrength = v;
     }
@@ -2314,6 +2317,7 @@ ${GRADE_GLSL}
             uniform sampler2D u_referenceImage;
             uniform int u_compareShow;          // 3.5.0: 0 A, 1 B, 2 |A-B| x gain
             uniform float u_diffGain;
+            uniform bool u_diffSigned;
 
             // v2.2 Pro Grids
             uniform int u_gridMode;
@@ -4044,7 +4048,9 @@ vec3 getDenoiseColor(vec2 uv) {
         if (u_wipeRefEnabled && u_compareShow == 1) {
             color = texture(u_referenceImage, v_texcoord).rgb;
         } else if (u_wipeRefEnabled && u_compareShow == 2) {
-            color = clamp(abs(color - texture(u_referenceImage, v_texcoord).rgb) * u_diffGain, 0.0, 1.0);
+            vec3 d = color - texture(u_referenceImage, v_texcoord).rgb;
+            // Signed: equal is mid grey, A brighter goes up, B brighter goes down.
+            color = u_diffSigned ? clamp(0.5 + 0.5 * d * u_diffGain, 0.0, 1.0) : clamp(abs(d) * u_diffGain, 0.0, 1.0);
         }
         // Wipe:
         // LEFT  (x < wipeLine) = B side: reference / frozen snapshot
@@ -5114,6 +5120,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_wipeRefEnabled', this.wipeRefEnabled ? 1 : 0);
         this._ui1(program, 'u_compareShow', this.compareShow | 0);
         this._uf1(program, 'u_diffGain', Number.isFinite(this.diffGain) ? this.diffGain : 4);
+        this._ui1(program, 'u_diffSigned', this.diffSigned ? 1 : 0);
 
         gl.activeTexture(gl.TEXTURE6);
         gl.bindTexture(gl.TEXTURE_2D, this.textures.reference || this.textures.empty);
