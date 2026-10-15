@@ -19,7 +19,9 @@ import {
 } from "./radiance_viewer_modes.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
-import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV } from "./radiance_review.js";
+import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV, uvToCanvas as _uvToCanvas } from "./radiance_review.js";
+import { buildReviewReport as _buildReviewReport, reportToMarkdown as _reportToMarkdown } from "./radiance_review_report.js";
+import { analyzeSequence as _analyzeSequence, buildReport as _buildQCReport } from "./radiance_qc.js";
 import { differenceSpec as _differenceSpec, DIFF_GAINS as _DIFF_GAINS, onionLayers as _onionLayers, normalizeOnion as _normalizeOnion } from "./radiance_onion.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
@@ -2887,7 +2889,19 @@ class RadianceViewer {
             () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
         const fit = btn('Fit', `Fit to view (${_shortcutLabel('view.fit')})`, () => this.fitToView?.());
         this._sbOnion = btn('Onion', 'Onion skin: the frames before (red) and after (green), from their previews', () => this.setOnion({ enabled: !this.onionEnabled }), 'rsb-onion');
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, this._sbOnion, fit);
+        // Review: bookmarks, notes, QC and the report.
+        const rv = document.createElement('div');
+        rv.className = 'rsb-group';
+        rv.setAttribute('role', 'group');
+        rv.setAttribute('aria-label', 'Review');
+        this._sbMark = btn('Mark', `Bookmark this frame (${_shortcutLabel('review.bookmark')})`, () => this.toggleBookmark(), 'rsb-mark');
+        const prevMark = btn('\u25C0', `Previous bookmark (${_shortcutLabel('review.prevBookmark')})`, () => this.stepBookmark(-1));
+        const nextMark = btn('\u25B6', `Next bookmark (${_shortcutLabel('review.nextBookmark')})`, () => this.stepBookmark(1));
+        const note = btn('Note', `Write a note on this frame (${_shortcutLabel('review.note')})`, () => this.openNoteEditor());
+        this._sbQC = btn('QC', 'Run measured checks over every frame (click again to stop)', () => this.runQC(), 'rsb-qc');
+        const report = btn('Report', 'Download the review report (notes, bookmarks and the last QC run) as Markdown and JSON', () => this.exportReviewReport());
+        rv.append(this._sbMark, prevMark, nextMark, note, this._sbQC, report);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, this._sbOnion, rv, fit);
         return bar;
     }
 
@@ -7562,6 +7576,7 @@ else:
         this._zdepthEntries = Array.isArray(zdepthEntries) ? zdepthEntries : [];
         this._compareEntries = Array.isArray(compareEntries) ? compareEntries : [];
         this._normalEntries = Array.isArray(normalEntries) ? normalEntries : [];
+        this._mainEntries = Array.isArray(entries) ? entries : [];
         this._compareShown = false;
 
         this._frameWindow = new _RadianceFrameWindow({
@@ -8268,6 +8283,12 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'file.exportCDL': this._exportCDL(); break;
             case 'file.exportCUBE': this._exportGradeLUT(); break;
             case 'file.pinB': this.pinCurrentFrame(); break;
+            case 'review.exportReport': this.exportReviewReport(); break;
+            case 'review.bookmark': this.toggleBookmark(); break;
+            case 'review.prevBookmark': this.stepBookmark(-1); break;
+            case 'review.nextBookmark': this.stepBookmark(1); break;
+            case 'review.note': this.openNoteEditor(); break;
+            case 'review.runQC': this.runQC(); break;
             // Edit
             case 'edit.undo': this.undo?.(); break;
             case 'edit.redo': this.redo?.(); break;
@@ -9593,6 +9614,186 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Strokes are stored per frame in image UV, so they follow zoom, pan and frame changes.
         const _live = (this._isAnnotating && this._annotationCurrentLine) ? [this._annotationCurrentLine] : [];
         this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
+        this._drawReviewNotes(ctx);
+        this._syncReviewUI();
+    }
+
+    /** Notes on this frame: a dot where it was written and its text beside it. */
+    _drawReviewNotes(ctx) {
+        if (!this._review) return;
+        const view = this._reviewView();
+        for (const n of this._review.forFrame(this.currentFrame || 0, 'note')) {
+            const p = _uvToCanvas(n.u, n.v, view);
+            if (!p) continue;
+            const text = n.text.length > 80 ? `${n.text.slice(0, 79)}\u2026` : n.text;
+            ctx.save();
+            ctx.font = '600 12px var(--radiance-font-ui, sans-serif)';
+            const w = ctx.measureText(text).width + 12;
+            ctx.fillStyle = '#ffd24a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(10,12,16,0.82)';
+            ctx.fillRect(p.x + 9, p.y - 10, w, 20);
+            ctx.fillStyle = '#ffe9a8';
+            ctx.fillText(text, p.x + 15, p.y + 4);
+            ctx.restore();
+        }
+    }
+
+    /** The review buttons follow the frame (bookmarked or not) and the QC run. */
+    _syncReviewUI() {
+        if (!this._sbMark) return;
+        const marked = !!this._review?.forFrame(this.currentFrame || 0, 'bookmark').length;
+        if (this._sbMark.classList.contains('is-active') !== marked) {
+            this._sbMark.classList.toggle('is-active', marked);
+            this._sbMark.setAttribute('aria-pressed', String(marked));
+        }
+    }
+
+    toggleBookmark() {
+        if (!this._review) return;
+        const f = this.currentFrame || 0;
+        const existing = this._review.forFrame(f, 'bookmark')[0];
+        if (existing) this._review.remove(existing.id);
+        else if (!this._review.addBookmark(f)) { this._termLog?.('warn', '[Review] Mark limit reached; bookmark not added.'); return; }
+        this._persistReview();
+        this._termLog?.('info', `[Review] Frame ${f + 1} ${existing ? 'unbookmarked' : 'bookmarked'}.`);
+        this.renderOverlay();
+    }
+
+    /** Go to the next (1) or previous (-1) bookmark, wrapping. Says so when there are none. */
+    stepBookmark(dir = 1) {
+        const f = this._review?.stepBookmark(this.currentFrame || 0, dir);
+        if (f === null || f === undefined) { this._termLog?.('info', '[Review] No bookmarks yet.'); return; }
+        this.setFrame(Math.min(f, Math.max(0, (this.totalFrames || 1) - 1)));
+    }
+
+    /**
+     * A one-line note editor over the picture. Enter saves it on this frame,
+     * at the last probed pixel (else the centre); Escape or leaving it cancels.
+     * Keys typed there never reach the viewer's shortcuts.
+     */
+    openNoteEditor() {
+        if (!this._review || !this.canvasWrapper) return;
+        this._noteEditor?.remove();
+        const frame = this.currentFrame || 0;
+        const W = this.imageWidth || 1, H = this.imageHeight || 1;
+        const at = this._lastProbe ? { u: this._lastProbe.imgX / W, v: this._lastProbe.imgY / H } : { u: 0.5, v: 0.5 };
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'radiance-note-editor';
+        input.maxLength = 500;
+        input.placeholder = `Note on frame ${frame + 1}: Enter to save, Esc to cancel`;
+        input.setAttribute('aria-label', `Note on frame ${frame + 1}`);
+        input.style.cssText = 'position:absolute; left:12px; right:12px; bottom:12px; z-index:40; height:30px; padding:0 10px;'
+            + 'font:13px var(--radiance-font-ui, sans-serif); color:#fff; background:rgba(10,12,16,.92);'
+            + 'border:1px solid #ffd24a; border-radius:6px; outline:none;';
+        // Removing a focused input fires blur, which calls close again: once only.
+        let closed = false;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            if (this._noteEditor === input) this._noteEditor = null;
+            input.removeEventListener('blur', close);
+            input.remove();
+        };
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') { e.preventDefault(); close(); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = input.value.trim();
+                if (text) {
+                    if (this._review.addNote(frame, Math.min(1, Math.max(0, at.u)), Math.min(1, Math.max(0, at.v)), text)) this._persistReview();
+                    else this._termLog?.('warn', '[Review] Mark limit reached; note not added.');
+                }
+                close();
+                this.renderOverlay();
+            }
+        });
+        input.addEventListener('keyup', (e) => e.stopPropagation());
+        input.addEventListener('blur', close);
+        this.canvasWrapper.appendChild(input);
+        this._noteEditor = input;
+        input.focus();
+    }
+
+    /** A float frame for QC: the loaded one, or its sidecar fetched on its own. null without float data. */
+    async _qcFrame(i) {
+        let hdr = this.frameHDRData?.[i] || null;
+        if (!hdr) {
+            const e = this._mainEntries?.[i];
+            if (!e?.hdr_sidecar) return null;
+            const url = api.apiURL(`/view?filename=${encodeURIComponent(e.hdr_sidecar)}`
+                + `&subfolder=${encodeURIComponent(e.subfolder || '')}&type=${e.type || 'temp'}`);
+            hdr = await this._fetchSidecar(url);
+        }
+        if (!hdr || !hdr.shape) return hdr && hdr.data && hdr.width ? { data: hdr.data, width: hdr.width, height: hdr.height, channels: hdr.channels } : null;
+        const [h, w, c] = hdr.shape;
+        return { data: hdr.data, width: w, height: h, channels: c || 1 };
+    }
+
+    /**
+     * Measured checks over every frame (radiance_qc.js), one frame at a time,
+     * with progress on the QC button. Clicking it while running stops the run;
+     * what was measured is kept and marked incomplete.
+     */
+    async runQC() {
+        if (this._qcAbort) { this._qcAbort.abort(); return; }
+        const count = this._mainEntries?.length || this.totalFrames || 0;
+        if (!count) { this._termLog?.('warn', '[QC] Nothing loaded to check.'); return; }
+        const ctl = new AbortController();
+        this._qcAbort = ctl;
+        const generation = this.generationID;
+        const label = (t) => { if (this._sbQC) this._sbQC.textContent = t; };
+        label(`QC 0/${count}`);
+        try {
+            const analysis = await _analyzeSequence(count, (i) => this._qcFrame(i), {}, {
+                signal: ctl.signal,
+                onProgress: (done, total) => label(`QC ${done}/${total}`),
+            });
+            if (this.generationID !== generation) { label('QC'); return; }
+            const e0 = this._mainEntries?.[0] || {};
+            this._qcReport = _buildQCReport(analysis, {
+                frames: count, width: this.imageWidth, height: this.imageHeight,
+                first: e0.hdr_sidecar || e0.filename || null,
+                source_encoding: this.hdrData?.sourceEncoding || null,
+            });
+            label(`QC: ${this._qcReport.overall}${analysis.complete ? '' : ' (stopped)'}`);
+            if (this._sbQC) this._sbQC.title = this._qcReport.checks.map((c) => `${c.id}: ${c.status}`).join('\n')
+                + '\nClick to run again. The report has the numbers.';
+            this._termLog?.(analysis.overall === 'PASS' ? 'success' : 'warn',
+                `[QC] ${this._qcReport.overall}${analysis.complete ? '' : ` (stopped at ${analysis.framesDone}/${count})`}: `
+                + this._qcReport.checks.map((c) => `${c.id} ${c.status}`).join(', '));
+        } catch (err) {
+            label('QC');
+            this._termLog?.('error', `[QC] Failed: ${err?.message || err}`);
+        } finally {
+            if (this._qcAbort === ctl) this._qcAbort = null;
+        }
+    }
+
+    _downloadText(name, text, type) {
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.download = name; a.href = url;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    /** The review report as Markdown and JSON downloads. Returns the report. */
+    exportReviewReport() {
+        const e0 = this._mainEntries?.[0] || {};
+        const report = _buildReviewReport(this._review, {
+            title: this.node?.title || 'Radiance Viewer',
+            frames: Number.isInteger(this.totalFrames) ? this.totalFrames : null,
+            fps: this.playbackFps || this.frameRate || null,
+            source: e0.filename || null,
+        }, this._qcReport || null);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        this._downloadText(`radiance_review_${stamp}.md`, _reportToMarkdown(report), 'text/markdown');
+        this._downloadText(`radiance_review_${stamp}.json`, JSON.stringify(report, null, 2), 'application/json');
+        this._termLog?.('success', `[Review] Report saved: ${report.counts.notes} note(s), ${report.counts.bookmarks} bookmark(s)${report.qc ? `, QC ${report.qc.overall}` : ', no QC run'}.`);
+        return report;
     }
 
     /** True while the picture on screen is B (or A against B), where A's normal pass does not belong. */
@@ -24440,6 +24641,10 @@ app.registerExtension({
             // The node's compare_image (not a pinned still): hint at Compare for this run.
             viewer._hasCompareInput = compareImages.length > 0;
             viewer._compareHintSeen = viewer.workspace === 'compare';
+            // A QC run describes the media it measured: a new run clears it.
+            viewer._qcAbort?.abort();
+            viewer._qcReport = null;
+            if (viewer._sbQC) { viewer._sbQC.textContent = 'QC'; viewer._sbQC.title = 'Run measured checks over every frame (click again to stop)'; }
             viewer._syncWorkspaceHint?.();
 
             // Load compare images

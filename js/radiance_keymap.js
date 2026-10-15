@@ -37,6 +37,7 @@ export const KEYMAP = Object.freeze([
     { id: 'file.exportCDL', keys: [], label: 'Export Grade as .CDL', menu: 'File', group: 'grade' },
     { id: 'file.exportCUBE', keys: [], label: 'Export Grade as .CUBE', menu: 'File', group: 'grade' },
     { id: 'file.pinB', keys: [], label: 'Pin Current Frame as B', menu: 'File', group: 'pin' },
+    { id: 'review.exportReport', keys: [], label: 'Export Review Report', menu: 'File', group: 'review' },
 
     // ── Edit ──
     { id: 'edit.undo', keys: [{ code: 'KeyZ', ctrl: true }], label: 'Undo', section: 'General', menu: 'Edit', group: 'undo' },
@@ -96,6 +97,13 @@ export const KEYMAP = Object.freeze([
     { id: 'view.depth', keys: [{ code: 'KeyZ' }], label: 'Depth Overlay', help: 'Z-depth on or off', section: 'Analysis', menu: 'Tools', group: 'overlays' },
     { id: 'tools.precision', keys: [{ code: 'KeyB', alt: true }], label: 'Pipeline Bit Depth', help: 'Cycle pipeline bit depth (8 / 16 / 32)', section: 'General', menu: 'Tools', group: 'system' },
     { id: 'tools.terminal', keys: [{ code: 'Backquote', shift: 'any' }], label: 'Terminal', help: 'Terminal on or off', section: 'General', menu: 'Tools', group: 'system' },
+
+    // ── Review ──
+    { id: 'review.bookmark', keys: [{ code: 'KeyD' }], label: 'Bookmark This Frame', help: 'Bookmark this frame on or off', section: 'Timeline', menu: 'Tools', group: 'review' },
+    { id: 'review.prevBookmark', keys: [{ code: 'Comma' }], label: 'Previous Bookmark', section: 'Timeline', menu: 'Tools', group: 'review' },
+    { id: 'review.nextBookmark', keys: [{ code: 'Period' }], label: 'Next Bookmark', section: 'Timeline', menu: 'Tools', group: 'review' },
+    { id: 'review.note', keys: [{ code: 'KeyT' }], label: 'Note on This Frame', help: 'Write a note on this frame', section: 'Timeline', menu: 'Tools', group: 'review' },
+    { id: 'review.runQC', keys: [], label: 'Run QC on the Sequence', menu: 'Tools', group: 'review' },
 
     // ── Playback ──
     { id: 'play.toggle', keys: [{ code: 'Space' }], label: 'Play / pause', section: 'Playback' },

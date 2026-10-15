@@ -275,3 +275,101 @@ test('onion skin draws the neighbouring frames, at their opacity, and not while 
     assert.deepEqual(out.whileB, { drawn: 0, wanted: 0 });
     assert.equal(out.off, 0);
 });
+
+test('bookmarks, notes, QC and the review report work from the viewer', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('simple'); const v = n.radianceViewer;
+        n.onExecuted(__frames(6, 64, 48));
+        await __until(() => v.image && v.hdrData, 15000);
+        const r = {};
+        // Bookmarks on frames 1 and 4, then step between them (wrapping).
+        v.setFrame(1); v._runKeyAction('review.bookmark');
+        v.setFrame(4); v._runKeyAction('review.bookmark');
+        r.markActive = v._sbMark.classList.contains('is-active');
+        v.setFrame(0); v._runKeyAction('review.nextBookmark'); r.next1 = v.currentFrame;
+        v._runKeyAction('review.nextBookmark'); r.next2 = v.currentFrame;
+        v._runKeyAction('review.nextBookmark'); r.wrap = v.currentFrame;
+        v._runKeyAction('review.prevBookmark'); r.prev = v.currentFrame;
+        // Toggle off on frame 4.
+        v.setFrame(4); v._runKeyAction('review.bookmark'); r.afterOff = v._review.bookmarks().map((b) => b.frame);
+        // A note on frame 2: typing in the editor never reaches the shortcuts.
+        v.setFrame(2);
+        let leaked = 0; const spy = () => leaked++;
+        window.addEventListener('keydown', spy);
+        v._runKeyAction('review.note');
+        const input = v._noteEditor;
+        r.editorOpen = !!input && document.activeElement === input;
+        input.value = 'Fix flicker here';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+        window.removeEventListener('keydown', spy);
+        r.leaked = leaked;
+        r.editorClosed = !v._noteEditor && !input.isConnected;
+        r.note = v._review.forFrame(2, 'note')[0]?.text;
+        r.saved = JSON.parse(n.properties.radiance_viewer_review).marks.length;
+        // The note is drawn at the centre of the picture on frame 2 only.
+        v.renderOverlay();
+        const cx = Math.round(v.panX + 32 * v.zoom), cy = Math.round(v.panY + 24 * v.zoom);
+        r.notePixel = Array.from(v.overlayCtx.getImageData(cx, cy, 1, 1).data);
+        v.setFrame(3); v.renderOverlay();
+        r.otherFramePixel = v.overlayCtx.getImageData(cx, cy, 1, 1).data[3];
+        // QC over the six float frames.
+        await v.runQC();
+        r.qc = v._qcReport && { overall: v._qcReport.overall, complete: v._qcReport.complete, analysed: v._qcReport.frames.analysed };
+        r.qcLabel = v._sbQC.textContent;
+        // The report: capture the downloads instead of saving them.
+        const files = [];
+        v._downloadText = (name, text) => files.push({ name, text });
+        const rep = v._runKeyAction('review.exportReport');
+        r.files = files.map((f) => f.name.replace(/_\d.*\./, '_*.'));
+        r.md = files[0]?.text || '';
+        r.json = files[1] ? JSON.parse(files[1].text) : null;
+        // A new run clears the QC result.
+        n.onExecuted(__frames(2, 64, 48));
+        await __sleep(50);
+        r.qcAfterNewRun = v._qcReport; r.qcLabelAfter = v._sbQC.textContent;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.markActive, true);
+    assert.deepEqual([out.next1, out.next2, out.wrap, out.prev], [1, 4, 1, 4]);
+    assert.deepEqual(out.afterOff, [1]);
+    assert.equal(out.editorOpen, true);
+    assert.equal(out.leaked, 0, 'a key typed in the note editor reached the page');
+    assert.equal(out.editorClosed, true);
+    assert.equal(out.note, 'Fix flicker here');
+    assert.equal(out.saved, 2);       // one bookmark, one note
+    assert.ok(out.notePixel[3] > 200 && out.notePixel[0] > 200 && out.notePixel[2] < 120, `note marker pixel ${out.notePixel}`);
+    assert.equal(out.otherFramePixel, 0, 'the note shows on another frame');
+    assert.ok(out.qc && out.qc.complete && out.qc.analysed === 6, `QC ${JSON.stringify(out.qc)}`);
+    assert.ok(['PASS', 'WARN', 'FAIL', 'INDETERMINATE'].includes(out.qc.overall));
+    assert.equal(out.qcLabel, `QC: ${out.qc.overall}`);
+    assert.deepEqual(out.files, ['radiance_review_*.md', 'radiance_review_*.json']);
+    assert.match(out.md, /Fix flicker here/);
+    assert.match(out.md, new RegExp(`Overall: ${out.qc.overall}`));
+    assert.equal(out.json.schema, 'radiance.review.report');
+    assert.equal(out.json.qc.overall, out.qc.overall);
+    assert.equal(out.qcAfterNewRun, null);
+    assert.equal(out.qcLabelAfter, 'QC');
+});
+
+test('a QC run can be stopped, and keeps what it measured as incomplete', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('simple'); const v = n.radianceViewer;
+        n.onExecuted(__frames(40, 64, 48));
+        await __until(() => v.image && v.hdrData, 15000);
+        const run = v.runQC();
+        await __until(() => /QC [1-9]/.test(v._sbQC.textContent), 10000);
+        v._sbQC.click();                         // the same button stops it
+        await run;
+        const r = { overall: v._qcReport?.overall, complete: v._qcReport?.complete, analysed: v._qcReport?.frames.analysed, label: v._sbQC.textContent };
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.complete, false);
+    assert.ok(out.analysed > 0 && out.analysed < 40, `analysed ${out.analysed}`);
+    assert.notEqual(out.overall, 'PASS', 'a stopped run must not read as a pass');
+    assert.match(out.label, /\(stopped\)$/);
+});
