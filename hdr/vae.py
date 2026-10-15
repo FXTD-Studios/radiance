@@ -695,13 +695,15 @@ def _auto_video_tile(ts_px: int, lat_frames: int, temporal_compression: int, vra
     Auto tile and temporal chunk for a video decode, as (tile_px, latent_frames).
 
     ALBABIT-FIX: every temporal chunk boundary shows as a short dissolve, so
-    shrink the spatial tile through the widget presets until the whole clip
-    fits one chunk, and keep the smallest tile's chunk when none does.
-    ALBABIT-FIX: among those, prefer a tile the VAE's own decode estimate fits
-    (vae_fits); when none does, keep the first one, never split time for it.
+    shrink the tile through the widget presets until the whole clip fits one
+    chunk, then through 384 and 256 px; keep the last tile's chunk if none does.
+    ALBABIT-FIX: among the tiles that fit, prefer one the VAE's own decode
+    estimate also fits (vae_fits); 384/256 only when no preset fits at all.
     """
     first_whole = None
-    for tile in [ts_px] + [t for t in (1280, 1024, 768, 512) if t < ts_px]:
+    for tile in [ts_px] + [t for t in (1280, 1024, 768, 512, 384, 256) if t < ts_px]:
+        if first_whole and tile < 512 <= first_whole[0]:
+            break
         frames = TileEngine.get_optimal_temporal_size(tile, temporal_compression, max_frames=lat_frames,
                                                       vram_budget_gb=vram_budget_gb)
         if frames >= lat_frames:
@@ -1661,7 +1663,8 @@ class RadianceVAE4KDecode:
                         "min": 32,
                         "max": 256,
                         "step": 16,
-                        "tooltip": "Overlap between tiles. 128px optimal for cosine blending.",
+                        "tooltip": "Overlap between tiles. 128px optimal for cosine blending. "
+                                   "The 384/256 px tiles Auto uses for video on small GPUs blend over a quarter of the tile.",
                     },
                 ),
                 # ALBABIT-FIX: video temporal chunking, tiled together with space by
@@ -2941,6 +2944,10 @@ class RadianceVAE4KDecode:
                         return vae.memory_used_decode(shape, vae.vae_dtype) <= vae_budget
 
                     ts_px, temporal_lat = _auto_video_tile(ts_px, lat_T, _temporal_compression, video_budget_gb, vae_fits)
+                    # ALBABIT-FIX: 384/256 px tiles blend over a quarter of the tile, as comfy's
+                    # own tiler does; 128 px would be half of a 256 px tile and double the work.
+                    if ts_px < 512:
+                        overlap = min(overlap, ts_px // 4)
                 else:
                     temporal_lat = _resolve_temporal_frames(temporal_size, ts_px, _temporal_compression, video_budget_gb)
                 needs_spatial_tiling = not (pix_h <= ts_px and pix_w <= ts_px)
