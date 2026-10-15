@@ -22,6 +22,7 @@ import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometr
 import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV, uvToCanvas as _uvToCanvas } from "./radiance_review.js";
 import { buildReviewReport as _buildReviewReport, reportToMarkdown as _reportToMarkdown } from "./radiance_review_report.js";
 import { analyzeSequence as _analyzeSequence, buildReport as _buildQCReport } from "./radiance_qc.js";
+import { webgpuGapSentence as _webgpuGapSentence } from "./radiance_backend_gaps.js";
 import { differenceSpec as _differenceSpec, DIFF_GAINS as _DIFF_GAINS, onionLayers as _onionLayers, normalizeOnion as _normalizeOnion } from "./radiance_onion.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
@@ -1965,8 +1966,10 @@ class RadianceViewer {
         }
         const nit = stats.nitPeak;
         let nitStr;
-        if (nit >= 1000) nitStr = `${(nit / 1000).toFixed(1)}k nit`;
-        else             nitStr = `${Math.round(nit)} nit`;
+        // The figure only means something with its assumption: scene-linear
+        // 1.0 placed at BT.2408's 203 cd/m2 reference white. Say so on screen.
+        if (nit >= 1000) nitStr = `${(nit / 1000).toFixed(1)}k nit (BT.2408)`;
+        else             nitStr = `${Math.round(nit)} nit (BT.2408)`;
 
         const ev = stats.evRange.toFixed(1);
         const clp = stats.clippedPct.toFixed(1);
@@ -3376,9 +3379,9 @@ class RadianceViewer {
         ], read('radiance_prefer_webgpu') === '1' ? 'webgpu' : 'webgl', (v) => {
             store('radiance_prefer_webgpu', v === 'webgpu' ? '1' : '0');
             this._termLog?.('warn', v === 'webgpu'
-                ? '[Renderer] WebGPU enabled: masks, qualifiers, HDR heatmap and OCIO are not implemented there. Reload to apply.'
+                ? `[Renderer] WebGPU enabled. Reload to apply. ${_webgpuGapSentence()}`
                 : '[Renderer] WebGL restored. Reload to apply.');
-        }), 'Takes effect on reload. WebGPU has no masks, qualifiers, HDR heatmap or OpenColorIO.');
+        }), `Takes effect on reload. ${_webgpuGapSentence()}`);
         row('Precision', choice('precision', [['u8', 'INT 8'], ['f16', 'FLOAT 16'], ['f32', 'FLOAT 32']],
             this.renderer?.pipelinePrecision || read('radiance_pipeline_precision') || 'f32',
             (v) => this._setPipelinePrecision(v)), 'The pipeline\'s working precision (Alt+B cycles it).');
@@ -4367,9 +4370,7 @@ class RadianceViewer {
             // OCIO), so it is labelled and drawn in the warning colour, not green.
             this._engineBadge.textContent = backend === 'NONE' ? 'GPU: 2D'
                 : isWebGPU ? 'GPU: WEBGPU (experimental)' : `GPU: ${backend}`;
-            this._engineBadge.title = isWebGPU
-                ? 'WebGPU is experimental here: masks, qualifiers, the HDR heatmap and OpenColorIO are not implemented. Switch back under Settings > Renderer.'
-                : '';
+            this._engineBadge.title = isWebGPU ? _webgpuGapSentence() : '';
             this._engineBadge.style.color = isWebGPU ? '#f5a524' : '#8fc7ff';
             this._engineBadge.style.borderColor = isWebGPU ? 'rgba(245,165,36,0.45)' : 'rgba(143,199,255,0.32)';
             this._engineBadge.style.background = isWebGPU ? 'rgba(245,165,36,0.1)' : 'rgba(143,199,255,0.08)';
@@ -12224,6 +12225,11 @@ self.onmessage = async ({ data: { id, url } }) => {
     setViewExposure(stops) {
         const lim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
         this.viewExposure = Math.max(-lim, Math.min(lim, Number(stops) || 0));
+        // The WGSL path has no viewer f-stop: say so rather than move a number that changes nothing.
+        if (this._gpuBackend === 'webgpu' && this.viewExposure !== 0 && !this._warnedWebGPUFstop) {
+            this._warnedWebGPUFstop = true;
+            this._termLog?.('warn', '[Viewer] The viewer f-stop is not implemented on WebGPU; the picture will not change. Switch to WebGL under Settings > Renderer.');
+        }
         if (this._viewEvInput) this._viewEvInput.value = this.viewExposure.toFixed(1);
         this.render();
     }
@@ -15272,6 +15278,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         // return, so every scope read 10-bit code values with no way to
         // change it; the rail's four scope buttons all opened this stack.
         const opts = this._renderReferenceSection(parent, 'SCOPE OPTIONS');
+        if (this._gpuBackend === 'webgpu') {
+            const n = document.createElement('div');
+            n.className = 'radiance-webgpu-scope-note';
+            n.style.cssText = 'font-size:var(--radiance-fs-body); line-height:1.5; color:var(--radiance-warn); padding:8px; margin-bottom:8px;'
+                + 'background:rgba(245,165,36,0.08); border-radius:5px; border-left:2px solid var(--radiance-warn);';
+            n.textContent = 'On WebGPU these scopes read the 8-bit preview at 256 px, overlays included, and ignore the scale and levels below. '
+                + 'Use WebGL (Settings > Renderer) for float scopes at full resolution.';
+            opts.appendChild(n);
+        }
         const field = (label, param, options, value, onChange, title = '') => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-field';
@@ -20644,7 +20659,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 `;
                 return el;
             };
-            statsRow.appendChild(mkStat('PEAK',  `${nitStr} cd/m²`,      '#fb923c'));
+            const peakStat = mkStat('PEAK (BT.2408)',  `${nitStr} cd/m²`,      '#fb923c');
+            peakStat.title = 'Scene-linear p99.9 luminance with 1.0 placed at 203 cd/m² (ITU-R BT.2408 HDR reference white). Not a display measurement.';
+            statsRow.appendChild(peakStat);
             statsRow.appendChild(mkStat('RANGE', `${s.evRange.toFixed(1)} EV`, '#a78bfa'));
             statsRow.appendChild(mkStat('CLIP',  `${s.clippedPct.toFixed(1)}%`,
                 s.clippedPct > 1 ? '#f87171' : '#4ade80'));
@@ -20815,7 +20832,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else                       nitStr = `${Math.round(nitPeak)}`;
 
         const statItems = [
-            { label: 'PEAK NIT',  value: `${nitStr} cd/m²`,                      color: '#fb923c' },
+            { label: 'PEAK NIT (BT.2408)',  value: `${nitStr} cd/m²`, color: '#fb923c',
+              title: 'Scene-linear p99.9 luminance with 1.0 placed at 203 cd/m² (ITU-R BT.2408 HDR reference white). Not a display measurement.' },
             { label: 'EV RANGE',  value: `${stats.evRange.toFixed(1)} stops`,     color: '#a78bfa' },
             {
                 label: 'CLIPPED',
@@ -20831,6 +20849,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         statItems.forEach(item => {
             const cell = document.createElement('div');
             cell.style.cssText = 'display: flex; flex-direction: column; gap: 1px;';
+            if (item.title) cell.title = item.title;
             cell.innerHTML = `
                 <div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.8px;text-transform:uppercase;">${item.label}</div>
                 <div style="font-size:9px;font-weight:700;font-family:monospace;color:${item.color};">${item.value}</div>
