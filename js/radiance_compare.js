@@ -45,7 +45,7 @@ export function compareGeometry(a, b, fit = 'pixel', { stretched = false } = {})
         return { match: true, note: null };            // sizes unknown: say nothing
     }
     if (aw === bw && ah === bh) return { match: true, note: null };
-    // `stretched`: the backend samples B across A's frame with no size-aware placement (WebGPU today).
+    // stretched: the backend samples B across A's frame with no size-aware placement (WebGPU today).
     const how = stretched ? 'stretched to A\'s frame (this renderer has no fit or pixel placement)'
         : fit === 'fit' ? 'scaled to fit A' : 'shown pixel for pixel, centred on A';
     return { match: false, note: `B is ${bw}×${bh}, A is ${aw}×${ah}: B is ${how}.` };
