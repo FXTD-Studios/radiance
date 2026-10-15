@@ -73,13 +73,18 @@ class _FakeVideoVAE:
     auto-generated (and always-truthy) attributes: detect_vae_factor()
     and the routing logic both branch on real attribute *absence*."""
 
-    def __init__(self, frames_per_lat_frame=2, downscale_ratio=8, temporal_compression=8):
+    def __init__(self, frames_per_lat_frame=2, downscale_ratio=8, temporal_compression=8, decode_mem=1200):
         self.downscale_ratio = downscale_ratio
         self.latent_dim = 3
+        self.vae_dtype = torch.bfloat16 if HAS_TORCH else None
         self._frames_per_lat_frame = frames_per_lat_frame
         self._temporal_compression = temporal_compression
+        self._decode_mem = decode_mem  # comfy's per-voxel factor: LTX 2.3 conv VAE 1200, LTX 2.5 diffusion VAE 1700
         self.decode_calls = []
         self.decode_tiled_calls = []
+
+    def memory_used_decode(self, shape, dtype):
+        return self._decode_mem * shape[2] * shape[3] * shape[4] * (8 * 8 * 8) * 2
 
     def temporal_compression_decode(self):
         return self._temporal_compression
@@ -257,9 +262,9 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
     the sampler's model left free; every chunk boundary showed as a dissolve.
     Auto now sizes on total VRAM and shrinks the tile until the clip fits."""
 
-    def _decode(self, total_gb, tile_size="Auto", lat_frames=31):
+    def _decode(self, total_gb, tile_size="Auto", lat_frames=31, decode_mem=1200):
         vae_mod = _import_vae()
-        vae = _FakeVideoVAE(downscale_ratio=32, temporal_compression=8)
+        vae = _FakeVideoVAE(downscale_ratio=32, temporal_compression=8, decode_mem=decode_mem)
         latent = torch.zeros(1, 4, lat_frames, 34, 60)
         with unittest.mock.patch.object(vae_mod.comfy.model_management, "get_total_memory",
                                         return_value=total_gb * 1024**3, create=True):
@@ -283,9 +288,22 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
         self.assertEqual(call["tile_x"], 512 // 32)
         self.assertIsNone(call["tile_t"])
 
-    def test_small_card_splits_time_with_a_quarter_chunk_overlap(self):
+    def test_8gb_card_keeps_the_whole_clip_with_384_tiles(self):
+        # 512 px would split time into 22-frame chunks; 384 px blends over a quarter tile.
         call = self._decode(8)
-        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertEqual(call["tile_x"], 384 // 32)
+        self.assertEqual(call["overlap"], 96 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_ltx25_diffusion_vae_on_8gb_goes_down_to_256(self):
+        call = self._decode(8, decode_mem=1700)
+        self.assertEqual(call["tile_x"], 256 // 32)
+        self.assertEqual(call["overlap"], 64 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_tiny_card_splits_time_with_a_quarter_chunk_overlap(self):
+        call = self._decode(2)
+        self.assertEqual(call["tile_x"], 256 // 32)
         self.assertEqual(call["tile_t"], 22)
         self.assertEqual(call["overlap_t"], 6)  # a quarter of 22, rounded up
 
@@ -298,6 +316,17 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
         call = self._decode(32, tile_size="1536")
         self.assertEqual(call["tile_x"], 1536 // 32)
         self.assertEqual(call["tile_t"], 9)
+
+    def test_ltx25_diffusion_vae_goes_down_to_512_on_32gb(self):
+        # 768 px: comfy estimates 31 GB, the card ran full and at half speed (70 s vs 41 s at 512).
+        call = self._decode(32, decode_mem=1700)
+        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_vae_estimate_fitting_no_tile_keeps_the_whole_clip_tile(self):
+        call = self._decode(32, decode_mem=100000)
+        self.assertEqual(call["tile_x"], 768 // 32)
+        self.assertIsNone(call["tile_t"])
 
 
 if __name__ == "__main__":
