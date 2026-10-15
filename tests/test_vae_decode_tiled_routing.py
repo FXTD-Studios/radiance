@@ -288,9 +288,22 @@ class TestAutoShrinksTileBeforeSplittingTime(unittest.TestCase):
         self.assertEqual(call["tile_x"], 512 // 32)
         self.assertIsNone(call["tile_t"])
 
-    def test_small_card_splits_time_with_a_quarter_chunk_overlap(self):
+    def test_8gb_card_keeps_the_whole_clip_with_384_tiles(self):
+        # 512 px would split time into 22-frame chunks; 384 px blends over a quarter tile.
         call = self._decode(8)
-        self.assertEqual(call["tile_x"], 512 // 32)
+        self.assertEqual(call["tile_x"], 384 // 32)
+        self.assertEqual(call["overlap"], 96 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_ltx25_diffusion_vae_on_8gb_goes_down_to_256(self):
+        call = self._decode(8, decode_mem=1700)
+        self.assertEqual(call["tile_x"], 256 // 32)
+        self.assertEqual(call["overlap"], 64 // 32)
+        self.assertIsNone(call["tile_t"])
+
+    def test_tiny_card_splits_time_with_a_quarter_chunk_overlap(self):
+        call = self._decode(2)
+        self.assertEqual(call["tile_x"], 256 // 32)
         self.assertEqual(call["tile_t"], 22)
         self.assertEqual(call["overlap_t"], 6)  # a quarter of 22, rounded up
 
