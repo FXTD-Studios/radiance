@@ -8,6 +8,7 @@
  */
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { startSession } from './session_support.mjs';
 
 const session = await startSession();
@@ -372,4 +373,93 @@ test('a QC run can be stopped, and keeps what it measured as incomplete', { skip
     assert.ok(out.analysed > 0 && out.analysed < 40, `analysed ${out.analysed}`);
     assert.notEqual(out.overall, 'PASS', 'a stopped run must not read as a pass');
     assert.match(out.label, /\(stopped\)$/);
+});
+
+test('File > Deliver Master opens the Deliver dialog, which offers PQ and HLG and moves an 8-bit format to H.265 10-bit', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        await __sleep(100);
+        const r = {};
+        // Through the menu, as a user opens it.
+        const fileBtn = [...v.container.querySelectorAll('.radiance-pro-menu-items button')].find((b) => b.textContent === 'File');
+        fileBtn.click();
+        const item = document.querySelector('.radiance-pro-dropdown [data-action="file.deliver"]');
+        r.menuLabel = item?.textContent || '';
+        item.click();
+        const dlg = v.container.querySelector('.radiance-deliver-dialog');
+        r.open = !!dlg && dlg.style.display !== 'none';
+        const q = (k) => dlg.querySelector(`[data-dv="${k}"]`);
+        const cs = q('colorspace'), fmt = q('format');
+        r.formats = [...fmt.options].map((o) => o.value);
+        r.hasHdr = ['PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'].every((x) => [...cs.options].some((o) => o.value === x));
+        fmt.value = 'Video — MP4 (H.264)';
+        cs.value = 'HLG (Hybrid Log-Gamma)';
+        cs.dispatchEvent(new Event('change'));
+        r.afterHdr = fmt.value;
+        r.disabled = [...fmt.options].filter((o) => o.disabled).map((o) => o.value).sort();
+        cs.value = 'sRGB (Standard)';
+        cs.dispatchEvent(new Event('change'));
+        r.disabledAfterSdr = [...fmt.options].filter((o) => o.disabled).length;
+        // Typing in the dialog never reaches the viewer shortcuts; Esc closes it.
+        let leaked = 0; const spy = () => leaked++;
+        window.addEventListener('keydown', spy);
+        q('filename').dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true }));
+        q('filename').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+        window.removeEventListener('keydown', spy);
+        r.leaked = leaked;
+        r.closedByEsc = dlg.style.display === 'none';
+        // Reopening keeps the same dialog and what was chosen in it.
+        v._runKeyAction('file.deliver');
+        r.sameDialog = v.container.querySelectorAll('.radiance-deliver-dialog').length === 1 && dlg.style.display !== 'none';
+
+        // RENDER: a PQ H.265 master. The server is stubbed here; the payload
+        // is what delivery/handler.py receives (tests/test_delivery_endpoints.py
+        // runs the same settings through the writer and ffprobe).
+        cs.value = 'PQ (HDR10 / ST.2084)';
+        cs.dispatchEvent(new Event('change'));
+        fmt.value = 'Video — MP4 (H.265 10-bit)';
+        q('filename').value = 'pq_master';
+        const realFetch = window.fetch;
+        let posted = null;
+        window.fetch = async (url, opts) => {
+            if (String(url).startsWith('/radiance/progress')) return new Response(JSON.stringify({ current: 1, total: 1, status: 'done', message: 'Writing' }));
+            if (String(url) === '/radiance/deliver') {
+                posted = JSON.parse(opts.body);
+                return new Response(JSON.stringify({ status: 'success', message: 'Delivered pq_master', path: '/out/pq_master_v001.mp4',
+                    qc: '◎ [QC PASS — HDR] PQ (HDR10 / ST.2084): peak ≈ 102 nits (scene-linear 1.0 = 203 nits, BT.2408).' }));
+            }
+            return realFetch(url, opts);
+        };
+        q('render').click();
+        await __until(() => q('history').children.length > 0, 5000);
+        window.fetch = realFetch;
+        r.posted = posted;
+        r.status = q('status').textContent;
+        r.progress = q('progress').textContent;
+        r.history = q('history').textContent;
+        r.renderEnabled = !q('render').disabled;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    if (process.env.RADIANCE_DELIVER_PAYLOAD_OUT) writeFileSync(process.env.RADIANCE_DELIVER_PAYLOAD_OUT, JSON.stringify(out.posted));
+    assert.match(out.menuLabel, /Deliver Master/);
+    assert.equal(out.open, true);
+    assert.equal(out.hasHdr, true);
+    assert.ok(!out.formats.some((f) => /XQ|HDR Log|GIF|WEBP|JPEG/.test(f)), `unsupported formats offered: ${out.formats}`);
+    assert.equal(out.afterHdr, 'Video — MP4 (H.265 10-bit)');
+    assert.deepEqual(out.disabled, ['Image Sequence — PNG (8-bit)', 'Video — MP4 (H.264)']);
+    assert.equal(out.disabledAfterSdr, 0);
+    assert.equal(out.leaked, 0);
+    assert.equal(out.closedByEsc, true);
+    assert.equal(out.sameDialog, true);
+    assert.equal(out.posted.settings.colorSpace, 'PQ (HDR10 / ST.2084)');
+    assert.equal(out.posted.settings.format, 'Video — MP4 (H.265 10-bit)');
+    assert.equal(out.posted.settings.filename, 'pq_master');
+    assert.ok(out.posted.grading && 'exposure' in out.posted.grading);
+    assert.match(out.status, /Delivered pq_master/);
+    assert.match(out.status, /QC PASS — HDR/);
+    assert.match(out.progress, /EXPORT COMPLETE/);
+    assert.match(out.history, /pq_master/);
+    assert.equal(out.renderEnabled, true);
 });

@@ -4976,6 +4976,550 @@ class RadianceViewer {
         this._termOutputEl = null;
     }
 
+    /**
+     * The Deliver panel: graded master export through /radiance/deliver
+     * (delivery/handler.py). Built for the terminal deck and for
+     * File > Deliver Master... (openDeliverDialog). onFinished runs after
+     * each render, success or not. Returns the panel element.
+     */
+    _buildDeliverPanel({ onFinished } = {}) {
+        // ── VFX Delivery Area (Phase 5) ──────────────────────────────────
+        const dvContainer = document.createElement('div');
+        dvContainer.style.cssText = `flex: 1; display: none; flex-direction: column; background: #0b0e14; padding: 12px; overflow-y: auto;`;
+
+        const dvTitle = document.createElement('div');
+        dvTitle.textContent = '◎ RENDER SETTINGS — EXPORT GRADED MASTER';
+        dvTitle.style.cssText = `font-size: 10px; font-weight: 800; color: #777; letter-spacing: 0.15em; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 5px;`;
+        dvContainer.appendChild(dvTitle);
+
+        const dvForm = document.createElement('div');
+        dvForm.style.cssText = `display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 10px; align-items: center;`;
+
+        const addRow = (label, el, span = 1) => {
+            const lbl = document.createElement('label');
+            lbl.textContent = label;
+            lbl.style.cssText = `font-size: 9px; color: #555; text-transform: uppercase; font-weight: bold;`;
+            dvForm.appendChild(lbl);
+            if (span > 1) el.style.gridColumn = `span ${span}`;
+            dvForm.appendChild(el);
+        };
+
+        const dvFilename = document.createElement('input');
+
+        dvFilename.dataset.dv = 'filename';
+        dvFilename.value = 'Radiance_Export';
+        dvFilename.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
+        addRow('Filename', dvFilename);
+
+        const dvPath = document.createElement('input');
+
+        dvPath.dataset.dv = 'path';
+        dvPath.placeholder = 'Default Output Folder';
+        dvPath.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
+        addRow('Location', dvPath);
+
+        const dvFormat = document.createElement('select');
+
+        dvFormat.dataset.dv = 'format';
+        dvFormat.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
+        // Exactly the keys of _UI_TO_WRITE_FORMAT in delivery/handler.py
+        // (js/tests/deliver_options.test.mjs checks both directions). ProRes
+        // 4444 XQ / HDR Log, JPEG, GIF and WEBP were listed here and refused by
+        // the server after the click.
+        [
+            'Video — MP4 (H.264)',
+            'Video — MP4 (H.265 10-bit)',
+            'Video — MOV (ProRes 422 HQ)',
+            'Video — MOV (ProRes 4444)',
+            'Image Sequence — PNG (8-bit)',
+            'Image Sequence — PNG (16-bit)',
+            'Image Sequence — EXR (32-bit)',
+        ].forEach(f => {
+            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; dvFormat.appendChild(opt);
+        });
+        addRow('Format', dvFormat);
+
+        const dvColorSpace = document.createElement('select');
+
+        dvColorSpace.dataset.dv = 'colorspace';
+        dvColorSpace.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
+        // ── Color Space Options ──────────────────────────────────────────────
+        // Exactly the keys of _UI_TO_WRITE_COLORSPACE in delivery/handler.py
+        // (js/tests/deliver_options.test.mjs checks both directions).
+        const _csGroups = [
+            { label: '── Display ──────────────────', disabled: true },
+            { label: 'Linear (sRGB)',           value: 'Linear (sRGB)' },
+            { label: 'sRGB (Standard)',          value: 'sRGB (Standard)' },
+            { label: '── ACES ─────────────────────', disabled: true },
+            { label: 'ACEScg  (AP1 scene-linear)',  value: 'ACEScg (AP1)' },
+            { label: 'ACES2065-1  (AP0 scene-linear)', value: 'ACES2065-1 (AP0)' },
+            { label: 'ACEScct  (log, grading)',    value: 'ACEScct' },
+            { label: '── Camera Log ───────────────', disabled: true },
+            { label: 'ARRI LogC3',               value: 'ARRI LogC3' },
+            { label: 'ARRI LogC4',               value: 'ARRI LogC4' },
+            { label: 'Sony S-Log3',              value: 'Sony S-Log3' },
+            { label: 'Panasonic V-Log',          value: 'Panasonic V-Log' },
+            { label: 'Canon Log 3',              value: 'Canon Log 3' },
+            { label: 'RED Log3G10',              value: 'RED Log3G10' },
+            { label: 'DaVinci Intermediate',     value: 'DaVinci Intermediate' },
+            { label: '── HDR (BT.2100) ───────────', disabled: true },
+            { label: 'PQ  (HDR10 / ST.2084)',     value: 'PQ (HDR10 / ST.2084)' },
+            { label: 'HLG  (Hybrid Log-Gamma)',   value: 'HLG (Hybrid Log-Gamma)' },
+        ];
+        _csGroups.forEach(cs => {
+            const opt = document.createElement('option');
+            if (cs.disabled) {
+                opt.disabled = true;
+                opt.textContent = cs.label;
+                opt.style.color = '#555';
+            } else {
+                opt.value = cs.value;
+                opt.textContent = cs.label;
+            }
+            dvColorSpace.appendChild(opt);
+        });
+        addRow('Color Space', dvColorSpace);
+
+        // ── ACES hint badge: shows when an ACES output is selected ───────────
+        const _acesHintEl = document.createElement('div');
+        _acesHintEl.style.cssText = `
+            grid-column: span 4; font-size: 9px; padding: 5px 8px;
+            border-left: 2px solid #a78bfa; background: rgba(167,139,250,0.07);
+            color: rgba(167,139,250,0.8); border-radius: 0 4px 4px 0;
+            display: none; margin-top: -4px; margin-bottom: 2px; line-height: 1.5;
+        `;
+        // PQ and HLG need 10 bits or float: the 8-bit formats are disabled while
+        // one is chosen (the server refuses them too), and a chosen 8-bit format
+        // moves to H.265 10-bit, which carries HDR10 metadata.
+        const _HDR_CS = ['PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'];
+        const _EIGHT_BIT = ['Video — MP4 (H.264)', 'Image Sequence — PNG (8-bit)'];
+        this._syncDeliverHDR = () => {
+            const hdr = _HDR_CS.includes(dvColorSpace.value);
+            [...dvFormat.options].forEach((o) => {
+                if (_EIGHT_BIT.includes(o.value)) {
+                    o.disabled = hdr;
+                    o.title = hdr ? 'PQ and HLG need a 10-bit or float format' : '';
+                }
+            });
+            if (hdr && _EIGHT_BIT.includes(dvFormat.value)) dvFormat.value = 'Video — MP4 (H.265 10-bit)';
+            return hdr;
+        };
+        dvColorSpace.addEventListener('change', () => {
+            const v = dvColorSpace.value;
+            const isAces = v.startsWith('ACES') || v.startsWith('ACEScg') || v.startsWith('ACES2065');
+            const isHdr = this._syncDeliverHDR();
+            _acesHintEl.style.display = isAces || isHdr ? '' : 'none';
+            if (isHdr)
+                _acesHintEl.textContent = `${v}: BT.2100 HDR, Rec.2020. Scene-linear 1.0 is placed at 203 nits (BT.2408). `
+                    + 'MP4 (H.265 10-bit) carries HDR10 metadata for PQ (mastering display P3-D65 1000 nits, measured MaxCLL / MaxFALL); '
+                    + 'ProRes carries the colour tags only. 8-bit formats are not offered.';
+            if (v === 'ACEScg (AP1)')
+                _acesHintEl.textContent = 'ACEScg (AP1): scene-linear, AP1 primaries. Ideal for VFX interchange and compositing pipelines (Nuke, Houdini, DaVinci).';
+            else if (v === 'ACES2065-1 (AP0)')
+                _acesHintEl.textContent = 'ACES2065-1 (AP0): archive-grade, AP0 primaries cover all real colors. Use for EXR interchange and digital negative archival.';
+            else if (v === 'ACEScct')
+                _acesHintEl.textContent = 'ACEScct: log-encoded, AP1 primaries. Use for CDL grading roundtrips and DaVinci / Resolve workflows.';
+        });
+        dvForm.appendChild(_acesHintEl);
+
+        const dvRangeIn = document.createElement('input');
+        dvRangeIn.type = 'number'; dvRangeIn.value = '1';
+        dvRangeIn.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
+        addRow('Range In', dvRangeIn);
+
+        const dvRangeOut = document.createElement('input');
+        dvRangeOut.type = 'number'; dvRangeOut.value = '0';
+        dvRangeOut.title = '0 means exact end of sequence';
+        dvRangeOut.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
+        addRow('Range Out', dvRangeOut);
+
+        const dvAspect = document.createElement('select');
+        dvAspect.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
+        ['None', '2.35:1 (Scope)', '1.85:1 (Flat)', '1:1 (Square)', '9:16 (Vertical)'].forEach(f => {
+            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; dvAspect.appendChild(opt);
+        });
+        addRow('Letterbox', dvAspect);
+
+        const dvFPS = document.createElement('input');
+        dvFPS.type = 'number'; dvFPS.value = '24';
+        dvFPS.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
+        addRow('Frame Rate', dvFPS);
+
+        const dvQuality = document.createElement('input');
+        dvQuality.type = 'range'; dvQuality.min = '0'; dvQuality.max = '51'; dvQuality.value = '18';
+        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #00a8ff;`;
+        addRow('Quality (CRF)', dvQuality);
+
+        // Apex Options Section
+        const dvApexSection = document.createElement('div');
+        dvApexSection.style.cssText = `grid-column: span 4; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 15px;`;
+
+        const createCheck = (label, id, def = false) => {
+            const wrap = document.createElement('label');
+            wrap.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 9px; color: #aaa; font-weight: 600; text-transform: uppercase;`;
+            const cb = document.createElement('input');
+            cb.type = 'checkbox'; cb.checked = def;
+            cb.style.cssText = `accent-color: #00a8ff;`;
+            wrap.appendChild(cb);
+            wrap.appendChild(document.createTextNode(label));
+            return { wrap, cb };
+        };
+
+        const { wrap: wUpscale, cb: dvUpscale } = createCheck('◎ AI Upscale (2x)', 'dvUpscale', false);
+        const { wrap: wSmartVer, cb: dvSmartVer } = createCheck('◎ Smart Versioning', 'dvSmartVer', true);
+        const { wrap: wSlate, cb: dvSlate } = createCheck('◎ Include Slate', 'dvSlate', false);
+        const { wrap: wBurnTC, cb: dvBurnTC } = createCheck('◎ Burn Timecode', 'dvBurnTC', false);
+        const { wrap: wBurnVer, cb: dvBurnVer } = createCheck('◎ Burn Version', 'dvBurnVer', false);
+        const { wrap: wBurnFrame, cb: dvBurnFrame } = createCheck('◎ Burn Frame#', 'dvBurnFrame', false);
+        const { wrap: wBurnLUT, cb: dvBurnLUT } = createCheck('◎ Burn LUT', 'dvBurnLUT', false);
+        const { wrap: wExportCDL, cb: dvExportCDL } = createCheck('◎ Export .CDL', 'dvExportCDL', false);
+        const { wrap: wExportAMF, cb: dvExportAMF } = createCheck('◎ Export .AMF  (ACES Clip XML)', 'dvExportAMF', false);
+        const { wrap: wBakeGrade, cb: dvBakeGrade } = createCheck('◎ Bake Grade → EXR', 'dvBakeGrade', false);
+        dvBakeGrade.dataset.dv = 'bake';
+        const { wrap: wRevealTarget, cb: dvRevealTarget } = createCheck('◎ Launch Folder', 'dvRevealTarget', true);
+        dvRevealTarget.dataset.dv = 'reveal';
+        const { wrap: wSoftClip, cb: dvSoftClip } = createCheck('◎ Soft Clip Highlights', 'dvSoftClip', true);
+
+        dvApexSection.appendChild(wUpscale);
+        dvApexSection.appendChild(wSmartVer);
+        dvApexSection.appendChild(wExportCDL);
+        dvApexSection.appendChild(wExportAMF);
+        dvApexSection.appendChild(wBakeGrade);
+        dvApexSection.appendChild(wRevealTarget);
+        dvApexSection.appendChild(wSoftClip);
+        dvApexSection.appendChild(wSlate);
+        dvApexSection.appendChild(wBurnTC);
+        dvApexSection.appendChild(wBurnVer);
+        dvApexSection.appendChild(wBurnFrame);
+        dvApexSection.appendChild(wBurnLUT);
+        dvForm.appendChild(dvApexSection);
+
+        const customTextWrap = document.createElement('div');
+        customTextWrap.style.cssText = `grid-column: span 4; display: flex; align-items: center; gap: 10px; margin-top: 5px;`;
+        const customTextLbl = document.createElement('div');
+        customTextLbl.textContent = "CUSTOM BURN-IN TEXT:";
+        customTextLbl.style.cssText = `font-size: 9px; color: #666; font-weight: bold;`;
+        const dvCustomText = document.createElement('input');
+        dvCustomText.type = 'text'; dvCustomText.placeholder = 'e.g. VFX REVIEW [DO NOT DISTRIBUTE]';
+        dvCustomText.style.cssText = `flex: 1; background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
+        customTextWrap.appendChild(customTextLbl);
+        customTextWrap.appendChild(dvCustomText);
+        dvForm.appendChild(customTextWrap);
+
+        dvContainer.appendChild(dvForm);
+
+        const dvSubmitRow = document.createElement('div');
+        dvSubmitRow.style.cssText = `margin-top: 20px; display: flex; gap: 10px; border-top: 1px solid #222; padding-top: 15px;`;
+
+        const dvRenderBtn = document.createElement('button');
+
+        dvRenderBtn.dataset.dv = 'render';
+        dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
+        dvRenderBtn.style.cssText = `background: #00a8ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
+        dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
+        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#00a8ff';
+
+        dvSubmitRow.appendChild(dvRenderBtn);
+
+        // Progress Tracking UI
+        const dvProgressContainer = document.createElement('div');
+        dvProgressContainer.style.cssText = `margin-top: 15px; display: none; flex-direction: column; gap: 5px;`;
+
+        const dvProgressLabel = document.createElement('div');
+
+        dvProgressLabel.dataset.dv = 'progress';
+        dvProgressLabel.style.cssText = `font-size: 9px; color: #00a8ff; font-weight: bold; text-transform: uppercase;`;
+        dvProgressLabel.textContent = 'READY TO EXPORT';
+
+        const dvProgressTrack = document.createElement('div');
+        dvProgressTrack.style.cssText = `width: 100%; height: 2px; background: #1a1e24; border-radius: 1px; overflow: hidden;`;
+
+        const dvProgressBar = document.createElement('div');
+        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #00a8ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);`;
+
+        dvProgressTrack.appendChild(dvProgressBar);
+        dvProgressContainer.appendChild(dvProgressLabel);
+        dvProgressContainer.appendChild(dvProgressTrack);
+        dvContainer.appendChild(dvProgressContainer);
+
+        // The last render's messages, in the panel itself: the dialog has no
+        // terminal next to it.
+        const dvStatus = document.createElement('div');
+        dvStatus.dataset.dv = 'status';
+        dvStatus.style.cssText = `margin-top: 10px; display: none; flex-direction: column; gap: 3px; font-size: 10px; line-height: 1.45; max-height: 140px; overflow-y: auto;`;
+        dvContainer.appendChild(dvStatus);
+        const _logColors = { success: '#7bed9f', warn: '#ff9f43', error: '#ff4757', system: '#9aa7b5', event: '#eccc68' };
+        const log = (type, msg) => {
+            this._termLog(type, msg);
+            const line = document.createElement('div');
+            line.style.color = _logColors[type] || '#c8d3e0';
+            line.textContent = String(msg).replace(/<[^>]*>/g, '');
+            dvStatus.appendChild(line);
+            dvStatus.style.display = 'flex';
+        };
+
+        // Render History UI
+        const dvHistoryTitle = document.createElement('div');
+        dvHistoryTitle.textContent = '◎ RECENT EXPORTS';
+        dvHistoryTitle.style.cssText = `font-size: 9px; font-weight: 800; color: #444; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #1a1e24; padding-bottom: 3px;`;
+        dvContainer.appendChild(dvHistoryTitle);
+
+        const dvHistoryList = document.createElement('div');
+
+        dvHistoryList.dataset.dv = 'history';
+        dvHistoryList.style.cssText = `display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto;`;
+        dvContainer.appendChild(dvHistoryList);
+
+        const addHistoryItem = (path, name, qc) => {
+            const item = document.createElement('div');
+            item.style.cssText = `background: #111; border: 1px solid #222; padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 10px;`;
+
+            const info = document.createElement('div');
+            // Escaped: 'name' is the raw Filename textbox value and 'path'/'qc'
+            // come from the /radiance/deliver JSON. This was the one tainted
+            // innerHTML in the file -- the same class already has escapeHtml()
+            // and uses it correctly a few hundred lines up.
+            const _esc = RadianceViewer.escapeHtml;
+            info.innerHTML = `
+                <div style="color: #eee; font-weight: bold;">${_esc(name)}</div>
+                <div style="color: #555; font-size: 9px; margin-top: 2px;">${_esc(path)}</div>
+                <div style="color: ${/\[QC PASS/.test(qc) ? '#00ff88' : '#ff4444'}; font-size: 8px; margin-top: 2px;">${_esc(qc)}</div>
+            `;
+
+            const openBtn = document.createElement('button');
+            openBtn.textContent = '◎';
+            openBtn.title = 'Open Path';
+            openBtn.style.cssText = `background: transparent; border: none; cursor: pointer; filter: grayscale(1) opacity(0.5); font-size: 12px;`;
+            openBtn.onclick = () => {
+                // Try to open folder if supported by backend bridge, otherwise just log
+                log('system', `Opening: ${path}`);
+            };
+
+            item.appendChild(info);
+            item.appendChild(openBtn);
+
+            if (dvHistoryList.firstChild) dvHistoryList.insertBefore(item, dvHistoryList.firstChild);
+            else dvHistoryList.appendChild(item);
+        };
+
+        dvContainer.appendChild(dvSubmitRow);
+
+        // VFX Delivery Logic (Phase 5)
+        dvRenderBtn.onclick = async () => {
+            const nodeId = this.node.id;
+            if (!nodeId) {
+                this._showToast("Viewer is not initialized yet. Queue a prompt first.", "error");
+                return;
+            }
+
+            dvRenderBtn.disabled = true;
+            dvStatus.replaceChildren();
+            dvProgressBar.style.background = '#00a8ff';
+            dvRenderBtn.textContent = '◎ PROCESSING VFX RENDER...';
+            dvRenderBtn.style.opacity = '0.5';
+            dvProgressContainer.style.display = 'flex';
+            dvProgressBar.style.width = '0%';
+            dvProgressLabel.textContent = 'Initializing Export Pipeline...';
+
+            let progressInterval = setInterval(async () => {
+                try {
+                    const progRes = await fetch(`/radiance/progress?id=${this.instanceId || nodeId}`);
+                    const prog = await progRes.json();
+                    const percent = (prog.current / prog.total) * 100;
+                    dvProgressBar.style.width = `${percent}%`;
+                    dvProgressLabel.textContent = `${prog.message} [${percent.toFixed(0)}%]`;
+                    if (prog.status === 'done' || prog.status === 'error') clearInterval(progressInterval);
+                } catch (e) {
+                    clearInterval(progressInterval);
+                }
+            }, 800);
+
+            try {
+                const response = await api.fetchApi('/radiance/deliver', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        instance_id: this.instanceId || nodeId,
+                        grading: {
+                            exposure: this.exposure,
+                            // Full per-channel arrays — NOT [0] only. Avoids silently
+                            // dropping teal/orange and other per-channel grade decisions.
+                            gamma: Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma || 1.0, this.gamma || 1.0, this.gamma || 1.0],
+                            gain: Array.isArray(this.gain) ? [...this.gain] : [this.gain || 1.0, this.gain || 1.0, this.gain || 1.0],
+                            lift: Array.isArray(this.lift) ? [...this.lift] : [this.lift || 0.0, this.lift || 0.0, this.lift || 0.0],
+                            offset: Array.isArray(this.offset) ? [...this.offset] : [this.offset || 0.0, this.offset || 0.0, this.offset || 0.0],
+                            contrast: this.contrast ?? 1.0,
+                            pivot: this.pivot ?? _PIVOT_DEFAULT,
+                            saturation: this.saturation,
+                            temperature: this.temperature,
+                            tint: this.tint,
+                            colorScience: this.colorScience || 0,
+                            lumaMix: this.lumaMix !== undefined ? this.lumaMix : 1.0,
+                            // These six were read by delivery/handler.py and never
+                            // sent, so every one of them exported at its identity
+                            // default while the viewer showed the graded result.
+                            // See GRADE_PAYLOAD_KEYS in delivery/handler.py —
+                            // tests/test_delivery_contract.py now diffs the two.
+                            shadows: this.shadows || 0.0,
+                            highlights: this.highlights || 0.0,
+                            hue_shift: this.hueShift || 0.0,
+                            // The rest of the grade the shader applies, so the
+                            // master matches the screen (color/grading.py
+                            // viewer_grade_kwargs reads these).
+                            colorBoost: this.colorBoost ?? 0.0,
+                            logShadow: Array.isArray(this.logShadow) ? [...this.logShadow] : [0, 0, 0],
+                            logMidtone: Array.isArray(this.logMidtone) ? [...this.logMidtone] : [0, 0, 0],
+                            logHighlight: Array.isArray(this.logHighlight) ? [...this.logHighlight] : [0, 0, 0],
+                            printerR: this.printerR ?? 0,
+                            printerG: this.printerG ?? 0,
+                            printerB: this.printerB ?? 0,
+                            curveTable: this._curveTable ? Array.from(this._curveTable) : null,
+                            curveMix: this.curveMix ?? 1.0,
+                            secondaryCurveTable: this._secondaryCurveTable ? Array.from(this._secondaryCurveTable) : null,
+                            secondaryCurveMix: this._secondaryCurveTable && !_isIdentitySecondaryTable(this._secondaryCurveTable) ? 1.0 : 0.0,
+                            sourceGamut: this.renderer?.sourceGamut ?? 0,
+                            lut_name: this.displayLut || 'None',
+                            lut_intensity: this.lutIntensity !== undefined ? this.lutIntensity : 1.0,
+                            gamut_compression: !!this.gamutCompression,
+                            // FX params — must match viewer for what-you-see = what-you-export
+                            grain: this.grain || 0.0,
+                            bloom: this.bloom || 0.0,
+                            halation: this.halation || 0.0,
+                            diffusion: this.diffusion || 0.0,
+                            denoise: this.denoise || 0.0,
+                        },
+                        settings: {
+                            filename: dvFilename.value,
+                            path: dvPath.value,
+                            format: dvFormat.value,
+                            colorSpace: dvColorSpace.value,
+                            aspect_ratio: dvAspect.value,
+                            range_in: parseInt(dvRangeIn.value) || 1,
+                            range_out: parseInt(dvRangeOut.value) || 0,
+                            fps: dvFPS.value,
+                            quality: dvQuality.value,
+                            upscale_2x: dvUpscale.checked,
+                            smart_versioning: dvSmartVer.checked,
+                            export_cdl: dvExportCDL.checked,
+                            export_amf: dvExportAMF.checked,
+                            bake_grade: dvBakeGrade.checked,
+                            reveal_folder: dvRevealTarget.checked,
+                            include_slate: dvSlate.checked,
+                            burn_in_tc: dvBurnTC.checked,
+                            burn_in_ver: dvBurnVer.checked,
+                            burn_in_frame: dvBurnFrame.checked,
+                            burn_in_lut: dvBurnLUT.checked,
+                            burn_custom_text: dvCustomText.value,
+                            soft_clip: dvSoftClip.checked
+                        }
+                    })
+                });
+
+                const result = await response.json();
+                clearInterval(progressInterval);
+
+                // The server answers 'partial' when the master was written but a
+                // requested step was not (FX bake, CDL/AMF sidecar, upscale, a
+                // degraded EXR). That is not a failure and not a clean success:
+                // show what was skipped instead of "FAILED undefined".
+                const _dvWarnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+                // The baked grade is whole-frame. A power window or qualifier is
+                // a viewer-side matte the payload does not carry, so the master
+                // can differ from what the viewer shows. Say so.
+                if (dvBakeGrade.checked) {
+                    const _r = this.renderer;
+                    const _aids = [];
+                    if (_r?.maskType > 0) _aids.push('power window');
+                    if (_r?.qualifierEnabled) _aids.push('qualifier');
+                    if (_aids.length) _dvWarnings.push(`Not baked: ${_aids.join(' and ')} (the master carries the whole-frame grade only).`);
+                }
+                if (result.status === 'success' || result.status === 'partial') {
+                    const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
+                    dvProgressBar.style.width = '100%';
+                    dvProgressLabel.textContent = _dvPartial
+                        ? '◎ EXPORT COMPLETE WITH WARNINGS'
+                        : '◎ EXPORT COMPLETE';
+                    if (_dvPartial) dvProgressBar.style.background = '#ffaa00';
+                    log(_dvPartial ? 'warn' : 'success', `[DELIVERY] ${result.message}`);
+                    for (const w of _dvWarnings) log('warn', `[DELIVERY] ${w}`);
+                    if (_dvPartial) this._showToast?.(`Delivered with ${_dvWarnings.length} warning(s): ${_dvWarnings.join(' ')}`, 'warn');
+                    if (result.qc) {
+                        const qcColor = /\[QC PASS/.test(result.qc) ? '#00ff88' : '#ff4444';
+                        log('system', `<span style="color: ${qcColor}">${result.qc}</span>`);
+                    }
+                    log('system', ` Saved to: ${result.path}`);
+
+                    addHistoryItem(result.path, dvFilename.value, result.qc || 'QC N/A');
+
+                    setTimeout(() => {
+                        dvProgressContainer.style.display = 'none';
+                    }, 3000);
+
+                    onFinished?.();
+                } else {
+                    log('error', `[DELIVERY FAILED] ${result.error || result.message || 'no reason given'}`);
+                    dvProgressLabel.textContent = '◎ EXPORT FAILED';
+                    this._showToast?.(`Delivery failed: ${result.error || result.message || 'no reason given'}`, 'error');
+                    dvProgressBar.style.background = '#ff4444';
+                    onFinished?.();
+                }
+            } catch (e) {
+                clearInterval(progressInterval);
+                log('error', `[API ERROR] ${e.message}`);
+                dvProgressLabel.textContent = '◎ EXPORT FAILED';
+                this._showToast?.(`Delivery failed: ${e.message}`, 'error');
+                onFinished?.();
+            } finally {
+                dvRenderBtn.disabled = false;
+                dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
+                dvRenderBtn.style.opacity = '1';
+            }
+        };
+
+        return dvContainer;
+    }
+
+    /** File > Deliver Master...: the Deliver panel in a dialog over the viewer. */
+    openDeliverDialog() {
+        if (!this.container) return null;
+        if (this._deliverDialog?.isConnected) {
+            this._deliverDialog.style.display = 'flex';
+            return this._deliverDialog;
+        }
+        const overlay = document.createElement('div');
+        overlay.className = 'radiance-deliver-dialog';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-label', 'Deliver master');
+        overlay.style.cssText = 'position:absolute; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;'
+            + 'background:rgba(0,0,0,.55);';
+        const box = document.createElement('div');
+        box.style.cssText = 'position:relative; width:min(780px, 94%); max-height:90%; display:flex; flex-direction:column;'
+            + 'background:#0b0e14; border:1px solid #2a3140; border-radius:8px; box-shadow:0 12px 40px rgba(0,0,0,.6); overflow:hidden;';
+        const close = () => { overlay.style.display = 'none'; };
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.title = 'Close (Esc)';
+        closeBtn.dataset.dv = 'close';
+        closeBtn.style.cssText = 'position:absolute; top:6px; right:8px; z-index:1; background:transparent; border:none; color:#888; font-size:14px; cursor:pointer;';
+        closeBtn.onclick = close;
+        const panel = this._buildDeliverPanel();
+        panel.style.display = 'flex';
+        box.appendChild(closeBtn);
+        box.appendChild(panel);
+        overlay.appendChild(box);
+        // Typing a filename must not run viewer shortcuts; Esc closes.
+        overlay.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') { e.preventDefault(); close(); }
+        });
+        overlay.addEventListener('keyup', (e) => e.stopPropagation());
+        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+        overlay.tabIndex = -1;
+        this.container.appendChild(overlay);
+        this._deliverDialog = overlay;
+        overlay.focus();
+        return overlay;
+    }
+
     createTerminal() {
         // v2.3.3: Professional Terminal
         const t = this.theme;
@@ -5207,272 +5751,9 @@ class RadianceViewer {
         scContainer.appendChild(scTextarea);
         termContainer.appendChild(scContainer);
 
-        // ── VFX Delivery Area (Phase 5) ──────────────────────────────────
-        const dvContainer = document.createElement('div');
-        dvContainer.style.cssText = `flex: 1; display: none; flex-direction: column; background: #0b0e14; padding: 12px; overflow-y: auto;`;
-
-        const dvTitle = document.createElement('div');
-        dvTitle.textContent = '◎ RENDER SETTINGS — EXPORT GRADED MASTER';
-        dvTitle.style.cssText = `font-size: 10px; font-weight: 800; color: #777; letter-spacing: 0.15em; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 5px;`;
-        dvContainer.appendChild(dvTitle);
-
-        const dvForm = document.createElement('div');
-        dvForm.style.cssText = `display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 10px; align-items: center;`;
-
-        const addRow = (label, el, span = 1) => {
-            const lbl = document.createElement('label');
-            lbl.textContent = label;
-            lbl.style.cssText = `font-size: 9px; color: #555; text-transform: uppercase; font-weight: bold;`;
-            dvForm.appendChild(lbl);
-            if (span > 1) el.style.gridColumn = `span ${span}`;
-            dvForm.appendChild(el);
-        };
-
-        const dvFilename = document.createElement('input');
-        dvFilename.value = 'Radiance_Export';
-        dvFilename.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
-        addRow('Filename', dvFilename);
-
-        const dvPath = document.createElement('input');
-        dvPath.placeholder = 'Default Output Folder';
-        dvPath.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
-        addRow('Location', dvPath);
-
-        const dvFormat = document.createElement('select');
-        dvFormat.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
-        // IMPORTANT: These strings MUST exactly match OUTPUT_FORMATS in nodes_io.py
-        [
-            'Video — MP4 (H.264)',
-            'Video — MP4 (H.265 10-bit)',
-            'Video — MOV (ProRes 422 HQ)',
-            'Video — MOV (ProRes 4444)',
-            'Video — MOV (ProRes 4444 XQ)',
-            'Video — MOV (ProRes 4444 HDR Log)',
-            'Image Sequence — PNG (8-bit)',
-            'Image Sequence — PNG (16-bit)',
-            'Image Sequence — EXR (32-bit)',
-            'Image Sequence — JPEG',
-            'GIF (Animated)',
-            'WEBP (Animated)',
-        ].forEach(f => {
-            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; dvFormat.appendChild(opt);
-        });
-        addRow('Format', dvFormat);
-
-        const dvColorSpace = document.createElement('select');
-        dvColorSpace.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
-        // ── Color Space Options ──────────────────────────────────────────────
-        // IMPORTANT: These strings MUST exactly match output_color_space handling
-        // in nodes_radiance_viewer.py (radiance_deliver_endpoint) and nodes_io.py.
-        const _csGroups = [
-            { label: '── Display ──────────────────', disabled: true },
-            { label: 'Linear (sRGB)',           value: 'Linear (sRGB)' },
-            { label: 'sRGB (Standard)',          value: 'sRGB (Standard)' },
-            { label: '── ACES ─────────────────────', disabled: true },
-            { label: 'ACEScg  (AP1 scene-linear)',  value: 'ACEScg (AP1)' },
-            { label: 'ACES2065-1  (AP0 scene-linear)', value: 'ACES2065-1 (AP0)' },
-            { label: 'ACEScct  (log, grading)',    value: 'ACEScct' },
-            { label: '── Camera Log ───────────────', disabled: true },
-            { label: 'ARRI LogC3',               value: 'ARRI LogC3' },
-            { label: 'ARRI LogC4',               value: 'ARRI LogC4' },
-            { label: 'Sony S-Log3',              value: 'Sony S-Log3' },
-            { label: 'Panasonic V-Log',          value: 'Panasonic V-Log' },
-            { label: 'Canon Log 3',              value: 'Canon Log 3' },
-            { label: 'RED Log3G10',              value: 'RED Log3G10' },
-            { label: 'DaVinci Intermediate',     value: 'DaVinci Intermediate' },
-        ];
-        _csGroups.forEach(cs => {
-            const opt = document.createElement('option');
-            if (cs.disabled) {
-                opt.disabled = true;
-                opt.textContent = cs.label;
-                opt.style.color = '#555';
-            } else {
-                opt.value = cs.value;
-                opt.textContent = cs.label;
-            }
-            dvColorSpace.appendChild(opt);
-        });
-        addRow('Color Space', dvColorSpace);
-
-        // ── ACES hint badge: shows when an ACES output is selected ───────────
-        const _acesHintEl = document.createElement('div');
-        _acesHintEl.style.cssText = `
-            grid-column: span 4; font-size: 9px; padding: 5px 8px;
-            border-left: 2px solid #a78bfa; background: rgba(167,139,250,0.07);
-            color: rgba(167,139,250,0.8); border-radius: 0 4px 4px 0;
-            display: none; margin-top: -4px; margin-bottom: 2px; line-height: 1.5;
-        `;
-        dvColorSpace.addEventListener('change', () => {
-            const v = dvColorSpace.value;
-            const isAces = v.startsWith('ACES') || v.startsWith('ACEScg') || v.startsWith('ACES2065');
-            _acesHintEl.style.display = isAces ? '' : 'none';
-            if (v === 'ACEScg (AP1)')
-                _acesHintEl.textContent = 'ACEScg (AP1): scene-linear, AP1 primaries. Ideal for VFX interchange and compositing pipelines (Nuke, Houdini, DaVinci).';
-            else if (v === 'ACES2065-1 (AP0)')
-                _acesHintEl.textContent = 'ACES2065-1 (AP0): archive-grade, AP0 primaries cover all real colors. Use for EXR interchange and digital negative archival.';
-            else if (v === 'ACEScct')
-                _acesHintEl.textContent = 'ACEScct: log-encoded, AP1 primaries. Use for CDL grading roundtrips and DaVinci / Resolve workflows.';
-        });
-        dvForm.appendChild(_acesHintEl);
-
-        const dvRangeIn = document.createElement('input');
-        dvRangeIn.type = 'number'; dvRangeIn.value = '1';
-        dvRangeIn.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
-        addRow('Range In', dvRangeIn);
-
-        const dvRangeOut = document.createElement('input');
-        dvRangeOut.type = 'number'; dvRangeOut.value = '0';
-        dvRangeOut.title = '0 means exact end of sequence';
-        dvRangeOut.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
-        addRow('Range Out', dvRangeOut);
-
-        const dvAspect = document.createElement('select');
-        dvAspect.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
-        ['None', '2.35:1 (Scope)', '1.85:1 (Flat)', '1:1 (Square)', '9:16 (Vertical)'].forEach(f => {
-            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; dvAspect.appendChild(opt);
-        });
-        addRow('Letterbox', dvAspect);
-
-        const dvFPS = document.createElement('input');
-        dvFPS.type = 'number'; dvFPS.value = '24';
-        dvFPS.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px; width: 50px;`;
-        addRow('Frame Rate', dvFPS);
-
-        const dvQuality = document.createElement('input');
-        dvQuality.type = 'range'; dvQuality.min = '0'; dvQuality.max = '51'; dvQuality.value = '18';
-        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #00a8ff;`;
-        addRow('Quality (CRF)', dvQuality);
-
-        // Apex Options Section
-        const dvApexSection = document.createElement('div');
-        dvApexSection.style.cssText = `grid-column: span 4; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 15px;`;
-
-        const createCheck = (label, id, def = false) => {
-            const wrap = document.createElement('label');
-            wrap.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 9px; color: #aaa; font-weight: 600; text-transform: uppercase;`;
-            const cb = document.createElement('input');
-            cb.type = 'checkbox'; cb.checked = def;
-            cb.style.cssText = `accent-color: #00a8ff;`;
-            wrap.appendChild(cb);
-            wrap.appendChild(document.createTextNode(label));
-            return { wrap, cb };
-        };
-
-        const { wrap: wUpscale, cb: dvUpscale } = createCheck('◎ AI Upscale (2x)', 'dvUpscale', false);
-        const { wrap: wSmartVer, cb: dvSmartVer } = createCheck('◎ Smart Versioning', 'dvSmartVer', true);
-        const { wrap: wSlate, cb: dvSlate } = createCheck('◎ Include Slate', 'dvSlate', false);
-        const { wrap: wBurnTC, cb: dvBurnTC } = createCheck('◎ Burn Timecode', 'dvBurnTC', false);
-        const { wrap: wBurnVer, cb: dvBurnVer } = createCheck('◎ Burn Version', 'dvBurnVer', false);
-        const { wrap: wBurnFrame, cb: dvBurnFrame } = createCheck('◎ Burn Frame#', 'dvBurnFrame', false);
-        const { wrap: wBurnLUT, cb: dvBurnLUT } = createCheck('◎ Burn LUT', 'dvBurnLUT', false);
-        const { wrap: wExportCDL, cb: dvExportCDL } = createCheck('◎ Export .CDL', 'dvExportCDL', false);
-        const { wrap: wExportAMF, cb: dvExportAMF } = createCheck('◎ Export .AMF  (ACES Clip XML)', 'dvExportAMF', false);
-        const { wrap: wBakeGrade, cb: dvBakeGrade } = createCheck('◎ Bake Grade → EXR', 'dvBakeGrade', false);
-        const { wrap: wRevealTarget, cb: dvRevealTarget } = createCheck('◎ Launch Folder', 'dvRevealTarget', true);
-        const { wrap: wSoftClip, cb: dvSoftClip } = createCheck('◎ Soft Clip Highlights', 'dvSoftClip', true);
-
-        dvApexSection.appendChild(wUpscale);
-        dvApexSection.appendChild(wSmartVer);
-        dvApexSection.appendChild(wExportCDL);
-        dvApexSection.appendChild(wExportAMF);
-        dvApexSection.appendChild(wBakeGrade);
-        dvApexSection.appendChild(wRevealTarget);
-        dvApexSection.appendChild(wSoftClip);
-        dvApexSection.appendChild(wSlate);
-        dvApexSection.appendChild(wBurnTC);
-        dvApexSection.appendChild(wBurnVer);
-        dvApexSection.appendChild(wBurnFrame);
-        dvApexSection.appendChild(wBurnLUT);
-        dvForm.appendChild(dvApexSection);
-
-        const customTextWrap = document.createElement('div');
-        customTextWrap.style.cssText = `grid-column: span 4; display: flex; align-items: center; gap: 10px; margin-top: 5px;`;
-        const customTextLbl = document.createElement('div');
-        customTextLbl.textContent = "CUSTOM BURN-IN TEXT:";
-        customTextLbl.style.cssText = `font-size: 9px; color: #666; font-weight: bold;`;
-        const dvCustomText = document.createElement('input');
-        dvCustomText.type = 'text'; dvCustomText.placeholder = 'e.g. VFX REVIEW [DO NOT DISTRIBUTE]';
-        dvCustomText.style.cssText = `flex: 1; background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 3px 6px; font-size: 10px; border-radius: 2px;`;
-        customTextWrap.appendChild(customTextLbl);
-        customTextWrap.appendChild(dvCustomText);
-        dvForm.appendChild(customTextWrap);
-
-        dvContainer.appendChild(dvForm);
-
-        const dvSubmitRow = document.createElement('div');
-        dvSubmitRow.style.cssText = `margin-top: 20px; display: flex; gap: 10px; border-top: 1px solid #222; padding-top: 15px;`;
-
-        const dvRenderBtn = document.createElement('button');
-        dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
-        dvRenderBtn.style.cssText = `background: #00a8ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
-        dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
-        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#00a8ff';
-
-        dvSubmitRow.appendChild(dvRenderBtn);
-
-        // Progress Tracking UI
-        const dvProgressContainer = document.createElement('div');
-        dvProgressContainer.style.cssText = `margin-top: 15px; display: none; flex-direction: column; gap: 5px;`;
-
-        const dvProgressLabel = document.createElement('div');
-        dvProgressLabel.style.cssText = `font-size: 9px; color: #00a8ff; font-weight: bold; text-transform: uppercase;`;
-        dvProgressLabel.textContent = 'READY TO EXPORT';
-
-        const dvProgressTrack = document.createElement('div');
-        dvProgressTrack.style.cssText = `width: 100%; height: 2px; background: #1a1e24; border-radius: 1px; overflow: hidden;`;
-
-        const dvProgressBar = document.createElement('div');
-        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #00a8ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);`;
-
-        dvProgressTrack.appendChild(dvProgressBar);
-        dvProgressContainer.appendChild(dvProgressLabel);
-        dvProgressContainer.appendChild(dvProgressTrack);
-        dvContainer.appendChild(dvProgressContainer);
-
-        // Render History UI
-        const dvHistoryTitle = document.createElement('div');
-        dvHistoryTitle.textContent = '◎ RECENT EXPORTS';
-        dvHistoryTitle.style.cssText = `font-size: 9px; font-weight: 800; color: #444; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #1a1e24; padding-bottom: 3px;`;
-        dvContainer.appendChild(dvHistoryTitle);
-
-        const dvHistoryList = document.createElement('div');
-        dvHistoryList.style.cssText = `display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto;`;
-        dvContainer.appendChild(dvHistoryList);
-
-        const addHistoryItem = (path, name, qc) => {
-            const item = document.createElement('div');
-            item.style.cssText = `background: #111; border: 1px solid #222; padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 10px;`;
-
-            const info = document.createElement('div');
-            // Escaped: 'name' is the raw Filename textbox value and 'path'/'qc'
-            // come from the /radiance/deliver JSON. This was the one tainted
-            // innerHTML in the file -- the same class already has escapeHtml()
-            // and uses it correctly a few hundred lines up.
-            const _esc = RadianceViewer.escapeHtml;
-            info.innerHTML = `
-                <div style="color: #eee; font-weight: bold;">${_esc(name)}</div>
-                <div style="color: #555; font-size: 9px; margin-top: 2px;">${_esc(path)}</div>
-                <div style="color: ${qc.includes('[QC PASS]') ? '#00ff88' : '#ff4444'}; font-size: 8px; margin-top: 2px;">${_esc(qc)}</div>
-            `;
-
-            const openBtn = document.createElement('button');
-            openBtn.textContent = '◎';
-            openBtn.title = 'Open Path';
-            openBtn.style.cssText = `background: transparent; border: none; cursor: pointer; filter: grayscale(1) opacity(0.5); font-size: 12px;`;
-            openBtn.onclick = () => {
-                // Try to open folder if supported by backend bridge, otherwise just log
-                this._termLog('system', `Opening: ${path}`);
-            };
-
-            item.appendChild(info);
-            item.appendChild(openBtn);
-
-            if (dvHistoryList.firstChild) dvHistoryList.insertBefore(item, dvHistoryList.firstChild);
-            else dvHistoryList.appendChild(item);
-        };
-
-        dvContainer.appendChild(dvSubmitRow);
+        // The Deliver panel is built by _buildDeliverPanel (also used by
+        // File > Deliver Master...); after a render the terminal shows the log.
+        const dvContainer = this._buildDeliverPanel({ onFinished: () => tabTerm.onclick() });
         termContainer.appendChild(dvContainer);
 
         // Tab Switching Logic
@@ -5514,172 +5795,6 @@ class RadianceViewer {
             oldTabTermClick();
             tabDeliver.style.color = '#555'; tabDeliver.style.borderColor = 'transparent';
             dvContainer.style.display = 'none';
-        };
-
-        // VFX Delivery Logic (Phase 5)
-        dvRenderBtn.onclick = async () => {
-            const nodeId = this.node.id;
-            if (!nodeId) {
-                this._showToast("Viewer is not initialized yet. Queue a prompt first.", "error");
-                return;
-            }
-
-            dvRenderBtn.disabled = true;
-            dvRenderBtn.textContent = '◎ PROCESSING VFX RENDER...';
-            dvRenderBtn.style.opacity = '0.5';
-            dvProgressContainer.style.display = 'flex';
-            dvProgressBar.style.width = '0%';
-            dvProgressLabel.textContent = 'Initializing Export Pipeline...';
-
-            let progressInterval = setInterval(async () => {
-                try {
-                    const progRes = await fetch(`/radiance/progress?id=${this.instanceId || nodeId}`);
-                    const prog = await progRes.json();
-                    const percent = (prog.current / prog.total) * 100;
-                    dvProgressBar.style.width = `${percent}%`;
-                    dvProgressLabel.textContent = `${prog.message} [${percent.toFixed(0)}%]`;
-                    if (prog.status === 'done' || prog.status === 'error') clearInterval(progressInterval);
-                } catch (e) {
-                    clearInterval(progressInterval);
-                }
-            }, 800);
-
-            try {
-                const response = await api.fetchApi('/radiance/deliver', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        instance_id: this.instanceId || nodeId,
-                        grading: {
-                            exposure: this.exposure,
-                            // Full per-channel arrays — NOT [0] only. Avoids silently
-                            // dropping teal/orange and other per-channel grade decisions.
-                            gamma: Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma || 1.0, this.gamma || 1.0, this.gamma || 1.0],
-                            gain: Array.isArray(this.gain) ? [...this.gain] : [this.gain || 1.0, this.gain || 1.0, this.gain || 1.0],
-                            lift: Array.isArray(this.lift) ? [...this.lift] : [this.lift || 0.0, this.lift || 0.0, this.lift || 0.0],
-                            offset: Array.isArray(this.offset) ? [...this.offset] : [this.offset || 0.0, this.offset || 0.0, this.offset || 0.0],
-                            contrast: this.contrast ?? 1.0,
-                            pivot: this.pivot ?? _PIVOT_DEFAULT,
-                            saturation: this.saturation,
-                            temperature: this.temperature,
-                            tint: this.tint,
-                            colorScience: this.colorScience || 0,
-                            lumaMix: this.lumaMix !== undefined ? this.lumaMix : 1.0,
-                            // These six were read by delivery/handler.py and never
-                            // sent, so every one of them exported at its identity
-                            // default while the viewer showed the graded result.
-                            // See GRADE_PAYLOAD_KEYS in delivery/handler.py —
-                            // tests/test_delivery_contract.py now diffs the two.
-                            shadows: this.shadows || 0.0,
-                            highlights: this.highlights || 0.0,
-                            hue_shift: this.hueShift || 0.0,
-                            // The rest of the grade the shader applies, so the
-                            // master matches the screen (color/grading.py
-                            // viewer_grade_kwargs reads these).
-                            colorBoost: this.colorBoost ?? 0.0,
-                            logShadow: Array.isArray(this.logShadow) ? [...this.logShadow] : [0, 0, 0],
-                            logMidtone: Array.isArray(this.logMidtone) ? [...this.logMidtone] : [0, 0, 0],
-                            logHighlight: Array.isArray(this.logHighlight) ? [...this.logHighlight] : [0, 0, 0],
-                            printerR: this.printerR ?? 0,
-                            printerG: this.printerG ?? 0,
-                            printerB: this.printerB ?? 0,
-                            curveTable: this._curveTable ? Array.from(this._curveTable) : null,
-                            curveMix: this.curveMix ?? 1.0,
-                            secondaryCurveTable: this._secondaryCurveTable ? Array.from(this._secondaryCurveTable) : null,
-                            secondaryCurveMix: this._secondaryCurveTable && !_isIdentitySecondaryTable(this._secondaryCurveTable) ? 1.0 : 0.0,
-                            sourceGamut: this.renderer?.sourceGamut ?? 0,
-                            lut_name: this.displayLut || 'None',
-                            lut_intensity: this.lutIntensity !== undefined ? this.lutIntensity : 1.0,
-                            gamut_compression: !!this.gamutCompression,
-                            // FX params — must match viewer for what-you-see = what-you-export
-                            grain: this.grain || 0.0,
-                            bloom: this.bloom || 0.0,
-                            halation: this.halation || 0.0,
-                            diffusion: this.diffusion || 0.0,
-                            denoise: this.denoise || 0.0,
-                        },
-                        settings: {
-                            filename: dvFilename.value,
-                            path: dvPath.value,
-                            format: dvFormat.value,
-                            colorSpace: dvColorSpace.value,
-                            aspect_ratio: dvAspect.value,
-                            range_in: parseInt(dvRangeIn.value) || 1,
-                            range_out: parseInt(dvRangeOut.value) || 0,
-                            fps: dvFPS.value,
-                            quality: dvQuality.value,
-                            upscale_2x: dvUpscale.checked,
-                            smart_versioning: dvSmartVer.checked,
-                            export_cdl: dvExportCDL.checked,
-                            export_amf: dvExportAMF.checked,
-                            bake_grade: dvBakeGrade.checked,
-                            reveal_folder: dvRevealTarget.checked,
-                            include_slate: dvSlate.checked,
-                            burn_in_tc: dvBurnTC.checked,
-                            burn_in_ver: dvBurnVer.checked,
-                            burn_in_frame: dvBurnFrame.checked,
-                            burn_in_lut: dvBurnLUT.checked,
-                            burn_custom_text: dvCustomText.value,
-                            soft_clip: dvSoftClip.checked
-                        }
-                    })
-                });
-
-                const result = await response.json();
-                clearInterval(progressInterval);
-
-                // The server answers 'partial' when the master was written but a
-                // requested step was not (FX bake, CDL/AMF sidecar, upscale, a
-                // degraded EXR). That is not a failure and not a clean success:
-                // show what was skipped instead of "FAILED undefined".
-                const _dvWarnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
-                // The baked grade is whole-frame. A power window or qualifier is
-                // a viewer-side matte the payload does not carry, so the master
-                // can differ from what the viewer shows. Say so.
-                if (dvBakeGrade.checked) {
-                    const _r = this.renderer;
-                    const _aids = [];
-                    if (_r?.maskType > 0) _aids.push('power window');
-                    if (_r?.qualifierEnabled) _aids.push('qualifier');
-                    if (_aids.length) _dvWarnings.push(`Not baked: ${_aids.join(' and ')} (the master carries the whole-frame grade only).`);
-                }
-                if (result.status === 'success' || result.status === 'partial') {
-                    const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
-                    dvProgressBar.style.width = '100%';
-                    dvProgressLabel.textContent = _dvPartial
-                        ? '◎ EXPORT COMPLETE WITH WARNINGS'
-                        : '◎ EXPORT COMPLETE';
-                    if (_dvPartial) dvProgressBar.style.background = '#ffaa00';
-                    this._termLog(_dvPartial ? 'warn' : 'success', `[DELIVERY] ${result.message}`);
-                    for (const w of _dvWarnings) this._termLog('warn', `[DELIVERY] ${w}`);
-                    if (_dvPartial) this._showToast?.(`Delivered with ${_dvWarnings.length} warning(s): ${_dvWarnings.join(' ')}`, 'warn');
-                    if (result.qc) {
-                        const qcColor = result.qc.includes('[QC PASS]') ? '#00ff88' : '#ff4444';
-                        this._termLog('system', `<span style="color: ${qcColor}">${result.qc}</span>`);
-                    }
-                    this._termLog('system', ` Saved to: ${result.path}`);
-
-                    addHistoryItem(result.path, dvFilename.value, result.qc || 'QC N/A');
-
-                    setTimeout(() => {
-                        dvProgressContainer.style.display = 'none';
-                    }, 3000);
-
-                    tabTerm.onclick(); // Show success in terminal
-                } else {
-                    this._termLog('error', `[DELIVERY FAILED] ${result.error || result.message || 'no reason given'}`);
-                    dvProgressLabel.textContent = '◎ EXPORT FAILED';
-                    dvProgressBar.style.background = '#ff4444';
-                    tabTerm.onclick();
-                }
-            } catch (e) {
-                clearInterval(progressInterval);
-                this._termLog('error', `[API ERROR] ${e.message}`);
-                tabTerm.onclick();
-            } finally {
-                dvRenderBtn.disabled = false;
-                dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
-                dvRenderBtn.style.opacity = '1';
-            }
         };
 
         // Script Runner Logic
@@ -8280,6 +8395,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         switch (id) {
             // File
             case 'file.export': this.showExportMenu?.({ target: this.proToolbar || this.container }); break;
+            case 'file.deliver': this.openDeliverDialog(); break;
             case 'file.savePNG': this._saveResultPNG?.(); break;
             case 'file.exportCDL': this._exportCDL(); break;
             case 'file.exportCUBE': this._exportGradeLUT(); break;

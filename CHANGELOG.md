@@ -42,6 +42,16 @@ else is fixes. Read the upgrade notes before moving a production setup.
   4444; before, it wrote an 8-bit file tagged as HDR. PQ H.265 files are now
   HDR10: P3-D65 1000-nit mastering display and MaxCLL / MaxFALL measured from
   the frames.
+- **Viewer Deliver is back:** File > Deliver Master… opens the graded-master
+  export as a dialog (it had no way in since the Pro viewer layout). It offers
+  PQ (HDR10) and HLG; with either one the 8-bit formats are disabled and an
+  8-bit choice moves to MP4 (H.265 10-bit), and the server refuses an 8-bit
+  HDR master too. The format and colour space lists are now exactly what the
+  server accepts: ProRes 4444 XQ, HDR Log, JPEG, GIF and WEBP are gone, and
+  ACES2065-1, ACEScct, V-Log, Canon Log 3, RED Log3G10 and DaVinci
+  Intermediate, listed but refused before, now deliver. HDR QC reports the
+  peak in nits (scene-linear 1.0 = 203 nits) and flags PQ above 10,000 nits;
+  no AMF sidecar is written for a PQ or HLG master.
 - **Camera log input** (`apply_input_transform`, used by HDR Analysis on log
   and ACEScct) now converts the camera gamut to Rec.709 primaries after the
   curve; it decoded the curve only. Neutrals are unchanged, saturated colours

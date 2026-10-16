@@ -33,6 +33,7 @@
 export const KEYMAP = Object.freeze([
     // ── File ──
     { id: 'file.export', keys: [], label: 'Snapshot / Export…', menu: 'File', group: 'out' },
+    { id: 'file.deliver', keys: [], label: 'Deliver Master…', menu: 'File', group: 'out' },
     { id: 'file.savePNG', keys: [], label: 'Save PNG (Result)', menu: 'File', group: 'out' },
     { id: 'file.exportCDL', keys: [], label: 'Export Grade as .CDL', menu: 'File', group: 'grade' },
     { id: 'file.exportCUBE', keys: [], label: 'Export Grade as .CUBE', menu: 'File', group: 'grade' },

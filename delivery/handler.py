@@ -51,13 +51,41 @@ _UI_TO_WRITE_FORMAT = {
 }
 
 _UI_TO_WRITE_COLORSPACE = {
-    'Linear (sRGB)':    'Linear (pass-through)',
-    'sRGB (Standard)':  'sRGB',
-    'ACEScg (AP1)':     'ACEScg',
-    'ARRI LogC3':       'ARRI LogC3',
-    'ARRI LogC4':       'ARRI LogC4',
-    'Sony S-Log3':      'Sony S-Log3',
+    'Linear (sRGB)':          'Linear (pass-through)',
+    'sRGB (Standard)':        'sRGB',
+    'ACEScg (AP1)':           'ACEScg',
+    'ACES2065-1 (AP0)':       'ACES2065-1',
+    'ACEScct':                'ACEScct',
+    'ARRI LogC3':             'ARRI LogC3',
+    'ARRI LogC4':             'ARRI LogC4',
+    'Sony S-Log3':            'Sony S-Log3',
+    'Panasonic V-Log':        'Panasonic V-Log',
+    'Canon Log 3':            'Canon Log 3',
+    'RED Log3G10':            'RED Log3G10',
+    'DaVinci Intermediate':   'DaVinci Intermediate',
+    # BT.2100 HDR. Scene-linear 1.0 is placed at 203 nits (BT.2408); the
+    # writer refuses an 8-bit format and stamps HDR10 metadata on H.265.
+    'PQ (HDR10 / ST.2084)':   'PQ (HDR10 / ST.2084)',
+    'HLG (Hybrid Log-Gamma)': 'HLG (Hybrid Log-Gamma)',
 }
+
+#: Writer colour spaces that are BT.2100 HDR, and the formats that cannot carry them.
+_HDR_WRITE_COLORSPACES = ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)')
+_EIGHT_BIT_WRITE_FORMATS = ('VID │ MP4 (H.264)', 'SEQ │ PNG (8-bit)')
+
+
+def _check_hdr_format(write_format: str, write_colorspace: str) -> None:
+    """Refuse PQ/HLG into an 8-bit format before any grading runs.
+
+    The writer refuses an 8-bit HDR video too, but only at the encode, after
+    the whole batch was graded; and it does not refuse an 8-bit PNG, which
+    bands just as badly.
+    """
+    if write_colorspace in _HDR_WRITE_COLORSPACES and write_format in _EIGHT_BIT_WRITE_FORMATS:
+        raise ValueError(
+            f"{write_colorspace} needs a 10-bit or float format; {write_format.split(' │ ')[-1]} is 8-bit "
+            "and would band. Choose MP4 (H.265 10-bit) for HDR10 or HLG video, ProRes 422 HQ / 4444, "
+            "PNG (16-bit) or EXR.")
 
 
 #: Every grading key `/radiance/deliver` reads out of the payload.
@@ -280,6 +308,12 @@ def get_next_version(directory: str, filename_base: str) -> str:
 
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
     """Write an ACES Metadata File (.amf) alongside the exported media."""
+    if color_space in ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'):
+        # The map below has no output transform for these, and the fallback is
+        # the Rec.709 100-nit ODT: an AMF naming that for an HDR master would
+        # tell the next application to view it as SDR. Refuse instead.
+        raise ValueError(f"no ACES output transform is mapped for {color_space}; "
+                         "the AMF would name an SDR transform")
     # FIX-006: map the Viewer grade to SOP properly (power = 1/gamma,
     # offset scaled by gain, exposure folded into slope).
     from radiance.color.grading import grading_to_cdl
@@ -507,6 +541,9 @@ async def radiance_deliver_endpoint(request):
         try:
             write_format = _resolve_write_format(output_format)
             write_colorspace = _resolve_write_colorspace(color_space)
+            # A baked EXR is written scene-linear whatever the colour space says.
+            if not (settings.get('bake_grade', False) and 'EXR' in write_format):
+                _check_hdr_format(write_format, write_colorspace)
         except ValueError as exc:
             logger.warning("[Deliver] Rejected before grading: %s", exc)
             # Terminal progress, at 100, exactly as the post-grading failure
@@ -804,6 +841,19 @@ async def radiance_deliver_endpoint(request):
                             qc_report = f"◎ [QC PASS — ACES] {color_space} output."
                     except Exception as _e:
                         qc_report = f"◎ [QC PASS — ACES] {color_space} (gamut check skipped: {_e})."
+                elif color_space in _HDR_WRITE_COLORSPACES:
+                    # Scene-linear above 1.0 is the point of an HDR master, not
+                    # an illegal level. The writer places 1.0 at 203 nits.
+                    peak_nits = v_max * 203.0
+                    if color_space.startswith('PQ') and peak_nits > 10000.0:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: peak ≈ {peak_nits:,.0f} nits is above "
+                                     "PQ's 10,000-nit ceiling and will clip (scene-linear 1.0 = 203 nits, BT.2408).")
+                    elif v_min < 0.0:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: negative values (Min={v_min:.3f}) "
+                                     "clip to black in the encode.")
+                    else:
+                        qc_report = (f"◎ [QC PASS — HDR] {color_space}: peak ≈ {peak_nits:,.0f} nits "
+                                     "(scene-linear 1.0 = 203 nits, BT.2408).")
                 elif v_min < 0.0 or v_max > 1.0:
                     qc_report = (
                         f"◎ [QC WARNING] Out-of-Gamut detected: "
