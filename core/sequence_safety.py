@@ -11,6 +11,10 @@ into a user folder. Two things went wrong there:
 
 ``write_atomic`` fixes the first. ``stale_sequence_frames`` finds the second so
 the node can say so in its status line. It never deletes anything.
+
+``write_bytes_atomic`` and ``write_text_atomic`` are the same guarantee for the
+small files the package keeps (session log, sidecar JSON, workspace stores,
+gizmos, the generated OCIO config), so there is one implementation of it.
 """
 from __future__ import annotations
 
@@ -18,6 +22,27 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, List
+
+
+def _temp_sibling(final: Path) -> Path:
+    """A hidden name beside ``final`` that keeps its extension."""
+    return final.with_name(f".{final.stem}.partial-{os.getpid()}{final.suffix}")
+
+
+def _replace_from_temp(final: Path, write_fn: Callable[[Path], Any], require_data: bool) -> Any:
+    tmp = _temp_sibling(final)
+    try:
+        result = write_fn(tmp)
+        if require_data and (not tmp.is_file() or tmp.stat().st_size == 0):
+            raise RuntimeError(f"the writer produced no data for {final.name}")
+        os.replace(tmp, final)
+        return result
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def write_atomic(path: "str | os.PathLike", write_fn: Callable[[Path], Any]) -> Any:
@@ -28,20 +53,34 @@ def write_atomic(path: "str | os.PathLike", write_fn: Callable[[Path], Any]) -> 
     Whatever ``write_fn`` returns is returned (``_save_exr`` returns a note when
     it had to fall back to OpenCV).
     """
-    final = Path(path)
-    tmp = final.with_name(f".{final.stem}.partial-{os.getpid()}{final.suffix}")
-    try:
-        result = write_fn(tmp)
-        if not tmp.is_file() or tmp.stat().st_size == 0:
-            raise RuntimeError(f"the writer produced no data for {final.name}")
-        os.replace(tmp, final)
-        return result
-    finally:
-        if tmp.exists():
+    return _replace_from_temp(Path(path), write_fn, require_data=True)
+
+
+def write_bytes_atomic(path: "str | os.PathLike", data: bytes, *, mode: "int | None" = None) -> None:
+    """Write ``data`` to ``path`` so a failure leaves any earlier file whole.
+
+    The bytes go to a hidden sibling, are flushed to disk, and replace ``path``
+    only when complete; nothing is left behind on failure, and the error
+    reaches the caller. ``mode``, when given, is applied before the replace.
+    The folder must exist.
+    """
+    def _write(tmp: Path) -> None:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
             try:
-                tmp.unlink()
+                os.fsync(fh.fileno())
             except OSError:
                 pass
+        if mode is not None:
+            os.chmod(tmp, mode)
+    _replace_from_temp(Path(path), _write, require_data=False)
+
+
+def write_text_atomic(path: "str | os.PathLike", text: str, *, encoding: str = "utf-8",
+                      mode: "int | None" = None) -> None:
+    """``write_bytes_atomic`` for text."""
+    write_bytes_atomic(path, text.encode(encoding), mode=mode)
 
 
 def stale_sequence_frames(out_dir: "str | os.PathLike", prefix: str, sep: str,
