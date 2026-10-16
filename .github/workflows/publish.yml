@@ -105,6 +105,12 @@ jobs:
           node-version: "22"
       - name: Install Playwright and Chromium
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      # The WGSL grade test needs Deno's WebGPU on lavapipe; without them it skips.
+      - name: Install a software Vulkan driver for Deno's WebGPU
+        run: sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       - name: Run every JS test (unit and browser)
         run: node --test --test-concurrency=2 js/tests/*.test.mjs
 
