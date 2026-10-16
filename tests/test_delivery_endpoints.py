@@ -1461,3 +1461,72 @@ def test_a_pq_h265_delivery_carries_hdr10_metadata_end_to_end(h):
     assert "Mastering display metadata" in side, side
     cll = side["Content light level metadata"]
     assert (cll["max_content"], cll["max_average"]) == (102, 102), cll   # 0.5 × 203 nits, rounded up
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Audit 2026-10-16: nonfinite pixels, legal range on HDR, HLG clipping
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_pixels_refuse_the_delivery_and_write_nothing(h, bad):
+    frames = flat(0.5, n=3, h=8, w=8)
+    frames[1, 2, 3, 0] = bad                 # one pixel, middle frame
+    h.put(frames)
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)"})
+    assert resp.status == 422
+    err = h.body(resp)["error"]
+    assert "1 pixel(s) in 1 frame(s)" in err and "first: frame 2" in err and "Nothing was written" in err, err
+    assert not h.pngs() and not h.exrs()
+
+
+def test_an_all_nan_frame_is_not_a_qc_pass(h):
+    h.put(torch.full((1, 8, 8, 3), float("nan")))
+    resp = h.run({"colorSpace": "sRGB (Standard)", "format": "Image Sequence — PNG (8-bit)"})
+    assert resp.status == 422
+    assert "NaN" in h.body(resp)["error"]
+
+
+def test_legal_range_is_off_unless_the_client_asks(h, spy_write):
+    h.put(flat(0.5))
+    payload = {"instance_id": h.key, "grading": dict(IDENTITY_GRADE),
+               "settings": {k: v for k, v in BASE_SETTINGS.items() if k != "soft_clip"}}
+    h.run(payload=payload)
+    assert spy_write[-1]["broadcast_safe"] is False
+
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+def test_legal_range_never_touches_an_hdr_png(h, cs):
+    cv2 = pytest.importorskip("cv2")
+    f = torch.zeros((1, 4, 4, 3))
+    f[0, 0, 0, :] = 4.9                       # ~1000 nits
+    h.put(f)
+    resp = h.run({"colorSpace": cs, "format": "Image Sequence — PNG (16-bit)", "soft_clip": True})
+    assert resp.status == 200, h.body(resp)
+    a = cv2.imread(str(h.pngs()[-1]), cv2.IMREAD_UNCHANGED)
+    assert int(a[1, 1].max()) == 0, f"black lifted to {a[1, 1]}"
+    from radiance.color.encodings import _hlg_encode, _pq_encode
+    want = float((_pq_encode(np.full(3, 4.9), 203.0) if cs.startswith("PQ") else _hlg_encode(np.full(3, 4.9)))[0])
+    assert abs(int(a[0, 0, 0]) / 65535 - want) < 2e-3, f"bright patch {a[0, 0]} != {want * 65535:.0f}"
+    assert want > 235 / 255 or cs.startswith("PQ")   # HLG ~1000 nits sits above the old 235 cut
+
+
+def test_hlg_above_its_1000_nit_display_is_flagged(h, spy_write):
+    h.put(flat(10.0))                         # 2,030 nits: HLG clips at 1000
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "100.00% of pixels clip" in body["qc"] and "1000-nit" in body["qc"], body["qc"]
+
+
+def test_a_saturated_colour_clips_in_hlg_below_1000_nits(h, spy_write):
+    # Pure Rec.2020 red at ~900 nits: under 1000 nits, but HLG's inverse OOTF
+    # scales a dark-luma colour up, so the red channel clips in the encode.
+    f = torch.zeros((1, 4, 4, 3))
+    f[..., 0] = 900 / 203
+    h.put(f, source=("linear", "Linear Rec.2020"))
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "clip" in body["qc"], body["qc"]
+
+
+def test_hlg_within_range_passes(h, spy_write):
+    h.put(flat(4.0))                          # 812 nits neutral
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC PASS — HDR" in body["qc"] and "≈ 812 nits" in body["qc"], body["qc"]

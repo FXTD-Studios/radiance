@@ -7,6 +7,7 @@ none of them was caught by the existing suite. They are deliberately cheap.
 import math
 
 import pytest
+from _repo_files import repo_py_files  # noqa: E402
 
 torch = pytest.importorskip("torch")
 
@@ -235,7 +236,7 @@ def test_no_unsafe_torch_load_in_product_code():
     import pathlib
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
-    for path in root.rglob("*.py"):
+    for path in repo_py_files(root):
         parts = set(path.parts)
         if parts & {"tests", "build", "dist", ".codex-backup-20260719"}:
             continue

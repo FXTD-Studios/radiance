@@ -2276,3 +2276,61 @@ def test_thumb_415_when_the_cache_directory_cannot_be_created(ws, monkeypatch):
     resp = run(ws.m.asset_thumb(Req(query={"path": str(src)})))
     assert resp.status == 415
     assert body(resp) == {"error": "not previewable"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Audit 2026-10-16: restore at the retention limit, preview admission
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_restoring_the_oldest_version_at_the_retention_limit_keeps_it(ws, monkeypatch):
+    monkeypatch.setattr(ws_mod, "MAX_VERSIONS", 3)
+    for i in range(4):                       # current + v1..v3, history full
+        ws.save("full.rad", content=json.dumps({"nodes": [], "rev": i}))
+    vdir = ws.root / ".versions"
+    assert sorted(p.name for p in vdir.glob("full.v*.rad")) == ["full.v1.rad", "full.v2.rad", "full.v3.rad"]
+
+    resp = run(ws.m.restore_workflow_version(Req(json_body={
+        "filename": "full.rad", "version_file": "full.v1.rad"})))
+
+    assert resp.status == 200, body(resp)
+    graph, _ = ws.m._unpack_rad_v2((ws.root / "full.rad").read_bytes())
+    assert json.loads(graph)["rev"] == 0                  # v1 is what was restored
+    names = sorted(p.name for p in vdir.glob("full.v*.rad"))
+    assert "full.v1.rad" in names, "the restored version was evicted by the pre-restore backup"
+    assert "full.v2.rad" not in names                    # the oldest other one went instead
+    pre, _ = ws.m._unpack_rad_v2((vdir / "full.v4.rad").read_bytes())
+    assert json.loads(pre)["rev"] == 3                   # the state before the restore
+    assert not list(ws.root.glob(".full.rad.restore-*")), "temporary restore file left behind"
+
+
+def test_a_failed_restore_leaves_the_current_file_alone(ws, monkeypatch):
+    ws.save("keep.rad", content='{"nodes": [], "rev": "a"}')
+    ws.save("keep.rad", content='{"nodes": [], "rev": "b"}')
+    before = (ws.root / "keep.rad").read_bytes()
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(ws_mod, "_create_version_backup", boom)
+    resp = run(ws.m.restore_workflow_version(Req(json_body={
+        "filename": "keep.rad", "version_file": "keep.v1.rad"})))
+    assert resp.status == 500
+    assert (ws.root / "keep.rad").read_bytes() == before
+    assert (ws.root / ".versions" / "keep.v1.rad").exists()
+    assert not list(ws.root.glob(".keep.rad.restore-*"))
+
+
+def test_preview_applies_the_unpackers_size_limit(ws, monkeypatch):
+    _v3_with_preview(ws.root / "big.rad", png=b"\x89PNG" + b"\0" * 1020)
+    monkeypatch.setattr(ws_mod, "MAX_RAD_UNCOMPRESSED_BYTES", 64)
+    with pytest.raises(ValueError):
+        ws.m._unpack_rad_v3((ws.root / "big.rad").read_bytes())
+    resp = run(ws.m.get_workflow_preview(Req(query={"filename": "big.rad"})))
+    assert resp.status == 413, "the preview expanded an archive the unpacker refuses"
+
+
+def test_preview_refuses_an_oversized_preview_entry(ws, monkeypatch):
+    _v3_with_preview(ws.root / "huge.rad", png=b"\x89PNG" + b"\0" * 2000)
+    monkeypatch.setattr(ws_mod, "MAX_RAD_PREVIEW_BYTES", 1024)
+    resp = run(ws.m.get_workflow_preview(Req(query={"filename": "huge.rad"})))
+    assert resp.status == 413
+    assert body(resp) == {"error": "Preview image is too large"}
