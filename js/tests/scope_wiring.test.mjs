@@ -12,6 +12,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PREFS, loadPrefs } from '../radiance_viewer_state.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -127,19 +128,23 @@ test('every scale control persists', () => {
         'radiance_scope_xform', 'radiance_scope_hlg_peak',
     ]) {
         assert.ok(viewer.includes(`localStorage.setItem('${key}'`), `${key} is never written`);
-        assert.ok(viewer.includes(`localStorage.getItem('${key}')`), `${key} is never read back`);
+        // Read back through the preferences schema (radiance_viewer_state.js).
+        assert.ok(PREFS.some((p) => p.key === key), `${key} is not loaded by the preferences schema`);
     }
 });
 
 test('the measurement-point toggle defaults to on', () => {
     // It is what the scopes did before this change; flipping the default would
     // silently alter every existing user's scopes.
-    assert.match(viewer, /this\.scopeTransformed = localStorage\.getItem\('radiance_scope_xform'\) !== '0'/,
+    assert.match(viewer, /this\.scopeTransformed = _prefs\.scopeTransformed;/);
+    assert.equal(loadPrefs({ getItem: () => null }).scopeTransformed, true,
         'the default must be "include viewer transforms", matching prior behaviour');
+    assert.equal(loadPrefs({ getItem: (k) => (k === 'radiance_scope_xform' ? '0' : null) }).scopeTransformed, false);
 });
 
 test('the default scale is 10-bit code value', () => {
-    assert.match(viewer, /radiance_scope_scale'\) \|\| 'cv10'/);
+    assert.match(viewer, /this\.scopeScale = _prefs\.scopeScale;/);
+    assert.equal(loadPrefs({ getItem: () => null }).scopeScale, 'cv10');
 });
 
 test('IRE appears nowhere in the scope panel', () => {

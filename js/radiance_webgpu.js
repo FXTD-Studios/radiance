@@ -12,7 +12,7 @@
  * Falls back gracefully: navigator.gpu is undefined → viewer uses RadianceWebGLRenderer.
  */
 
-import { RadianceRenderer } from "./radiance_renderer.js";
+import { RadianceRenderer, packLut3DRGBA } from "./radiance_renderer.js";
 // The grade maths, emitted from one file for both backends. This backend used
 // to carry its own copy in WGSL and a *third* one in JS for the CPU readback,
 // and all three disagreed with WebGL. See js/radiance_grade.js.
@@ -712,6 +712,16 @@ class RadianceWebGPURenderer extends RadianceRenderer {
             this.device = await adapter.requestDevice({ requiredFeatures: features });
             this._textureFloatFormat = features.includes('float32-filterable') ? 'rgba32float' : 'rgba16float';
             this._cleanup.push(() => this.device.destroy());
+            // A lost device (driver reset, GPU removed, tab backgrounded too long)
+            // leaves a canvas that silently stops drawing. Tell the owner. A
+            // device we destroyed ourselves is not a loss: destroy() clears
+            // this.device first, so the identity check filters it out.
+            const lostDevice = this.device;
+            lostDevice.lost?.then((info) => {
+                if (this.device !== lostDevice) return;
+                this.lost = true;
+                try { this.onDeviceLost?.(info); } catch (e) { console.warn('[Radiance] onDeviceLost handler failed:', e); }
+            });
 
             this.context = this.canvas.getContext('webgpu');
             if (!this.context) {
@@ -1077,19 +1087,12 @@ class RadianceWebGPURenderer extends RadianceRenderer {
 
     loadLUT(data, size) {
         if (!this.device) return;
-        this._lutSize = size || 33;
-        const lutData = new Float32Array(size * size * size * 4);
-        for (let z = 0; z < size; z++) {
-            for (let y = 0; y < size; y++) {
-                for (let x = 0; x < size; x++) {
-                    const idx = (z * size * size + y * size + x) * 4;
-                    lutData[idx] = data[idx] || x / (size - 1);
-                    lutData[idx + 1] = data[idx + 1] || y / (size - 1);
-                    lutData[idx + 2] = data[idx + 2] || z / (size - 1);
-                    lutData[idx + 3] = 1.0;
-                }
-            }
-        }
+        size = size || 33;
+        this._lutSize = size;
+        // The viewer sends RGB triplets (WebGL's layout). This read them with
+        // an RGBA stride and replaced every 0 with the identity value, so a
+        // loaded LUT came out scrambled.
+        const lutData = packLut3DRGBA(data, size);
         const format = this._textureFloatFormat || 'rgba16float';
         const uploadData = format === 'rgba16float'
             ? this._float32ToHalfTextureData(lutData, size, size * size)

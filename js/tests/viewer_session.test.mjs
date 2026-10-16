@@ -196,7 +196,9 @@ test('a slider being dragged survives scrubbing, and so does the channel search'
         window.dispatchEvent(new PointerEvent('pointerup'));
 
         // INSPECTOR: type a search, scrub; the text stays and the readouts follow.
-        panel.querySelector('[data-tab-id="inspector"]').click();
+        // Inspector is in the Inspect workspace, not Color: ask for the tab the
+        // way a shortcut does, which moves to the workspace that has it.
+        v._setReferenceTab('inspector');
         const search = panel.querySelector('.radiance-ref-search');
         search.focus();
         search.value = 'Gr';

@@ -7,7 +7,7 @@
 
 [![Version](https://img.shields.io/badge/version-4.0.0-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v4.0.0)
 [![Installations](https://img.shields.io/badge/installations-6.9K-blue?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
-[![Release](https://img.shields.io/badge/release-stable-brightgreen?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
+[![Release](https://img.shields.io/badge/release-4.0%20beta-orange?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
 [![OS](https://img.shields.io/badge/OS-Windows%20%7C%20Mac%20%7C%20Linux-5C7CFA?style=for-the-badge)](https://github.com/fxtd-studios/radiance)
 [![Security](https://img.shields.io/badge/security-gated%20downloads%20%7C%20no%20shell-green?style=for-the-badge)](KNOWN_ISSUES.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green?style=for-the-badge)](LICENSE)

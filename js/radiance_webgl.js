@@ -116,6 +116,9 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         this.diffGain = Number.isFinite(gain) ? gain : 4;
     }
 
+    /** Difference as A - B around mid grey (true) or |A - B| (false). */
+    setDiffSigned(on) { this.diffSigned = !!on; }
+
     setDisplayLutStrength(v) {
         this.displayLutStrength = v;
     }
@@ -1503,10 +1506,6 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             gl.deleteTexture(this.referenceShelf[slot]);
         }
 
-        // Upload as a new texture
-        const tex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         // WebGL readPixels returns bottom-to-top; flip vertically via pixel re-pack
         const flipped = new Uint8Array(w * h * 4);
         for (let y = 0; y < h; y++) {
@@ -1514,11 +1513,13 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             const dst = y * w * 4;
             flipped.set(pixels.subarray(src, src + w * 4), dst);
         }
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, flipped);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        const tex = this._uploadShelfTexture(flipped, w, h);
+
+        // Keep the 8-bit pixels on the CPU: a lost WebGL context destroys the
+        // texture, and this copy is what lets the restore rebuild the still.
+        if (!this._shelfStills) this._shelfStills = new Map();
+        this._shelfStills.set(slot, { data: flipped, w, h });
+        this._lastShelfSlot = slot;
 
         this.referenceShelf[slot] = tex;
 
@@ -1551,11 +1552,38 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         console.log(`[Radiance] Reference shelf → slot ${index} activated`);
     }
 
+    _uploadShelfTexture(flipped, w, h) {
+        const gl = this.gl;
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, flipped);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        return tex;
+    }
+
+    /** After a context restore: upload the kept stills again. */
+    _restoreShelfStills() {
+        this.referenceShelf = [];
+        if (!this._shelfStills?.size) return;
+        for (const [slot, s] of this._shelfStills) {
+            this.referenceShelf[slot] = this._uploadShelfTexture(s.data, s.w, s.h);
+        }
+        if (this.wipeRefEnabled && this.referenceShelf[this._lastShelfSlot]) {
+            this.textures.reference = this.referenceShelf[this._lastShelfSlot];
+        }
+    }
+
     /**
      * Release all GPU textures in the reference shelf.
      */
     clearReferenceShelf() {
         const gl = this.gl;
+        this._shelfStills = null;
+        this._lastShelfSlot = undefined;
         this.referenceShelf.forEach((tex, i) => {
             if (tex) { gl.deleteTexture(tex); this.referenceShelf[i] = null; }
         });
@@ -1787,7 +1815,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             this._bilateralFBO = null;
             this._bloomFBOs = null; this._bloomSrcW = 0; this._bloomSrcH = 0;
             this._exportFBO = null;
-            this.referenceShelf = [];
+            this.referenceShelf = [];   // rebuilt from _shelfStills once the programs exist
             const ocio = this._ocioInfo;
             this._ocio = null;
             this.ocioEnabled = false;
@@ -1810,6 +1838,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             // What the renderer itself was given: the 3D LUT and the OCIO view.
             if (this._lutSource) this.loadLUT(this._lutSource.lutData, this._lutSource.size);
             if (ocio) this.setOCIODisplay(ocio);
+            this._restoreShelfStills();
 
             console.log('[Radiance] WebGL context recovery complete.');
             // The frame, compare and depth textures come from the viewer.
@@ -2288,6 +2317,7 @@ ${GRADE_GLSL}
             uniform sampler2D u_referenceImage;
             uniform int u_compareShow;          // 3.5.0: 0 A, 1 B, 2 |A-B| x gain
             uniform float u_diffGain;
+            uniform bool u_diffSigned;
 
             // v2.2 Pro Grids
             uniform int u_gridMode;
@@ -3647,12 +3677,15 @@ vec3 getDenoiseColor(vec2 uv) {
             finalMatte *= calculateMask(v_texcoord);
         }
 
-        if (u_maskType > 0 && u_maskShowOverlay) {
+        // Positioning aids (window overlay, show-matte) are for the eye only:
+        // the scopes and the graded exports measure/save the picture, not the aid.
+        bool previewAids = !u_scopeSignal && !u_exportSceneLinear;
+        if (previewAids && u_maskType > 0 && u_maskShowOverlay) {
              // Show mask as grayscale overlay for positioning
              float m = calculateMask(v_texcoord);
              color = mix(preGrade * 0.3, color, m);
         } else if (u_qualifierEnabled || u_maskType > 0) {
-             if (u_qualifierShowMask) {
+             if (previewAids && u_qualifierShowMask) {
                  color = vec3(finalMatte);
              } else {
                  color = mix(preGrade, color, finalMatte);
@@ -4015,7 +4048,9 @@ vec3 getDenoiseColor(vec2 uv) {
         if (u_wipeRefEnabled && u_compareShow == 1) {
             color = texture(u_referenceImage, v_texcoord).rgb;
         } else if (u_wipeRefEnabled && u_compareShow == 2) {
-            color = clamp(abs(color - texture(u_referenceImage, v_texcoord).rgb) * u_diffGain, 0.0, 1.0);
+            vec3 d = color - texture(u_referenceImage, v_texcoord).rgb;
+            // Signed: equal is mid grey, A brighter goes up, B brighter goes down.
+            color = u_diffSigned ? clamp(0.5 + 0.5 * d * u_diffGain, 0.0, 1.0) : clamp(abs(d) * u_diffGain, 0.0, 1.0);
         }
         // Wipe:
         // LEFT  (x < wipeLine) = B side: reference / frozen snapshot
@@ -5085,6 +5120,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_wipeRefEnabled', this.wipeRefEnabled ? 1 : 0);
         this._ui1(program, 'u_compareShow', this.compareShow | 0);
         this._uf1(program, 'u_diffGain', Number.isFinite(this.diffGain) ? this.diffGain : 4);
+        this._ui1(program, 'u_diffSigned', this.diffSigned ? 1 : 0);
 
         gl.activeTexture(gl.TEXTURE6);
         gl.bindTexture(gl.TEXTURE_2D, this.textures.reference || this.textures.empty);
@@ -5464,6 +5500,7 @@ vec3 getDenoiseColor(vec2 uv) {
             this.referenceShelf.forEach(tex => { if (tex) gl.deleteTexture(tex); });
             this.referenceShelf = [];
         }
+        this._shelfStills = null;
 
         // v4.3: LRU frame texture cache
         this.clearFrameCache();

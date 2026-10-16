@@ -65,7 +65,7 @@ export function measureFramePayload(payload) {
         const own = Object.getOwnPropertyDescriptor(cmp, 'data');
         if (own && 'value' in own && own.value && typeof own.value.byteLength === 'number') bytes += own.value.byteLength;
     }
-    for (const key of ['img', 'bracketLow', 'bracketHigh', 'compare']) {
+    for (const key of ['img', 'bracketLow', 'bracketHigh', 'compare', 'zdepth', 'normal']) {
         const img = payload[key];
         if (img && img.width && img.height) bytes += img.width * img.height * 4;
     }

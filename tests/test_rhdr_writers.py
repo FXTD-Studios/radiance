@@ -253,3 +253,25 @@ def test_vae_export_refuses_a_prefix_that_leaves_the_output_folder(tmp_path):
     os.mkdir(out)
     assert RadianceVAE4KDecode._save_rhdr(_vae_frame(), out, prefix="../escaped") is None
     assert os.listdir(root) == ["out"] and os.listdir(out) == []
+
+
+# ── viewer normal pass ───────────────────────────────────────────────────────
+
+@pytest.mark.real_torch
+def test_viewer_normal_pass_entries_png_and_unit_sidecar(temp_out):
+    from radiance.nodes.monitor.viewer import RadianceViewer
+    # Two frames of a signed floor pass, (0, 2, 0): no negatives, length 2.
+    normal = torch.tensor([0.0, 2.0, 0.0]).view(1, 1, 1, 3).expand(2, 4, 2, 3).contiguous()
+    out = RadianceViewer().view(_image(VAE_ROW), float_precision="Full (32-bit)", normal=normal,
+                                unique_id="nrm1")["ui"]
+    entries = [x for x in out["radiance_images"] if x.get("is_normal")]
+    assert [e["frame"] for e in entries] == [0, 1]
+    assert all(e["normal_input"] == "signed" for e in entries)
+    main = [x for x in out["radiance_images"] if not x.get("is_normal") and not x.get("is_compare")]
+    assert len(main) == 1, "normal frames must not become timeline frames"
+    assert all("source_encoding" not in e for e in entries), "normals are data, not tagged as picture"
+    e = entries[0]
+    assert re.fullmatch(r"Radiance_normal_[0-9a-f]{12}_0\.png", e["filename"])
+    assert os.path.isfile(os.path.join(temp_out, e["filename"]))
+    _, _, px = _read(os.path.join(temp_out, e["hdr_sidecar"]))
+    np.testing.assert_allclose(px[0, 0], [0.0, 1.0, 0.0], atol=1e-6)

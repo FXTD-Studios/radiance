@@ -14,7 +14,7 @@ import sys
 REQUIRED = [
     # (import name, pip requirement)
     ("OpenEXR", "OpenEXR>=3.2.0,<4.0.0"),
-    ("PyOpenColorIO", "opencolorio>=2.3.0,<3.0.0"),
+    ("PyOpenColorIO", "opencolorio>=2.5.0,<3.0.0"),
     ("diffusers", "diffusers>=0.33.0"),
     ("accelerate", "accelerate>=0.26.0"),
 ]
