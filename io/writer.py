@@ -219,6 +219,7 @@ OUTPUT_COLOR_SPACES = [
 ]
 
 from ..color.encodings import WORKING_SPACES as WRITE_WORKING_SPACES  # noqa: E402
+from ..core.sequence_safety import stale_sequence_frames, stale_warning  # noqa: E402
 
 # ── EXR compressions ───────────────────────────────────────────────────────
 EXR_COMPRESSIONS = ["ZIP", "ZIPS", "PIZ", "RLE", "Uncompressed", "PXR24", "B44", "B44A", "DWAA", "DWAB"]
@@ -1115,6 +1116,21 @@ def _save_video_ffmpeg(
 
     written = 0
     timed_out = False
+    # The cap covers the frame writes too: a stalled ffmpeg fills the pipe and
+    # a blocking stdin write used to wait forever, never reaching the
+    # proc.wait(timeout) below. Killing the child ends the write.
+    _expired = threading.Event()
+    _watchdog: Optional[threading.Timer] = None
+    if timeout is not None:
+        def _expire() -> None:
+            _expired.set()
+            try:
+                proc.kill()
+            except OSError:  # pragma: no cover - already gone
+                pass
+        _watchdog = threading.Timer(max(float(timeout), 0.0), _expire)
+        _watchdog.daemon = True
+        _watchdog.start()
     frame: Optional[np.ndarray] = first
     try:
         while frame is not None:
@@ -1146,6 +1162,10 @@ def _save_video_ffmpeg(
             timed_out = True
             proc.kill()
             proc.wait()
+        if _watchdog is not None:
+            _watchdog.cancel()
+        if _expired.is_set():
+            timed_out = True
         pump.join(timeout=5)
 
     tail = b"".join(errors).decode("utf-8", "replace").strip()[-_STDERR_TAIL:]
@@ -1535,6 +1555,13 @@ def write_frames(
     # Video is always encoded to legal (TV) range by the RGB -> YUV step, so
     # clamping RGB to 16-235 first squeezed the range twice.
     apply_legal_range = bool(broadcast_safe) and not _is_float_format and format not in _FMT_VIDEO
+    # A PQ or HLG code value is the light itself: 16/255 is 0.06 nits of PQ
+    # lifted from black, and 235/255 cuts the top of the range. Legal range
+    # for HDR belongs to the video encoder, which applies it in YUV.
+    if apply_legal_range and _is_hdr_video(colour):
+        apply_legal_range = False
+        log.info("RadianceWrite: broadcast_safe ignored for %s "
+                 "(no RGB legal-range clamp on a PQ or HLG image)", color_space)
     if broadcast_safe and _is_float_format:
         log.info("RadianceWrite: broadcast_safe ignored for %s "
                  "(legal-range limiting does not apply to float formats)", format)
@@ -1603,7 +1630,7 @@ def write_frames(
 
 
 def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
-                   start_frame: int, count: int, overwrite: bool) -> str:
+                   start_frame: int, count: Optional[int], overwrite: bool) -> str:
     """Pick the sequence's filename stem once, for the whole sequence.
 
     ALBABIT-FIX: `overwrite=False` used to apply `_unique_path` PER FRAME, so a
@@ -1617,6 +1644,11 @@ def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
         return seq_stem
 
     def collides(stem: str) -> bool:
+        # Length unknown (a stream with no frame_count): any frame of the stem
+        # is a collision. Checking only the first frame let frame 1002 of an
+        # existing sequence be overwritten with overwrite off.
+        if count is None:
+            return bool(stale_sequence_frames(out_dir, stem, "_", ext, ()))
         return any(
             (out_dir / f"{stem}_{pad_fmt % (start_frame + i)}{ext}").exists()
             for i in range(max(1, count))
@@ -1773,8 +1805,7 @@ def dispatch_write(
         seq_png_meta = _workflow_metadata(prompt, extra_pnginfo)
         seq_meta = {**seq_png_meta, **colour.exr_attributes()}
         seq_stem = _sequence_stem(out_dir, seq_stem, ext, pad_fmt,
-                                  start_frame, n if n is not None else 1,
-                                  overwrite)
+                                  start_frame, n, overwrite)
 
         def save(fr: np.ndarray, path: Path, frame: int) -> None:
             writer = stem
@@ -1814,6 +1845,17 @@ def dispatch_write(
                     finish(in_flight.popleft())
             for job in in_flight:
                 finish(job)
+
+        # Frames of the same stem outside this run (a longer earlier render
+        # overwritten by a shorter one, or another start frame) make one
+        # sequence of two shots for any reader. They are left in place and
+        # reported, as the DCC writers do.
+        _stale_msg = stale_warning(stale_sequence_frames(
+            out_dir, seq_stem, "_", ext, range(start_frame, start_frame + written)), seq_stem)
+        if _stale_msg:
+            log.warning("RadianceWrite: %s", _stale_msg)
+            if receipt is not None:
+                receipt.setdefault("warnings", []).append(_stale_msg)
 
         if receipt is not None:
             receipt.setdefault("files", []).sort(key=lambda e: (e["frame"] is None, e["frame"]))

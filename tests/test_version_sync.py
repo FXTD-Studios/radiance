@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from _repo_files import repo_py_files  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,7 +54,7 @@ def test_viewer_header_version_is_this_version():
 def test_no_module_pins_its_own_release_number():
     """Module __version__ strings drifted (3.1.0, 3.2.2); they import VERSION now."""
     offenders = []
-    for p in ROOT.rglob("*.py"):
+    for p in repo_py_files(ROOT):
         rel = p.relative_to(ROOT).as_posix()
         if rel.startswith(("tests/", "scripts/")):
             continue

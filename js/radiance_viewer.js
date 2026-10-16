@@ -5178,7 +5178,12 @@ class RadianceViewer {
         dvBakeGrade.dataset.dv = 'bake';
         const { wrap: wRevealTarget, cb: dvRevealTarget } = createCheck('◎ Launch Folder', 'dvRevealTarget', true);
         dvRevealTarget.dataset.dv = 'reveal';
-        const { wrap: wSoftClip, cb: dvSoftClip } = createCheck('◎ Soft Clip Highlights', 'dvSoftClip', true);
+        // Sent as settings.soft_clip (the server's broadcast_safe): it clamps
+        // RGB code values to 16-235 on 8/16-bit images and is skipped for PQ,
+        // HLG, float and video. It was labelled Soft Clip Highlights and on by
+        // default, which put black at 16 in every PNG master.
+        const { wrap: wSoftClip, cb: dvSoftClip } = createCheck('◎ Legal Range (16–235)', 'dvSoftClip', false);
+        wSoftClip.title = 'Clamp RGB to video legal range on 8/16-bit image formats. Not applied to PQ, HLG, EXR or video (the encoder sets video range).';
 
         dvApexSection.appendChild(wUpscale);
         dvApexSection.appendChild(wSmartVer);

@@ -717,6 +717,22 @@ def decode(
     pump = threading.Thread(target=_drain, args=(proc.stderr, errors), daemon=True)
     pump.start()
 
+    # The deadline covers the reads too. It used to reach only proc.wait()
+    # after the read loop, so an ffmpeg that stalled before a frame left the
+    # blocking pipe read waiting forever. Killing the child ends the read.
+    expired = threading.Event()
+    watchdog: Optional[threading.Timer] = None
+    if timeout is not None:
+        def _expire() -> None:
+            expired.set()
+            try:
+                proc.kill()
+            except OSError:  # pragma: no cover - already gone
+                pass
+        watchdog = threading.Timer(max(float(timeout), 0.0), _expire)
+        watchdog.daemon = True
+        watchdog.start()
+
     scale = np.float32(1.0 / 65535.0)
     # Preallocate and convert straight into the output. Collecting frames in a
     # list and np.stack-ing at the end costs a second full copy of the clip --
@@ -760,7 +776,12 @@ def decode(
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:  # pragma: no cover - only with a cap
+            expired.set()
             proc.kill()
+            proc.wait()
+        if watchdog is not None:
+            watchdog.cancel()
+        if expired.is_set():
             proc.wait()
             raise VideoDecodeError(
                 f"ffmpeg did not finish decoding {os.path.basename(path)} "

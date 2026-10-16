@@ -52,6 +52,28 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Intermediate, listed but refused before, now deliver. HDR QC reports the
   peak in nits (scene-linear 1.0 = 203 nits) and flags PQ above 10,000 nits;
   no AMF sidecar is written for a PQ or HLG master.
+- **Deliver refuses NaN and infinite pixels** (HTTP 422, nothing written) and
+  names the first bad frame; QC used to pass them as "peak ≈ nan nits".
+- **Deliver's "Soft Clip Highlights" is now "Legal Range (16–235)", off by
+  default.** It always was an RGB clamp to 16–235, not a highlight roll-off,
+  and being on by default put black at 16 in every PNG master. It no longer
+  applies to PQ or HLG images at all. An API client that relied on the old
+  server default sends `soft_clip: true`.
+- **HDR QC measures clipping where the encoder clips:** each frame in linear
+  Rec.2020, against PQ's 10,000 nits or HLG's 1000-nit display (a saturated
+  colour clips in HLG below 1000 nits). HLG above its range was a QC pass.
+- **Restoring the oldest version at the 50-backup limit** no longer deletes
+  it: the pre-restore backup evicts the next-oldest, and the swap is atomic.
+- **Workflow previews** obey the .rad archive limits (entry count, expanded
+  size) and an 8 MB preview cap, answering 413 instead of expanding them.
+- **Image sequences:** a write that leaves frames of the same name from an
+  earlier, longer or differently numbered render in the folder now says so
+  (log, and a Deliver warning); the frames are not deleted. A stream of
+  unknown length with overwrite off no longer overwrites a later frame of an
+  existing sequence.
+- **ffmpeg deadlines cover the pipe:** a decode or encode with a timeout now
+  stops at it even when ffmpeg stalls mid-stream (a blocking read or write
+  used to wait forever).
 - **Camera log input** (`apply_input_transform`, used by HDR Analysis on log
   and ACEScct) now converts the camera gamut to Rec.709 primaries after the
   curve; it decoded the curve only. Neutrals are unchanged, saturated colours

@@ -70,6 +70,10 @@ _UI_TO_WRITE_COLORSPACE = {
 }
 
 #: Writer colour spaces that are BT.2100 HDR, and the formats that cannot carry them.
+class _DeliveryRefused(ValueError):
+    """The master cannot be written as asked; answered as 422, nothing written."""
+
+
 _HDR_WRITE_COLORSPACES = ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)')
 _EIGHT_BIT_WRITE_FORMATS = ('VID │ MP4 (H.264)', 'SEQ │ PNG (8-bit)')
 
@@ -259,6 +263,8 @@ def _verify_written(receipt: dict, warnings: list) -> None:
     if missing:
         _note(warnings, f"{len(missing)} written file(s) are missing or empty on disk, "
                         f"for example {os.path.basename(missing[0])}.")
+    for w in receipt.get("warnings") or []:
+        _note(warnings, w)
     degraded = [e for e in files if str(e.get("writer", "")).startswith("OpenCV fallback")]
     if degraded:
         _note(warnings, f"{len(degraded)} EXR file(s) were written by the OpenCV fallback: "
@@ -524,7 +530,10 @@ async def radiance_deliver_endpoint(request):
         quality = max(0, min(quality, 51))
 
         color_space = settings.get('colorSpace', 'sRGB (Standard)')
-        broadcast_safe = settings.get('soft_clip', True)
+        # 'soft_clip' is the panel's Legal Range (16-235) box. It clamps RGB
+        # code values of an 8/16-bit image; it never rolled off highlights.
+        # Off unless asked: a full-range PNG with black at 16 is not a default.
+        broadcast_safe = bool(settings.get('soft_clip', False))
         
         upscale_2x = settings.get('upscale_2x', False)
         smart_ver = settings.get('smart_versioning', True)
@@ -806,6 +815,27 @@ async def radiance_deliver_endpoint(request):
                           f"Aspect blanking to {aspect_ratio_str} did not run: "
                           f"{type(e).__name__}: {e}")
 
+            # ─── Pixel validity ───────────────────────────────────────────
+            # NaN and Inf have no code value: min/max turn NaN, every range
+            # check is then False and the QC passed a master of garbage. Refuse
+            # it instead of sanitising it; the source or the grade made them.
+            _rgb = graded_tensor[..., :3]
+            if not bool(torch.isfinite(_rgb).all()):
+                _bad = (~torch.isfinite(_rgb)).any(dim=-1)
+                _per_frame = _bad.flatten(1).sum(dim=1)
+                _frames = [int(i) for i in torch.nonzero(_per_frame).flatten()]
+                _n_bad = int(_per_frame.sum())
+                _kinds = []
+                if bool(torch.isnan(_rgb).any()):
+                    _kinds.append("NaN")
+                if bool(torch.isinf(_rgb).any()):
+                    _kinds.append("infinite")
+                raise _DeliveryRefused(
+                    f"{_n_bad:,} pixel(s) in {len(_frames)} frame(s) are {' or '.join(_kinds)} "
+                    f"after the grade (first: frame {range_in + _frames[0]} of the range). "
+                    "Nothing was written. Check the source frames and the grade "
+                    "(a log or power of a negative value is the usual cause).")
+
             # ─── Integrated QC Pass ───────────────────────────────────────
             qc_report = ""
             try:
@@ -842,18 +872,36 @@ async def radiance_deliver_endpoint(request):
                     except Exception as _e:
                         qc_report = f"◎ [QC PASS — ACES] {color_space} (gamut check skipped: {_e})."
                 elif color_space in _HDR_WRITE_COLORSPACES:
-                    # Scene-linear above 1.0 is the point of an HDR master, not
-                    # an illegal level. The writer places 1.0 at 203 nits.
-                    peak_nits = v_max * 203.0
-                    if color_space.startswith('PQ') and peak_nits > 10000.0:
-                        qc_report = (f"◎ [QC WARNING] {color_space}: peak ≈ {peak_nits:,.0f} nits is above "
-                                     "PQ's 10,000-nit ceiling and will clip (scene-linear 1.0 = 203 nits, BT.2408).")
-                    elif v_min < 0.0:
-                        qc_report = (f"◎ [QC WARNING] {color_space}: negative values (Min={v_min:.3f}) "
-                                     "clip to black in the encode.")
+                    # Measured where the encoder clips: each frame to linear
+                    # Rec.2020 at 203 nits = 1.0 (BT.2408), as the writer does,
+                    # then the PQ ceiling or HLG's 1000-nit display (where a
+                    # saturated colour clips below 1000 nits). Scene-linear
+                    # above 1.0 is the point of an HDR master, not an error.
+                    from radiance.color.encodings import gamut_matrix, hdr_clipping
+                    from radiance.color import encodings as _enc
+                    _kind = "PQ" if color_space.startswith("PQ") else "HLG"
+                    _wk = _enc.ENCODINGS.get(source_colorspace) or _enc.ENCODINGS["Linear Rec.709 (sRGB)"]
+                    _m = gamut_matrix(_wk.gamut, "Rec.2020").astype(np.float32)
+                    _clip = _neg = 0.0
+                    peak_nits = 0.0
+                    _nf = int(graded_tensor.shape[0])
+                    for _i in range(_nf):
+                        _f = graded_tensor[_i, ..., :3].cpu().numpy().reshape(-1, 3) @ _m.T
+                        _c, _g, _p = hdr_clipping(_f, _kind)
+                        _clip += _c / _nf
+                        _neg += _g / _nf
+                        peak_nits = max(peak_nits, _p)
+                    _ceiling = "PQ's 10,000-nit ceiling" if _kind == "PQ" else "HLG's 1000-nit reference display"
+                    if _clip > 0.001:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: {_clip * 100:.2f}% of pixels clip at "
+                                     f"{_ceiling} (peak ≈ {peak_nits:,.0f} nits; scene-linear 1.0 = 203 nits, BT.2408).")
+                    elif _neg > 0.001:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: {_neg * 100:.2f}% of pixels are outside "
+                                     "Rec.2020 and clip to black in the encode.")
                     else:
+                        _note_clip = (f"; {_clip * 100:.3f}% clip at {_ceiling}" if _clip > 0 else "")
                         qc_report = (f"◎ [QC PASS — HDR] {color_space}: peak ≈ {peak_nits:,.0f} nits "
-                                     "(scene-linear 1.0 = 203 nits, BT.2408).")
+                                     f"(scene-linear 1.0 = 203 nits, BT.2408){_note_clip}.")
                 elif v_min < 0.0 or v_max > 1.0:
                     qc_report = (
                         f"◎ [QC WARNING] Out-of-Gamut detected: "
@@ -1115,6 +1163,12 @@ async def radiance_deliver_endpoint(request):
             "message": _message,
         })
 
+    except _DeliveryRefused as e:
+        logger.warning("[Deliver] Refused: %s", e)
+        if instance_key:
+            _progress_set(instance_key, {"current": 100, "total": 100,
+                                         "status": "error", "message": str(e)[:200]})
+        return web.json_response({"error": str(e), "status": "error"}, status=422)
     except Exception as e:
         logger.error(f"Delivery failed: {traceback.format_exc()}")
         # Mark the run failed so the client's poll loop terminates. Without this

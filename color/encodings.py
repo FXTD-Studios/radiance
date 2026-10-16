@@ -173,6 +173,37 @@ def _hlg_encode(x, ref_nits=None):
     return out.astype(np.float32)
 
 
+def hdr_clipping(lin_rec2020, transfer, ref_nits=None):
+    """Where the PQ or HLG encode above clips, for display-linear Rec.2020.
+
+    ``lin_rec2020`` is (..., 3+) with 1.0 at the reference white, as the
+    encoders take it; ``transfer`` is "PQ" or "HLG". Returns
+    (clipped, negative, peak_nits): the fraction of pixels with a channel the
+    encoder clips at the top (PQ: 10,000 nits; HLG: scene light above 1 after
+    the inverse OOTF of the 1000-nit reference display, so a saturated colour
+    clips below 1000 nits), the fraction outside Rec.2020 (a channel below
+    zero, clipped to black), and the brightest channel in nits. NaN pixels are
+    not handled here: the caller refuses them first.
+    """
+    ref = float(ref_nits or DEFAULT_REFERENCE_WHITE_NITS)
+    x = np.asarray(lin_rec2020, np.float32)[..., :3].reshape(-1, 3)
+    if x.shape[0] == 0:
+        return 0.0, 0.0, 0.0
+    neg = np.any(x < -1e-4, axis=1)
+    fd = np.maximum(x, 0.0)
+    peak = float(fd.max()) * ref
+    if transfer == "PQ":
+        over = np.any(fd * (ref / 10000.0) > 1.0 + 1e-6, axis=1)
+    elif transfer == "HLG":
+        fd = fd * (ref / HLG_DISPLAY_NITS)
+        ys = np.power(np.maximum(fd @ _LUMA_2020.astype(np.float32), 1e-9), 1.0 / HLG_GAMMA)[:, None]
+        over = np.any(fd * np.power(ys, 1.0 - HLG_GAMMA) > 1.0 + 1e-6, axis=1)
+    else:
+        raise ValueError(f"transfer must be 'PQ' or 'HLG', not {transfer!r}")
+    n = float(x.shape[0])
+    return float(over.sum()) / n, float(neg.sum()) / n, peak
+
+
 def _hlg_decode(v, ref_nits=None):
     ref = float(ref_nits or DEFAULT_REFERENCE_WHITE_NITS)
     V = np.clip(np.asarray(v, np.float64), 0.0, 1.0)

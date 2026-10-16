@@ -456,6 +456,7 @@ test('File > Deliver Master opens the Deliver dialog, which offers PQ and HLG an
     assert.equal(out.posted.settings.colorSpace, 'PQ (HDR10 / ST.2084)');
     assert.equal(out.posted.settings.format, 'Video — MP4 (H.265 10-bit)');
     assert.equal(out.posted.settings.filename, 'pq_master');
+    assert.equal(out.posted.settings.soft_clip, false, 'Legal Range (16-235) is opt-in');
     assert.ok(out.posted.grading && 'exposure' in out.posted.grading);
     assert.match(out.status, /Delivered pq_master/);
     assert.match(out.status, /QC PASS — HDR/);

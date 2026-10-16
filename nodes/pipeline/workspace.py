@@ -336,11 +336,14 @@ def _inspect_graph_content(graph_json: str) -> dict:
 #                         VERSION CONTROL BACKEND (v3.5)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist") -> None:
+def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist",
+                           keep: "Path | None" = None) -> None:
     """
     Rotate existing file into a .vN backup before overwrite.
     Keeps at most MAX_VERSIONS backups, deleting the oldest.
     Also writes a .vN.json sidecar with commit metadata (message, author, timestamp).
+    ``keep`` is a backup that eviction must not delete (the version being
+    restored): at the limit, the oldest other backup goes instead.
     """
     if not filepath.exists():
         return
@@ -370,7 +373,9 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
 
     # Evict oldest if at capacity
     if len(existing) >= MAX_VERSIONS:
-        for old in existing[: len(existing) - MAX_VERSIONS + 1]:
+        _keep = Path(keep).resolve() if keep is not None else None
+        evictable = [p for p in existing if _keep is None or p.resolve() != _keep]
+        for old in evictable[: len(existing) - MAX_VERSIONS + 1]:
             old.unlink(missing_ok=True)
             old.with_suffix(old.suffix + ".json").unlink(missing_ok=True)
 
@@ -482,6 +487,24 @@ def _pack_rad_v3(
     return RAD_MAGIC_V3 + raw
 
 
+def _check_rad_zip_admission(zf: "zipfile.ZipFile") -> list:
+    """Entry-count and uncompressed-size limits for a .rad v3 ZIP, before any
+    entry is expanded. Shared by the unpacker and the preview route."""
+    infos = zf.infolist()
+    if len(infos) > MAX_RAD_ZIP_ENTRIES:
+        raise ValueError(".rad v3: too many ZIP entries")
+    total_uncompressed = sum(info.file_size for info in infos)
+    if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
+        )
+    return infos
+
+
+#: A preview is a thumbnail; anything larger is not one.
+MAX_RAD_PREVIEW_BYTES = 8 * 1024 * 1024
+
+
 def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
     """
     Unpack a .rad v3 ZIP container.
@@ -502,15 +525,7 @@ def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
         raise ValueError(f"Corrupt .rad v3 ZIP: {e}")
 
     with zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_RAD_ZIP_ENTRIES:
-            raise ValueError(".rad v3: too many ZIP entries")
-
-        total_uncompressed = sum(info.file_size for info in infos)
-        if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
-            raise ValueError(
-                f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
-            )
+        infos = _check_rad_zip_admission(zf)
 
         names = [info.filename for info in infos]
 
@@ -1578,11 +1593,19 @@ async def restore_workflow_version(request):
         if not source_path.exists() or not source_path.is_file():
             return web.json_response({"error": "Version file not found"}, status=404)
 
-        # Before restoring, back up current state as a 'Restore Point' commit
-        _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}")
-
-        # Perform restore
-        shutil.copy2(str(source_path), str(target_path))
+        # Copy the chosen version beside the target first, then back up the
+        # current state, then swap. The pre-restore backup can evict the
+        # oldest version, which at the retention limit was the one being
+        # restored: the copy then failed and that version was gone.
+        tmp_path = target_path.with_name(f".{target_path.name}.restore-{os.getpid()}-{os.urandom(4).hex()}")
+        shutil.copy2(str(source_path), str(tmp_path))
+        try:
+            _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}",
+                                   keep=source_path)
+            os.replace(str(tmp_path), str(target_path))
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
         
         logger.info(f"[Radiance] Restored {filename} from {version_file}")
         return web.json_response({"success": True, "restored_from": version_file})
@@ -1610,10 +1633,23 @@ async def get_workflow_preview(request):
             return web.json_response({"error": "Previews only supported in .rad v3"}, status=400)
 
         with zipfile.ZipFile(filepath, "r") as zf:
-            if "preview.png" not in zf.namelist():
+            # The unpacker's limits apply here too: this route used to expand
+            # preview.png from an archive the unpacker refuses.
+            try:
+                _check_rad_zip_admission(zf)
+            except ValueError as exc:
+                return web.json_response({"error": str(exc)}, status=413)
+            try:
+                info = zf.getinfo("preview.png")
+            except KeyError:
                 return web.json_response({"error": "No preview image"}, status=404)
-            
-            preview_data = zf.read("preview.png")
+            if info.file_size > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
+            # Bounded read: the declared size is not trusted.
+            with zf.open(info) as fh:
+                preview_data = fh.read(MAX_RAD_PREVIEW_BYTES + 1)
+            if len(preview_data) > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
             return web.Response(body=preview_data, content_type='image/png')
 
     except Exception as e:
