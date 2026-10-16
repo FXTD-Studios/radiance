@@ -42,6 +42,7 @@ torch = pytest.importorskip("torch")
 
 from radiance.core import video as V  # noqa: E402
 from radiance.core.ffmpeg import ffmpeg_exe, ffprobe_exe  # noqa: E402
+from _repo_files import repo_py_files  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not ffmpeg_exe(), reason="ffmpeg is required to encode the fixtures"
@@ -510,7 +511,7 @@ def test_no_module_decodes_video_through_a_png_temp_directory():
 
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
-    for py in root.rglob("*.py"):
+    for py in repo_py_files(root):
         if "test" in py.parts or "_to_delete" in py.parts:
             continue
         text = py.read_text(encoding="utf-8", errors="ignore")

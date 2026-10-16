@@ -7,6 +7,7 @@ lines, and that did not previously exist anywhere in the suite.
 """
 import numpy as np
 import pytest
+from _repo_files import repo_py_files  # noqa: E402
 
 torch = pytest.importorskip("torch")
 
@@ -322,7 +323,7 @@ def test_no_unbounded_module_level_model_caches():
     root = pathlib.Path(__file__).resolve().parent.parent
     pat = re.compile(r"^_[A-Z0-9_]*CACHE[^=\n]*=\s*\{\s*\}\s*$", re.M)
     offenders = []
-    for path in root.rglob("*.py"):
+    for path in repo_py_files(root):
         if set(path.parts) & {"tests", "build", "dist", ".codex-backup-20260719", "scripts"}:
             continue
         for m in pat.finditer(path.read_text(encoding="utf-8", errors="ignore")):
