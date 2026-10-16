@@ -11,6 +11,19 @@ import { escapeHtml as _escapeHtml } from "./radiance_dom_utils.js";
 // L1: the header's version, kept equal to pyproject by test_version_sync.py.
 import { RADIANCE_VERSION as _RADIANCE_VERSION } from "./radiance_version.js";
 import { smpteTimecode as _smpteTC, FPS_CHOICES as _FPS_CHOICES } from "./radiance_timecode.js";
+import {
+    availableWorkspaces as _availableWorkspaces, resolveSaved as _resolveSavedMode,
+    workspaceById as _workspaceById,
+    defaultWorkspaceFor as _defaultWorkspaceFor, suggestWorkspace as _suggestWorkspace,
+    tabsFor as _tabsFor, workspaceForTab as _workspaceForTab,
+} from "./radiance_viewer_modes.js";
+import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
+import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
+import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV, uvToCanvas as _uvToCanvas } from "./radiance_review.js";
+import { buildReviewReport as _buildReviewReport, reportToMarkdown as _reportToMarkdown } from "./radiance_review_report.js";
+import { analyzeSequence as _analyzeSequence, buildReport as _buildQCReport } from "./radiance_qc.js";
+import { webgpuGapSentence as _webgpuGapSentence } from "./radiance_backend_gaps.js";
+import { differenceSpec as _differenceSpec, DIFF_GAINS as _DIFF_GAINS, onionLayers as _onionLayers, normalizeOnion as _normalizeOnion } from "./radiance_onion.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
 import {
     matchKey as _matchKey,
@@ -1089,12 +1102,16 @@ class RadianceViewer {
         this._hdrFallbackReasons = [];
         this.frameCompareImages = [];
         this.frameCompareHDR = [];          // B's float frames, when the node sent them
-        this.compareFit = (() => {
-            try { return localStorage.getItem('radiance_compare_fit') === 'fit' ? 'fit' : 'pixel'; } catch { return 'pixel'; }
-        })();
+        // Saved display preferences: one validated read (radiance_viewer_state.js)
+        // instead of a localStorage call and a default for each.
+        const _prefs = _loadViewerPrefs((() => { try { return localStorage; } catch { return null; } })());
+        this.compareFit = _prefs.compareFit;
         this.frameZdepthImages = [];  // Z-Depth frames
         this.frameBracketImages = { low: [], high: [] };
         this.zdepthImage = null;       // Current zdepth image
+        this.frameNormalImages = [];   // Normal pass frames (display-encoded)
+        this.normalImage = null;       // Current normal frame; drawn when channel === 'normal'
+        this._normalEntries = [];
         this.showZdepth = false;       // Toggle for zdepth display
 
         // ── Real-time Video Playback ──────────────────────────────────────────
@@ -1129,7 +1146,13 @@ class RadianceViewer {
         // playhead) or 'pinned' (a still of A the user pinned).
         this.compareMode = 'none';
         this.compareSource = null;
-        this.diffGain = 4;
+        // What Difference measures: gain and abs/signed. Display-referred only:
+        // the renderer compares A and B after the same view transform.
+        this.diffSpec = _differenceSpec({});
+        this.diffGain = this.diffSpec.gain;
+        // Onion skin: neighbouring frames' previews drawn over the picture.
+        this.onionEnabled = false;
+        this.onion = _normalizeOnion({});
         this.blinkMs = 500;
         this._blinkB = false;
         this._blinkTimer = null;
@@ -1142,17 +1165,17 @@ class RadianceViewer {
         this.showVectorscope = false;
         this.scopeOverlay = false;
         this.waveformParadeMode = true; // true = RGB parade
-        this.scopeMode = localStorage.getItem('radiance_scope_mode') || 'parade'; // parade|waveform|histogram|vectorscope|falsecolor
+        this.scopeMode = _prefs.scopeMode;   // parade|waveform|histogram|vectorscope|chromaticity|falsecolor
 
         // Scope scale and measurement point. The scopes used to draw a graticule
         // labelled 0/25/50/75/100 under a caption that read "Linear · 0–255" --
         // two units in one panel, neither of them stated. These say which.
         // 10-bit code value is the default because that is what a delivery spec
         // is written in.
-        this.scopeScale = localStorage.getItem('radiance_scope_scale') || 'cv10';
-        this.scopeLevels = localStorage.getItem('radiance_scope_levels') || 'data';
-        this.scopeTransformed = localStorage.getItem('radiance_scope_xform') !== '0';
-        this.scopeHlgPeak = parseInt(localStorage.getItem('radiance_scope_hlg_peak') || '1000', 10) || 1000;
+        this.scopeScale = _prefs.scopeScale;
+        this.scopeLevels = _prefs.scopeLevels;
+        this.scopeTransformed = _prefs.scopeTransformed;
+        this.scopeHlgPeak = _prefs.scopeHlgPeak;
 
         // OpenColorIO. Null until a config is loaded, and Radiance's own ACES
         // 1.3 pipeline runs until then -- OCIO is a capability, not a
@@ -1174,18 +1197,18 @@ class RadianceViewer {
 
         // Which published safe-area spec the boxes come from, and the framing
         // matte, which is a separate question from delivery safety.
-        this.safeAreaPreset = localStorage.getItem('radiance_safe_preset') || 'modern';
-        this.matteMode = localStorage.getItem('radiance_matte') || 'off';
+        this.safeAreaPreset = _prefs.safeAreaPreset;
+        this.matteMode = _prefs.matteMode;
         this.matteOpacity = 0.7;
 
         // Nearest-neighbour vs linear magnification. RV binds this to 'n', and
         // pixel-level inspection is meaningless through a bilinear filter.
         // 3.5.0: nearest from 1:1 up by default (Nuke / RV pixel inspection); N toggles.
-        this.pixelFilter = localStorage.getItem('radiance_pixel_filter') || 'nearest';
+        this.pixelFilter = _prefs.pixelFilter;
 
         // How the frame counter reads. Frames for a technical conversation,
         // timecode for a delivery one.
-        this.timeDisplay = localStorage.getItem('radiance_time_display') || 'frames';
+        this.timeDisplay = _prefs.timeDisplay;
         this.frameRate = 24;
 
         // Fullscreen
@@ -1237,12 +1260,11 @@ class RadianceViewer {
         this.displayLut = 'None';
         this.inputSpace = 'None';
         this._userSetIDT = false;
-        try { this.displayTarget = localStorage.getItem('radiance_display_target') || 'sRGB'; } catch { this.displayTarget = 'sRGB'; }
+        this.displayTarget = _prefs.displayTarget;
         this.viewExposure = 0;    // 3.5.0: viewer f-stops, like Nuke's viewer gain
         this.viewGamma = 1;       // 3.5.0: viewer gamma
         this.sourceTag = { encoding: 'linear', colorspace: 'Linear Rec.709 (sRGB)' };
-        try { this.viewMode = localStorage.getItem('radiance_view_mode') || 'auto'; } catch { this.viewMode = 'auto'; }
-        if (this.viewMode === 'manual') this.viewMode = 'auto';
+        this.viewMode = _prefs.viewMode;   // a saved 'manual' loads as 'auto'
         this.lutOptions = [
             "None",
             "sRGB (Display)",
@@ -1944,8 +1966,10 @@ class RadianceViewer {
         }
         const nit = stats.nitPeak;
         let nitStr;
-        if (nit >= 1000) nitStr = `${(nit / 1000).toFixed(1)}k nit`;
-        else             nitStr = `${Math.round(nit)} nit`;
+        // The figure only means something with its assumption: scene-linear
+        // 1.0 placed at BT.2408's 203 cd/m2 reference white. Say so on screen.
+        if (nit >= 1000) nitStr = `${(nit / 1000).toFixed(1)}k nit (BT.2408)`;
+        else             nitStr = `${Math.round(nit)} nit (BT.2408)`;
 
         const ev = stats.evRange.toFixed(1);
         const clp = stats.clippedPct.toFixed(1);
@@ -2600,6 +2624,12 @@ class RadianceViewer {
     }
 
     _setReferenceTab(tabId) {
+        // A tab this workspace hides (a shortcut, a menu item, the rail) moves to
+        // the workspace that shows it, rather than selecting an invisible tab.
+        if (this.uiMode === 'advanced' && !_tabsFor(this.workspace).includes(tabId)) {
+            const ws = _workspaceForTab(tabId, this.workspace);
+            if (ws && ws !== this.workspace) { this.setWorkspace(ws, { tab: tabId }); return; }
+        }
         this._referenceRightTab = tabId;
         if (this.rightControlPanel) this.rightControlPanel.style.display = 'flex';
         this.showControls = true;
@@ -2671,6 +2701,8 @@ class RadianceViewer {
                 background: transparent; border: 0; border-radius: 4px; padding: 0 10px; height: 26px; cursor: pointer; }
             .radiance-mode-switch button.is-active, .radiance-simple-bar button.is-active {
                 background: #1f3b57; color: #fff; }
+            .radiance-mode-switch button.has-hint::after { content: ''; display: inline-block; width: 6px; height: 6px;
+                border-radius: 50%; background: #f5a524; margin-left: 5px; vertical-align: middle; }
             .radiance-mode-switch button:focus-visible, .radiance-simple-bar button:focus-visible,
             .radiance-simple-bar input:focus-visible { outline: 2px solid #39aaff; outline-offset: 1px; }
             .radiance-simple-bar { display: none; flex: 0 0 auto; align-items: center; gap: 10px;
@@ -2712,13 +2744,12 @@ class RadianceViewer {
         sw.setAttribute('role', 'group');
         sw.setAttribute('aria-label', 'Viewer mode');
         this._modeBtns = new Map();
-        [['simple', 'Simple', 'Picture, compare and playback only'],
-         ['advanced', 'Advanced', 'Every panel: grade, scopes, inspector, timeline tools']].forEach(([m, label, tip]) => {
+        _availableWorkspaces().forEach((w) => {
             const b = document.createElement('button');
-            b.type = 'button'; b.textContent = label; b.title = tip;
-            b.onclick = () => this.setUIMode(m, { grow: true });
+            b.type = 'button'; b.textContent = w.label; b.title = w.tip;
+            b.onclick = () => this.setWorkspace(w.id, { grow: true });
             sw.appendChild(b);
-            this._modeBtns.set(m, b);
+            this._modeBtns.set(w.id, b);
         });
         const brand = this.proMenuBar?.querySelector('.radiance-pro-brand');
         if (brand) brand.after(sw); else this.proMenuBar?.appendChild(sw);
@@ -2727,12 +2758,36 @@ class RadianceViewer {
         this.container.appendChild(this.simpleBar);
 
         const saved = this.node?.properties?.radiance_viewer_mode;
-        this.setUIMode(saved === 'advanced' ? 'advanced' : 'simple', { persist: !!saved });
+        const resolved = _resolveSavedMode(this.node?.properties);
+        this.workspace = resolved.workspace;
+        this.setUIMode(resolved.layout, { persist: !!saved });
     }
 
-    /** Switch between Simple and Advanced. Saved on the node unless `persist` is false. */
+    /**
+     * Go to a workspace. Review is the Simple layout; Color, Inspect and Compare
+     * are the Advanced layout, each showing its own right-panel tabs and opening
+     * on its first one. Only tab buttons are hidden: the grade, compare state
+     * and loaded media are untouched, and the compare mode is left as it was.
+     */
+    setWorkspace(id, { persist = true, grow = false, tab = null } = {}) {
+        const ws = _workspaceById(id);
+        if (!ws || !ws.available) return;
+        this.workspace = ws.id;
+        this.setUIMode(ws.layout, { persist, grow });
+        if (ws.layout === 'advanced') this._setReferenceTab(tab || ws.tab || 'inspector');
+    }
+
+    /** The right-panel tab to show: the requested one if this workspace has it, else its first. */
+    _visibleReferenceTab(tabId) {
+        const tabs = _tabsFor(this.workspace);
+        return tabs.includes(tabId) ? tabId : (_workspaceById(this.workspace)?.tab || tabs[0]);
+    }
+
+    /** Switch between the Simple and Advanced layouts. Saved on the node unless `persist` is false. */
     setUIMode(mode, { persist = true, grow = false } = {}) {
         mode = mode === 'advanced' ? 'advanced' : 'simple';
+        // Keep the workspace in step with the layout it belongs to.
+        if (_workspaceById(this.workspace)?.layout !== mode) this.workspace = _defaultWorkspaceFor(mode);
         // Advanced lays out a menu, a tool rail and a 520 px panel beside the
         // picture; give it room when the user asks for it.
         if (grow && mode === 'advanced' && this.node?.size) {
@@ -2744,14 +2799,34 @@ class RadianceViewer {
         if (persist && this.node) {
             this.node.properties = this.node.properties || {};
             this.node.properties.radiance_viewer_mode = mode;
+            this.node.properties.radiance_viewer_workspace = this.workspace;
         }
-        this._modeBtns?.forEach((b, m) => {
-            b.classList.toggle('is-active', m === mode);
-            b.setAttribute('aria-pressed', String(m === mode));
+        this._modeBtns?.forEach((b, id) => {
+            b.classList.toggle('is-active', id === this.workspace);
+            b.setAttribute('aria-pressed', String(id === this.workspace));
         });
+        if (this.workspace === 'compare') this._compareHintSeen = true;
+        this._syncWorkspaceHint();
         this._syncCompareUI();
         this._syncSimpleTransport();
         requestAnimationFrame(() => { this.resize?.(); if (this.image) this.fitToView?.(); });
+    }
+
+    /**
+     * A dot on a workspace button when the loaded media suggests it (a B input
+     * is connected: Compare). Only a hint: nothing switches. It goes once the
+     * person has opened that workspace for this run, and comes back on a new run.
+     */
+    _syncWorkspaceHint() {
+        if (!this._modeBtns) return;
+        const sug = this._compareHintSeen ? null
+            : _suggestWorkspace({ hasB: !!this._hasCompareInput }, this.workspace);
+        this._modeBtns.forEach((b, id) => {
+            const on = !!sug && sug.workspace === id;
+            b.classList.toggle('has-hint', on);
+            const base = _workspaceById(id)?.tip || '';
+            b.title = on ? `${base}. ${sug.reason}` : base;
+        });
     }
 
     _createSimpleBar() {
@@ -2789,11 +2864,20 @@ class RadianceViewer {
         cmp.setAttribute('aria-label', 'Compare');
         this._sbCompare = new Map();
         [['none', 'A', 'Show A'], ['b', 'B', 'Show B'], ['wipe', 'Wipe', 'Wipe between B (left) and A (right); drag the line'],
-         ['difference', 'Diff', 'Difference |A - B|, x4'], ['blink', 'Blink', 'Flip between A and B']].forEach(([m, label, tip]) => {
+         ['difference', 'Diff', `Difference: ${this.diffSpec.label}`], ['blink', 'Blink', 'Flip between A and B']].forEach(([m, label, tip]) => {
             const b = btn(label, tip, () => this.setCompareMode(m));
             cmp.appendChild(b);
             this._sbCompare.set(m, b);
         });
+        // Difference controls, shown while Difference is on.
+        this._sbDiffGain = btn(`x${this.diffSpec.gain}`, 'Difference gain: click for the next step',
+            () => {
+                const i = _DIFF_GAINS.indexOf(this.diffSpec.gain);
+                this.setDifference({ gain: _DIFF_GAINS[(i + 1) % _DIFF_GAINS.length] });
+            }, 'rsb-diffgain');
+        this._sbDiffSigned = btn('|A-B|', 'Show A - B around mid grey instead of |A - B|',
+            () => this.setDifference({ mode: this.diffSpec.mode === 'signed' ? 'abs' : 'signed' }), 'rsb-diffsigned');
+        cmp.append(this._sbDiffGain, this._sbDiffSigned);
 
         this._sbBLabel = document.createElement('span');
         this._sbBLabel.className = 'rsb-b';
@@ -2807,13 +2891,102 @@ class RadianceViewer {
         this._sbBFit = btn('B 1:1', 'B pixel for pixel, centred on A. Click to fit B inside A instead',
             () => this.setCompareFit(this.compareFit === 'fit' ? 'pixel' : 'fit'), 'rsb-bfit');
         const fit = btn('Fit', `Fit to view (${_shortcutLabel('view.fit')})`, () => this.fitToView?.());
-        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, fit);
+        this._sbOnion = btn('Onion', 'Onion skin: the frames before (red) and after (green), from their previews', () => this.setOnion({ enabled: !this.onionEnabled }), 'rsb-onion');
+        // Review: bookmarks, notes, QC and the report.
+        const rv = document.createElement('div');
+        rv.className = 'rsb-group';
+        rv.setAttribute('role', 'group');
+        rv.setAttribute('aria-label', 'Review');
+        this._sbMark = btn('Mark', `Bookmark this frame (${_shortcutLabel('review.bookmark')})`, () => this.toggleBookmark(), 'rsb-mark');
+        const prevMark = btn('\u25C0', `Previous bookmark (${_shortcutLabel('review.prevBookmark')})`, () => this.stepBookmark(-1));
+        const nextMark = btn('\u25B6', `Next bookmark (${_shortcutLabel('review.nextBookmark')})`, () => this.stepBookmark(1));
+        const note = btn('Note', `Write a note on this frame (${_shortcutLabel('review.note')})`, () => this.openNoteEditor());
+        this._sbQC = btn('QC', 'Run measured checks over every frame (click again to stop)', () => this.runQC(), 'rsb-qc');
+        const report = btn('Report', 'Download the review report (notes, bookmarks and the last QC run) as Markdown and JSON', () => this.exportReviewReport());
+        rv.append(this._sbMark, prevMark, nextMark, note, this._sbQC, report);
+        bar.append(transport, this._withCacheMarks(scrub), frame, cmp, this._sbBLabel, this._sbBFit, this._sbPin, this._sbOnion, rv, fit);
         return bar;
+    }
+
+    /**
+     * Set what Difference measures ({ gain, mode }). Unknown values fall back
+     * (radiance_onion.js differenceSpec); the domain is always display-referred.
+     */
+    setDifference(opts = {}) {
+        this.diffSpec = _differenceSpec({ ...this.diffSpec, ...opts, domain: 'display' });
+        this.diffGain = this.diffSpec.gain;
+        this.renderer?.setDiffSigned?.(this.diffSpec.mode === 'signed');
+        this._syncCompareUI();
+    }
+
+    /**
+     * Onion skin on or off, and its settings ({ enabled, before, after, step,
+     * opacity, falloff, tint }); bad values fall back (normalizeOnion).
+     */
+    setOnion(opts = {}) {
+        if (typeof opts.enabled === 'boolean') this.onionEnabled = opts.enabled;
+        this.onion = _normalizeOnion({ ...this.onion, ...opts });
+        if (this._sbOnion) {
+            this._sbOnion.classList.toggle('is-active', this.onionEnabled);
+            this._sbOnion.setAttribute('aria-pressed', String(this.onionEnabled));
+        }
+        this.render();
+    }
+
+    /**
+     * Onion layers on the overlay. They are the frames' preview images (8-bit,
+     * ungraded), so they show motion and shape, not colour. Not drawn while
+     * comparing: B already occupies the picture. Returns { drawn, wanted }.
+     */
+    _drawOnionSkin(ctx) {
+        if (!this.onionEnabled || (this.compareMode && this.compareMode !== 'none')) {
+            this._onionDrawn = { drawn: 0, wanted: 0 };
+            return this._onionDrawn;
+        }
+        const W = this.imageWidth, H = this.imageHeight;
+        const layers = _onionLayers(this.currentFrame || 0, this.totalFrames || 0, this.onion);
+        let drawn = 0;
+        for (const l of layers) {
+            const img = this.frameImages?.[l.frame];
+            const iw = img?.naturalWidth || img?.width, ih = img?.naturalHeight || img?.height;
+            if (!img || !iw || !ih || !W || !H) continue;
+            let src = img;
+            if (l.tint) {
+                const c = (this._onionCanvas ||= document.createElement('canvas'));
+                if (c.width !== iw || c.height !== ih) { c.width = iw; c.height = ih; }
+                const g = c.getContext('2d');
+                g.globalCompositeOperation = 'copy';
+                g.drawImage(img, 0, 0);
+                g.globalCompositeOperation = 'multiply';
+                g.fillStyle = `rgb(${l.tint.map((t) => Math.round(t * 255)).join(',')})`;
+                g.fillRect(0, 0, iw, ih);
+                g.globalCompositeOperation = 'source-over';
+                src = c;
+            }
+            ctx.save();
+            ctx.globalAlpha = l.opacity;
+            ctx.imageSmoothingEnabled = this.zoom < 1;
+            ctx.drawImage(src, 0, 0, iw, ih, this.panX, this.panY, W * this.zoom, H * this.zoom);
+            ctx.restore();
+            drawn++;
+        }
+        this._onionDrawn = { drawn, wanted: layers.length };
+        return this._onionDrawn;
     }
 
     /** Simple bar and viewer bar buttons follow the compare state. */
     _syncCompareUI() {
         this._syncViewerBarBtns?.();
+        if (this._sbDiffGain) {
+            const on = this.compareMode === 'difference';
+            this._sbDiffGain.style.display = on ? '' : 'none';
+            this._sbDiffSigned.style.display = on ? '' : 'none';
+            this._sbDiffGain.textContent = `x${this.diffSpec.gain}`;
+            this._sbDiffSigned.textContent = this.diffSpec.mode === 'signed' ? 'A-B' : '|A-B|';
+            const diffBtn = this._sbCompare?.get('difference');
+            if (diffBtn) diffBtn.title = `Difference: ${this.diffSpec.label}`
+                + (typeof this.renderer?.setDiffSigned === 'function' ? '' : ' (not drawn by this renderer)');
+        }
         if (!this._sbCompare) return;
         const cm = this.compareMode || 'none';
         this._sbCompare.forEach((b, m) => {
@@ -2831,6 +3004,13 @@ class RadianceViewer {
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
             if (cm === 'blink') this._sbBLabel.textContent += this._blinkB ? '  [B]' : '  [A]';
+            // B shorter than A: say that its last frame is being held.
+            if (this.compareSource === 'input' && this._compareHeld) {
+                this._sbBLabel.textContent += `  (ended at ${this._compareCount}, held)`;
+                this._sbBLabel.title += `. B has ${this._compareCount} frame(s); the last one is held past that.`;
+            }
+            const geom = this._compareGeometryNote?.();
+            if (geom) this._sbBLabel.title += `. ${geom}`;
         }
         if (this._sbBFit) {
             const fitted = this.compareFit === 'fit';
@@ -3199,9 +3379,9 @@ class RadianceViewer {
         ], read('radiance_prefer_webgpu') === '1' ? 'webgpu' : 'webgl', (v) => {
             store('radiance_prefer_webgpu', v === 'webgpu' ? '1' : '0');
             this._termLog?.('warn', v === 'webgpu'
-                ? '[Renderer] WebGPU enabled: masks, qualifiers, HDR heatmap and OCIO are not implemented there. Reload to apply.'
+                ? `[Renderer] WebGPU enabled. Reload to apply. ${_webgpuGapSentence()}`
                 : '[Renderer] WebGL restored. Reload to apply.');
-        }), 'Takes effect on reload. WebGPU has no masks, qualifiers, HDR heatmap or OpenColorIO.');
+        }), `Takes effect on reload. ${_webgpuGapSentence()}`);
         row('Precision', choice('precision', [['u8', 'INT 8'], ['f16', 'FLOAT 16'], ['f32', 'FLOAT 32']],
             this.renderer?.pipelinePrecision || read('radiance_pipeline_precision') || 'f32',
             (v) => this._setPipelinePrecision(v)), 'The pipeline\'s working precision (Alt+B cycles it).');
@@ -4185,11 +4365,15 @@ class RadianceViewer {
     _updateEngineBadge() {
         if (this._engineBadge) {
             const backend = (this._gpuBackend || 'none').toUpperCase();
-            this._engineBadge.textContent = backend === 'NONE' ? 'GPU: 2D' : `GPU: ${backend}`;
             const isWebGPU = this._gpuBackend === 'webgpu';
-            this._engineBadge.style.color = isWebGPU ? '#4ade80' : '#8fc7ff';
-            this._engineBadge.style.borderColor = isWebGPU ? 'rgba(74,222,128,0.36)' : 'rgba(143,199,255,0.32)';
-            this._engineBadge.style.background = isWebGPU ? 'rgba(74,222,128,0.1)' : 'rgba(143,199,255,0.08)';
+            // WebGPU is opt-in and incomplete (no masks, qualifiers, heatmap or
+            // OCIO), so it is labelled and drawn in the warning colour, not green.
+            this._engineBadge.textContent = backend === 'NONE' ? 'GPU: 2D'
+                : isWebGPU ? 'GPU: WEBGPU (experimental)' : `GPU: ${backend}`;
+            this._engineBadge.title = isWebGPU ? _webgpuGapSentence() : '';
+            this._engineBadge.style.color = isWebGPU ? '#f5a524' : '#8fc7ff';
+            this._engineBadge.style.borderColor = isWebGPU ? 'rgba(245,165,36,0.45)' : 'rgba(143,199,255,0.32)';
+            this._engineBadge.style.background = isWebGPU ? 'rgba(245,165,36,0.1)' : 'rgba(143,199,255,0.08)';
         }
     }
 
@@ -4508,6 +4692,7 @@ class RadianceViewer {
     // without blocking the initial UI render. WebGL remains the fallback for
     // browsers or driver stacks that cannot create a stable WebGPU device.
     async _tryWebGPUUpgrade() {
+        let _rollback = null;
         try {
             if (!navigator.gpu || typeof RadianceWebGPURenderer === 'undefined') return;
             if (!RadianceWebGPURenderer.isAvailable?.()) return;
@@ -4527,6 +4712,19 @@ class RadianceViewer {
             console.log('[Radiance] WebGPU renderer active; WebGL retained only as fallback.');
             const oldRenderer = this.renderer;
             const oldCanvas = this.glCanvas;
+            const oldBackend = this._gpuBackend;
+            const oldUseWebGL = this.useWebGL;
+            // Anything that throws between here and the end of the swap puts the
+            // WebGL renderer back; the old renderer is only destroyed last.
+            _rollback = () => {
+                this.glCanvas = oldCanvas;
+                this.renderer = oldRenderer;
+                this._gpuBackend = oldBackend;
+                this.useWebGL = oldUseWebGL;
+                try { wgpu.destroy?.(); } catch { /* already gone */ }
+                webgpuCanvas.remove();
+            };
+            wgpu.onDeviceLost = (info) => this._onGPUDeviceLost(info);
             this.glCanvas = webgpuCanvas;
             this.renderer = wgpu;
             this._gpuBackend = 'webgpu';
@@ -4555,9 +4753,27 @@ class RadianceViewer {
             this._updateBitDepthBadge();
             this.render();
         } catch (e) {
-            console.warn('[Radiance] WebGPU upgrade deferred:', e);
+            console.warn('[Radiance] WebGPU upgrade failed; staying on WebGL:', e);
+            if (_rollback) {
+                try { _rollback(); this.render(); } catch (e2) { console.warn('[Radiance] WebGPU rollback failed:', e2); }
+            }
             this._updateEngineBadge();
         }
+    }
+
+    /**
+     * The WebGPU device went away while it was the active renderer. There is no
+     * live fallback renderer to swap to, so say so instead of leaving a canvas
+     * that stopped drawing, and turn the preference off so the next load is WebGL.
+     */
+    _onGPUDeviceLost(info) {
+        if (this._gpuBackend !== 'webgpu') return;
+        try { localStorage.removeItem('radiance_prefer_webgpu'); } catch { /* storage blocked */ }
+        const why = info?.message || info?.reason || 'unknown reason';
+        this._showViewerMessage('context',
+            `The WebGPU device was lost (${why}), so the picture cannot be drawn. `
+            + 'WebGPU has been switched off for this browser: reload the page to continue on WebGL.');
+        this._termLog?.('error', `[Viewer] WebGPU device lost: ${why}. Reload to use WebGL.`);
     }
 
     // createUI continues — overlay, scope panel, terminal, etc.
@@ -5411,10 +5627,31 @@ class RadianceViewer {
                 const result = await response.json();
                 clearInterval(progressInterval);
 
-                if (result.status === 'success') {
+                // The server answers 'partial' when the master was written but a
+                // requested step was not (FX bake, CDL/AMF sidecar, upscale, a
+                // degraded EXR). That is not a failure and not a clean success:
+                // show what was skipped instead of "FAILED undefined".
+                const _dvWarnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+                // The baked grade is whole-frame. A power window or qualifier is
+                // a viewer-side matte the payload does not carry, so the master
+                // can differ from what the viewer shows. Say so.
+                if (dvBakeGrade.checked) {
+                    const _r = this.renderer;
+                    const _aids = [];
+                    if (_r?.maskType > 0) _aids.push('power window');
+                    if (_r?.qualifierEnabled) _aids.push('qualifier');
+                    if (_aids.length) _dvWarnings.push(`Not baked: ${_aids.join(' and ')} (the master carries the whole-frame grade only).`);
+                }
+                if (result.status === 'success' || result.status === 'partial') {
+                    const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
                     dvProgressBar.style.width = '100%';
-                    dvProgressLabel.textContent = '◎ EXPORT COMPLETE';
-                    this._termLog('success', `[DELIVERY] ${result.message}`);
+                    dvProgressLabel.textContent = _dvPartial
+                        ? '◎ EXPORT COMPLETE WITH WARNINGS'
+                        : '◎ EXPORT COMPLETE';
+                    if (_dvPartial) dvProgressBar.style.background = '#ffaa00';
+                    this._termLog(_dvPartial ? 'warn' : 'success', `[DELIVERY] ${result.message}`);
+                    for (const w of _dvWarnings) this._termLog('warn', `[DELIVERY] ${w}`);
+                    if (_dvPartial) this._showToast?.(`Delivered with ${_dvWarnings.length} warning(s): ${_dvWarnings.join(' ')}`, 'warn');
                     if (result.qc) {
                         const qcColor = result.qc.includes('[QC PASS]') ? '#00ff88' : '#ff4444';
                         this._termLog('system', `<span style="color: ${qcColor}">${result.qc}</span>`);
@@ -5429,7 +5666,7 @@ class RadianceViewer {
 
                     tabTerm.onclick(); // Show success in terminal
                 } else {
-                    this._termLog('error', `[DELIVERY FAILED] ${result.error}`);
+                    this._termLog('error', `[DELIVERY FAILED] ${result.error || result.message || 'no reason given'}`);
                     dvProgressLabel.textContent = '◎ EXPORT FAILED';
                     dvProgressBar.style.background = '#ff4444';
                     tabTerm.onclick();
@@ -7333,12 +7570,14 @@ else:
      * eviction the slots are nulled, which is what actually releases the
      * Float32Array and lets the tab survive a 10,000-frame shot.
      */
-    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null) {
+    _installFrameWindow(entries, generation, bracketByFrame = null, zdepthEntries = null, compareEntries = null, normalEntries = null) {
         if (this._frameWindow) this._frameWindow.clear();
         this._hdrFallbackReasons = [];
         this._bracketByFrame = bracketByFrame || new Map();
         this._zdepthEntries = Array.isArray(zdepthEntries) ? zdepthEntries : [];
         this._compareEntries = Array.isArray(compareEntries) ? compareEntries : [];
+        this._normalEntries = Array.isArray(normalEntries) ? normalEntries : [];
+        this._mainEntries = Array.isArray(entries) ? entries : [];
         this._compareShown = false;
 
         this._frameWindow = new _RadianceFrameWindow({
@@ -7353,6 +7592,7 @@ else:
                 this.frameBracketImages.low[idx] = payload.bracketLow || null;
                 this.frameBracketImages.high[idx] = payload.bracketHigh || null;
                 this.frameZdepthImages[idx] = payload.zdepth || null;
+                this.frameNormalImages[idx] = payload.normal || null;
                 this._hdrFallbackReasons[idx] = payload.fallbackReason || null;
                 if (payload.compareHdr) this.frameCompareHDR[idx] = payload.compareHdr;
                 if (payload.compare) {
@@ -7382,6 +7622,7 @@ else:
                 this.frameBracketImages.low[idx] = null;
                 this.frameBracketImages.high[idx] = null;
                 this.frameZdepthImages[idx] = null;
+                this.frameNormalImages[idx] = null;
                 if (this._compareEntries.length) {
                     this.frameCompareImages[idx] = null;
                     if (this.frameCompareHDR) this.frameCompareHDR[idx] = null;
@@ -7633,7 +7874,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         const depthEntry = this._zdepthEntries ? this._zdepthEntries[idx] : null;
-        const compareEntry = this._compareEntries ? this._compareEntries[idx] : null;
+        // Paged B is stored in A's slot, so load the B frame that goes with A's frame (by time when the rates differ).
+        const cmpN = this._compareEntries ? this._compareEntries.length : 0;
+        const cmpIdx = cmpN ? _mapCompareFrame(idx, cmpN, this._compareRates()).index : -1;
+        const compareEntry = cmpIdx >= 0 ? this._compareEntries[cmpIdx] : null;
+        const normalEntry = this._normalEntries ? this._normalEntries[idx] : null;
 
         return Promise.all([
             imgPromise,
@@ -7643,7 +7888,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadBracket(depthEntry),
             loadBracket(compareEntry),
             this._loadCompareFloat(compareEntry),
-        ]).then(([img, hdr, low, high, depth, compare, compareHdr]) => {
+            loadBracket(normalEntry),
+        ]).then(([img, hdr, low, high, depth, compare, compareHdr, normalImg]) => {
             if (this.generationID !== generation) return null;
             if (!img && !hdr) {
                 // Neither the picture nor its proxy: say why, rather than
@@ -7661,6 +7907,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             payload.bracketLow = low;
             payload.bracketHigh = high;
             payload.zdepth = depth;
+            payload.normal = normalImg;
             payload.compare = compare;
             if (compare && compareEntry) {
                 compare.source_width = compareEntry.source_width;
@@ -7729,6 +7976,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         const depth = this.frameZdepthImages && this.frameZdepthImages[idx];
         this.zdepthImage = depth || null;
         if (depth && this.renderer) this.renderer.loadDepthTexture(depth);
+        this.normalImage = (this.frameNormalImages && this.frameNormalImages[idx]) || null;
+        if (this.channel === 'normal') this.renderOverlay();
 
         this._probeInvalidate && this._probeInvalidate();
 
@@ -7766,8 +8015,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         const token = message?.file_token?.[0];
         const images = message?.radiance_images;
         if (!token || !Array.isArray(images) || !images.length) return null;
-        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range'];
-        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_compare ? 'compare'
+        const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range', 'normal_invalid_pixels'];
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_normal ? 'normal' : e.is_compare ? 'compare'
             : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
         const groups = new Map();
         for (const e of images) {
@@ -8035,6 +8284,12 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'file.exportCDL': this._exportCDL(); break;
             case 'file.exportCUBE': this._exportGradeLUT(); break;
             case 'file.pinB': this.pinCurrentFrame(); break;
+            case 'review.exportReport': this.exportReviewReport(); break;
+            case 'review.bookmark': this.toggleBookmark(); break;
+            case 'review.prevBookmark': this.stepBookmark(-1); break;
+            case 'review.nextBookmark': this.stepBookmark(1); break;
+            case 'review.note': this.openNoteEditor(); break;
+            case 'review.runQC': this.runQC(); break;
             // Edit
             case 'edit.undo': this.undo?.(); break;
             case 'edit.redo': this.redo?.(); break;
@@ -8350,7 +8605,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!this.image) return;
 
         if (format === 'exr') {
-            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth);
+            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal);
             if (imgData && imgData.exr_filename) {
                 // Use dedicated EXR location metadata when available.
                 // Falls back to the PNG thumbnail's subfolder/type so older
@@ -8443,6 +8698,21 @@ self.onmessage = async ({ data: { id, url } }) => {
      * sRGB; the file name and the log say which.
      */
     _saveResultPNG() {
+        // On the Normal channel the thing on screen is the normal pass: save that,
+        // as data, named for what it is (encoded n * 0.5 + 0.5, 8 bits per channel).
+        if (this.channel === 'normal' && this.normalImage && !this._normalHiddenByCompare()) {
+            const img = this.normalImage;
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth || img.width;
+            c.height = img.naturalHeight || img.height;
+            c.getContext('2d').drawImage(img, 0, 0);
+            const a = document.createElement('a');
+            a.download = `radiance_${Date.now()}_normal_encoded_8bit.png`;
+            a.href = c.toDataURL('image/png');
+            a.click();
+            this._termLog?.('success', `[Export] Saved the normal pass: ${c.width}\u00D7${c.height}, encoded n*0.5+0.5, 8-bit (the float vectors are in the node's sidecar)`);
+            return;
+        }
         const p3 = this.renderer?.displayColorSpace === 'display-p3';
         const space = p3 ? 'display-p3' : 'srgb';
         const exp = document.createElement('canvas');
@@ -8460,13 +8730,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         } else {
             this.renderImage(ctx, this.image);
         }
-        const tag = p3 ? 'DisplayP3' : 'sRGB';
+        // No display-signal read (WebGPU, or no GL): what was drawn is the plain
+        // 8-bit source preview, not the graded result. Name it that way.
+        const ungraded = !sig?.data;
+        const tag = (p3 ? 'DisplayP3' : 'sRGB') + (ungraded ? '_ungraded_preview' : '');
         const link = document.createElement('a');
         link.download = `radiance_${Date.now()}_${tag}.png`;
         link.href = exp.toDataURL('image/png');
         link.click();
         const view = this.ocioActive ? `${this.ocioDisplay} / ${this.ocioView}` : (this.displayLut || 'no view');
-        this._termLog?.('success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
+        if (ungraded) this._termLog?.('warn', '[Export] This renderer cannot read the graded display signal; the PNG is the ungraded 8-bit preview, not the graded result.');
+        this._termLog?.(ungraded ? 'warn' : 'success', `[Export] Saved PNG: ${exp.width}\u00D7${exp.height}, ${p3 ? 'Display P3' : 'sRGB'} `
             + `(view: ${view}; no viewer f-stop, gamma or overlays)`);
     }
 
@@ -8956,6 +9230,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         r.setWipe?.(this.wipePosition ?? 0.5, mode === 'wipe');
         const show = mode === 'b' || (mode === 'blink' && this._blinkB) ? 1 : mode === 'difference' ? 2 : 0;
         r.setCompareShow?.(show, this.diffGain);
+        r.setDiffSigned?.(this.diffSpec?.mode === 'signed');
     }
 
     /**
@@ -9291,6 +9566,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         const w = this.overlayCanvas.width, h = this.overlayCanvas.height;
         ctx.clearRect(0, 0, w, h);
 
+        // 3D Normal channel: the encoded normal pass drawn as data, with no view
+        // transform, grade or scope applied. Scopes and probe still read the picture.
+        if (this.channel === 'normal' && this.normalImage) this._drawNormalChannel(ctx);
+        else this._drawOnionSkin(ctx);
+
         // Aspect matte first: it dims the picture, and the guides drawn after
         // it must stay legible on top.
         if (this.matteMode && this.matteMode !== 'off') this.drawAspectMatte(ctx);
@@ -9332,10 +9612,254 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
 
         // Sprint 4: Render annotations (persistent lines)
-        this._renderAnnotationLines(ctx, this._annotationLines || []);
-        if (this._isAnnotating && this._annotationCurrentLine) {
-            this._renderAnnotationLines(ctx, [this._annotationCurrentLine]);
+        // Strokes are stored per frame in image UV, so they follow zoom, pan and frame changes.
+        const _live = (this._isAnnotating && this._annotationCurrentLine) ? [this._annotationCurrentLine] : [];
+        this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
+        this._drawReviewNotes(ctx);
+        this._syncReviewUI();
+    }
+
+    /** Notes on this frame: a dot where it was written and its text beside it. */
+    _drawReviewNotes(ctx) {
+        if (!this._review) return;
+        const view = this._reviewView();
+        for (const n of this._review.forFrame(this.currentFrame || 0, 'note')) {
+            const p = _uvToCanvas(n.u, n.v, view);
+            if (!p) continue;
+            const text = n.text.length > 80 ? `${n.text.slice(0, 79)}\u2026` : n.text;
+            ctx.save();
+            ctx.font = '600 12px var(--radiance-font-ui, sans-serif)';
+            const w = ctx.measureText(text).width + 12;
+            ctx.fillStyle = '#ffd24a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(10,12,16,0.82)';
+            ctx.fillRect(p.x + 9, p.y - 10, w, 20);
+            ctx.fillStyle = '#ffe9a8';
+            ctx.fillText(text, p.x + 15, p.y + 4);
+            ctx.restore();
         }
+    }
+
+    /** The review buttons follow the frame (bookmarked or not) and the QC run. */
+    _syncReviewUI() {
+        if (!this._sbMark) return;
+        const marked = !!this._review?.forFrame(this.currentFrame || 0, 'bookmark').length;
+        if (this._sbMark.classList.contains('is-active') !== marked) {
+            this._sbMark.classList.toggle('is-active', marked);
+            this._sbMark.setAttribute('aria-pressed', String(marked));
+        }
+    }
+
+    toggleBookmark() {
+        if (!this._review) return;
+        const f = this.currentFrame || 0;
+        const existing = this._review.forFrame(f, 'bookmark')[0];
+        if (existing) this._review.remove(existing.id);
+        else if (!this._review.addBookmark(f)) { this._termLog?.('warn', '[Review] Mark limit reached; bookmark not added.'); return; }
+        this._persistReview();
+        this._termLog?.('info', `[Review] Frame ${f + 1} ${existing ? 'unbookmarked' : 'bookmarked'}.`);
+        this.renderOverlay();
+    }
+
+    /** Go to the next (1) or previous (-1) bookmark, wrapping. Says so when there are none. */
+    stepBookmark(dir = 1) {
+        const f = this._review?.stepBookmark(this.currentFrame || 0, dir);
+        if (f === null || f === undefined) { this._termLog?.('info', '[Review] No bookmarks yet.'); return; }
+        this.setFrame(Math.min(f, Math.max(0, (this.totalFrames || 1) - 1)));
+    }
+
+    /**
+     * A one-line note editor over the picture. Enter saves it on this frame,
+     * at the last probed pixel (else the centre); Escape or leaving it cancels.
+     * Keys typed there never reach the viewer's shortcuts.
+     */
+    openNoteEditor() {
+        if (!this._review || !this.canvasWrapper) return;
+        this._noteEditor?.remove();
+        const frame = this.currentFrame || 0;
+        const W = this.imageWidth || 1, H = this.imageHeight || 1;
+        const at = this._lastProbe ? { u: this._lastProbe.imgX / W, v: this._lastProbe.imgY / H } : { u: 0.5, v: 0.5 };
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'radiance-note-editor';
+        input.maxLength = 500;
+        input.placeholder = `Note on frame ${frame + 1}: Enter to save, Esc to cancel`;
+        input.setAttribute('aria-label', `Note on frame ${frame + 1}`);
+        input.style.cssText = 'position:absolute; left:12px; right:12px; bottom:12px; z-index:40; height:30px; padding:0 10px;'
+            + 'font:13px var(--radiance-font-ui, sans-serif); color:#fff; background:rgba(10,12,16,.92);'
+            + 'border:1px solid #ffd24a; border-radius:6px; outline:none;';
+        // Removing a focused input fires blur, which calls close again: once only.
+        let closed = false;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            if (this._noteEditor === input) this._noteEditor = null;
+            input.removeEventListener('blur', close);
+            input.remove();
+        };
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') { e.preventDefault(); close(); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                const text = input.value.trim();
+                if (text) {
+                    if (this._review.addNote(frame, Math.min(1, Math.max(0, at.u)), Math.min(1, Math.max(0, at.v)), text)) this._persistReview();
+                    else this._termLog?.('warn', '[Review] Mark limit reached; note not added.');
+                }
+                close();
+                this.renderOverlay();
+            }
+        });
+        input.addEventListener('keyup', (e) => e.stopPropagation());
+        input.addEventListener('blur', close);
+        this.canvasWrapper.appendChild(input);
+        this._noteEditor = input;
+        input.focus();
+    }
+
+    /** A float frame for QC: the loaded one, or its sidecar fetched on its own. null without float data. */
+    async _qcFrame(i) {
+        let hdr = this.frameHDRData?.[i] || null;
+        if (!hdr) {
+            const e = this._mainEntries?.[i];
+            if (!e?.hdr_sidecar) return null;
+            const url = api.apiURL(`/view?filename=${encodeURIComponent(e.hdr_sidecar)}`
+                + `&subfolder=${encodeURIComponent(e.subfolder || '')}&type=${e.type || 'temp'}`);
+            hdr = await this._fetchSidecar(url);
+        }
+        if (!hdr || !hdr.shape) return hdr && hdr.data && hdr.width ? { data: hdr.data, width: hdr.width, height: hdr.height, channels: hdr.channels } : null;
+        const [h, w, c] = hdr.shape;
+        return { data: hdr.data, width: w, height: h, channels: c || 1 };
+    }
+
+    /**
+     * Measured checks over every frame (radiance_qc.js), one frame at a time,
+     * with progress on the QC button. Clicking it while running stops the run;
+     * what was measured is kept and marked incomplete.
+     */
+    async runQC() {
+        if (this._qcAbort) { this._qcAbort.abort(); return; }
+        const count = this._mainEntries?.length || this.totalFrames || 0;
+        if (!count) { this._termLog?.('warn', '[QC] Nothing loaded to check.'); return; }
+        const ctl = new AbortController();
+        this._qcAbort = ctl;
+        const generation = this.generationID;
+        const label = (t) => { if (this._sbQC) this._sbQC.textContent = t; };
+        label(`QC 0/${count}`);
+        try {
+            const analysis = await _analyzeSequence(count, (i) => this._qcFrame(i), {}, {
+                signal: ctl.signal,
+                onProgress: (done, total) => label(`QC ${done}/${total}`),
+            });
+            if (this.generationID !== generation) { label('QC'); return; }
+            const e0 = this._mainEntries?.[0] || {};
+            this._qcReport = _buildQCReport(analysis, {
+                frames: count, width: this.imageWidth, height: this.imageHeight,
+                first: e0.hdr_sidecar || e0.filename || null,
+                source_encoding: this.hdrData?.sourceEncoding || null,
+            });
+            label(`QC: ${this._qcReport.overall}${analysis.complete ? '' : ' (stopped)'}`);
+            if (this._sbQC) this._sbQC.title = this._qcReport.checks.map((c) => `${c.id}: ${c.status}`).join('\n')
+                + '\nClick to run again. The report has the numbers.';
+            this._termLog?.(analysis.overall === 'PASS' ? 'success' : 'warn',
+                `[QC] ${this._qcReport.overall}${analysis.complete ? '' : ` (stopped at ${analysis.framesDone}/${count})`}: `
+                + this._qcReport.checks.map((c) => `${c.id} ${c.status}`).join(', '));
+        } catch (err) {
+            label('QC');
+            this._termLog?.('error', `[QC] Failed: ${err?.message || err}`);
+        } finally {
+            if (this._qcAbort === ctl) this._qcAbort = null;
+        }
+    }
+
+    _downloadText(name, text, type) {
+        const url = URL.createObjectURL(new Blob([text], { type }));
+        const a = document.createElement('a');
+        a.download = name; a.href = url;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+
+    /** The review report as Markdown and JSON downloads. Returns the report. */
+    exportReviewReport() {
+        const e0 = this._mainEntries?.[0] || {};
+        const report = _buildReviewReport(this._review, {
+            title: this.node?.title || 'Radiance Viewer',
+            frames: Number.isInteger(this.totalFrames) ? this.totalFrames : null,
+            fps: this.playbackFps || this.frameRate || null,
+            source: e0.filename || null,
+        }, this._qcReport || null);
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        this._downloadText(`radiance_review_${stamp}.md`, _reportToMarkdown(report), 'text/markdown');
+        this._downloadText(`radiance_review_${stamp}.json`, JSON.stringify(report, null, 2), 'application/json');
+        this._termLog?.('success', `[Review] Report saved: ${report.counts.notes} note(s), ${report.counts.bookmarks} bookmark(s)${report.qc ? `, QC ${report.qc.overall}` : ', no QC run'}.`);
+        return report;
+    }
+
+    /** True while the picture on screen is B (or A against B), where A's normal pass does not belong. */
+    _normalHiddenByCompare() {
+        const cm = this.compareMode || 'none';
+        return cm === 'b' || cm === 'difference' || cm === 'sidebyside' || (cm === 'blink' && !!this._blinkB);
+    }
+
+    /**
+     * The normal pass is A's. It is not drawn while B is shown, and in a wipe
+     * only on A's side (x >= the wipe line, as the renderer splits it).
+     */
+    _drawNormalChannel(ctx) {
+        const img = this.normalImage;
+        const W = this.imageWidth, H = this.imageHeight;
+        if (!img || !W || !H || this._normalHiddenByCompare()) return;
+        const x0 = this.compareMode === 'wipe' ? Math.min(1, Math.max(0, this.wipePosition ?? 0.5)) * W : 0;
+        if (x0 >= W) return;
+        const iw = img.naturalWidth || img.width || W, ih = img.naturalHeight || img.height || H;
+        ctx.save();
+        ctx.imageSmoothingEnabled = this.zoom < 1;
+        ctx.drawImage(img, x0 * iw / W, 0, (W - x0) * iw / W, ih,
+            this.panX + x0 * this.zoom, this.panY, (W - x0) * this.zoom, H * this.zoom);
+        ctx.restore();
+    }
+
+    /** The normal at an image pixel, decoded from the preview (8-bit precision), or null. */
+    _sampleNormalAt(imgX, imgY) {
+        const img = this.normalImage;
+        if (!img || !this.imageWidth || !this.imageHeight) return null;
+        const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+        if (!iw || !ih) return null;
+        try {
+            if (!this._normalPick) {
+                const c = document.createElement('canvas'); c.width = 1; c.height = 1;
+                this._normalPick = c.getContext('2d', { willReadFrequently: true });
+            }
+            const sx = Math.floor(imgX * iw / this.imageWidth), sy = Math.floor(imgY * ih / this.imageHeight);
+            this._normalPick.clearRect(0, 0, 1, 1);
+            this._normalPick.drawImage(img, sx, sy, 1, 1, 0, 0, 1, 1);
+            const d = this._normalPick.getImageData(0, 0, 1, 1).data;
+            return [d[0], d[1], d[2]].map((c) => (c / 255) * 2 - 1);
+        } catch { return null; }
+    }
+
+    _reviewView() {
+        return { zoom: this.zoom, panX: this.panX, panY: this.panY, width: this.imageWidth, height: this.imageHeight };
+    }
+
+    _reviewStrokesForView(extraLive = []) {
+        if (!this._review) return [];
+        const view = this._reviewView();
+        const frame = this.currentFrame || 0;
+        const live = extraLive.filter(l => (l.frame ?? frame) === frame).map(l => ({ color: l.color, pts: l.uv || [] }));
+        return this._review.canvasStrokes(frame, view, live);
+    }
+
+    // Persist review marks with the node. A mark set over the size cap keeps the previous saved copy.
+    _persistReview() {
+        const json = this._review?.serialize();
+        if (json == null) {
+            this._termLog?.('warn', '[Review] Marks are too large to save; the last saved copy was kept.');
+            return;
+        }
+        if (this.node?.properties) this.node.properties.radiance_viewer_review = json;
     }
 
     // Render a set of annotation line objects onto the given 2D canvas context
@@ -10023,7 +10547,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         // Alt+drag annotation drawing (Sprint 4)
-        this._annotationLines = [];
+        this._review = _ReviewStore.parse(this.node?.properties?.radiance_viewer_review);
         this._isAnnotating = false;
         this._annotationCurrentLine = null;
 
@@ -10035,9 +10559,12 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const mx = (eAnn.clientX - rect.left) * (this._canvasScaleX || 1);
                 const my = (eAnn.clientY - rect.top) * (this._canvasScaleY || 1);
                 const colors = ['#ff4', '#f55', '#5f5', '#55f', '#f5f', '#5ff'];
+                const uv0 = _canvasToUV(mx, my, this._reviewView());
+                const frame0 = this.currentFrame || 0;
                 this._annotationCurrentLine = {
-                    pts: [{ x: mx, y: my }],
-                    color: colors[this._annotationLines.length % colors.length]
+                    frame: frame0,
+                    uv: uv0 ? [uv0] : [],
+                    color: colors[this._review.forFrame(frame0, 'stroke').length % colors.length]
                 };
             }
         }, { capture: true });
@@ -10047,27 +10574,34 @@ self.onmessage = async ({ data: { id, url } }) => {
             const rect = this.canvas.getBoundingClientRect();
             const mx = (eAnn.clientX - rect.left) * (this._canvasScaleX || 1);
             const my = (eAnn.clientY - rect.top) * (this._canvasScaleY || 1);
-            this._annotationCurrentLine.pts.push({ x: mx, y: my });
+            const uv = _canvasToUV(mx, my, this._reviewView());
+            if (uv) this._annotationCurrentLine.uv.push(uv);
             this._drawAnnotations();
         };
         document.addEventListener('mousemove', this._docAnnotMoveHandler, { signal: this._listenerSignal });
 
         this._docAnnotUpHandler = () => {
-            if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.pts.length > 1) {
-                this._annotationLines.push(this._annotationCurrentLine);
+            if (this._isAnnotating && this._annotationCurrentLine && this._annotationCurrentLine.uv.length > 1) {
+                if (this._review.addStroke(this._annotationCurrentLine.frame, this._annotationCurrentLine.uv, this._annotationCurrentLine.color)) {
+                    this._persistReview();
+                } else {
+                    this._termLog?.('warn', '[Review] Mark limit reached; stroke not added.');
+                }
             }
             this._isAnnotating = false;
             this._annotationCurrentLine = null;
         };
         document.addEventListener('mouseup', this._docAnnotUpHandler, { signal: this._listenerSignal });
 
-        // Shift+Alt+Click clears all annotations
+        // Shift+Alt+Click clears this frame's strokes (marks on other frames are kept) and the probes.
         this.canvas.addEventListener('click', (eAnn) => {
             if (eAnn.altKey && eAnn.shiftKey) {
-                this._annotationLines = [];
+                const f = this.currentFrame || 0;
+                const n = this._review.clearFrame(f, 'stroke');
+                this._persistReview();
                 this._probeMemory = [];
                 this.renderOverlay();
-                this._termLog?.('info', '[Annotation] All annotations and probes cleared.');
+                this._termLog?.('info', `[Annotation] ${n} stroke(s) on frame ${f + 1} and all probes cleared.`);
             }
         });
 
@@ -10252,6 +10786,11 @@ self.onmessage = async ({ data: { id, url } }) => {
                 <span style="color:${isHDRPick ? this.theme.accent : '#888'}; margin-right:6px;" title="${pickLabel}: scene-linear float values">${pickLabel}: ${linStr}</span>
                 <span style="color:#777">Hex: ${hex} | L: ${luma}</span>
             `;
+            if (this.channel === 'normal') {
+                const n = this._sampleNormalAt(imgX, imgY);
+                if (n) this.infoLeft.insertAdjacentHTML('beforeend',
+                    `<span style="color:#aab4ff; margin-left:6px;" title="Normal pass at this pixel, decoded from its 8-bit preview">N: ${n.map((c) => c.toFixed(3)).join(' ')}</span>`);
+            }
 
             // Store probe for multi-probe display (Sprint 4)
             this._lastProbe = { imgX, imgY, dispStr, linStr, hex, isHDRPick };
@@ -10881,15 +11420,36 @@ self.onmessage = async ({ data: { id, url } }) => {
         const n = Math.max(list.length, floats.length);
         if (!n) return;
         if (this.compareSource === 'pinned') return;      // a pinned B stays put
-        const i = Math.min(idx, n - 1);
+        const { index: mapped, held } = _mapCompareFrame(idx, n, this._compareRates());
+        // Paged B frames sit in A's slot (see _loadSequenceFrame); a B loaded whole is indexed by its own frame.
+        const i = this._compareEntries?.length ? idx : mapped;
         const img = list[i] || null, hdr = floats[i] || null;
         if (!img && !hdr) return;
+        const heldChanged = held !== this._compareHeld || n !== this._compareCount;
+        this._compareHeld = held;
+        this._compareCount = n;
+        if (heldChanged) this._syncCompareUI?.();
         if (img === this.compareImage && hdr === this.compareHDR && !force) return;
         this.compareSource = 'input';
         if (img) this.compareImage = img;
         this.compareHDR = hdr;
         this.diffCanvas = null;
         try { this._pushCompareToRenderer(img || this.compareImage, hdr); } catch (e) { /* backend without compare */ }
+    }
+
+    /** A's rate and B's own rate for compare pairing. B's is known only for a VIDEO input. */
+    _compareRates() {
+        return { aFps: this._sourceFps || this.frameRate, bFps: this.compareFrameRate };
+    }
+
+    /** A sentence when B is not A's size, else null. */
+    _compareGeometryNote() {
+        const b = this.compareHDR || this.compareImage;
+        if (!b || !this.imageWidth) return null;
+        const bw = b.width || b.source_width || b.naturalWidth;
+        const bh = b.height || b.source_height || b.naturalHeight;
+        return _compareGeometry({ width: this.imageWidth, height: this.imageHeight }, { width: bw, height: bh },
+            this.compareFit, { stretched: typeof this.renderer?.setCompareFit !== 'function' }).note;
     }
 
     /**
@@ -11665,6 +12225,11 @@ self.onmessage = async ({ data: { id, url } }) => {
     setViewExposure(stops) {
         const lim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
         this.viewExposure = Math.max(-lim, Math.min(lim, Number(stops) || 0));
+        // The WGSL path has no viewer f-stop: say so rather than move a number that changes nothing.
+        if (this._gpuBackend === 'webgpu' && this.viewExposure !== 0 && !this._warnedWebGPUFstop) {
+            this._warnedWebGPUFstop = true;
+            this._termLog?.('warn', '[Viewer] The viewer f-stop is not implemented on WebGPU; the picture will not change. Switch to WebGL under Settings > Renderer.');
+        }
         if (this._viewEvInput) this._viewEvInput.value = this.viewExposure.toFixed(1);
         this.render();
     }
@@ -12543,6 +13108,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else if (this.zebra) { borderColor = '#FF4444'; label = 'ZEBRA'; }
         else if (this.focusPeaking) { borderColor = '#FF6600'; label = 'FOCUS PEAK'; }
         else if (this.showZdepth) { borderColor = '#00BBFF'; label = 'Z-DEPTH'; }
+        else if (this.onionEnabled && (!this.compareMode || this.compareMode === 'none')) { borderColor = '#C58AFF'; label = `ONION SKIN (previews, ungraded)${this._onionDrawn && this._onionDrawn.drawn < this._onionDrawn.wanted ? ` ${this._onionDrawn.drawn}/${this._onionDrawn.wanted} loaded` : ''}`; }
+        else if (this.channel === 'normal') { borderColor = '#8888FF'; label = this._normalHiddenByCompare() ? 'NORMAL (A) HIDDEN WHILE B SHOWN' : 'NORMAL (scopes read the picture)'; }
         else if (this.gamutWarning) { borderColor = '#FF00FF'; label = 'GAMUT WARN'; }
         else if (this.clippingMonitor) { borderColor = '#FF2222'; label = 'CLIPPING'; }
 
@@ -13351,6 +13918,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!panel) return;
         if (this._referenceRebuildDeferred()) return;
 
+        // A rebuilt panel's old <select>s stay rooted in Chromium and would keep
+        // this viewer alive through their handlers (see destroy).
+        RadianceViewer._releaseSelects(panel);
         panel.innerHTML = '';
         panel.classList.add('radiance-panel-embedded');
         panel.style.cssText = `
@@ -13539,9 +14109,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         col.className = 'radiance-ref-col';
         body.appendChild(col);
 
-        let activeTab = this._referenceRightTab || 'inspector';
+        const shown = this.uiMode === 'advanced' ? _tabsFor(this.workspace) : null;
+        let activeTab = shown ? this._visibleReferenceTab(this._referenceRightTab || 'inspector')
+            : (this._referenceRightTab || 'inspector');
+        this._referenceRightTab = activeTab;
         const render = () => {
             if (this._referenceRebuildDeferred()) return;
+            RadianceViewer._releaseSelects(col);
             col.innerHTML = '';
             [...tabs.children].forEach(btn => btn.classList.toggle('is-active', btn.dataset.tabId === activeTab));
             if (activeTab === 'grade') {
@@ -13572,7 +14146,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['effects', 'EFFECTS', 'panel.effects'],
             ['scopes', 'SCOPES', 'panel.scopes'],
             ['analysis', 'ANALYSIS', 'panel.analysis'],
-        ].forEach(([id, label, action]) => {
+        ].filter(([id]) => !shown || shown.includes(id)).forEach(([id, label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'radiance-ref-tab';
@@ -13660,8 +14234,8 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _getCurrentResult() {
-        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth)
-            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth)
+        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal)
+            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth && !d.is_normal)
             || {};
     }
 
@@ -13686,6 +14260,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         add('Luma', 'Y', 'luma', ch >= 1);
         const hasDepth = !!(this.zdepthImage || this.frameZdepthImages?.some(Boolean) || this.renderer?.textures?.depth);
         add('Depth', 'Z', 'depth', hasDepth, 'depth');
+        add('Normal', 'N', 'normal', !!(this.normalImage || this.frameNormalImages?.some(Boolean)), 'normal');
 
         const metaChannels = this.hdrData?.metadata?.channels || this.hdrData?.channel_names || [];
         if (Array.isArray(metaChannels)) {
@@ -14514,7 +15089,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             b.onclick = onClick;
             actions.appendChild(b);
         };
-        button('Load', 'Apply the selected preset (one undo step)', () => select.value && this.loadGrade(select.value), !names.length);
+        button('Load', 'Apply the selected preset as one undo step', () => select.value && this.loadGrade(select.value), !names.length);
         button('Save', 'Save the whole grade as a preset', () => this.saveGrade());
         button('Delete', 'Delete the selected preset', () => select.value && this.deleteGrade(select.value), !names.length);
         section.appendChild(actions);
@@ -14703,6 +15278,15 @@ self.onmessage = async ({ data: { id, url } }) => {
         // return, so every scope read 10-bit code values with no way to
         // change it; the rail's four scope buttons all opened this stack.
         const opts = this._renderReferenceSection(parent, 'SCOPE OPTIONS');
+        if (this._gpuBackend === 'webgpu') {
+            const n = document.createElement('div');
+            n.className = 'radiance-webgpu-scope-note';
+            n.style.cssText = 'font-size:var(--radiance-fs-body); line-height:1.5; color:var(--radiance-warn); padding:8px; margin-bottom:8px;'
+                + 'background:rgba(245,165,36,0.08); border-radius:5px; border-left:2px solid var(--radiance-warn);';
+            n.textContent = 'On WebGPU these scopes read the 8-bit preview at 256 px, overlays included, and ignore the scale and levels below. '
+                + 'Use WebGL (Settings > Renderer) for float scopes at full resolution.';
+            opts.appendChild(n);
+        }
         const field = (label, param, options, value, onChange, title = '') => {
             const row = document.createElement('div');
             row.className = 'radiance-ref-field';
@@ -20075,7 +20659,9 @@ self.onmessage = async ({ data: { id, url } }) => {
                 `;
                 return el;
             };
-            statsRow.appendChild(mkStat('PEAK',  `${nitStr} cd/m²`,      '#fb923c'));
+            const peakStat = mkStat('PEAK (BT.2408)',  `${nitStr} cd/m²`,      '#fb923c');
+            peakStat.title = 'Scene-linear p99.9 luminance with 1.0 placed at 203 cd/m² (ITU-R BT.2408 HDR reference white). Not a display measurement.';
+            statsRow.appendChild(peakStat);
             statsRow.appendChild(mkStat('RANGE', `${s.evRange.toFixed(1)} EV`, '#a78bfa'));
             statsRow.appendChild(mkStat('CLIP',  `${s.clippedPct.toFixed(1)}%`,
                 s.clippedPct > 1 ? '#f87171' : '#4ade80'));
@@ -20246,7 +20832,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else                       nitStr = `${Math.round(nitPeak)}`;
 
         const statItems = [
-            { label: 'PEAK NIT',  value: `${nitStr} cd/m²`,                      color: '#fb923c' },
+            { label: 'PEAK NIT (BT.2408)',  value: `${nitStr} cd/m²`, color: '#fb923c',
+              title: 'Scene-linear p99.9 luminance with 1.0 placed at 203 cd/m² (ITU-R BT.2408 HDR reference white). Not a display measurement.' },
             { label: 'EV RANGE',  value: `${stats.evRange.toFixed(1)} stops`,     color: '#a78bfa' },
             {
                 label: 'CLIPPED',
@@ -20262,6 +20849,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         statItems.forEach(item => {
             const cell = document.createElement('div');
             cell.style.cssText = 'display: flex; flex-direction: column; gap: 1px;';
+            if (item.title) cell.title = item.title;
             cell.innerHTML = `
                 <div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.8px;text-transform:uppercase;">${item.label}</div>
                 <div style="font-size:9px;font-weight:700;font-family:monospace;color:${item.color};">${item.value}</div>
@@ -23457,8 +24045,22 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._addApiListener("status", onStatus);
     }
 
+    /** Cut every <select> under `root` out of the tree and drop its handlers (see destroy). */
+    static _releaseSelects(root) {
+        root?.querySelectorAll?.('select').forEach((el) => {
+            el.onchange = null; el.oninput = null; el.onclick = null;
+            el.remove();
+        });
+    }
+
     destroy() {
         this._destroyed = true;
+        // Chromium can keep a <select> reachable from a native root after the
+        // page drops it (form-control tracking). Through its parent chain that
+        // held the whole panel, every handler in it and so this viewer: a
+        // deleted viewer whose Grade tab had been open was never collected.
+        // Cut each select out of the tree and drop its handlers.
+        for (const root of [this.container, this.controlsPanel]) RadianceViewer._releaseSelects(root);
         // Every window/document listener this viewer added, in one go.
         this._globalListeners?.abort();
         this._globalListeners = null;
@@ -23555,6 +24157,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.frameImages = null;
         this.frameCompareImages = null;
         this.frameZdepthImages = null;
+        this.frameNormalImages = null;
+        this.normalImage = null;
         this.frameBracketImages = { low: [], high: [] };
         this.imageData = null;
         this.hdrData = null;
@@ -23939,6 +24543,9 @@ app.registerExtension({
             }
             viewer._sequenceAudio = null;
             viewer._audioBlocked = false;
+            // A's rate and B's own rate (VIDEO inputs): compare follows A by time, not by frame number.
+            viewer._sourceFps = Number(message.audio_fps?.[0]) || Number(message.fps?.[0]) || null;
+            viewer.compareFrameRate = Number(message.compare_fps?.[0]) || null;
             const audio = message.audio?.[0];
             if (audio?.filename) {
                 viewer._sequenceAudio = new Audio(api.apiURL('/view?' + new URLSearchParams(audio)));
@@ -23955,9 +24562,10 @@ app.registerExtension({
             // Separate main images from compare, brackets, and zdepth images.
             // Exposure brackets are support frames, not timeline frames.
             const bracketImages = message.radiance_images.filter(img => img.bracket_label);
-            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.bracket_label);
+            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.is_normal && !img.bracket_label);
             const compareImages = message.radiance_images.filter(img => img.is_compare);
             const zdepthImages = message.radiance_images.filter(img => img.is_zdepth);
+            const normalImages = message.radiance_images.filter(img => img.is_normal);
 
             // Reset frame arrays
             viewer.frameImages = [];
@@ -23965,6 +24573,9 @@ app.registerExtension({
             viewer.frameCompareHDR = [];
             viewer.compareHDR = null;
             viewer.frameZdepthImages = [];
+            viewer.frameNormalImages = [];
+            viewer.normalImage = null;
+            if (viewer.channel === 'normal' && !normalImages.length) viewer.channel = 'rgb';
             viewer.frameBracketImages = { low: [], high: [] };
             viewer.frameHDRData = [];
             viewer.totalFrames = mainImages.length;
@@ -24045,7 +24656,15 @@ app.registerExtension({
             const pageCompare = compareImages.length >= mainImages.length;
             if (pageCompare) viewer.frameCompareImages.length = compareImages.length;
             viewer._installFrameWindow(mainImages, currentGen, bracketByFrame, zdepthImages,
-                pageCompare ? compareImages : null);
+                pageCompare ? compareImages : null, normalImages);
+            // The node's compare_image (not a pinned still): hint at Compare for this run.
+            viewer._hasCompareInput = compareImages.length > 0;
+            viewer._compareHintSeen = viewer.workspace === 'compare';
+            // A QC run describes the media it measured: a new run clears it.
+            viewer._qcAbort?.abort();
+            viewer._qcReport = null;
+            if (viewer._sbQC) { viewer._sbQC.textContent = 'QC'; viewer._sbQC.title = 'Run measured checks over every frame (click again to stop)'; }
+            viewer._syncWorkspaceHint?.();
 
             // Load compare images
             if (!pageCompare) compareImages.forEach((imgData, idx) => {

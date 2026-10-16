@@ -22,6 +22,12 @@ test('the WebGPU notice does not claim WebGPU is the default', () => {
 });
 
 test('the WebGPU notice says how to switch back to WebGL', () => {
-    assert.match(noticeBody(), /Backend/);
-    assert.match(noticeBody(), /WebGL/);
+    // The old assertion was /Backend/, which matched the identifier
+    // `_gpuBackend` in the function body and not the message.
+    const body = noticeBody();
+    // join the concatenated string literals so a line break cannot split a phrase
+    const text = body.slice(body.indexOf('n.textContent')).replace(/'\s*\+\s*'/g, '');
+    assert.match(text, /Settings \(⚙\) > Renderer/);
+    assert.match(text, /switch it back to WebGL/);
+    assert.match(text, /reload/);
 });

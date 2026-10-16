@@ -188,7 +188,7 @@ def _save_profile(profile: dict, filepath: str):
 
 def _load_profile(filepath: str) -> dict:
     import numpy as _np
-    npz = _np.load(filepath, allow_pickle=True)
+    npz = _np.load(filepath, allow_pickle=False)
     meta_str = str(npz["meta"][0]) if "meta" in npz else "{}"
     return {
         "embedding": npz["embedding"],
