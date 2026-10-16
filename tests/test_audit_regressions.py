@@ -213,7 +213,7 @@ def test_delivery_rejects_unmapped_options_loudly():
     with pytest.raises(ValueError, match="no writer implementation"):
         _resolve_write_format("Video — MOV (ProRes 4444 XQ)")
     with pytest.raises(ValueError, match="not supported"):
-        _resolve_write_colorspace("Panasonic V-Log")
+        _resolve_write_colorspace("Rec.2020 PQ")       # V-Log is mapped since 4.0
 
 
 def test_write_kwargs_match_writer_signature():

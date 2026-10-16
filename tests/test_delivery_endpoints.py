@@ -1382,3 +1382,82 @@ def test_the_export_never_stacks_the_whole_sequence(h, monkeypatch):
     assert max(seen, default=0) < n, (
         f"something stacked {max(seen)} items during a {n}-frame delivery; "
         "the sequence is being materialised again")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HDR (PQ / HLG) delivery, and every offered colour space mapped (4.0)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+@pytest.mark.parametrize("fmt", ["Video — MP4 (H.264)", "Image Sequence — PNG (8-bit)"])
+def test_hdr_into_an_8_bit_format_is_refused_before_the_grade_runs(h, monkeypatch, cs, fmt):
+    called = []
+    monkeypatch.setattr(handler, "apply_grading", lambda **kw: called.append(1) or kw["img"])
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": cs, "format": fmt})
+    assert resp.status == 400
+    err = h.body(resp)["error"]
+    assert "10-bit" in err and "H.265" in err, err
+    assert not called, "the batch was graded before the HDR format check"
+
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+def test_hdr_png16_delivery_reaches_the_writer_as_bt2100(h, spy_write, cs):
+    h.put(flat(0.5))
+    body = h.body(h.run({"colorSpace": cs, "format": "Image Sequence — PNG (16-bit)"}))
+    assert spy_write and spy_write[-1]["color_space"] == cs
+    assert h.pngs(), "no PNG was written"
+    assert "QC PASS — HDR" in body["qc"] and "≈ 102 nits" in body["qc"], body["qc"]
+
+
+def test_pq_above_10000_nits_is_flagged(h, spy_write):
+    h.put(flat(60.0))                      # 60 × 203 ≈ 12,180 nits
+    body = h.body(h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "10,000-nit" in body["qc"], body["qc"]
+
+
+def test_hdr_master_is_not_called_an_illegal_level(h, spy_write):
+    h.put(flat(4.0))
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "Illegal levels" not in body["qc"], body["qc"]
+
+
+@pytest.mark.parametrize("cs", ["ACES2065-1 (AP0)", "ACEScct", "Panasonic V-Log", "Canon Log 3",
+                                "RED Log3G10", "DaVinci Intermediate"])
+def test_colour_spaces_the_panel_offered_but_the_server_refused_now_deliver(h, spy_write, cs):
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": cs})
+    assert resp.status == 200, h.body(resp)
+    assert spy_write[-1]["color_space"] == handler._UI_TO_WRITE_COLORSPACE[cs]
+
+
+def test_amf_is_not_written_for_an_hdr_master(h, spy_write):
+    h.put(flat(0.5))
+    body = h.body(h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)",
+                         "export_amf": True}))
+    assert any("AMF sidecar was not written" in w for w in body.get("warnings", [])), body
+    assert not list(h.root.rglob("*.amf"))
+
+
+def test_a_pq_h265_delivery_carries_hdr10_metadata_end_to_end(h):
+    """Viewer Deliver → writer → ffmpeg: the master is BT.2100 PQ with HDR10 SEI."""
+    import shutil
+    import subprocess
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        pytest.skip("ffmpeg/ffprobe not installed")
+    h.put(flat(0.5, n=2, h=64, w=64))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)"})
+    assert resp.status == 200, h.body(resp)
+    (mp4,) = list(h.root.rglob("*.mp4"))
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
+         "-show_entries", "stream=pix_fmt,color_transfer,color_primaries,color_space:frame=side_data_list",
+         "-of", "json", str(mp4)], capture_output=True, text=True, check=True)
+    info = json.loads(r.stdout)
+    s = info["streams"][0]
+    assert s["pix_fmt"] == "yuv420p10le"
+    assert (s["color_primaries"], s["color_transfer"], s["color_space"]) == ("bt2020", "smpte2084", "bt2020nc")
+    side = {d["side_data_type"]: d for d in info["frames"][0].get("side_data_list", [])}
+    assert "Mastering display metadata" in side, side
+    cll = side["Content light level metadata"]
+    assert (cll["max_content"], cll["max_average"]) == (102, 102), cll   # 0.5 × 203 nits, rounded up
