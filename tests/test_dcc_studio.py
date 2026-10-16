@@ -130,10 +130,10 @@ def test_nuke_connector_load_exr(mock_socket_cls):
     args, kwargs = mock_sock.sendall.call_args
     sent_bytes = args[0]
     assert sent_bytes.startswith(b"RCMD")  # Magic
-    assert struct.unpack("<B", sent_bytes[4:5])[0] == 2  # signed with the shared token
+    assert struct.unpack("<B", sent_bytes[4:5])[0] == 3  # protocol 3, signed with the shared token
 
     # Verify the structured command carries the parameters
-    payload = sent_bytes[41:].decode("utf-8")
+    payload = sent_bytes[65:].decode("utf-8")
     assert "MyReadNode" in payload
     assert "D:/renders/frame_####.exr" in payload
     assert "1001" in payload
@@ -262,8 +262,8 @@ def test_mcp_export_frames_flow(mock_load_exr, mock_save_exr, tmp_path):
 
 
 @patch("socket.socket")
-def test_nuke_connector_v2_signature(mock_socket_cls, monkeypatch):
-    """Verify NukeConnector builds correct version 2 headers with signatures when token is set."""
+def test_nuke_connector_v3_signature(mock_socket_cls, monkeypatch):
+    """NukeConnector sends protocol 3: HMAC over timestamp, nonce and payload (E-11)."""
     monkeypatch.setenv("RADIANCE_DCC_AUTH_TOKEN", "super-secret-key-123")
 
     mock_sock = MagicMock()
@@ -278,33 +278,22 @@ def test_nuke_connector_v2_signature(mock_socket_cls, monkeypatch):
     success, reply = conn.send_command(cmd)
 
     assert success is True
-    args, kwargs = mock_sock.sendall.call_args
-    sent_bytes = args[0]
+    sent_bytes = mock_sock.sendall.call_args[0][0]
 
-    # Assert header magic is RCMD
-    assert sent_bytes.startswith(b"RCMD")
-    # Assert version is 2
-    assert sent_bytes[4] == 2
-
-    # Assert signature field is computed correctly.
-    # HMAC, not SHA256(token || command): the bare-hash construction was
-    # length-extendable and carried no nonce, so any observed (command,
-    # signature) pair replayed indefinitely.
+    assert sent_bytes[:5] == b"RCMD\x03"
+    sig, ts_bytes, nonce = sent_bytes[5:37], sent_bytes[37:45], sent_bytes[45:61]
     import hmac
     import hashlib
-    expected_sig = hmac.new(
-        b"super-secret-key-123", cmd.encode("utf-8"), hashlib.sha256
-    ).digest()
-    assert sent_bytes[5:37] == expected_sig
-
-    # And the old construction must NOT match, so a regression is caught.
-    legacy_sig = hashlib.sha256(("super-secret-key-123" + cmd).encode("utf-8")).digest()
-    assert sent_bytes[5:37] != legacy_sig
-
-    # Assert correct length and command payload
-    cmd_len = struct.unpack("<I", sent_bytes[37:41])[0]
+    import time
+    expected_sig = hmac.new(b"super-secret-key-123", b"RCMD3" + ts_bytes + nonce + cmd.encode(), hashlib.sha256).digest()
+    assert sig == expected_sig
+    # The protocol-2 construction (command only, replayable) must not match.
+    assert sig != hmac.new(b"super-secret-key-123", cmd.encode("utf-8"), hashlib.sha256).digest()
+    assert abs(struct.unpack("<Q", ts_bytes)[0] / 1000 - time.time()) < 30
+    assert len(set(nonce)) > 1
+    cmd_len = struct.unpack("<I", sent_bytes[61:65])[0]
     assert cmd_len == len(cmd)
-    assert sent_bytes[41:].decode("utf-8") == cmd
+    assert sent_bytes[65:].decode("utf-8") == cmd
 
 
 @patch("socket.socket")
@@ -328,9 +317,10 @@ def test_nuke_connector_signs_with_the_shared_token_file(mock_socket_cls, monkey
     token = (tmp_path / ".radiance" / "dcc_token").read_text().strip()
     assert len(token) == 64
     sent_bytes = mock_sock.sendall.call_args[0][0]
-    assert sent_bytes[:5] == b"RCMD\x02"
-    assert sent_bytes[5:37] == hmac.new(token.encode(), cmd.encode(), hashlib.sha256).digest()
-    assert struct.unpack("<I", sent_bytes[37:41])[0] == len(cmd)
+    assert sent_bytes[:5] == b"RCMD\x03"
+    ts_bytes, nonce = sent_bytes[37:45], sent_bytes[45:61]
+    assert sent_bytes[5:37] == hmac.new(token.encode(), b"RCMD3" + ts_bytes + nonce + cmd.encode(), hashlib.sha256).digest()
+    assert struct.unpack("<I", sent_bytes[61:65])[0] == len(cmd)
 
 
 @pytest.mark.real_torch
