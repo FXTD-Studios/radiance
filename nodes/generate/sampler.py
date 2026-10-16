@@ -136,7 +136,7 @@ def _count_non_finite(t) -> Optional[int]:
         return None
 
 
-def assert_latent_finite(samples) -> None:
+def assert_latent_finite(samples, node_name: str = "RadianceSamplerPro") -> None:
     """Fail the node when the sampled latent carries NaN or Inf.
 
     Two defects lived in the old inline version of this check.
@@ -171,9 +171,9 @@ def assert_latent_finite(samples) -> None:
         # Unknown container: say so at WARNING, where it is actually visible,
         # rather than debug.
         logger.warning(
-            "[RadianceSamplerPro] Could not run the NaN/Inf guard: sampled latent is "
+            "[%s] Could not run the NaN/Inf guard: sampled latent is "
             "a %s, which is neither a Tensor nor a NestedTensor. The output is "
-            "UNCHECKED.", type(samples).__name__,
+            "UNCHECKED.", node_name, type(samples).__name__,
         )
         return
 
@@ -182,8 +182,8 @@ def assert_latent_finite(samples) -> None:
         count = _count_non_finite(t)
         if count is None:
             logger.warning(
-                "[RadianceSamplerPro] Could not run the NaN/Inf guard on %s (%s). "
-                "That part of the output is UNCHECKED.", label, type(t).__name__,
+                "[%s] Could not run the NaN/Inf guard on %s (%s). "
+                "That part of the output is UNCHECKED.", node_name, label, type(t).__name__,
             )
             continue
         if count:
@@ -191,7 +191,7 @@ def assert_latent_finite(samples) -> None:
 
     if bad_streams:
         raise RuntimeError(
-            "[RadianceSamplerPro] The sampled latent contains NaN or Inf "
+            f"[{node_name}] The sampled latent contains NaN or Inf "
             f"({'; '.join(bad_streams)}).\n\n"
             "This is a diverged run, usually a CFG blowup, fp16/bf16 overflow, or a "
             "degenerate sigma schedule. Lower cfg (and flux_guidance / pag_scale if "
