@@ -522,3 +522,26 @@ def test_no_module_decodes_video_through_a_png_temp_directory():
         f"{offenders} decode video by writing PNGs to a temp directory; use "
         "radiance.core.video.decode instead"
     )
+
+
+@pytest.mark.parametrize("banner,want", [
+    ("ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright", False),
+    ("ffmpeg version 6.1.1-3ubuntu5 Copyright", True),
+    ("ffmpeg version n7.0.2 Copyright", True),
+    ("ffmpeg version 8.0-essentials_build-www.gyan.dev Copyright", True),
+    # Git and nightly builds carry no release number and are current: they
+    # used to get -vsync, which current ffmpeg has removed (every decode failed).
+    ("ffmpeg version N-127579-g5cb9fcd211-20261016 Copyright", True),
+    ("ffmpeg version 2026-10-14-git-1a2b3c4d5e-full_build-www.gyan.dev Copyright", True),
+    ("", False),
+])
+def test_fps_mode_detection_reads_release_and_git_builds(monkeypatch, banner, want):
+    import subprocess as _sp
+    monkeypatch.setattr(V, "ffmpeg_exe", lambda: "ffmpeg")
+    monkeypatch.setattr(V.subprocess, "run",
+                        lambda *a, **k: _sp.CompletedProcess(a, 0, stdout=banner, stderr=""))
+    V._supports_fps_mode.cache_clear()
+    try:
+        assert V._supports_fps_mode() is want
+    finally:
+        V._supports_fps_mode.cache_clear()

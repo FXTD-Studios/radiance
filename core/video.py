@@ -592,8 +592,17 @@ def _supports_fps_mode() -> bool:
                              timeout=10).stdout
     except (subprocess.SubprocessError, OSError):
         return False
-    m = re.search(r"ffmpeg version n?(\d+)\.", out or "")
-    return bool(m) and int(m.group(1)) >= 5
+    if not out or "ffmpeg version" not in out:
+        return False
+    # A release says "ffmpeg version 7.0.2" (or "n7.0.2"). A git or nightly
+    # build says "N-127579-g5cb9fcd211" (BtbN) or "2026-10-14-git-..."
+    # (gyan.dev, the usual Windows download): no release number, and always
+    # current. Treating those as old sent -vsync, which current ffmpeg no
+    # longer has, so every video decode failed (exit 8).
+    m = re.search(r"ffmpeg version n?(\d+)\.(\d+)", out)
+    if m and not re.search(r"ffmpeg version n?\d{4}-\d{2}-\d{2}", out):
+        return int(m.group(1)) >= 5
+    return True
 
 
 def _select_expression(start: int, count: int, step: int) -> Optional[str]:

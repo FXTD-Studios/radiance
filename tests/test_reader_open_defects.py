@@ -41,7 +41,14 @@ def _encode(dst, *args):
 @pytest.fixture
 def tagged_mp4(tmp_path):
     """A Rec.709-tagged H.264, the most common delivery a Read node sees."""
-    return _encode(tmp_path / "tagged.mp4", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    # The frames are stamped as well as the stream. In newer ffmpeg (a 2026
+    # build; 6.1 and 7.0 are fine) the input frames' own unspecified primaries
+    # and transfer win over the output options, so the options alone give
+    # "bt709/unknown/unknown".
+    # io/writer.py stamps its encodes the same way.
+    return _encode(tmp_path / "tagged.mp4",
+                   "-vf", "setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+                   "-c:v", "libx264", "-pix_fmt", "yuv420p",
                    "-color_trc", "bt709", "-color_primaries", "bt709",
                    "-colorspace", "bt709", "-color_range", "tv")
 
