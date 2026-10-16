@@ -181,3 +181,28 @@ def test_write_bytes_atomic_applies_the_mode(tmp_path):
     p = tmp_path / "secret"
     write_bytes_atomic(p, b"x", mode=0o600)
     assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+
+def test_concurrent_saves_of_one_file_do_not_mix(tmp_path):
+    """Two threads saving the same file shared one temporary name (pid only)."""
+    import threading
+    from radiance.core.sequence_safety import write_bytes_atomic
+    p = tmp_path / "store.json"
+    payloads = [bytes([65 + i]) * 200_000 for i in range(8)]
+    errors = []
+
+    def save(data):
+        try:
+            for _ in range(5):
+                write_bytes_atomic(p, data)
+        except Exception as exc:  # noqa: BLE001 - recorded for the assert
+            errors.append(exc)
+
+    threads = [threading.Thread(target=save, args=(d,)) for d in payloads]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert p.read_bytes() in payloads, "the saved file mixes two writers"
+    assert _leftovers(tmp_path, {"store.json"}) == []
