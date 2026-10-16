@@ -183,7 +183,7 @@ def test_the_viewer_shows_a_partial_delivery_as_complete_with_warnings():
     src = (ROOT / "js" / "radiance_viewer.js").read_text(encoding="utf-8")
     assert "result.status === 'success' || result.status === 'partial'" in src
     assert "EXPORT COMPLETE WITH WARNINGS" in src
-    assert re.search(r"for \(const w of _dvWarnings\) this\._termLog\('warn'", src)
+    assert re.search(r"for \(const w of _dvWarnings\) log\('warn'", src)
     assert "result.error || result.message" in src
 
 
