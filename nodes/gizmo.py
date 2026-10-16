@@ -370,17 +370,8 @@ async def create_gizmo_api(request) -> web.Response:
                 shutil.copy2(filepath, filepath + ".bak")
             except OSError as exc:
                 logger.warning("[Radiance Gizmo] could not back up %s: %s", filepath, exc)
-        tmp_path = f"{filepath}.partial-{os.getpid()}"
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(gizmo_payload, f, indent=2)
-            os.replace(tmp_path, filepath)
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+        from radiance.core.sequence_safety import write_text_atomic
+        write_text_atomic(filepath, json.dumps(gizmo_payload, indent=2))
 
         logger.info(f"[Radiance Gizmo] Successfully wrote new dynamic Gizmo payload: {filepath}")
         return web.json_response({
