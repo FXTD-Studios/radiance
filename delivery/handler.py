@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import tempfile
 import threading
 import re
 import math
@@ -122,24 +121,14 @@ _SESSIONS_LOCK = threading.Lock()
 
 
 def _write_sessions_atomically(path: str, sessions: list) -> None:
-    """Write the session log via a temp file + os.replace, under a lock."""
+    """Write the session log atomically, under a lock, readable by the user only."""
+    from radiance.core.sequence_safety import write_text_atomic
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
     with _SESSIONS_LOCK:
-        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".radiance_sessions.",
-                                   suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(sessions, handle, indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(tmp, path)          # atomic on POSIX and on Windows
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        # Serialised before anything touches the disk: a value json cannot
+        # write raises here and the previous log stays as it was.
+        write_text_atomic(path, json.dumps(sessions, indent=2), mode=0o600)
 
 
 def _resolve_write_format(ui_format: str) -> str:
@@ -238,18 +227,9 @@ def _verify_written(receipt: dict, warnings: list) -> None:
 
 
 def _write_json_atomic(path: str, data: dict) -> None:
-    """Write JSON through a temporary sibling so a failure keeps any earlier file."""
-    tmp = f"{path}.tmp-{os.getpid()}"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
+    """Write JSON so a failure keeps any earlier file."""
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(path, json.dumps(data, indent=4))
 
 
 def get_next_version(directory: str, filename_base: str) -> str:

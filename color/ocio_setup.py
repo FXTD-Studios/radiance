@@ -46,10 +46,8 @@ def _write_studio_file(ocio) -> Optional[str]:
                 if f.read() == text:
                     return STUDIO_FILE
         os.makedirs(ACES_DIR, exist_ok=True)
-        tmp = STUDIO_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, STUDIO_FILE)
+        from ..core.sequence_safety import write_text_atomic
+        write_text_atomic(STUDIO_FILE, text)
         return STUDIO_FILE
     except OSError as exc:
         # A read-only install still works: OCIO accepts the URI directly.

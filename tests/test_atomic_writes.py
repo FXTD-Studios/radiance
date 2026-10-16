@@ -158,3 +158,26 @@ def test_gizmo_save_writes_json_and_keeps_the_previous_as_bak(tmp_path, monkeypa
     assert json.loads(path.read_text())["nodes"] == [{"id": 2, "type": "B"}]
     assert json.loads((tmp_path / "My_Fx.gizmo.bak").read_text())["nodes"] == [{"id": 1, "type": "A"}]
     assert _leftovers(tmp_path, {"My_Fx.gizmo", "My_Fx.gizmo.bak"}) == []
+
+
+# ── the shared helpers ───────────────────────────────────────────────────────
+
+def test_write_bytes_atomic_replaces_only_when_complete(tmp_path, monkeypatch):
+    from radiance.core.sequence_safety import write_bytes_atomic, write_text_atomic
+    p = tmp_path / "f.json"
+    write_text_atomic(p, "one")
+    write_bytes_atomic(p, b"")                       # empty is a valid small file
+    assert p.read_bytes() == b""
+    write_text_atomic(p, "two")
+    monkeypatch.setattr(os, "fsync", lambda fd: (_ for _ in ()).throw(OSError("no fsync")))
+    write_text_atomic(p, "three")                    # an fsync failure is not a write failure
+    assert p.read_text() == "three"
+    assert _leftovers(tmp_path, {"f.json"}) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_write_bytes_atomic_applies_the_mode(tmp_path):
+    from radiance.core.sequence_safety import write_bytes_atomic
+    p = tmp_path / "secret"
+    write_bytes_atomic(p, b"x", mode=0o600)
+    assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
