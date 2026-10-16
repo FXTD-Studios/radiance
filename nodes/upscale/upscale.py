@@ -1134,24 +1134,35 @@ def _diffusion_upscale_infer(
     noise_level:         int   = 20,
     guidance_scale:      float = 7.5,
     prefer_seedvr2:      bool  = False,
+    backend_used:        Optional[dict] = None,
 ) -> Optional[torch.Tensor]:
     """
     Unified Tier 3 entry point.
     Tries SeedVR2 first (if prefer_seedvr2), then SD x4 upscaler, then None.
+
+    ``backend_used``, when given, is filled with ``{"name": "SeedVR2" | "SD x4"}``
+    for the backend that produced the result. The caller reports it: a request
+    for SeedVR2 that ran SD x4 must not be labelled SeedVR2.
     """
     if prefer_seedvr2:
         try:
             pipe = _load_seedvr2_pipeline(device)
-            return _seedvr2_infer(pipe, tile_bhwc, prompt=prompt, steps=num_inference_steps)
+            result = _seedvr2_infer(pipe, tile_bhwc, prompt=prompt, steps=num_inference_steps)
+            if backend_used is not None:
+                backend_used["name"] = "SeedVR2"
+            return result
         except RuntimeError as e:
-            logger.info(f"[Radiance/Upscale] SeedVR2 unavailable ({e}), trying SD x4")
+            logger.warning(f"[Radiance/Upscale] SeedVR2 unavailable ({e}), trying SD x4")
 
     try:
         pipe = _load_sd_x4_pipeline(device)
-        return _sd_x4_infer(pipe, tile_bhwc, prompt=prompt,
-                             num_inference_steps=num_inference_steps,
-                             noise_level=noise_level,
-                             guidance_scale=guidance_scale)
+        result = _sd_x4_infer(pipe, tile_bhwc, prompt=prompt,
+                              num_inference_steps=num_inference_steps,
+                              noise_level=noise_level,
+                              guidance_scale=guidance_scale)
+        if backend_used is not None:
+            backend_used["name"] = "SD x4"
+        return result
     except RuntimeError as e:
         logger.warning(f"[Radiance/Upscale] Diffusion upscale failed: {e}")
         return None
@@ -1281,9 +1292,10 @@ def _build_upscale_fn(
     if "tier3" in tier:
         use_seedvr2 = prefer_seedvr2 or "seedvr2" in tier
 
-        stats = {"diffusion": 0, "Real-ESRGAN": 0, "bicubic": 0}
+        stats = {"diffusion": 0, _SD_X4_INSTEAD: 0, "Real-ESRGAN": 0, "bicubic": 0}
 
         def _fn_diff(tile: torch.Tensor) -> torch.Tensor:
+            used: dict = {}
             result = _diffusion_upscale_infer(
                 tile, device,
                 prompt=prompt,
@@ -1291,9 +1303,15 @@ def _build_upscale_fn(
                 noise_level=noise_level,
                 guidance_scale=guidance_scale,
                 prefer_seedvr2=use_seedvr2,
+                backend_used=used,
             )
             if result is not None:
-                stats["diffusion"] += 1
+                # SeedVR2 was asked for and SD x4 produced the tile: count it
+                # under its own name so _backend_report does not call it SeedVR2.
+                if use_seedvr2 and used.get("name") == "SD x4":
+                    stats[_SD_X4_INSTEAD] += 1
+                else:
+                    stats["diffusion"] += 1
                 # The diffusion backends are fixed 4x; the node may have been
                 # asked for 2x. Conform before tiled_upscale crops.
                 return _conform_to_scale(tile, result, scale_int)
@@ -1370,6 +1388,9 @@ def _build_upscale_fn(
     return _fn_bc, f"bicubic, NOT an AI upscale  [{note.rstrip(', ')}]"
 
 
+_SD_X4_INSTEAD = "SD x4 (SeedVR2 unavailable)"
+
+
 def _backend_report(fn, label: str) -> str:
     """The label, corrected by what the backend actually ran per tile."""
     stats = getattr(fn, "backend_stats", None)
@@ -1380,6 +1401,8 @@ def _backend_report(fn, label: str) -> str:
         return label
     parts = ", ".join(f"{k} {v}/{total}" for k, v in stats.items() if v)
     if stats.get("diffusion", 0) == 0:
+        if stats.get(_SD_X4_INSTEAD, 0) == total:
+            return f"{label} requested, NOT used: SeedVR2 unavailable, tiles ran {parts}"
         return f"{label} requested, NOT used: diffusion unavailable, tiles ran {parts}"
     return f"{label} on some tiles only: {parts}"
 

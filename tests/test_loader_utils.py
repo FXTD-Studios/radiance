@@ -1206,11 +1206,21 @@ class TestLoadClipStack:
         assert "Failed to load CLIP" in str(exc.value)
         assert "safetensors header corrupt" in str(exc.value)
 
-    def test_missing_encoder_file_is_dropped_from_the_paths(self, clip_env):
-        clip, slots, _, _ = call_clip(clip_env, clip_l="clip_l.safetensors",
-                                      clip_g="not_installed.safetensors")
-        assert clip_env.load_clip_calls[0]["ckpt_paths"] == [clip_env.clip_l]
-        assert clip == "CLIP<1>"
+    def test_a_selected_encoder_that_is_not_on_disk_is_an_error(self, clip_env):
+        """It used to be dropped with a log line and the stack loaded without it,
+        so ComfyUI picked a different encoder for the files that were left."""
+        with pytest.raises(ValueError) as exc:
+            call_clip(clip_env, clip_l="clip_l.safetensors",
+                      clip_g="not_installed.safetensors")
+        text = str(exc.value)
+        assert "not found on disk" in text
+        assert "clip_g: not_installed.safetensors" in text
+        assert clip_env.load_clip_calls == []
+
+    def test_a_baked_slot_is_not_reported_as_missing(self, clip_env):
+        call_clip(clip_env, arch="ltxav", llm_encoder="t5.safetensors",
+                  text_projection="Baked (from UNET)")
+        assert len(clip_env.load_clip_calls) == 1
 
     # Was xfail(strict): the defect it documented is fixed.
     def test_unused_slots_are_not_reported_as_used(self, clip_env):
