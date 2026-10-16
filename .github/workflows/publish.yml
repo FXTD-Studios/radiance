@@ -91,10 +91,33 @@ jobs:
           --timeout=120
           -q
 
+  # ── Gate: the front-end tests, including the browser-driven viewer suites ───
+  # ci.yml runs these on every push; a tag publish must not skip them.
+  gate-js:
+    name: "Run JS tests (publish gate)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright and Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      # The WGSL grade test needs Deno's WebGPU on lavapipe; without them it skips.
+      - name: Install a software Vulkan driver for Deno's WebGPU
+        run: sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run every JS test (unit and browser)
+        run: node --test --test-concurrency=2 js/tests/*.test.mjs
+
   # ── Publish to ComfyUI registry ─────────────────────────────────────────────
   publish:
     name: "Publish to ComfyUI Registry"
-    needs: gate-tests
+    needs: [gate-tests, gate-js]
     runs-on: ubuntu-latest
 
     steps:
@@ -104,8 +127,12 @@ jobs:
 
       # The official ComfyUI publish action — publishes using pyproject.toml
       # metadata and the [tool.comfy] section (PublisherId, DisplayName, …).
+      # Pinned to a commit: a step that holds the registry token must not run
+      # whatever a branch points at today. This is main as of 2026-10-16
+      # (git ls-remote https://github.com/Comfy-Org/publish-node-action);
+      # move the pin on purpose, after reading the diff.
       - name: Publish node pack
-        uses: Comfy-Org/publish-node-action@main
+        uses: Comfy-Org/publish-node-action@d2366e7abb6ab16f3bb03e3520ae25c8cf749bc9
         with:
           ## Personal access token from https://registry.comfy.org
           ## Store it as a repository secret named REGISTRY_ACCESS_TOKEN.
