@@ -126,6 +126,23 @@ except ImportError:  # pragma: no cover - only outside the package
 
 log = logging.getLogger("radiance.io.writer")
 
+
+def _check_filename_stays_inside(filename: str) -> None:
+    """E-08: `filename` is joined onto `output_path`; it must not leave it.
+
+    A subfolder ("shots/sh010") is fine. "..", an absolute path or a drive
+    letter would write outside the folder the person chose, so it is refused
+    with a message instead of being honoured or silently rewritten.
+    """
+    name = str(filename)
+    base = os.path.abspath(os.sep + "__radiance_output__")
+    full = os.path.normpath(os.path.abspath(os.path.join(base, name)))
+    if "\x00" in name or not full.startswith(base + os.sep):
+        raise ValueError(
+            f"RadianceWrite: filename {name!r} leaves output_path (it is absolute or "
+            "uses '..'). Put the folder in output_path and keep filename a plain name "
+            "or a subfolder inside it.")
+
 #: How much of ffmpeg's stderr to quote when an encode fails. Enough for the
 #: real reason, not so much that a log line becomes a wall.
 _STDERR_TAIL = 2000
@@ -1490,6 +1507,7 @@ def write_frames(
     # Build output path from filename + version when provided
     if filename.strip():
         ver_str = f"v{version:04d}"
+        _check_filename_stays_inside(f"{filename}_{ver_str}")
         output_path = str(Path(output_path) / f"{filename}_{ver_str}")
     n, h, w, c = frames.shape
 

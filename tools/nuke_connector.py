@@ -6,7 +6,7 @@ import struct
 import json
 import logging
 import os
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger("radiance.nuke.connector")
 
@@ -18,6 +18,19 @@ READ_TIMEOUT = 15.0
 
 # Wire protocol
 HEADER_MAGIC = b"RCMD"  # 4-byte magic identifier
+
+
+def build_v3_header(token: str, payload: bytes, ts_ms: Optional[int] = None, nonce: Optional[bytes] = None) -> bytes:
+    """The protocol-3 header for `payload`; see send_command."""
+    import hashlib
+    import hmac
+    import secrets
+    import time
+    ts_ms = int(time.time() * 1000) if ts_ms is None else ts_ms
+    nonce = secrets.token_bytes(16) if nonce is None else nonce
+    ts_bytes = struct.pack("<Q", ts_ms)
+    sig = hmac.new(token.encode("utf-8"), b"RCMD3" + ts_bytes + nonce + payload, hashlib.sha256).digest()
+    return HEADER_MAGIC + struct.pack("<B", 3) + sig + ts_bytes + nonce + struct.pack("<I", len(payload))
 HEADER_VERSION = 1  # Protocol version
 END_MARKER = b"\n__RADIANCE_END__\n"  # Response terminator
 
@@ -145,15 +158,12 @@ class NukeConnector:
 
             payload = command.encode("utf-8")
             if token:
-                # Protocol Version 2: MAGIC(4) + VERSION(1) + SIGNATURE(32) + LENGTH(4 LE) + PAYLOAD
-                # HMAC rather than SHA256(token || command) -- the bare-hash form
-                # was length-extendable and replayable. Must match the server.
-                import hmac
-                import hashlib
-                sig = hmac.new(
-                    token.encode("utf-8"), command.encode("utf-8"), hashlib.sha256
-                ).digest()
-                header = HEADER_MAGIC + struct.pack("<B", 2) + sig + struct.pack("<I", len(payload))
+                # Protocol 3: MAGIC(4) VERSION(1) SIG(32) TS_MS(8 LE) NONCE(16)
+                # LENGTH(4 LE) PAYLOAD, SIG = HMAC(token, b"RCMD3"+TS+NONCE+PAYLOAD).
+                # The timestamp and the one-use nonce stop a captured frame
+                # being replayed (protocol 2 signed the command alone).
+                # Must match scripts/start_nuke_server.py.
+                header = build_v3_header(token, payload)
             else:
                 # Protocol Version 1 (unauthenticated). The server now refuses
                 # these; kept only so the failure is a clear server-side message.
