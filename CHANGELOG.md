@@ -81,6 +81,18 @@ else is fixes. Read the upgrade notes before moving a production setup.
   and the V1/V2 target are gone from the timeline. Fit now fits the picture
   above the floating transport, so it is a little smaller. Double-click on
   the f/ or gamma box selects its text; Alt+click resets it.
+- **Nuke listener protocol 3.** `tools/nuke_connector.py` and
+  `scripts/start_nuke_server.py` now sign a timestamp and a single-use nonce
+  with each command. Update the listener inside Nuke together with the
+  package: protocol 2 is refused (it could be replayed), and an old listener
+  does not understand protocol 3.
+- **Write `filename`** may not leave `output_path`: an absolute path, a drive
+  letter or `..` is refused. A subfolder inside `output_path` still works.
+- **Viewer workspaces.** The Simple / Advanced switch is now Review, Color,
+  Inspect and Compare. Review is the old Simple layout; the others use the
+  Advanced layout and each shows the panel tabs it needs (a shortcut to a
+  hidden tab moves to the workspace that has it). A graph saved in Advanced
+  opens in Color.
 
 ### Removed
 
@@ -193,6 +205,27 @@ are the results.
 - **Effects** without a depth map say so and disable depth of field; Blades
   skips 1 and 2, which drew a round disc.
 
+### Viewer (review, QC and channels)
+
+- **Review marks.** Alt+drag strokes are stored per frame in image
+  coordinates and saved with the node, so they follow zoom, pan and frames.
+  D bookmarks a frame, comma and period step between bookmarks, T writes a
+  note on the frame. Report (Simple bar, or File > Export Review Report)
+  downloads Markdown and JSON.
+- **QC run.** Measured checks over every frame (NaN/Inf, over and under
+  range, alpha range, premultiplication, flicker), one frame at a time, with
+  progress; it can be stopped, and a stopped or incomplete run never reads as
+  a pass. The report carries the result.
+- **3D Normal channel** from a new `normal` input on the Viewer, beside R, G,
+  B, A and Depth; signed or encoded normals are detected once per sequence.
+- **Compare:** B follows A by time when B is a video at another frame rate;
+  Difference has a gain (x1 to x16) and a signed mode; onion skin shows the
+  frames before and after; a hint marks Compare when a B is connected.
+- **WebGPU** (opt-in) lists every gap where you will read it, and its 3D LUT
+  upload is fixed. HDR peak readouts state their BT.2408 assumption.
+- **A deleted viewer is freed.** A detached `<select>` kept the whole panel,
+  and the viewer, alive once its Grade tab had been opened.
+
 ### Fixed
 
 - **SDR reference conditioning** crashed with every real VAE (it expected a
@@ -262,7 +295,10 @@ are the results.
 - The multipass model registry (Depth Anything V2, DSINE) downloads from
   `main` without a pinned hash; it is consent-gated and logs the digest.
 - GPU timings and DCC round trips need hardware and were not run for this
-  beta.
+  beta. The Nuke 17 and Resolve checks added in this release (missing paths,
+  frame counts) are tested against stand-ins, not the real applications.
+- WebGPU is still missing masks, qualifiers, OCIO, the heatmap and more (see
+  KNOWN_ISSUES.md); WebGL is the default and the tested path.
 
 ## [3.5.4] - 2026-10-02
 
