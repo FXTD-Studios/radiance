@@ -525,3 +525,9 @@ test('a paged float B is charged to its frame', () => {
     const hdr = { fp16data: new Uint16Array(100) };
     assert.equal(measureFramePayload({ hdr, compareHdr: { fp16data: new Uint16Array(50) } }), 200 + 100);
 });
+
+test('measureFramePayload charges the depth and normal frames too', () => {
+    const img = { width: 10, height: 10 };
+    assert.equal(measureFramePayload({ img }), 400);
+    assert.equal(measureFramePayload({ img, zdepth: img, normal: img }), 1200);
+});

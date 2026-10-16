@@ -210,6 +210,48 @@ def _note(warnings: list, message: str) -> None:
         warnings.append(message)
 
 
+def _verify_written(receipt: dict, warnings: list) -> None:
+    """Check the writer's receipt against what is on disk and record any shortfall.
+
+    The writer returns ``(path, count)`` and fills ``receipt`` with every file it
+    wrote. Delivery used to discard both, so an EXR written by the OpenCV
+    fallback (no colour attributes, no compression) or a sequence with a missing
+    frame was reported as a clean ``success``.
+    """
+    if not receipt:
+        _note(warnings, "The writer returned no receipt, so the written files were not verified.")
+        return
+    if receipt.get("complete") is False:
+        _note(warnings,
+              f"Only {receipt.get('written_frames', '?')} of {receipt.get('requested_frames', '?')} "
+              "requested frame(s) were written.")
+    files = receipt.get("files") or []
+    missing = [e.get("path", "?") for e in files
+               if not os.path.isfile(e.get("path", "")) or os.path.getsize(e["path"]) == 0]
+    if missing:
+        _note(warnings, f"{len(missing)} written file(s) are missing or empty on disk, "
+                        f"for example {os.path.basename(missing[0])}.")
+    degraded = [e for e in files if str(e.get("writer", "")).startswith("OpenCV fallback")]
+    if degraded:
+        _note(warnings, f"{len(degraded)} EXR file(s) were written by the OpenCV fallback: "
+                        "colour metadata and compression are not in the header.")
+
+
+def _write_json_atomic(path: str, data: dict) -> None:
+    """Write JSON through a temporary sibling so a failure keeps any earlier file."""
+    tmp = f"{path}.tmp-{os.getpid()}"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
 def get_next_version(directory: str, filename_base: str) -> str:
     """The next version after the highest on disk, as the writer stamps it (``v0002``).
 
@@ -343,6 +385,21 @@ def _progress_refuse(instance_key, message: str) -> None:
         logger.debug("[Radiance] could not set refusal progress: %s", _exc)
 
 
+def _path_inside(path: str, root: str) -> bool:
+    """True when ``path`` resolves to ``root`` or somewhere under it.
+
+    Both sides go through ``realpath`` so a symlink under the output folder that
+    points to another volume does not pass, and ``commonpath`` so a sibling such
+    as ``output_evil`` or a folder named ``..x`` is judged correctly.
+    """
+    try:
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+        return os.path.normcase(os.path.commonpath([real_path, real_root])) == os.path.normcase(real_root)
+    except ValueError:
+        return False
+
+
 async def radiance_deliver_endpoint(request):
     """
     VFX Delivery Endpoint: Receives grading state + export settings from HUD.
@@ -422,11 +479,7 @@ async def radiance_deliver_endpoint(request):
             except Exception:
                 _allowed_root = None
             if _allowed_root:
-                try:
-                    _rel = os.path.relpath(output_path, _allowed_root)
-                    _outside = _rel.startswith("..")
-                except ValueError:
-                    _outside = True
+                _outside = not _path_inside(output_path, _allowed_root)
                 if _outside:
                     logger.warning(f"[Deliver] Rejected output path outside ComfyUI output dir: {output_path[:120]}")
                     _progress_refuse(instance_key, "Output path outside the output directory")
@@ -837,6 +890,7 @@ async def radiance_deliver_endpoint(request):
             # as 1001, and no way to tell from the filenames. `range_in` is
             # 1-based into the cached batch, so frame 1 maps to 1001, which is
             # the numbering the rest of the pipeline assumes.
+            _write_receipt: dict = {}
             path, _count = write_frames(
                 image=graded_tensor,
                 output_path=output_path,
@@ -849,7 +903,9 @@ async def radiance_deliver_endpoint(request):
                 quality=quality,
                 broadcast_safe=broadcast_safe,
                 start_frame=1000 + range_in,
+                receipt=_write_receipt,
             )
+            _verify_written(_write_receipt, warnings)
 
             # ─── Post-Export: Thumbnails & Sidecars ────────────────────────
             try:
@@ -879,6 +935,8 @@ async def radiance_deliver_endpoint(request):
                     if not _cdl["exact"]:
                         logger.warning("[Deliver] CDL sidecar cannot carry: %s; it approximates the grade.",
                                        ", ".join(_cdl["not_represented"]))
+                        _note(warnings, "The CDL sidecar approximates the grade; it cannot carry: "
+                                        + ", ".join(_cdl["not_represented"]) + ".")
                     cdl_path = os.path.splitext(path)[0] + ".cdl"
                     try:
                         from radiance.io.formats import write_cdl_file
@@ -887,6 +945,7 @@ async def radiance_deliver_endpoint(request):
                                        cc_id=os.path.splitext(os.path.basename(path))[0])
                     except Exception as _ce:
                         logger.warning("[Deliver] CDL export failed: %s", _ce)
+                        _note(warnings, f"The CDL sidecar was not written: {type(_ce).__name__}: {_ce}")
 
                 # AMF Export
                 if settings.get('export_amf', False):
@@ -894,6 +953,7 @@ async def radiance_deliver_endpoint(request):
                         _export_aces_clip_xml(path, grading, color_space, version_str)
                     except Exception as _ae:
                         logger.warning("[Deliver] AMF export failed: %s", _ae)
+                        _note(warnings, f"The AMF sidecar was not written: {type(_ae).__name__}: {_ae}")
             
                 # Save Metadata Sidecar (.json)
                 meta = {
@@ -903,10 +963,18 @@ async def radiance_deliver_endpoint(request):
                     "qc": qc_report,
                     "continuity": continuity_report if continuity_report else "PASS",
                     "bake_grade_exr": bake_grade_exr,
-                    "timestamp": os.path.getmtime(path)
+                    "timestamp": os.path.getmtime(path),
+                    "fps": fps,
+                    "range_in": range_in,
+                    "range_out": range_out,
+                    "write_format": write_format,
+                    "write_colorspace": write_colorspace_effective,
+                    "write_working_space": write_working_space,
+                    "files_written": len(_write_receipt.get("files") or []),
+                    "writers": sorted({str(e.get("writer", "")) for e in (_write_receipt.get("files") or [])}),
+                    "warnings": list(warnings),
                 }
-                with open(os.path.splitext(path)[0] + "_meta.json", 'w') as f:
-                    json.dump(meta, f, indent=4)
+                _write_json_atomic(os.path.splitext(path)[0] + "_meta.json", meta)
                 
                 # Reveal Folder Hook
                 if settings.get('reveal_folder', False):
@@ -924,6 +992,7 @@ async def radiance_deliver_endpoint(request):
                     
             except Exception as e:
                 logger.error(f"Sidecar generation failed: {e}")
+                _note(warnings, f"A sidecar step failed: {type(e).__name__}: {e}")
 
             _progress_set(instance_key, {"current": 100, "total": 100, "status": "done", "message": "Delivery Complete"})
 
