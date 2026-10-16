@@ -20,13 +20,18 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Any, Callable, Iterable, List
 
 
 def _temp_sibling(final: Path) -> Path:
-    """A hidden name beside ``final`` that keeps its extension."""
-    return final.with_name(f".{final.stem}.partial-{os.getpid()}{final.suffix}")
+    """A hidden name beside ``final`` that keeps its extension.
+
+    Unique per call, not only per process: two threads saving the same file
+    at once used to share one temporary name and could write into each other.
+    """
+    return final.with_name(f".{final.stem}.partial-{os.getpid()}-{secrets.token_hex(4)}{final.suffix}")
 
 
 def _replace_from_temp(final: Path, write_fn: Callable[[Path], Any], require_data: bool) -> Any:
