@@ -118,6 +118,20 @@ class RadianceWebGLRenderer extends RadianceRenderer {
 
     /** Difference as A - B around mid grey (true) or |A - B| (false). */
     setDiffSigned(on) { this.diffSigned = !!on; }
+    /**
+     * Difference in scene-linear ('scene-linear') or display values ('display').
+     * Scene-linear needs B as a float frame and float render targets; without
+     * them Difference stays display-referred (canDiffScene says which).
+     */
+    setDiffDomain(domain) { this.diffScene = domain === 'scene-linear'; }
+    /** True while the reference texture holds B in scene-linear for Difference. */
+    diffSceneActive() {
+        return !!(this.diffScene && this.compareShow === 2 && this._compareRefF
+            && this.textures.reference === this._compareRefF.tex);
+    }
+    canDiffScene() {
+        return !!(this._compareSrc && this._compareSrc.kind === 'float' && this.extColorBufferFloat);
+    }
 
     setDisplayLutStrength(v) {
         this.displayLutStrength = v;
@@ -1239,7 +1253,8 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         if (!src) return;
         if (gl && src.tex) gl.deleteTexture(src.tex);
         this._compareSrc = null;
-        if (this.textures.reference === this._compareRef?.tex) this.textures.reference = null;
+        if (this.textures.reference === this._compareRef?.tex
+            || this.textures.reference === this._compareRefF?.tex) this.textures.reference = null;
     }
 
     /** Upload a float frame to a texture of its own, leaving the picture's texture alone. */
@@ -1265,15 +1280,19 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         return tex;
     }
 
-    /** An RGBA8 render target of w x h, reused while the size holds. */
-    _compareTarget(slot, w, h) {
+    /**
+     * An RGBA8 render target of w x h (RGBA16F when float), reused while
+     * the size holds.
+     */
+    _compareTarget(slot, w, h, float = false) {
         const gl = this.gl;
         let t = this[slot];
         if (t && t.width === w && t.height === h) return t;
         if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        if (float) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1296,28 +1315,37 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         const A = { w: this.imageWidth, h: this.imageHeight };
         if (!src || !A.w || !A.h) return;
         let view = src.tex, viewIsRendered = false;
+        // Scene-linear Difference: B graded but before the view, in float,
+        // so the shader subtracts scene values (u_diffScene).
+        const scene = !!this.diffScene && this.compareShow === 2 && this.canDiffScene();
         if (src.kind === 'float') {
             // B through this pipeline, at B's size: same grade, same view,
             // none of the overlays (scopeSignal), no compare of its own.
-            const target = this._compareTarget('_compareView', src.width, src.height);
+            const target = scene
+                ? this._compareTarget('_compareViewF', src.width, src.height, true)
+                : this._compareTarget('_compareView', src.width, src.height);
             const kept = {
                 image: this.textures.image, w: this.imageWidth, h: this.imageHeight,
                 linear: this._texIsLinear, display: this.sourceDisplayEncoded,
                 show: this.compareShow, wipe: this.wipeEnabled, ref: this.wipeRefEnabled,
-                signal: this.scopeSignal, fbo: this._exportFBO,
+                signal: this.scopeSignal, fbo: this._exportFBO, sceneOut: this.exportSceneLinear,
             };
             this.textures.image = src.tex;
             this.imageWidth = src.width; this.imageHeight = src.height;
             this._texIsLinear = true;
             if (src.encoding) this.sourceDisplayEncoded = src.encoding === 'srgb';
             this.compareShow = 0; this.wipeEnabled = false; this.wipeRefEnabled = false;
-            this.scopeSignal = true;
+            // Scopes return the display signal early; scene-linear B takes
+            // the export path instead, which also leaves the overlays out.
+            this.scopeSignal = !scene;
             this._exportFBO = { fbo: target.fbo, width: target.width, height: target.height };
             this._renderingCompare = true;
+            if (scene) this.exportSceneLinear = true;
             try {
                 this.render();
             } finally {
                 this._renderingCompare = false;
+                this.exportSceneLinear = kept.sceneOut;
                 this.textures.image = kept.image;
                 this.imageWidth = kept.w; this.imageHeight = kept.h;
                 this._texIsLinear = kept.linear; this.sourceDisplayEncoded = kept.display;
@@ -1356,7 +1384,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
         const s = this.compareFit === 'fit' ? Math.min(A.w / B.w, A.h / B.h) : 1;
         const scale = [A.w / (B.w * s), A.h / (B.h * s)];
         const offset = [(A.w - B.w * s) / (2 * B.w * s), (A.h - B.h * s) / (2 * B.h * s)];
-        const ref = this._compareTarget('_compareRef', A.w, A.h);
+        const ref = scene ? this._compareTarget('_compareRefF', A.w, A.h, true) : this._compareTarget('_compareRef', A.w, A.h);
         gl.bindFramebuffer(gl.FRAMEBUFFER, ref.fbo);
         gl.viewport(0, 0, A.w, A.h);
         gl.useProgram(program);
@@ -1812,6 +1840,7 @@ class RadianceWebGLRenderer extends RadianceRenderer {
             this.curveLutTexture = null; this.secondaryCurveLutTexture = null;
             this._compareTex = null;
             this._compareSrc = null; this._compareView = null; this._compareRef = null;
+            this._compareViewF = null; this._compareRefF = null;
             this._bilateralFBO = null;
             this._bloomFBOs = null; this._bloomSrcW = 0; this._bloomSrcH = 0;
             this._exportFBO = null;
@@ -2318,6 +2347,7 @@ ${GRADE_GLSL}
             uniform int u_compareShow;          // 3.5.0: 0 A, 1 B, 2 |A-B| x gain
             uniform float u_diffGain;
             uniform bool u_diffSigned;
+            uniform bool u_diffScene;            // B is graded scene-linear: subtract before the view
 
             // v2.2 Pro Grids
             uniform int u_gridMode;
@@ -4048,7 +4078,8 @@ vec3 getDenoiseColor(vec2 uv) {
         if (u_wipeRefEnabled && u_compareShow == 1) {
             color = texture(u_referenceImage, v_texcoord).rgb;
         } else if (u_wipeRefEnabled && u_compareShow == 2) {
-            vec3 d = color - texture(u_referenceImage, v_texcoord).rgb;
+            vec3 ref = texture(u_referenceImage, v_texcoord).rgb;
+            vec3 d = u_diffScene ? sceneLinearForHeatmap - ref : color - ref;
             // Signed: equal is mid grey, A brighter goes up, B brighter goes down.
             color = u_diffSigned ? clamp(0.5 + 0.5 * d * u_diffGain, 0.0, 1.0) : clamp(abs(d) * u_diffGain, 0.0, 1.0);
         }
@@ -5121,6 +5152,7 @@ vec3 getDenoiseColor(vec2 uv) {
         this._ui1(program, 'u_compareShow', this.compareShow | 0);
         this._uf1(program, 'u_diffGain', Number.isFinite(this.diffGain) ? this.diffGain : 4);
         this._ui1(program, 'u_diffSigned', this.diffSigned ? 1 : 0);
+        this._ui1(program, 'u_diffScene', this.diffSceneActive() ? 1 : 0);
 
         gl.activeTexture(gl.TEXTURE6);
         gl.bindTexture(gl.TEXTURE_2D, this.textures.reference || this.textures.empty);
@@ -5507,7 +5539,7 @@ vec3 getDenoiseColor(vec2 uv) {
 
         // Compare B and its render targets
         this._clearCompareSource();
-        for (const slot of ['_compareView', '_compareRef']) {
+        for (const slot of ['_compareView', '_compareRef', '_compareViewF', '_compareRefF']) {
             const t = this[slot];
             if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); this[slot] = null; }
         }

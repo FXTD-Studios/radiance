@@ -2877,7 +2877,9 @@ class RadianceViewer {
             }, 'rsb-diffgain');
         this._sbDiffSigned = btn('|A-B|', 'Show A - B around mid grey instead of |A - B|',
             () => this.setDifference({ mode: this.diffSpec.mode === 'signed' ? 'abs' : 'signed' }), 'rsb-diffsigned');
-        cmp.append(this._sbDiffGain, this._sbDiffSigned);
+        this._sbDiffDomain = btn('Display', 'Difference on display values; click for scene-linear (graded, before the view)',
+            () => this.setDifference({ domain: this.diffSpec.domain === 'scene-linear' ? 'display' : 'scene-linear' }), 'rsb-diffdomain');
+        cmp.append(this._sbDiffGain, this._sbDiffSigned, this._sbDiffDomain);
 
         this._sbBLabel = document.createElement('span');
         this._sbBLabel.className = 'rsb-b';
@@ -2909,14 +2911,24 @@ class RadianceViewer {
     }
 
     /**
-     * Set what Difference measures ({ gain, mode }). Unknown values fall back
-     * (radiance_onion.js differenceSpec); the domain is always display-referred.
+     * Set what Difference measures ({ gain, mode, domain }). Unknown values
+     * fall back (radiance_onion.js differenceSpec). domain 'scene-linear'
+     * subtracts the graded scene values before the view; it needs B as a
+     * float frame (the compare input), so with a pinned still or a preview
+     * PNG it draws display-referred and diffDomainInEffect says so.
      */
     setDifference(opts = {}) {
-        this.diffSpec = _differenceSpec({ ...this.diffSpec, ...opts, domain: 'display' });
+        this.diffSpec = _differenceSpec({ ...this.diffSpec, ...opts });
         this.diffGain = this.diffSpec.gain;
         this.renderer?.setDiffSigned?.(this.diffSpec.mode === 'signed');
+        this.renderer?.setDiffDomain?.(this.diffSpec.domain);
         this._syncCompareUI();
+        this.requestRender?.();
+    }
+
+    /** The domain Difference draws in now: the chosen one, or 'display' when scene-linear can't be drawn. */
+    diffDomainInEffect() {
+        return this.diffSpec.domain === 'scene-linear' && this.renderer?.canDiffScene?.() ? 'scene-linear' : 'display';
     }
 
     /**
@@ -2983,8 +2995,22 @@ class RadianceViewer {
             this._sbDiffSigned.style.display = on ? '' : 'none';
             this._sbDiffGain.textContent = `x${this.diffSpec.gain}`;
             this._sbDiffSigned.textContent = this.diffSpec.mode === 'signed' ? 'A-B' : '|A-B|';
+            if (this._sbDiffDomain) {
+                const scene = this.diffSpec.domain === 'scene-linear';
+                const inEffect = this.diffDomainInEffect();
+                this._sbDiffDomain.style.display = on ? '' : 'none';
+                this._sbDiffDomain.textContent = scene ? 'Scene' : 'Display';
+                this._sbDiffDomain.classList.toggle('is-active', scene);
+                this._sbDiffDomain.title = scene
+                    ? (inEffect === 'scene-linear'
+                        ? 'Difference on graded scene-linear values; click for display values'
+                        : 'Scene-linear needs B as a float frame (the compare input); showing display values. Click for display')
+                    : 'Difference on display values; click for scene-linear (graded, before the view)';
+            }
             const diffBtn = this._sbCompare?.get('difference');
-            if (diffBtn) diffBtn.title = `Difference: ${this.diffSpec.label}`
+            const fallback = this.diffSpec.domain === 'scene-linear' && this.diffDomainInEffect() === 'display'
+                ? ' (scene-linear unavailable for this B: shown display-referred)' : '';
+            if (diffBtn) diffBtn.title = `Difference: ${this.diffSpec.label}${fallback}`
                 + (typeof this.renderer?.setDiffSigned === 'function' ? '' : ' (not drawn by this renderer)');
         }
         if (!this._sbCompare) return;
@@ -9378,6 +9404,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const show = mode === 'b' || (mode === 'blink' && this._blinkB) ? 1 : mode === 'difference' ? 2 : 0;
         r.setCompareShow?.(show, this.diffGain);
         r.setDiffSigned?.(this.diffSpec?.mode === 'signed');
+        r.setDiffDomain?.(this.diffSpec?.domain);
     }
 
     /**
