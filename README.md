@@ -27,12 +27,13 @@ Radiance adds 147 visible nodes to ComfyUI for generating and processing images 
 
 4.0 is in beta on the `version-4-Beta` branch. Read the [changelog](CHANGELOG.md) upgrade notes before moving a production setup.
 
-- **FLUX 3 Image Klein:** base and step-distilled, in the Loader, Sampler, Resolution and Prompt nodes, including reference-image editing and layout tables.
+- **FLUX 3 Image Klein:** base and step-distilled, in the Loader, Sampler, Resolution and Prompt nodes, including reference-image editing and layout boxes you draw in the Viewer.
+- **Prompt upsampler:** optional, for FLUX 3 Klein and Qwen-Image 2.1, with the model authors' upsampler and instructions.
 - **Qwen-Image 2.1:** text-to-image and editing with up to 16 reference images, its RGBA VAE (images with transparency), and pinned downloads of the official files.
-- **Deliver Master:** a graded-master export dialog in the Viewer (**File > Deliver Master…**), with PQ (HDR10) and HLG, 10-bit enforced for HDR, and HDR QC that reports peak nits and clipping.
-- **Viewer workspaces:** Review, Color, Inspect and Compare, each showing only the panels it needs.
+- **Deliver Master:** a graded-master export dialog in the Viewer (**File > Deliver Master…**), with a render queue, PQ (HDR10, selectable mastering display) and HLG, 10-bit enforced for HDR, and HDR QC that reports peak nits and clipping.
+- **Viewer workspaces:** Review, Color, Inspect, Compare and QC, each showing only the panels it needs.
 - **Review tools:** frame bookmarks, notes and strokes on frames, a measured QC pass over the sequence, and an exportable review report.
-- **Channels and compare:** Depth and 3D Normal channels, difference with gain and signed mode, onion skin, and compare inputs at their own frame rate.
+- **Channels and compare:** Depth and 3D Normal channels, difference with gain, signed mode and a scene-linear option for HDR plates, onion skin, and compare inputs at their own frame rate.
 - **Safer files:** workflow saves, sidecars and DCC frames are written atomically, sequence writes warn about stale frames, and a remote DCC bridge needs signed requests.
 
 ## What you can do
@@ -169,7 +170,8 @@ Download them from [black-forest-labs/flux-3-image-klein-comfy](https://huggingf
 
 - Use **Flux.3 Klein (Low VRAM)** on cards with 8 to 12 GB: it picks the int8 or nvfp4 files and offloads to the CPU.
 - To edit, connect up to 10 images to the Prompt's `images` inputs and the VAE. Cite them in the prompt as `<ref_image_0>`, `<ref_image_1>` and so on. `resolution` 1024 sizes each to about 1 megapixel; 0 keeps each at its own size, up to 16 MP.
-- A layout table from ComfyUI's **FLUX 3 Image Layout Prompt** node can go at the end of the prompt; it reaches the model unchanged.
+- **Layout boxes:** in the Viewer, **Tools > FLUX 3 Layout Boxes**: drag on the picture to draw boxes, describe each, and **Send to Prompt** fills the Prompt's `layout` input. Cite the boxes in the prompt as `<obj_1>`, `<obj_2>` and so on. A table from ComfyUI's **FLUX 3 Image Layout Prompt** node at the end of the prompt also works.
+- **Prompt upsampler (optional):** load `qwen3.5_9b_flux3_prompt_upsampler_*.safetensors` from the same repository with a **Load CLIP** node (type `flux3`), connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`. `positive_text` shows the rewritten prompt.
 
 ### Qwen-Image 2.1
 
@@ -185,7 +187,7 @@ Qwen's image model with its own 64-channel RGBA VAE, so it can make and edit ima
 - The Sampler runs the official template's 25 steps at CFG 1 (euler, simple). Qwen's own pipeline uses 40 to 50 steps if you want more detail.
 - To edit, connect images to the Prompt's `images` inputs (the VAE is optional) and cite them in the prompt as `<image1>`, `<image2>` and so on. `resolution` sizes the references to about that many pixels square; 0 keeps each at its own size.
 - Avoid seed 0: edits at that seed fail or come out oversaturated, in ComfyUI's own nodes too. The Sampler warns and its default seed is 1.
-- The `qwen3.5_9b_*_pe_*` files in the same repository are prompt enhancers for ComfyUI's Text Generate node, not text encoders.
+- **Prompt upsampler (optional):** the `qwen3.5_9b_qwen_image_2.1_pe_*` files in the same repository are its prompt enhancers, not text encoders. Load one with a **Load CLIP** node (type `qwen_image`), connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`.
 
 Review each model's licence before use.
 
@@ -211,9 +213,12 @@ Start in **Simple** mode for review, comparison and playback. Switch to **Advanc
 | Review | Playback, bookmarks, notes and the review report |
 | Color | Grade, masks, effects and scopes |
 | Inspect | Pixel inspector, scopes and analysis |
-| Compare | A/B wipe, difference, onion skin and blink |
+| Compare | A/B wipe, difference (display or scene-linear), onion skin and blink |
+| QC | Measured checks over every frame, with the flagged frames |
 
-- **Review:** **D** bookmarks a frame, **,** and **.** jump between bookmarks, **T** writes a note on the frame, and Alt+drag draws on it. **Tools > Run QC on the Sequence** measures every frame; **File > Export Review Report** saves the notes, marks and QC results.
+- **Review:** **D** bookmarks a frame, **,** and **.** jump between bookmarks, **T** writes a note on the frame, and Alt+drag draws on it. **File > Export Review Report** saves the notes, marks and QC results.
+- **QC:** the QC workspace (or **Tools > Run QC on the Sequence**) measures every frame for NaN/Inf, range, alpha and flicker, and lists the flagged frames; click one to go there.
+- **Layout boxes:** **Tools > FLUX 3 Layout Boxes** draws FLUX 3 layout boxes on the picture and sends them to the Prompt.
 - **Channels:** R, G, B, A, plus Depth and 3D Normal when those inputs are connected.
 - **Shortcuts:** hover or select the Viewer to use them. **H** or **?** lists every key.
 - **Audio:** VIDEO inputs can carry audio; IMAGE batches do not.
@@ -225,7 +230,8 @@ Viewer adjustments affect the preview only, until you export through **Deliver M
 
 - **Write** saves images, image sequences (EXR, PNG, TIFF, DPX) and video from the graph.
 - **Deliver Master** (**File > Deliver Master…** in the Viewer) exports the graded result with the Viewer's grade baked in. It offers ACES, camera log, PQ (HDR10) and HLG colour spaces, writes CDL and AMF sidecars, and versions files automatically.
-- **HDR:** PQ and HLG need 10 bits or float, so 8-bit formats are disabled for them. MP4 (H.265 10-bit) carries HDR10 metadata for PQ (mastering display and measured MaxCLL / MaxFALL); ProRes carries the colour tags. Scene-linear 1.0 is placed at 203 nits (BT.2408).
+- **Render queue:** **Add to Queue** keeps the current settings and grade as a job; add one per version, then **Start Queue** renders them one after another. A failed job does not stop the rest.
+- **HDR:** PQ and HLG need 10 bits or float, so 8-bit formats are disabled for them. MP4 (H.265 10-bit) carries HDR10 metadata for PQ (a mastering display you choose, P3-D65 or Rec.2020 at 1000 or 4000 nits, and measured MaxCLL / MaxFALL); ProRes carries the colour tags. Scene-linear 1.0 is placed at 203 nits (BT.2408).
 - **QC:** frames with NaN or infinite pixels are refused before anything is written, and HDR QC reports the peak and the share of pixels that clip.
 - **Legal Range (16–235)** is off by default and applies only to 8- and 16-bit image formats.
 

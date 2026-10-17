@@ -2188,7 +2188,6 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 # Layout Boxes (Send to Prompt) or typed by hand.
                 io.String.Input(
                     "layout", multiline=True, default="", optional=True,
-                    placeholder="FLUX 3 layout boxes (the Viewer's Send to Prompt)",
                     tooltip="FLUX 3 Image Klein: the layout table, a JSON list of "
                             '{"id": "obj_1", "bbox": [ymin, xmin, ymax, xmax], "desc": "..."} '
                             "with bbox on a 0-1000 grid, as ComfyUI's FLUX 3 Image Layout Prompt "

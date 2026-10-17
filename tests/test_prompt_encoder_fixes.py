@@ -110,4 +110,7 @@ def test_widgets_keep_their_saved_order():
     # the last V1 input, so model_meta keeps its input slot index.
     names = list(RadianceCinematicPromptEncoder.INPUT_TYPES()["optional"])
     assert names.index("negative_mode") == names.index("negative_prompt") + 1
-    assert names[names.index("negative_mode") + 1:] == ["model_meta", "vae", "resolution", "images"]
+    # 4.0.0 appends the prompt upsampler and the FLUX 3 layout after them.
+    assert names[names.index("negative_mode") + 1:] == ["model_meta", "vae", "resolution", "images",
+                                                        "upsampler_clip", "upsample_prompt",
+                                                        "upsampler_seed", "layout"]
