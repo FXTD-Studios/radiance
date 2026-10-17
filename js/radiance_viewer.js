@@ -5270,12 +5270,32 @@ class RadianceViewer {
         const dvRenderBtn = document.createElement('button');
 
         dvRenderBtn.dataset.dv = 'render';
-        dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
+        dvRenderBtn.textContent = '◎ RENDER NOW';
+        dvRenderBtn.title = 'Render these settings now';
         dvRenderBtn.style.cssText = `background: #00a8ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
         dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
         dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#00a8ff';
 
         dvSubmitRow.appendChild(dvRenderBtn);
+
+        // Render queue: each job is the settings and grade at the moment it
+        // was added, rendered one after another through the same endpoint.
+        this._deliverQueue = this._deliverQueue || [];
+        this._deliverJobSeq = this._deliverJobSeq || 0;
+        const _qBtn = (label, dv, title) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.dataset.dv = dv;
+            b.textContent = label;
+            b.title = title;
+            b.style.cssText = 'background:#1a1e24; color:#cfd8e3; border:1px solid #2f3846; font-size:10px; font-weight:800; letter-spacing:0.08em; border-radius:3px; padding:8px 14px; cursor:pointer;';
+            return b;
+        };
+        const dvQueueAdd = _qBtn('＋ ADD TO QUEUE', 'queue-add', 'Queue these settings and the current grade as a job; change them and add another');
+        const dvQueueStart = _qBtn('▶ START QUEUE', 'queue-start', 'Render the queued jobs one after another');
+        const dvQueueStop = _qBtn('■ STOP AFTER THIS JOB', 'queue-stop', 'Finish the job that is rendering, then stop; the rest stay queued');
+        dvQueueStop.style.display = 'none';
+        dvSubmitRow.append(dvQueueAdd, dvQueueStart, dvQueueStop);
 
         // Progress Tracking UI
         const dvProgressContainer = document.createElement('div');
@@ -5313,6 +5333,19 @@ class RadianceViewer {
             dvStatus.appendChild(line);
             dvStatus.style.display = 'flex';
         };
+
+        const dvQueueTitle = document.createElement('div');
+        dvQueueTitle.textContent = '◎ RENDER QUEUE (0)';
+        dvQueueTitle.style.cssText = `font-size: 9px; font-weight: 800; color: #444; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #1a1e24; padding-bottom: 3px;`;
+        dvContainer.appendChild(dvQueueTitle);
+        const dvQueueEmpty = document.createElement('div');
+        dvQueueEmpty.textContent = 'No jobs. Set up a render and press Add to Queue; repeat for each version.';
+        dvQueueEmpty.style.cssText = 'font-size:10px; color:#555;';
+        dvContainer.appendChild(dvQueueEmpty);
+        const dvQueueList = document.createElement('div');
+        dvQueueList.dataset.dv = 'queue';
+        dvQueueList.style.cssText = `display: flex; flex-direction: column; gap: 5px; max-height: 180px; overflow-y: auto;`;
+        dvContainer.appendChild(dvQueueList);
 
         // Render History UI
         const dvHistoryTitle = document.createElement('div');
@@ -5361,25 +5394,121 @@ class RadianceViewer {
         dvContainer.appendChild(dvSubmitRow);
 
         // VFX Delivery Logic (Phase 5)
-        dvRenderBtn.onclick = async () => {
-            const nodeId = this.node.id;
-            if (!nodeId) {
-                this._showToast("Viewer is not initialized yet. Queue a prompt first.", "error");
-                return;
+        // What one render sends: the grade and the settings as they are now.
+        // A queued job keeps this snapshot, so changing the grade or the
+        // settings afterwards changes the next job, not the ones queued.
+        const buildPayload = () => ({
+            instance_id: this.instanceId || this.node.id,
+            grading: {
+                exposure: this.exposure,
+                // Full per-channel arrays — NOT [0] only. Avoids silently
+                // dropping teal/orange and other per-channel grade decisions.
+                gamma: Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma || 1.0, this.gamma || 1.0, this.gamma || 1.0],
+                gain: Array.isArray(this.gain) ? [...this.gain] : [this.gain || 1.0, this.gain || 1.0, this.gain || 1.0],
+                lift: Array.isArray(this.lift) ? [...this.lift] : [this.lift || 0.0, this.lift || 0.0, this.lift || 0.0],
+                offset: Array.isArray(this.offset) ? [...this.offset] : [this.offset || 0.0, this.offset || 0.0, this.offset || 0.0],
+                contrast: this.contrast ?? 1.0,
+                pivot: this.pivot ?? _PIVOT_DEFAULT,
+                saturation: this.saturation,
+                temperature: this.temperature,
+                tint: this.tint,
+                colorScience: this.colorScience || 0,
+                lumaMix: this.lumaMix !== undefined ? this.lumaMix : 1.0,
+                // These six were read by delivery/handler.py and never
+                // sent, so every one of them exported at its identity
+                // default while the viewer showed the graded result.
+                // See GRADE_PAYLOAD_KEYS in delivery/handler.py —
+                // tests/test_delivery_contract.py now diffs the two.
+                shadows: this.shadows || 0.0,
+                highlights: this.highlights || 0.0,
+                hue_shift: this.hueShift || 0.0,
+                // The rest of the grade the shader applies, so the
+                // master matches the screen (color/grading.py
+                // viewer_grade_kwargs reads these).
+                colorBoost: this.colorBoost ?? 0.0,
+                logShadow: Array.isArray(this.logShadow) ? [...this.logShadow] : [0, 0, 0],
+                logMidtone: Array.isArray(this.logMidtone) ? [...this.logMidtone] : [0, 0, 0],
+                logHighlight: Array.isArray(this.logHighlight) ? [...this.logHighlight] : [0, 0, 0],
+                printerR: this.printerR ?? 0,
+                printerG: this.printerG ?? 0,
+                printerB: this.printerB ?? 0,
+                curveTable: this._curveTable ? Array.from(this._curveTable) : null,
+                curveMix: this.curveMix ?? 1.0,
+                secondaryCurveTable: this._secondaryCurveTable ? Array.from(this._secondaryCurveTable) : null,
+                secondaryCurveMix: this._secondaryCurveTable && !_isIdentitySecondaryTable(this._secondaryCurveTable) ? 1.0 : 0.0,
+                sourceGamut: this.renderer?.sourceGamut ?? 0,
+                lut_name: this.displayLut || 'None',
+                lut_intensity: this.lutIntensity !== undefined ? this.lutIntensity : 1.0,
+                gamut_compression: !!this.gamutCompression,
+                // FX params — must match viewer for what-you-see = what-you-export
+                grain: this.grain || 0.0,
+                bloom: this.bloom || 0.0,
+                halation: this.halation || 0.0,
+                diffusion: this.diffusion || 0.0,
+                denoise: this.denoise || 0.0,
+            },
+            settings: {
+                filename: dvFilename.value,
+                path: dvPath.value,
+                format: dvFormat.value,
+                colorSpace: dvColorSpace.value,
+                aspect_ratio: dvAspect.value,
+                range_in: parseInt(dvRangeIn.value) || 1,
+                range_out: parseInt(dvRangeOut.value) || 0,
+                fps: dvFPS.value,
+                quality: dvQuality.value,
+                upscale_2x: dvUpscale.checked,
+                smart_versioning: dvSmartVer.checked,
+                export_cdl: dvExportCDL.checked,
+                export_amf: dvExportAMF.checked,
+                bake_grade: dvBakeGrade.checked,
+                reveal_folder: dvRevealTarget.checked,
+                include_slate: dvSlate.checked,
+                burn_in_tc: dvBurnTC.checked,
+                burn_in_ver: dvBurnVer.checked,
+                burn_in_frame: dvBurnFrame.checked,
+                burn_in_lut: dvBurnLUT.checked,
+                burn_custom_text: dvCustomText.value,
+                soft_clip: dvSoftClip.checked,
+                mastering_display: dvMastering.value
             }
+        });
+        // The viewer-side mattes a baked grade cannot carry, as they are now.
+        const unbakedAids = () => {
+            const _r = this.renderer, _aids = [];
+            if (_r?.maskType > 0) _aids.push('power window');
+            if (_r?.qualifierEnabled) _aids.push('qualifier');
+            return _aids;
+        };
+        const _renderLabel = '◎ RENDER NOW';
+        const setBusy = (busy, text = '◎ PROCESSING VFX RENDER...') => {
+            dvRenderBtn.disabled = busy;
+            dvRenderBtn.textContent = busy ? text : _renderLabel;
+            dvRenderBtn.style.opacity = busy ? '0.5' : '1';
+            syncQueueButtons();
+        };
+        // Start needs a queued job and nothing rendering; Stop shows while the queue runs.
+        const syncQueueButtons = () => {
+            dvQueueStart.disabled = dvRenderBtn.disabled || !this._deliverQueue.some((j) => j.status === 'queued');
+            dvQueueStart.style.opacity = dvQueueStart.disabled ? '0.5' : '1';
+            dvQueueStop.style.display = this._deliverQueueRunning ? '' : 'none';
+        };
 
-            dvRenderBtn.disabled = true;
-            dvStatus.replaceChildren();
+        /**
+         * Render one job through /radiance/deliver, with progress, the status
+         * lines and a history entry. Returns 'success', 'partial' or 'failed'.
+         */
+        const runJob = async (job) => {
+            const { payload, name } = job;
+            if (!this._deliverQueueRunning) dvStatus.replaceChildren();   // a queue keeps every job's lines
             dvProgressBar.style.background = '#00a8ff';
-            dvRenderBtn.textContent = '◎ PROCESSING VFX RENDER...';
-            dvRenderBtn.style.opacity = '0.5';
             dvProgressContainer.style.display = 'flex';
             dvProgressBar.style.width = '0%';
             dvProgressLabel.textContent = 'Initializing Export Pipeline...';
 
             let progressInterval = setInterval(async () => {
                 try {
-                    const progRes = await fetch(`/radiance/progress?id=${this.instanceId || nodeId}`);
+                    const progRes = await fetch(`/radiance/progress?id=${payload.instance_id}`);
                     const prog = await progRes.json();
                     const percent = (prog.current / prog.total) * 100;
                     dvProgressBar.style.width = `${percent}%`;
@@ -5393,82 +5522,7 @@ class RadianceViewer {
             try {
                 const response = await api.fetchApi('/radiance/deliver', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        instance_id: this.instanceId || nodeId,
-                        grading: {
-                            exposure: this.exposure,
-                            // Full per-channel arrays — NOT [0] only. Avoids silently
-                            // dropping teal/orange and other per-channel grade decisions.
-                            gamma: Array.isArray(this.gamma) ? [...this.gamma] : [this.gamma || 1.0, this.gamma || 1.0, this.gamma || 1.0],
-                            gain: Array.isArray(this.gain) ? [...this.gain] : [this.gain || 1.0, this.gain || 1.0, this.gain || 1.0],
-                            lift: Array.isArray(this.lift) ? [...this.lift] : [this.lift || 0.0, this.lift || 0.0, this.lift || 0.0],
-                            offset: Array.isArray(this.offset) ? [...this.offset] : [this.offset || 0.0, this.offset || 0.0, this.offset || 0.0],
-                            contrast: this.contrast ?? 1.0,
-                            pivot: this.pivot ?? _PIVOT_DEFAULT,
-                            saturation: this.saturation,
-                            temperature: this.temperature,
-                            tint: this.tint,
-                            colorScience: this.colorScience || 0,
-                            lumaMix: this.lumaMix !== undefined ? this.lumaMix : 1.0,
-                            // These six were read by delivery/handler.py and never
-                            // sent, so every one of them exported at its identity
-                            // default while the viewer showed the graded result.
-                            // See GRADE_PAYLOAD_KEYS in delivery/handler.py —
-                            // tests/test_delivery_contract.py now diffs the two.
-                            shadows: this.shadows || 0.0,
-                            highlights: this.highlights || 0.0,
-                            hue_shift: this.hueShift || 0.0,
-                            // The rest of the grade the shader applies, so the
-                            // master matches the screen (color/grading.py
-                            // viewer_grade_kwargs reads these).
-                            colorBoost: this.colorBoost ?? 0.0,
-                            logShadow: Array.isArray(this.logShadow) ? [...this.logShadow] : [0, 0, 0],
-                            logMidtone: Array.isArray(this.logMidtone) ? [...this.logMidtone] : [0, 0, 0],
-                            logHighlight: Array.isArray(this.logHighlight) ? [...this.logHighlight] : [0, 0, 0],
-                            printerR: this.printerR ?? 0,
-                            printerG: this.printerG ?? 0,
-                            printerB: this.printerB ?? 0,
-                            curveTable: this._curveTable ? Array.from(this._curveTable) : null,
-                            curveMix: this.curveMix ?? 1.0,
-                            secondaryCurveTable: this._secondaryCurveTable ? Array.from(this._secondaryCurveTable) : null,
-                            secondaryCurveMix: this._secondaryCurveTable && !_isIdentitySecondaryTable(this._secondaryCurveTable) ? 1.0 : 0.0,
-                            sourceGamut: this.renderer?.sourceGamut ?? 0,
-                            lut_name: this.displayLut || 'None',
-                            lut_intensity: this.lutIntensity !== undefined ? this.lutIntensity : 1.0,
-                            gamut_compression: !!this.gamutCompression,
-                            // FX params — must match viewer for what-you-see = what-you-export
-                            grain: this.grain || 0.0,
-                            bloom: this.bloom || 0.0,
-                            halation: this.halation || 0.0,
-                            diffusion: this.diffusion || 0.0,
-                            denoise: this.denoise || 0.0,
-                        },
-                        settings: {
-                            filename: dvFilename.value,
-                            path: dvPath.value,
-                            format: dvFormat.value,
-                            colorSpace: dvColorSpace.value,
-                            aspect_ratio: dvAspect.value,
-                            range_in: parseInt(dvRangeIn.value) || 1,
-                            range_out: parseInt(dvRangeOut.value) || 0,
-                            fps: dvFPS.value,
-                            quality: dvQuality.value,
-                            upscale_2x: dvUpscale.checked,
-                            smart_versioning: dvSmartVer.checked,
-                            export_cdl: dvExportCDL.checked,
-                            export_amf: dvExportAMF.checked,
-                            bake_grade: dvBakeGrade.checked,
-                            reveal_folder: dvRevealTarget.checked,
-                            include_slate: dvSlate.checked,
-                            burn_in_tc: dvBurnTC.checked,
-                            burn_in_ver: dvBurnVer.checked,
-                            burn_in_frame: dvBurnFrame.checked,
-                            burn_in_lut: dvBurnLUT.checked,
-                            burn_custom_text: dvCustomText.value,
-                            soft_clip: dvSoftClip.checked,
-                            mastering_display: dvMastering.value
-                        }
-                    })
+                    body: JSON.stringify(payload),
                 });
 
                 const result = await response.json();
@@ -5482,12 +5536,8 @@ class RadianceViewer {
                 // The baked grade is whole-frame. A power window or qualifier is
                 // a viewer-side matte the payload does not carry, so the master
                 // can differ from what the viewer shows. Say so.
-                if (dvBakeGrade.checked) {
-                    const _r = this.renderer;
-                    const _aids = [];
-                    if (_r?.maskType > 0) _aids.push('power window');
-                    if (_r?.qualifierEnabled) _aids.push('qualifier');
-                    if (_aids.length) _dvWarnings.push(`Not baked: ${_aids.join(' and ')} (the master carries the whole-frame grade only).`);
+                if (payload.settings.bake_grade && job.aids?.length) {
+                    _dvWarnings.push(`Not baked: ${job.aids.join(' and ')} (the master carries the whole-frame grade only).`);
                 }
                 if (result.status === 'success' || result.status === 'partial') {
                     const _dvPartial = result.status === 'partial' || _dvWarnings.length > 0;
@@ -5504,33 +5554,149 @@ class RadianceViewer {
                         log('system', `<span style="color: ${qcColor}">${result.qc}</span>`);
                     }
                     log('system', ` Saved to: ${result.path}`);
+                    job.path = result.path;
 
-                    addHistoryItem(result.path, dvFilename.value, result.qc || 'QC N/A');
+                    addHistoryItem(result.path, name, result.qc || 'QC N/A');
 
                     setTimeout(() => {
-                        dvProgressContainer.style.display = 'none';
+                        if (!this._deliverQueueRunning) dvProgressContainer.style.display = 'none';
                     }, 3000);
-
-                    onFinished?.();
-                } else {
-                    log('error', `[DELIVERY FAILED] ${result.error || result.message || 'no reason given'}`);
-                    dvProgressLabel.textContent = '◎ EXPORT FAILED';
-                    this._showToast?.(`Delivery failed: ${result.error || result.message || 'no reason given'}`, 'error');
-                    dvProgressBar.style.background = '#ff4444';
-                    onFinished?.();
+                    return _dvPartial ? 'partial' : 'success';
                 }
+                job.error = result.error || result.message || 'no reason given';
+                log('error', `[DELIVERY FAILED] ${job.error}`);
+                dvProgressLabel.textContent = '◎ EXPORT FAILED';
+                this._showToast?.(`Delivery failed: ${job.error}`, 'error');
+                dvProgressBar.style.background = '#ff4444';
+                return 'failed';
             } catch (e) {
                 clearInterval(progressInterval);
+                job.error = e.message;
                 log('error', `[API ERROR] ${e.message}`);
                 dvProgressLabel.textContent = '◎ EXPORT FAILED';
                 this._showToast?.(`Delivery failed: ${e.message}`, 'error');
-                onFinished?.();
-            } finally {
-                dvRenderBtn.disabled = false;
-                dvRenderBtn.textContent = '◎ ADD TO RENDER QUEUE & START EXPORT';
-                dvRenderBtn.style.opacity = '1';
+                return 'failed';
             }
         };
+
+        const newJob = () => ({
+            id: ++this._deliverJobSeq, name: dvFilename.value, payload: buildPayload(), aids: unbakedAids(), status: 'queued',
+        });
+
+        dvRenderBtn.onclick = async () => {
+            if (!this.node.id) {
+                this._showToast("Viewer is not initialized yet. Queue a prompt first.", "error");
+                return;
+            }
+            setBusy(true);
+            try {
+                await runJob(newJob());
+            } finally {
+                setBusy(false);
+            }
+            onFinished?.();
+        };
+
+        // ── Render queue: snapshots of settings + grade, rendered one by one ──
+        const STATUS_TEXT = { queued: 'Queued', rendering: 'Rendering…', success: 'Done', partial: 'Done with warnings', failed: 'Failed', skipped: 'Stopped' };
+        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#00a8ff', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
+        const renderQueue = () => {
+            dvQueueList.replaceChildren();
+            const jobs = this._deliverQueue;
+            dvQueueTitle.textContent = `◎ RENDER QUEUE (${jobs.length})`;
+            dvQueueEmpty.style.display = jobs.length ? 'none' : '';
+            for (const job of jobs) {
+                const row = document.createElement('div');
+                row.dataset.dvJob = String(job.id);
+                row.dataset.status = job.status;
+                row.style.cssText = 'display:flex; align-items:center; gap:8px; background:#111; border:1px solid #222; padding:5px 8px; border-radius:4px; font-size:10px;';
+                const info = document.createElement('div');
+                info.style.cssText = 'flex:1; min-width:0;';
+                const title = document.createElement('div');
+                title.style.cssText = 'color:#eee; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                title.textContent = job.name || '(no name)';
+                const sub = document.createElement('div');
+                sub.style.cssText = 'color:#666; font-size:9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+                const st = job.payload.settings;
+                sub.textContent = [st.format, st.colorSpace, st.colorSpace.startsWith('PQ') && st.format.includes('H.265') ? st.mastering_display : null,
+                    job.path || job.error || null].filter(Boolean).join(' · ');
+                info.append(title, sub);
+                const status = document.createElement('span');
+                status.className = 'dv-job-status';
+                status.style.cssText = `color:${STATUS_COLOR[job.status] || '#999'}; font-weight:700; font-size:9px; text-transform:uppercase; white-space:nowrap;`;
+                status.textContent = STATUS_TEXT[job.status] || job.status;
+                row.append(info, status);
+                if (job.status !== 'rendering') {
+                    const rm = document.createElement('button');
+                    rm.type = 'button';
+                    rm.dataset.dv = 'job-remove';
+                    rm.textContent = '✕';
+                    rm.title = job.status === 'queued' ? 'Remove from the queue' : 'Clear from the list';
+                    rm.style.cssText = 'background:transparent; border:none; color:#777; cursor:pointer; font-size:11px;';
+                    rm.onclick = () => {
+                        this._deliverQueue = this._deliverQueue.filter((j) => j !== job);
+                        renderQueue();
+                        syncQueueButtons();
+                    };
+                    row.appendChild(rm);
+                }
+                dvQueueList.appendChild(row);
+            }
+            const queued = jobs.filter((j) => j.status === 'queued').length;
+            dvQueueStart.textContent = queued ? `▶ START QUEUE (${queued})` : '▶ START QUEUE';
+        };
+
+        dvQueueAdd.onclick = () => {
+            this._deliverQueue.push(newJob());
+            renderQueue();
+            syncQueueButtons();
+            log('system', `[QUEUE] Added ${dvFilename.value || '(no name)'} (${this._deliverQueue.filter((j) => j.status === 'queued').length} queued).`);
+        };
+
+        dvQueueStop.onclick = () => {
+            this._deliverQueueStop = true;
+            dvQueueStop.textContent = '■ STOPPING AFTER THIS JOB';
+        };
+
+        dvQueueStart.onclick = async () => {
+            if (this._deliverQueueRunning) return;
+            if (!this.node.id) {
+                this._showToast("Viewer is not initialized yet. Queue a prompt first.", "error");
+                return;
+            }
+            this._deliverQueueRunning = true;
+            this._deliverQueueStop = false;
+            dvStatus.replaceChildren();
+            dvQueueStop.textContent = '■ STOP AFTER THIS JOB';
+            const counts = { success: 0, partial: 0, failed: 0 };
+            try {
+                for (;;) {
+                    const job = this._deliverQueue.find((j) => j.status === 'queued');
+                    if (!job) break;
+                    if (this._deliverQueueStop) break;
+                    const index = this._deliverQueue.filter((j) => j.status !== 'queued').length + 1;
+                    job.status = 'rendering';
+                    renderQueue();
+                    log('system', `[QUEUE] ${index}/${this._deliverQueue.length}: ${job.name || '(no name)'}`);
+                    setBusy(true, `◎ RENDERING QUEUE ${index}/${this._deliverQueue.length}...`);
+                    job.status = await runJob(job);
+                    counts[job.status] = (counts[job.status] || 0) + 1;
+                    renderQueue();
+                }
+            } finally {
+                this._deliverQueueRunning = false;
+                const left = this._deliverQueue.filter((j) => j.status === 'queued').length;
+                log(counts.failed ? 'warn' : 'success', `[QUEUE] ${counts.success + counts.partial} rendered`
+                    + `${counts.partial ? ` (${counts.partial} with warnings)` : ''}, ${counts.failed} failed`
+                    + `${left ? `, ${left} still queued (stopped)` : ''}.`);
+                renderQueue();
+                setBusy(false);
+            }
+            onFinished?.();
+        };
+
+        renderQueue();
+        setBusy(false);
 
         return dvContainer;
     }
