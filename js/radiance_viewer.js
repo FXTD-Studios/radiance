@@ -22,6 +22,11 @@ import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometr
 import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV, uvToCanvas as _uvToCanvas } from "./radiance_review.js";
 import { buildReviewReport as _buildReviewReport, reportToMarkdown as _reportToMarkdown } from "./radiance_review_report.js";
 import { analyzeSequence as _analyzeSequence, buildReport as _buildQCReport } from "./radiance_qc.js";
+import {
+    boxFromCorners as _layoutBox, parseStoredBoxes as _parseLayoutBoxes, serializeBoxes as _serializeLayoutBoxes,
+    layoutJSON as _layoutJSON, boxesFromLayout as _boxesFromLayout, undescribed as _layoutUndescribed,
+    LAYOUT_LIMITS as _LAYOUT_LIMITS,
+} from "./radiance_layout.js";
 import { webgpuGapSentence as _webgpuGapSentence } from "./radiance_backend_gaps.js";
 import { differenceSpec as _differenceSpec, DIFF_GAINS as _DIFF_GAINS, onionLayers as _onionLayers, normalizeOnion as _normalizeOnion } from "./radiance_onion.js";
 // One table for the keys, the help overlay, the menus and the tooltips (M4).
@@ -8629,6 +8634,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'review.nextBookmark': this.stepBookmark(1); break;
             case 'review.note': this.openNoteEditor(); break;
             case 'review.runQC': this.runQC(); break;
+            case 'tools.layoutBoxes': this.setLayoutMode(!this._layoutMode); break;
             // Edit
             case 'edit.undo': this.undo?.(); break;
             case 'edit.redo': this.redo?.(); break;
@@ -9956,6 +9962,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Strokes are stored per frame in image UV, so they follow zoom, pan and frame changes.
         const _live = (this._isAnnotating && this._annotationCurrentLine) ? [this._annotationCurrentLine] : [];
         this._renderAnnotationLines(ctx, this._reviewStrokesForView(_live));
+        if (this._layoutMode) this._drawLayoutBoxes(ctx);
         this._drawReviewNotes(ctx);
         this._syncReviewUI();
     }
@@ -10303,6 +10310,230 @@ self.onmessage = async ({ data: { id, url } }) => {
             const d = this._normalPick.getImageData(0, 0, 1, 1).data;
             return [d[0], d[1], d[2]].map((c) => (c / 255) * 2 - 1);
         } catch { return null; }
+    }
+
+    // ── FLUX 3 layout boxes (Tools > FLUX 3 Layout Boxes) ────────────────
+    //
+    // Boxes are drawn on the picture, kept in UV on the node
+    // (radiance_viewer_layout), and sent to a Cinematic Prompt Encoder's
+    // layout input as the table FLUX 3 Image reads (radiance_layout.js). The
+    // Viewer is downstream of the Prompt, so this writes the widget instead of
+    // feeding an output back up the graph, which would be a cycle.
+
+    _installLayoutTool() {
+        this._layoutBoxes = _parseLayoutBoxes(this.node?.properties?.radiance_viewer_layout);
+        this._layoutMode = false;
+        this._layoutDraft = null;
+        const toUV = (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const mx = (e.clientX - rect.left) * (this._canvasScaleX || 1);
+            const my = (e.clientY - rect.top) * (this._canvasScaleY || 1);
+            return _canvasToUV(mx, my, this._reviewView());
+        };
+        this.canvas.addEventListener('mousedown', (e) => {
+            if (!this._layoutMode || e.button !== 0 || e.altKey) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const uv = toUV(e);
+            if (uv) this._layoutDraft = { a: uv, b: uv };
+        }, { capture: true, signal: this._listenerSignal });
+        document.addEventListener('mousemove', (e) => {
+            if (!this._layoutDraft) return;
+            const uv = toUV(e);
+            if (uv) { this._layoutDraft.b = uv; this.renderOverlay(); }
+        }, { signal: this._listenerSignal });
+        document.addEventListener('mouseup', () => {
+            const d = this._layoutDraft;
+            if (!d) return;
+            this._layoutDraft = null;
+            const box = _layoutBox(d.a, d.b);
+            if (box && this._layoutBoxes.length < _LAYOUT_LIMITS.maxBoxes) {
+                this._layoutBoxes.push(box);
+                this._layoutChanged({ focus: this._layoutBoxes.length - 1 });
+            } else if (box) {
+                this._termLog?.('warn', `[Layout] ${_LAYOUT_LIMITS.maxBoxes} boxes at most.`);
+            }
+            this.renderOverlay();
+        }, { signal: this._listenerSignal });
+    }
+
+    /** Layout mode on or off: drag on the picture draws a box, the panel lists them. */
+    setLayoutMode(on) {
+        this._layoutMode = !!on;
+        this._layoutDraft = null;
+        if (this.canvas) this.canvas.style.cursor = this._layoutMode ? 'crosshair' : '';
+        if (this._layoutMode) this._buildLayoutPanel();
+        else { this._layoutPanel?.remove(); this._layoutPanel = null; }
+        this.renderOverlay();
+    }
+
+    _layoutChanged({ focus = null } = {}) {
+        if (this.node?.properties) this.node.properties.radiance_viewer_layout = _serializeLayoutBoxes(this._layoutBoxes);
+        if (this._layoutMode) this._buildLayoutPanel(focus);
+    }
+
+    /** Cinematic Prompt Encoders in the graph that take a layout. */
+    _layoutTargets() {
+        const nodes = this.node?.graph?._nodes || app.graph?._nodes || [];
+        return nodes.filter((n) => (n.type === 'RadianceCinematicPromptEncoder' || n.comfyClass === 'RadianceCinematicPromptEncoder')
+            && n.widgets?.some((w) => w.name === 'layout'));
+    }
+
+    /** Write the boxes to a Prompt's layout input. Returns the table written, or null. */
+    sendLayoutToPrompt(target = null) {
+        const targets = this._layoutTargets();
+        const node = target || targets.find((n) => String(n.id) === String(this._layoutTargetId)) || targets[0];
+        if (!node) {
+            this._showToast?.('No Cinematic Prompt Encoder in the graph: add one to receive the layout.', 'error');
+            return null;
+        }
+        const w = node.widgets.find((x) => x.name === 'layout');
+        const json = _layoutJSON(this._layoutBoxes);
+        w.value = json;
+        w.callback?.(json);
+        node.setDirtyCanvas?.(true, true);
+        const empty = _layoutUndescribed(this._layoutBoxes);
+        this._termLog?.(empty.length ? 'warn' : 'success',
+            `[Layout] ${this._layoutBoxes.length} box(es) sent to "${node.title || 'Prompt'}" (#${node.id}). Cite them as <obj_1>...`
+            + (empty.length ? ` No description: ${empty.join(', ')}.` : ''));
+        this._showToast?.(json ? `Layout sent: ${this._layoutBoxes.length} box(es).` : 'Layout cleared on the Prompt.', 'info');
+        return json;
+    }
+
+    _buildLayoutPanel(focus = null) {
+        const host = this.canvasWrapper || this.container;
+        if (!host) return;
+        this._layoutPanel?.remove();
+        const panel = document.createElement('div');
+        panel.className = 'radiance-layout-panel';
+        panel.style.cssText = 'position:absolute; top:8px; right:8px; z-index:30; width:260px; max-height:70%; overflow:auto;'
+            + 'background:rgba(11,14,20,.94); border:1px solid #2a3140; border-radius:6px; padding:8px; font-size:11px; color:#d6dde6;';
+        const stop = (e) => e.stopPropagation();
+        ['keydown', 'keyup', 'mousedown', 'wheel'].forEach((t) => panel.addEventListener(t, stop));
+        const title = document.createElement('div');
+        title.style.cssText = 'font-weight:700; margin-bottom:4px;';
+        title.textContent = 'FLUX 3 layout';
+        const hint = document.createElement('div');
+        hint.style.cssText = 'opacity:.7; margin-bottom:6px; line-height:1.35;';
+        hint.textContent = 'Drag on the picture to draw a box, background first. Describe each one and cite it in the prompt as <obj_N>.';
+        panel.append(title, hint);
+        const list = document.createElement('div');
+        list.className = 'radiance-layout-list';
+        list.style.cssText = 'display:flex; flex-direction:column; gap:4px;';
+        let toFocus = null;
+        this._layoutBoxes.forEach((box, i) => {
+            const row = document.createElement('div');
+            row.className = 'radiance-layout-row';
+            row.style.cssText = 'display:flex; gap:4px; align-items:center;';
+            const id = document.createElement('span');
+            id.textContent = `obj_${i + 1}`;
+            id.style.cssText = `min-width:42px; font-weight:700; color:${this._layoutColor(i)};`;
+            const desc = document.createElement('input');
+            desc.type = 'text';
+            desc.value = box.desc;
+            desc.placeholder = 'What is in this box';
+            desc.maxLength = _LAYOUT_LIMITS.maxDesc;
+            desc.style.cssText = 'flex:1; min-width:0; background:#1a1e24; color:#ddd; border:1px solid #333; border-radius:3px; padding:2px 4px; font-size:11px;';
+            desc.addEventListener('input', () => {
+                box.desc = desc.value;
+                if (this.node?.properties) this.node.properties.radiance_viewer_layout = _serializeLayoutBoxes(this._layoutBoxes);
+                this.renderOverlay();
+            });
+            const rm = document.createElement('button');
+            rm.type = 'button';
+            rm.textContent = '✕';
+            rm.title = `Delete obj_${i + 1}`;
+            rm.style.cssText = 'background:transparent; border:none; color:#888; cursor:pointer;';
+            rm.onclick = () => { this._layoutBoxes.splice(i, 1); this._layoutChanged(); this.renderOverlay(); };
+            row.append(id, desc, rm);
+            list.appendChild(row);
+            if (i === focus) toFocus = desc;
+        });
+        if (!this._layoutBoxes.length) {
+            const none = document.createElement('div');
+            none.style.cssText = 'opacity:.55;';
+            none.textContent = 'No boxes yet.';
+            list.appendChild(none);
+        }
+        panel.appendChild(list);
+
+        const targets = this._layoutTargets();
+        if (targets.length > 1) {
+            const sel = document.createElement('select');
+            sel.className = 'radiance-layout-target';
+            sel.style.cssText = 'width:100%; margin-top:6px; background:#1a1e24; color:#ddd; border:1px solid #333; font-size:11px;';
+            targets.forEach((n) => {
+                const o = document.createElement('option');
+                o.value = String(n.id); o.textContent = `${n.title || 'Prompt'} (#${n.id})`;
+                sel.appendChild(o);
+            });
+            if (this._layoutTargetId != null) sel.value = String(this._layoutTargetId);
+            this._layoutTargetId = sel.value;
+            sel.onchange = () => { this._layoutTargetId = sel.value; };
+            panel.appendChild(sel);
+        }
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;';
+        const btn = (label, cls, title, fn, disabled = false) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = cls; b.textContent = label; b.title = title; b.disabled = disabled;
+            b.style.cssText = 'flex:1; background:#1a1e24; color:#cfd8e3; border:1px solid #2f3846; border-radius:3px; padding:4px 6px; cursor:pointer; font-size:10px; font-weight:700;';
+            b.onclick = fn;
+            return b;
+        };
+        actions.append(
+            btn('Send to Prompt', 'radiance-layout-send', targets.length
+                ? 'Write these boxes to the Prompt\'s layout input (FLUX 3 Image Klein)'
+                : 'Add a Cinematic Prompt Encoder to the graph first', () => this.sendLayoutToPrompt(), !targets.length),
+            btn('Load', 'radiance-layout-load', 'Load the boxes the Prompt\'s layout input holds', () => {
+                const node = targets.find((n) => String(n.id) === String(this._layoutTargetId)) || targets[0];
+                const value = node?.widgets.find((w) => w.name === 'layout')?.value || '';
+                this._layoutBoxes = _boxesFromLayout(value);
+                this._layoutChanged();
+                this.renderOverlay();
+            }, !targets.length),
+            btn('Clear', 'radiance-layout-clear', 'Delete every box', () => { this._layoutBoxes = []; this._layoutChanged(); this.renderOverlay(); }),
+            btn('Done', 'radiance-layout-done', 'Leave layout mode (the boxes are kept)', () => this.setLayoutMode(false)),
+        );
+        panel.appendChild(actions);
+        host.appendChild(panel);
+        this._layoutPanel = panel;
+        toFocus?.focus();
+    }
+
+    _layoutColor(i) {
+        return ['#ffd166', '#06d6a0', '#4cc9f0', '#f72585', '#b8f35d', '#ff9f1c', '#c77dff', '#f94144'][i % 8];
+    }
+
+    _drawLayoutBoxes(ctx) {
+        const view = this._reviewView();
+        const draw = (box, color, label) => {
+            const a = _uvToCanvas(box.x, box.y, view), b = _uvToCanvas(box.x + box.w, box.y + box.h, view);
+            if (!a || !b) return;
+            ctx.save();
+            ctx.strokeStyle = color; ctx.lineWidth = 2;
+            ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 3;
+            ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+            if (label) {
+                ctx.shadowBlur = 0;
+                ctx.font = '600 11px sans-serif';
+                const tw = ctx.measureText(label).width;
+                ctx.fillStyle = 'rgba(0,0,0,.65)';
+                ctx.fillRect(a.x, a.y, tw + 8, 16);
+                ctx.fillStyle = color;
+                ctx.fillText(label, a.x + 4, a.y + 12);
+            }
+            ctx.restore();
+        };
+        this._layoutBoxes.forEach((box, i) => {
+            const label = `obj_${i + 1}${box.desc ? ` ${box.desc}` : ''}`;
+            draw(box, this._layoutColor(i), label.length > 40 ? `${label.slice(0, 39)}…` : label);
+        });
+        const d = this._layoutDraft;
+        if (d) {
+            const x = Math.min(d.a.u, d.b.u), y = Math.min(d.a.v, d.b.v);
+            draw({ x, y, w: Math.abs(d.b.u - d.a.u), h: Math.abs(d.b.v - d.a.v) }, '#ffffff', null);
+        }
     }
 
     _reviewView() {
@@ -11010,6 +11241,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.renderOverlay(); // Re-draw to show new probe dot
             this._termLog?.('info', `[Probe] Stored ${this._probeMemory.length}/4: Disp ${this._lastProbe.dispStr}  |  Linear ${this._lastProbe.linStr}`);
         });
+
+        this._installLayoutTool();
 
         // Alt+drag annotation drawing (Sprint 4)
         this._review = _ReviewStore.parse(this.node?.properties?.radiance_viewer_review);
