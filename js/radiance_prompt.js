@@ -110,6 +110,25 @@ function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
     fitNodeSize(node);
 }
 
+// 4.0.0: the prompt upsampler's switch and seed show once an upsampler is
+// connected (upsampler_clip), and stay while the switch is on so it can be
+// turned off. The seed's "control after generate" widget follows it.
+function _applyUpsamplerVisibility(node) {
+    const input = node.inputs?.find(i => i.name === "upsampler_clip");
+    const onW = node.widgets?.find(w => w.name === "upsample_prompt");
+    if (!input || !onW) return;
+    const show = isInputLive(node, input) || onW.value === true;
+    const seedW = node.widgets.find(w => w.name === "upsampler_seed");
+    const targets = [[onW, "toggle"], [seedW, "number"], ...(seedW?.linkedWidgets || []).map(w => [w, "combo"])];
+    let changed = false;
+    for (const [w, type] of targets) {
+        if (!w || !w.hidden === show) continue;
+        setWidgetVisible(w, show, node, { fallbackType: type });
+        changed = true;
+    }
+    if (changed) fitNodeSize(node);
+}
+
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
@@ -145,6 +164,7 @@ function _refreshLiveState(node) {
     const source = modelMetaSourceNode(node);
     _applyResolutionVisibility(node, source);
     _applyReferenceLimit(node, source);
+    _applyUpsamplerVisibility(node);
     const liveState = _liveMiniMaxState(node, source);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;
