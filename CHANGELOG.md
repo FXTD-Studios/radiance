@@ -126,6 +126,31 @@ else is fixes. Read the upgrade notes before moving a production setup.
   hidden tab moves to the workspace that has it). A graph saved in Advanced
   opens in Color.
 
+### Added
+
+- **FLUX 3 Image Klein** (Black Forest Labs, 15 October 2026), base and
+  step-distilled. Needs a ComfyUI with FLUX 3 support (0.41.1, or a build from
+  15 October 2026 on); an older one stops with an update message rather than
+  loading the text encoder as the wrong one.
+  - **Loader:** presets "Flux.3 Klein" and "Flux.3 Klein (Low VRAM)" (int8 /
+    nvfp4 files only, CPU offload). Auto-Detect recognises the FLUX 3 DiT from
+    its keys. Files: the FLUX 3 transformer (`diffusion_models`), Qwen3-VL-4B
+    (`text_encoders`, loaded as CLIPType FLUX3) and the Flux.2 VAE. The
+    weights are gated on Hugging Face and are not downloaded by the Loader.
+  - **Sampler:** base runs 50 steps at cfg 3.5, distilled 16 steps at cfg 1,
+    euler / simple (the official templates and BFL's reference). Base and
+    distilled are told apart from the weights (the distilled model's flow-map
+    head), so this works without model_meta and with ComfyUI's own loaders.
+  - **Resolution:** model type "Flux.3 Klein (128ch)" (16x, its own VRAM figures).
+  - **Prompt:** up to 10 reference images for editing, encoded as ComfyUI's
+    Reference Multi Latent does (resolution 1024: about 1 MP; 0: native size
+    up to 16 MP); the output latent takes image_1's size. Cite them as
+    `<ref_image_0>`, `<ref_image_1>`... A layout table from "FLUX 3 Image
+    Layout Prompt" at the end of the prompt reaches the encoder unchanged.
+  - FLUX 3 (the larger multimodal model) has no downloadable weights yet.
+- The Flux.2 Loader presets and the Sampler's Flux.2 Klein file rule no longer
+  match FLUX 3 Klein files (both read "klein" in a file name).
+
 ### Removed
 
 - SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
