@@ -143,3 +143,20 @@ test('the upsampler switch and seed show only with an upsampler connected, or wh
     node.widgets[0].value = true; node.inputs[0].link = null; ctx.apply(node);
     assert.deepEqual(shown(), [true, true, true], 'a switch left on must stay reachable');
 });
+
+test('the layout input shows under a FLUX 3 Loader, or while it holds a table', () => {
+    let arch = 'flux2';
+    const ctx = vm.createContext({
+        app: { registerExtension() {} }, console: { log() {}, warn() {} }, LiteGraph: {},
+        api: { fetchApi: () => Promise.resolve({ ok: false }), addEventListener() {} },
+        isInputLive: () => false, setWidgetVisible: (w, visible) => { w.hidden = !visible; },
+        fitNodeSize() {}, loaderModelType: () => arch, modelMetaSourceNode: () => ({}),
+    });
+    vm.runInContext(strip('radiance_prompt.js') + '\nglobalThis.apply = _applyLayoutVisibility;', ctx);
+    const w = { name: 'layout', value: '', hidden: false };
+    const node = { widgets: [w] };
+    ctx.apply(node); assert.equal(w.hidden, true);
+    arch = 'flux3'; ctx.apply(node); assert.equal(w.hidden, false);
+    arch = 'qwen_image'; w.value = '[{"id":"obj_1","bbox":[0,0,500,500],"desc":"x"}]'; ctx.apply(node);
+    assert.equal(w.hidden, false, 'a table under another family must stay visible to be cleared');
+});

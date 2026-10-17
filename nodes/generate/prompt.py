@@ -2010,6 +2010,25 @@ def _split_flux3_layout(text):
     return text, ""
 
 
+def _check_flux3_layout(text):
+    """The layout input as the encoder appends it: one JSON line, rows checked."""
+    try:
+        rows = json.loads(text)
+    except ValueError as exc:
+        raise ValueError(f"Prompt: the layout input is not JSON ({exc}). Send the boxes from the "
+                         "Viewer again, or clear it.") from None
+    if not isinstance(rows, list):
+        raise ValueError("Prompt: the layout input must be a JSON list of boxes.")
+    for i, row in enumerate(rows, 1):
+        bbox = row.get("bbox") if isinstance(row, dict) else None
+        if (not isinstance(bbox, list) or len(bbox) != 4
+                or not all(isinstance(v, (int, float)) and 0 <= v <= 1000 for v in bbox)
+                or bbox[0] > bbox[2] or bbox[1] > bbox[3]):
+            raise ValueError(f"Prompt: layout box {i} needs a bbox of [ymin, xmin, ymax, xmax] "
+                             "on the 0-1000 grid.")
+    return json.dumps(rows, ensure_ascii=False) if rows else ""
+
+
 def _with_reference_latents(cond, latents):
     for latent in latents:
         cond = nodes_edit_model.ReferenceLatent.execute(cond, {"samples": latent}).args[0]
@@ -2165,6 +2184,17 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                     tooltip="Seed of the upsampler's sampling: the same seed and prompt give "
                             "the same rewrite.",
                 ),
+                # 4.0.0: FLUX 3 layout boxes, written by the Viewer's Tools > FLUX 3
+                # Layout Boxes (Send to Prompt) or typed by hand.
+                io.String.Input(
+                    "layout", multiline=True, default="", optional=True,
+                    placeholder="FLUX 3 layout boxes (the Viewer's Send to Prompt)",
+                    tooltip="FLUX 3 Image Klein: the layout table, a JSON list of "
+                            '{"id": "obj_1", "bbox": [ymin, xmin, ymax, xmax], "desc": "..."} '
+                            "with bbox on a 0-1000 grid, as ComfyUI's FLUX 3 Image Layout Prompt "
+                            "writes it. Draw the boxes in the Viewer (Tools > FLUX 3 Layout Boxes) "
+                            "and cite them in the prompt as <obj_1>, <obj_2>...",
+                ),
             ],
             outputs=[
                 io.Conditioning.Output(display_name="positive",
@@ -2209,6 +2239,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         upsampler_clip=None,
         upsample_prompt=False,
         upsampler_seed=0,
+        layout="",
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2249,6 +2280,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         flux3_layout = ""
         if resolved_arch == "flux3":
             base_prompt, flux3_layout = _split_flux3_layout(base_prompt)
+        if layout and layout.strip():
+            if resolved_arch != "flux3":
+                raise ValueError(
+                    f"Prompt: the layout boxes are read by FLUX 3 Image Klein only, and the text "
+                    f"encoder resolves to '{resolved_arch}'. Clear the layout input.")
+            if flux3_layout:
+                raise ValueError("Prompt: a layout table is both at the end of base_prompt and in "
+                                 "the layout input. Keep one.")
+            flux3_layout = _check_flux3_layout(layout)
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {

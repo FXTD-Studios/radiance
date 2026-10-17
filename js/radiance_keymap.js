@@ -106,6 +106,7 @@ export const KEYMAP = Object.freeze([
     { id: 'review.nextBookmark', keys: [{ code: 'Period' }], label: 'Next Bookmark', section: 'Timeline', menu: 'Tools', group: 'review' },
     { id: 'review.note', keys: [{ code: 'KeyT' }], label: 'Note on This Frame', help: 'Write a note on this frame', section: 'Timeline', menu: 'Tools', group: 'review' },
     { id: 'review.runQC', keys: [], label: 'Run QC on the Sequence', menu: 'Tools', group: 'review' },
+    { id: 'tools.layoutBoxes', keys: [], label: 'FLUX 3 Layout Boxes', menu: 'Tools', group: 'layout' },
 
     // ── Playback ──
     { id: 'play.toggle', keys: [{ code: 'Space' }], label: 'Play / pause', section: 'Playback' },

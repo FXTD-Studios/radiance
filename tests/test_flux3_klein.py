@@ -304,3 +304,44 @@ class TestPrompt:
         assert text.endswith(" " + table)
         assert clip.texts[0] == text
         assert prompt._split_flux3_layout("no table [here]") == ("no table [here]", "")
+
+
+class TestLayoutInput:
+    """The layout input the Viewer's FLUX 3 Layout Boxes writes (4.0.0)."""
+
+    ROWS = [{"id": "obj_1", "bbox": [0, 0, 400, 1000], "desc": "a stormy sky"},
+            {"id": "obj_2", "bbox": [450, 300, 980, 700], "desc": "a lighthouse"}]
+
+    def test_the_table_is_appended_after_the_prompt(self):
+        clip = _Clip()
+        _pos, _neg, text, *_ = _encode(clip, base_prompt="<obj_2> under <obj_1>",
+                                       layout=json.dumps(self.ROWS, indent=2))
+        assert text.endswith(" " + json.dumps(self.ROWS, ensure_ascii=False))
+        assert clip.texts[0] == text
+
+    def test_empty_or_blank_changes_nothing(self):
+        a = _encode(base_prompt="a red fox")[2]
+        assert _encode(base_prompt="a red fox", layout="  ")[2] == a
+        assert _encode(base_prompt="a red fox", layout="[]")[2] == a
+
+    def test_only_flux3_reads_it(self, monkeypatch):
+        from radiance.nodes.generate import prompt
+        monkeypatch.setattr(prompt, "_detect_arch_from_clip", lambda *a, **k: "flux2-klein")
+        with pytest.raises(ValueError, match="FLUX 3 Image Klein only"):
+            _encode(base_prompt="a red fox", layout=json.dumps(self.ROWS))
+
+    def test_two_tables_are_refused(self):
+        table = json.dumps(self.ROWS[:1])
+        with pytest.raises(ValueError, match="Keep one"):
+            _encode(base_prompt=f"a sky {table}", layout=json.dumps(self.ROWS))
+
+    @pytest.mark.parametrize("bad, match", [
+        ("{not json", "not JSON"),
+        ('{"id": "obj_1"}', "JSON list"),
+        ('[{"id": "obj_1", "bbox": [0.1, 0.2, 0.8]}]', "box 1 needs a bbox"),
+        ('[{"id": "obj_1", "bbox": [0, 0, 1200, 500]}]', "0-1000 grid"),
+        ('[{"id": "obj_1", "bbox": [600, 0, 100, 500]}]', "0-1000 grid"),
+    ])
+    def test_a_broken_table_says_what_is_wrong(self, bad, match):
+        with pytest.raises(ValueError, match=match):
+            _encode(base_prompt="a red fox", layout=bad)
