@@ -1530,3 +1530,28 @@ def test_hlg_within_range_passes(h, spy_write):
     h.put(flat(4.0))                          # 812 nits neutral
     body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
     assert "QC PASS — HDR" in body["qc"] and "≈ 812 nits" in body["qc"], body["qc"]
+
+
+def test_the_chosen_mastering_display_reaches_the_hdr10_file(h):
+    import shutil
+    import subprocess
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        pytest.skip("ffmpeg/ffprobe not installed")
+    h.put(flat(0.5, n=2, h=64, w=64))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)",
+                  "mastering_display": "Rec.2020 · 4000 nits"})
+    assert resp.status == 200, h.body(resp)
+    (mp4,) = list(h.root.rglob("*.mp4"))
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
+                        "-show_entries", "frame=side_data_list", "-of", "json", str(mp4)],
+                       capture_output=True, text=True, check=True)
+    side = {d["side_data_type"]: d for d in json.loads(r.stdout)["frames"][0]["side_data_list"]}
+    md = side["Mastering display metadata"]
+    assert md["red_x"] == "35400/50000" and md["max_luminance"] == "40000000/10000", md
+
+
+def test_an_unknown_mastering_display_is_400(h):
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)",
+                  "mastering_display": "Dolby 9000"})
+    assert resp.status == 400 and "mastering display" in h.body(resp)["error"]

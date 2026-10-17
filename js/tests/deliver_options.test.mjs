@@ -47,3 +47,16 @@ test('PQ and HLG are offered, and the 8-bit formats are disabled for them', () =
     assert.match(viewer, /const _EIGHT_BIT = \['Video — MP4 \(H\.264\)', 'Image Sequence — PNG \(8-bit\)'\];/);
     assert.match(viewer, /if \(hdr && _EIGHT_BIT\.includes\(dvFormat\.value\)\) dvFormat\.value = 'Video — MP4 \(H\.265 10-bit\)';/);
 });
+
+test('every HDR10 mastering display in the panel is one the writer knows, and the other way round', () => {
+    const writer = readFileSync(join(ROOT, 'io', 'writer.py'), 'utf8');
+    const start = writer.indexOf('MASTERING_DISPLAYS: Dict[str, Dict[str, Any]] = {');
+    const body = writer.slice(start, writer.indexOf('\n}', start));
+    const server = [...body.matchAll(/^\s*"([^"]+)":\s*\{/gm)].map((m) => m[1]).sort();
+    const pstart = viewer.indexOf("const dvMastering = document.createElement('select');");
+    const list = viewer.slice(pstart, viewer.indexOf('].forEach(f =>', pstart));
+    const panel = [...list.matchAll(/^\s*'([^']+)',$/gm)].map((m) => m[1]).sort();
+    assert.equal(server.length, 4);
+    assert.deepEqual(panel, server);
+    assert.match(viewer, /mastering_display: dvMastering\.value/);
+});
