@@ -89,6 +89,7 @@ export const KEYMAP = Object.freeze([
     // ── Analysis ──
     { id: 'panel.scopes', keys: [{ code: 'Digit5', alt: true }], label: 'Scopes', help: 'Panel: Scopes', section: 'Panel', menu: 'Tools', group: 'panels' },
     { id: 'panel.analysis', keys: [{ code: 'Digit6', alt: true }], label: 'Analysis', help: 'Panel: Analysis', section: 'Panel', menu: 'Tools', group: 'panels' },
+    { id: 'panel.qc', keys: [{ code: 'Digit7', alt: true }], label: 'QC', help: 'Panel: QC', section: 'Panel', menu: 'Tools', group: 'panels' },
     { id: 'panel.effects', keys: [{ code: 'Digit4', alt: true }], label: 'Effects + Depth', help: 'Panel: Effects', section: 'Panel', menu: 'Tools', group: 'panels' },
     { id: 'panel.inspector', keys: [{ code: 'Digit1', alt: true }], label: 'Inspector', help: 'Panel: Inspector', section: 'Panel', menu: 'Tools', group: 'panels' },
     { id: 'scope.waveform', keys: [{ code: 'KeyW' }], label: 'Waveform (overlay)', help: 'Waveform over the picture', section: 'Analysis', menu: 'Tools', group: 'scopes' },

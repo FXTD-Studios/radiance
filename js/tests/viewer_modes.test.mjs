@@ -5,9 +5,13 @@ import {
     resolveSaved, propsFor, suggestWorkspace, workspaceById, tabsFor, workspaceForTab, PANEL_TABS,
 } from '../radiance_viewer_modes.js';
 
-test('QC is defined but never offered', () => {
+test('QC is offered, on the Advanced layout, opening its own tab', () => {
     assert.ok(workspaceById('qc'));
-    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect', 'compare']);
+    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect', 'compare', 'qc']);
+    assert.equal(workspaceById('qc').layout, 'advanced');
+    assert.deepEqual(tabsFor('qc'), ['scopes', 'analysis', 'qc']);
+    assert.equal(workspaceForTab('qc', 'color'), 'qc');
+    assert.ok(workspaceById('qc').tabs.includes(workspaceById('qc').tab));
 });
 
 test('workspace ids are unique and every one names a known layout', () => {
@@ -31,14 +35,15 @@ test('a recorded workspace is honoured when it agrees with the layout', () => {
 test('a stale, mismatched or unavailable workspace falls back to the layout default', () => {
     // layout says simple, workspace says color: an older Radiance rewrote the layout
     assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'color' }).workspace, 'review');
-    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'color');
+    assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'qc' }).workspace, 'review');
+    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'qc');
     assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'nope' }).workspace, 'color');
 });
 
 test('stored props keep the old layout key, so older versions still read it', () => {
     assert.deepEqual(propsFor('review'), { radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'review' });
     assert.deepEqual(propsFor('compare'), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'compare' });
-    assert.equal(propsFor('qc'), null);
+    assert.deepEqual(propsFor('qc'), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' });
     assert.equal(propsFor('missing'), null);
 });
 
@@ -126,12 +131,15 @@ test('Compare never changes the compare mode by itself', () => {
     }
 });
 
-test('QC and unknown workspaces do nothing', () => {
+test('unknown workspaces do nothing, and QC opens its tab', () => {
     const v = viewer();
-    v.setWorkspace('qc');
     v.setWorkspace('nope');
     assert.equal(v.workspace, undefined);
     assert.deepEqual(v.node.properties, {});
+    v.setWorkspace('qc');
+    assert.equal(v.workspace, 'qc');
+    assert.equal(v._referenceRightTab, 'qc');
+    assert.equal(v.node.properties.radiance_viewer_workspace, 'qc');
 });
 
 test('setUIMode on its own (old callers) keeps the workspace consistent', () => {
