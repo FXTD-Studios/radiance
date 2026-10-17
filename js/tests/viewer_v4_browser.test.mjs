@@ -473,6 +473,85 @@ test('the QC workspace runs the checks, lists each one and the flagged frames, a
     assert.deepEqual(out.altSeven, ['qc', 'qc']);
 });
 
+test('the Deliver render queue renders snapshots one by one, reports each job, and stops after the current one', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(2, 64, 48));
+        await __until(() => v.image, 10000);
+        v._runKeyAction('file.deliver');
+        const dlg = v.container.querySelector('.radiance-deliver-dialog');
+        const q = (k) => dlg.querySelector(`[data-dv="${k}"]`);
+        const r = { emptyStartDisabled: q('queue-start').disabled };
+        const realFetch = window.fetch;
+        const posted = [];
+        let release = null;
+        window.fetch = async (url, opts) => {
+            if (String(url).startsWith('/radiance/progress')) return new Response(JSON.stringify({ current: 1, total: 1, status: 'done', message: 'Writing' }));
+            if (String(url) === '/radiance/deliver') {
+                const body = JSON.parse(opts.body);
+                posted.push(body);
+                if (body.settings.filename === 'slow') await new Promise((res) => { release = res; });
+                if (body.settings.filename === 'bad') return new Response(JSON.stringify({ status: 'error', error: 'disk full' }), { status: 500 });
+                return new Response(JSON.stringify({ status: 'success', message: `Delivered ${body.settings.filename}`, path: `/out/${body.settings.filename}.mov`, qc: '[QC PASS]' }));
+            }
+            return realFetch(url, opts);
+        };
+        // Three jobs, each with its own settings and grade.
+        v.exposure = 0.5; q('filename').value = 'a_exr'; q('format').value = q('format').options[0].value;
+        q('queue-add').click();
+        v.exposure = 1.5; q('filename').value = 'bad';
+        q('queue-add').click();
+        v.exposure = -1; q('filename').value = 'c_last';
+        q('queue-add').click();
+        r.rows = [...q('queue').children].map((row) => row.dataset.status);
+        r.startLabel = q('queue-start').textContent;
+        r.removeOffered = q('queue').querySelectorAll('[data-dv="job-remove"]').length;
+        q('queue-start').click();
+        await __until(() => [...q('queue').children].every((row) => row.dataset.status !== 'queued' && row.dataset.status !== 'rendering'), 10000);
+        await __sleep(50);
+        r.order = posted.map((p) => p.settings.filename);
+        r.exposures = posted.map((p) => p.grading.exposure);
+        r.statuses = [...q('queue').children].map((row) => row.dataset.status);
+        r.badText = q('queue').children[1].textContent;
+        r.history = q('history').children.length;
+        r.status = q('status').textContent;
+        r.renderEnabled = !q('render').disabled;
+        // Stop after the current job: the rest stay queued.
+        posted.length = 0;
+        q('queue').querySelectorAll('[data-dv="job-remove"]').forEach((b) => b.click());
+        q('filename').value = 'slow'; q('queue-add').click();
+        q('filename').value = 'never'; q('queue-add').click();
+        q('queue-start').click();
+        await __until(() => release, 5000);
+        r.stopShown = q('queue-stop').style.display !== 'none';
+        r.renderBusy = q('render').disabled;
+        q('queue-stop').click();
+        release();
+        await __until(() => q('queue-stop').style.display === 'none', 5000);
+        await __sleep(50);
+        r.afterStop = [...q('queue').children].map((row) => row.dataset.status);
+        r.afterStopPosted = posted.map((p) => p.settings.filename);
+        window.fetch = realFetch;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.emptyStartDisabled, true, 'Start is offered with nothing queued');
+    assert.deepEqual(out.rows, ['queued', 'queued', 'queued']);
+    assert.equal(out.startLabel, '▶ START QUEUE (3)');
+    assert.equal(out.removeOffered, 3);
+    assert.deepEqual(out.order, ['a_exr', 'bad', 'c_last'], 'jobs ran out of order, or a failure stopped the queue');
+    assert.deepEqual(out.exposures, [0.5, 1.5, -1], 'a queued job did not keep the grade it was added with');
+    assert.deepEqual(out.statuses, ['success', 'failed', 'success']);
+    assert.match(out.badText, /disk full/);
+    assert.equal(out.history, 2);
+    assert.match(out.status, /\[QUEUE\] 2 rendered, 1 failed\./);
+    assert.equal(out.renderEnabled, true);
+    assert.equal(out.stopShown, true); assert.equal(out.renderBusy, true);
+    assert.deepEqual(out.afterStop, ['success', 'queued']);
+    assert.deepEqual(out.afterStopPosted, ['slow']);
+});
+
 test('File > Deliver Master opens the Deliver dialog, which offers PQ and HLG and moves an 8-bit format to H.265 10-bit', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make(); const v = n.radianceViewer;
