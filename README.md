@@ -1,10 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/radiance-logo-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/radiance-logo-light.svg">
-  <img src="assets/radiance-logo-light.svg" width="560" alt="Radiance">
-</picture>
+<img src="assets/radiance-logo.svg" width="128" alt="Radiance">
 
 **HDR, colour management, VFX tools, and image review inside ComfyUI.**
 
