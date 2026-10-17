@@ -230,3 +230,37 @@ def test_a_real_pq_hevc_file_carries_hdr10_side_data(tmp_path):
     assert md["max_luminance"] == "10000000/10000" and md["green_x"] == "13250/50000"
     cll = side["Content light level metadata"]
     assert (cll["max_content"], cll["max_average"]) == (406, 300)
+
+
+# ── selectable mastering display (4.0) ──────────────────────────────────────
+
+@pytest.mark.parametrize("name, expected", [
+    ("P3-D65 · 1000 nits", P3_1000),
+    ("P3-D65 · 4000 nits", "G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50)"),
+    ("Rec.2020 · 1000 nits", "G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(10000000,1)"),
+    ("Rec.2020 · 4000 nits", "G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(40000000,50)"),
+])
+def test_every_mastering_display_in_x265_syntax(name, expected):
+    assert W._x265_master_display(name) == expected
+
+
+def test_the_chosen_display_reaches_the_encode(tmp_path, fake_ffmpeg):
+    torch = _real_torch()
+    W.write_frames(torch.full((2, 8, 8, 3), 0.5), str(tmp_path / "shot"), "VID │ MP4 (H.265 10-bit)",
+                   color_space=PQ, fps=24.0, hdr10_mastering_display="Rec.2020 · 4000 nits")
+    assert _x265_params(fake_ffmpeg[0])["master-display"].endswith("L(40000000,50)")
+    assert "R(35400,14600)" in _x265_params(fake_ffmpeg[0])["master-display"]
+
+
+def test_an_unknown_display_is_refused_before_anything_is_written(tmp_path, fake_ffmpeg):
+    torch = _real_torch()
+    with pytest.raises(ValueError, match="mastering display"):
+        W.write_frames(torch.full((1, 8, 8, 3), 0.5), str(tmp_path / "shot"), "VID │ MP4 (H.265 10-bit)",
+                       color_space=PQ, fps=24.0, hdr10_mastering_display="Dolby 9000")
+    assert fake_ffmpeg == [] and list(tmp_path.iterdir()) == []
+
+
+def test_the_write_node_offers_the_displays():
+    from radiance.nodes.io.write import RadianceWrite
+    opts = RadianceWrite.INPUT_TYPES()["optional"]["hdr10_mastering_display"]
+    assert opts[0] == list(W.MASTERING_DISPLAYS) and opts[1]["default"] == "P3-D65 · 1000 nits"

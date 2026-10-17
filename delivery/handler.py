@@ -533,6 +533,12 @@ async def radiance_deliver_endpoint(request):
             # A baked EXR is written scene-linear whatever the colour space says.
             if not (settings.get('bake_grade', False) and 'EXR' in write_format):
                 _check_hdr_format(write_format, write_colorspace)
+            # HDR10 mastering display (PQ HEVC only; ignored by other formats).
+            from radiance.io.writer import MASTERING_DISPLAYS, DEFAULT_MASTERING_DISPLAY
+            mastering_display = settings.get('mastering_display') or DEFAULT_MASTERING_DISPLAY
+            if mastering_display not in MASTERING_DISPLAYS:
+                raise ValueError(f"Unknown HDR10 mastering display {mastering_display!r}. "
+                                 f"Choose one of: {', '.join(MASTERING_DISPLAYS)}.")
         except ValueError as exc:
             logger.warning("[Deliver] Rejected before grading: %s", exc)
             # Terminal progress, at 100, exactly as the post-grading failure
@@ -980,6 +986,7 @@ async def radiance_deliver_endpoint(request):
                 fps=fps,
                 quality=quality,
                 broadcast_safe=broadcast_safe,
+                hdr10_mastering_display=mastering_display,
                 start_frame=1000 + range_in,
                 receipt=_write_receipt,
             )

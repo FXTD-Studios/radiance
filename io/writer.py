@@ -283,6 +283,9 @@ def _ffmpeg_ok() -> bool:
 class OutputColour:
     """What the file is encoded as, and how it was reached (for metadata)."""
 
+    #: HDR10 mastering display for a PQ HEVC encode (MASTERING_DISPLAYS key).
+    mastering_display = "P3-D65 · 1000 nits"
+
     def __init__(self, color_space: str = "Linear (pass-through)",
                  working_space: str = "Linear Rec.709 (sRGB)",
                  ocio_colorspace: str = "", ocio_config: str = "",
@@ -862,25 +865,42 @@ def _frame_to_raw(fr: np.ndarray, src_pix_fmt: str) -> bytes:
         np.rint(np.clip(arr, 0, 1) * 255).astype(np.uint8)).tobytes()
 
 
-#: HDR10 mastering display (SMPTE ST 2086) stamped on PQ HEVC: P3-D65
-#: primaries in a Rec.2020 container, 1000 nits peak, 0.0001 nits black. The
-#: usual HDR10 grading display and the UHD / streaming delivery default; the
-#: frames say nothing about the monitor they were judged on, so this states
-#: the common case rather than inventing one.
-HDR10_MASTER_DISPLAY = {"primaries": "P3-D65", "max_nits": 1000.0, "min_nits": 0.0001}
+#: HDR10 mastering displays (SMPTE ST 2086) for PQ HEVC: the primaries of the
+#: monitor the grade was judged on (in a Rec.2020 container) and its peak and
+#: black. The frames cannot say which monitor that was, so it is chosen:
+#: 1000 nits is the usual OLED grading display (0.0001 nits black), 4000 nits
+#: the high-end LCD class (0.005 nits black). P3-D65 · 1000 nits is the UHD
+#: and streaming default and stays the default.
+MASTERING_DISPLAYS: Dict[str, Dict[str, Any]] = {
+    "P3-D65 · 1000 nits":   {"primaries": "P3-D65",   "max_nits": 1000.0, "min_nits": 0.0001},
+    "P3-D65 · 4000 nits":   {"primaries": "P3-D65",   "max_nits": 4000.0, "min_nits": 0.005},
+    "Rec.2020 · 1000 nits": {"primaries": "Rec.2020", "max_nits": 1000.0, "min_nits": 0.0001},
+    "Rec.2020 · 4000 nits": {"primaries": "Rec.2020", "max_nits": 4000.0, "min_nits": 0.005},
+}
+DEFAULT_MASTERING_DISPLAY = "P3-D65 · 1000 nits"
+#: The default display, under its pre-4.0 name.
+HDR10_MASTER_DISPLAY = MASTERING_DISPLAYS[DEFAULT_MASTERING_DISPLAY]
 
 
-def _x265_master_display() -> str:
-    """HDR10_MASTER_DISPLAY in x265's syntax: xy in 0.00002, nits in 0.0001."""
+def _check_mastering_display(name: str) -> str:
+    if name not in MASTERING_DISPLAYS:
+        raise ValueError(f"RadianceWrite: unknown HDR10 mastering display {name!r}. "
+                         f"Choose one of: {', '.join(MASTERING_DISPLAYS)}. Nothing was written.")
+    return name
+
+
+def _x265_master_display(name: str = DEFAULT_MASTERING_DISPLAY) -> str:
+    """A mastering display in x265's syntax: xy in 0.00002, nits in 0.0001."""
     from ..color.encodings import PRIMARIES
-    r, g, b, w = PRIMARIES[HDR10_MASTER_DISPLAY["primaries"]]
+    md = MASTERING_DISPLAYS[name]
+    r, g, b, w = PRIMARIES[md["primaries"]]
 
     def xy(p):
         return f"({round(p[0] * 50000)},{round(p[1] * 50000)})"
 
     return (f"G{xy(g)}B{xy(b)}R{xy(r)}WP{xy(w)}"
-            f"L({round(HDR10_MASTER_DISPLAY['max_nits'] * 10000)},"
-            f"{round(HDR10_MASTER_DISPLAY['min_nits'] * 10000)})")
+            f"L({round(md['max_nits'] * 10000)},"
+            f"{round(md['min_nits'] * 10000)})")
 
 
 def _is_hdr_video(colour: "OutputColour") -> bool:
@@ -952,7 +972,8 @@ def _hdr_video_args(codec: str, dst_pix_fmt: str, colour: "OutputColour",
             # they were never all in hand to measure; a player then falls
             # back to the mastering display's peak.
             light_levels = (0, 0)
-        params += ["hdr10=1", f"master-display={_x265_master_display()}",
+        md = getattr(colour, "mastering_display", DEFAULT_MASTERING_DISPLAY)
+        params += ["hdr10=1", f"master-display={_x265_master_display(md)}",
                    "max-cll={},{}".format(*light_levels)]
     return ["-x265-params", ":".join(params)]
 
@@ -1492,6 +1513,7 @@ def write_frames(
     ocio_colorspace: str  = "",
     ocio_config:    str   = "",
     hdr_reference_nits: float = 203.0,
+    hdr10_mastering_display: str = DEFAULT_MASTERING_DISPLAY,
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
@@ -1501,6 +1523,7 @@ def write_frames(
     # a file is created.
     colour = OutputColour(color_space, working_space, ocio_colorspace, ocio_config,
                           hdr_reference_nits)
+    colour.mastering_display = _check_mastering_display(hdr10_mastering_display or DEFAULT_MASTERING_DISPLAY)
     frames, detected_fps = coerce_to_frames(image, read_media=read_media)   # (N, H, W, C)
     # ALBABIT-FIX: scene-linear HDR (values above 1.0) written unchanged into a
     # video plays back too dark: players read it as display code values.

@@ -123,6 +123,8 @@ from ...io.writer import (  # noqa: F401  (re-exported for this module's other u
     coerce_to_frames as _coerce_to_frames_impl,
     resolve_output_path as _resolve_output_path,
     write_frames as _write_frames,
+    MASTERING_DISPLAYS as _MASTERING_DISPLAYS,
+    DEFAULT_MASTERING_DISPLAY as _DEFAULT_MASTERING_DISPLAY,
 )
 
 
@@ -814,6 +816,16 @@ class RadianceWrite:
                     "3.8x diffuse white."
                 ),
             }),
+            "hdr10_mastering_display": (list(_MASTERING_DISPLAYS), {
+                "default": _DEFAULT_MASTERING_DISPLAY,
+                "tooltip": (
+                    "PQ with MP4 (H.265 10-bit) only: the HDR10 mastering display "
+                    "(SMPTE ST 2086) written into the file, the monitor the grade was "
+                    "judged on. P3-D65 · 1000 nits is the usual OLED grading display and "
+                    "the streaming default; 4000 nits for high-end LCD grading monitors. "
+                    "MaxCLL / MaxFALL are always measured from the frames."
+                ),
+            }),
         }, "hidden": {
             "prompt":        "PROMPT",
             "extra_pnginfo": "EXTRA_PNGINFO",
@@ -884,6 +896,7 @@ class RadianceWrite:
         ocio_colorspace: str  = "",
         ocio_config:    str   = "",
         hdr_reference_nits: float = 203.0,
+        hdr10_mastering_display: str = "P3-D65 · 1000 nits",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -921,6 +934,7 @@ class RadianceWrite:
             ocio_colorspace=ocio_colorspace,
             ocio_config=strip_path_quotes(ocio_config or "") if ocio_config else "",
             hdr_reference_nits=hdr_reference_nits,
+            hdr10_mastering_display=hdr10_mastering_display,
             # ALBABIT-FIX: node and console progress for sequences and video.
             on_frame=_FrameProgress("Write"),
             receipt=receipt,
