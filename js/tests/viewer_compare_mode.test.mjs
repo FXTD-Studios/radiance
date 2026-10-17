@@ -129,7 +129,8 @@ test('a pinned B stays through frame changes and new runs; release goes back to 
 test('the shader draws B and difference from the reference texture', () => {
     assert.match(gl, /uniform int u_compareShow;/);
     assert.match(gl, /u_compareShow == 1[\s\S]{0,120}texture\(u_referenceImage/);
-    assert.match(gl, /u_compareShow == 2[\s\S]{0,160}vec3 d = color - texture\(u_referenceImage[\s\S]{0,200}abs\(d\) \* u_diffGain/);
+    assert.match(gl, /u_compareShow == 2[\s\S]{0,160}vec3 ref = texture\(u_referenceImage[\s\S]{0,120}u_diffScene \? sceneLinearForHeatmap - ref : color - ref[\s\S]{0,200}abs\(d\) \* u_diffGain/);
+    assert.match(gl, /_ui1\(program, 'u_diffScene'/, 'the scene-linear uniform is declared but never set');
     assert.match(gl, /_ui1\(program, 'u_diffSigned'/, 'the signed uniform is declared but never set');
     assert.match(gl, /_ui1\(program, 'u_compareShow'/, 'the uniform is declared but never set');
 });
