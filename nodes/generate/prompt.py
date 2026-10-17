@@ -2142,6 +2142,29 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                             "in the prompt as <image1>, <image2>...; with Flux.3 Klein as "
                             "<ref_image_0> (image_1), <ref_image_1>...",
                 ),
+                # 4.0.0: optional prompt upsampler (FLUX 3 Image Klein, Qwen-Image 2.1).
+                # Appended after every older input, so saved widget values keep their slots.
+                io.Clip.Input(
+                    "upsampler_clip", optional=True,
+                    tooltip="The family's prompt upsampler, loaded with Load CLIP: "
+                            "qwen3.5_9b_flux3_prompt_upsampler_* (type flux3) or "
+                            "qwen3.5_9b_qwen_image_2.1_pe_* (type qwen_image). Used only "
+                            "when upsample_prompt is on.",
+                ),
+                io.Boolean.Input(
+                    "upsample_prompt", default=False, optional=True,
+                    tooltip="FLUX 3 Image Klein and Qwen-Image 2.1: rewrite the prompt into "
+                            "the detailed caption the model was trained on, with the model "
+                            "authors' upsampler and system prompt (as ComfyUI's templates do). "
+                            "With reference images it uses the edit instructions and sees the "
+                            "images. positive_text shows the rewritten prompt.",
+                ),
+                io.Int.Input(
+                    "upsampler_seed", default=0, min=0, max=0xffffffffffffffff, optional=True,
+                    control_after_generate=True,
+                    tooltip="Seed of the upsampler's sampling: the same seed and prompt give "
+                            "the same rewrite.",
+                ),
             ],
             outputs=[
                 io.Conditioning.Output(display_name="positive",
@@ -2183,6 +2206,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         vae=None,
         resolution=1024,
         images=None,
+        upsampler_clip=None,
+        upsample_prompt=False,
+        upsampler_seed=0,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2268,6 +2294,13 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ── Formatting clean-up (spacing, stray commas) ───────────────────────
         # Auto-fix punctuation/spacing. Prose archs don't need danbooru tag enhancers.
         final_prompt = enhance_prompt_grammar(final_prompt, "Grammar & Formatting", arch=resolved_arch)
+        # 4.0.0: the family's prompt upsampler, on the built prompt (the
+        # presets are part of the request). The layout table stays out of it:
+        # the FLUX 3 upsampler is told never to write coordinates or ids.
+        if upsample_prompt:
+            from .upsampler import upsample as _upsample
+            final_prompt = _upsample(upsampler_clip, resolved_arch, final_prompt,
+                                     references=references, seed=upsampler_seed)
         if flux3_layout:
             final_prompt = f"{final_prompt.rstrip()} {flux3_layout}"
 

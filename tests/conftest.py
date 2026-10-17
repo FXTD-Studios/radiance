@@ -313,6 +313,7 @@ if "comfy_api" not in sys.modules:
     _io.String = _v3_type("String", "STRING", _V3StringInput)
     _io.Combo = _v3_type("Combo", "COMBO", _V3ComboInput)
     _io.Int = _v3_type("Int", "INT", _V3IntInput)
+    _io.Boolean = _v3_type("Boolean", "BOOLEAN")
     _io.Conditioning = _v3_type("Conditioning", "CONDITIONING")
     _io.Vae = _v3_type("Vae", "VAE")
     _io.Image = _v3_type("Image", "IMAGE")
