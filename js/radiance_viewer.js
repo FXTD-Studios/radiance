@@ -5150,6 +5150,31 @@ class RadianceViewer {
         dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #00a8ff;`;
         addRow('Quality (CRF)', dvQuality);
 
+        // HDR10 mastering display (SMPTE ST 2086), written only into PQ H.265:
+        // the keys of MASTERING_DISPLAYS in io/writer.py (deliver_options test).
+        const dvMastering = document.createElement('select');
+        dvMastering.dataset.dv = 'mastering';
+        dvMastering.title = 'The monitor the grade was judged on, written as HDR10 metadata. MaxCLL / MaxFALL are measured from the frames.';
+        dvMastering.style.cssText = `background: #1a1e24; color: #ccc; border: 1px solid #333; padding: 2px; font-size: 10px; border-radius: 2px;`;
+        [
+            'P3-D65 · 1000 nits',
+            'P3-D65 · 4000 nits',
+            'Rec.2020 · 1000 nits',
+            'Rec.2020 · 4000 nits',
+        ].forEach(f => {
+            const opt = document.createElement('option'); opt.value = f; opt.textContent = f; dvMastering.appendChild(opt);
+        });
+        addRow('HDR10 Display', dvMastering);
+        const dvMasteringLabel = dvMastering.previousSibling;
+        const _syncMastering = () => {
+            const show = dvColorSpace.value.startsWith('PQ') && dvFormat.value === 'Video — MP4 (H.265 10-bit)';
+            dvMastering.style.display = show ? '' : 'none';
+            if (dvMasteringLabel) dvMasteringLabel.style.display = show ? '' : 'none';
+        };
+        dvColorSpace.addEventListener('change', _syncMastering);
+        dvFormat.addEventListener('change', _syncMastering);
+        _syncMastering();
+
         // Apex Options Section
         const dvApexSection = document.createElement('div');
         dvApexSection.style.cssText = `grid-column: span 4; margin-top: 15px; border-top: 1px solid #222; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 15px;`;
@@ -5414,7 +5439,8 @@ class RadianceViewer {
                             burn_in_frame: dvBurnFrame.checked,
                             burn_in_lut: dvBurnLUT.checked,
                             burn_custom_text: dvCustomText.value,
-                            soft_clip: dvSoftClip.checked
+                            soft_clip: dvSoftClip.checked,
+                            mastering_display: dvMastering.value
                         }
                     })
                 });

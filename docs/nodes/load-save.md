@@ -127,6 +127,7 @@ Write images or EXR sequences to disk with configurable format options.
 | `ocio_colorspace` (optional) | string |  |  | Any colorspace name or alias from the OCIO config. When set it overrides color_space and OpenColorIO encodes the working space into it. Empty = use color_space. |
 | `ocio_config` (optional) | string |  |  | Path to a config.ocio or an ocio:// URI. Empty = $OCIO, else OCIO's built-in ACES 2.0 studio config. |
 | `hdr_reference_nits` (optional) | float | 203 | 48 to 1000, step 1 | PQ and HLG only: the luminance scene-linear 1.0 (diffuse white) is written at. 203 is BT.2408 and Radiance's HDR convention; 100 matches OCIO/ACES. PQ clips at 10,000 nits, HLG at about 3.8x diffuse white. |
+| `hdr10_mastering_display` (optional) | choice | `P3-D65 · 1000 nits` | `P3-D65 · 1000 nits`, `P3-D65 · 4000 nits`, `Rec.2020 · 1000 nits`, `Rec.2020 · 4000 nits` | PQ with MP4 (H.265 10-bit) only: the HDR10 mastering display (SMPTE ST 2086) written into the file, the monitor the grade was judged on. P3-D65 · 1000 nits is the usual OLED grading display and the streaming default; 4000 nits for high-end LCD grading monitors. MaxCLL / MaxFALL are always measured from the frames. |
 
 Output node: writes or displays, no graph outputs.
 
