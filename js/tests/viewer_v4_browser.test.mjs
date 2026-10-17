@@ -248,6 +248,50 @@ test('Difference gain and signed mode change what the renderer draws', { skip },
     assert.equal(out.hiddenOff, true, 'the difference controls show outside Difference');
 });
 
+test('scene-linear Difference subtracts graded scene values, and falls back to display without a float B', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        // A: flat 0.18 scene-linear. B: its float frame flat 0.5.
+        const msg = __frames(2, 64, 48);
+        for (let i = 0; i < 2; i++) {
+            msg.radiance_images.push({ filename: 'b_64x48_46.png', subfolder: '', type: 'temp', is_compare: true,
+                hdr_sidecar: 'b_64x48_50.rhdr', has_hdr: true, frame: i, source_width: 64, source_height: 48 });
+        }
+        n.onExecuted(msg);
+        await __until(() => v.hdrData && v.compareHDR, 15000);
+        await __sleep(200);
+        const gl = v.renderer.gl;
+        const read = () => { v.render(); const px = new Uint8Array(4); gl.readPixels(32, 24, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return px[0]; };
+        const r = { can: v.renderer.canDiffScene() };
+        v.setCompareMode('difference');
+        v.setDifference({ gain: 1, mode: 'abs', domain: 'display' }); r.dispAbs = read();
+        r.dispLabel = v._sbDiffDomain.textContent;
+        v.setDifference({ domain: 'scene-linear' }); r.sceneAbs = read();
+        r.sceneLabel = v._sbDiffDomain.textContent; r.inEffect = v.diffDomainInEffect();
+        r.title = v._sbCompare.get('difference').title;
+        v.setDifference({ mode: 'signed' }); r.sceneSigned = read();
+        // B pinned from A: a display still, so scene-linear cannot be drawn.
+        v.setCompareMode('none'); v.pinReference(); v.setCompareMode('difference');
+        v.setDifference({ mode: 'abs' }); r.pinnedAbs = read();
+        r.pinnedInEffect = v.diffDomainInEffect(); r.pinnedTitle = v._sbCompare.get('difference').title;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.can, true, 'test premise: B arrived as a float frame');
+    assert.equal(out.dispLabel, 'Display'); assert.equal(out.sceneLabel, 'Scene');
+    assert.equal(out.inEffect, 'scene-linear');
+    assert.match(out.title, /scene-linear/);
+    const sceneAbs = Math.round(Math.abs(0.18 - 0.5) * 255);
+    assert.ok(Math.abs(out.sceneAbs - sceneAbs) <= 3, `scene |A-B| x1 is ${out.sceneAbs}, expected ${sceneAbs}`);
+    const sceneSigned = Math.round(127.5 + 0.5 * (0.18 - 0.5) * 255);
+    assert.ok(Math.abs(out.sceneSigned - sceneSigned) <= 3, `scene A-B x1 is ${out.sceneSigned}, expected ${sceneSigned}`);
+    assert.ok(Math.abs(out.dispAbs - out.sceneAbs) > 5, `display (${out.dispAbs}) and scene (${out.sceneAbs}) should differ`);
+    assert.equal(out.pinnedInEffect, 'display');
+    assert.ok(out.pinnedAbs <= 2, `A against its pinned self is ${out.pinnedAbs}`);
+    assert.match(out.pinnedTitle, /scene-linear unavailable/);
+});
+
 test('onion skin draws the neighbouring frames, at their opacity, and not while comparing', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make(); const v = n.radianceViewer;
