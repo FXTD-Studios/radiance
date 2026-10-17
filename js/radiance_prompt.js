@@ -129,6 +129,17 @@ function _applyUpsamplerVisibility(node) {
     if (changed) fitNodeSize(node);
 }
 
+// 4.0.0: the FLUX 3 layout input shows under a FLUX 3 Loader, or while it
+// holds a table (so another family's run can report it and it can be cleared).
+function _applyLayoutVisibility(node, source = modelMetaSourceNode(node)) {
+    const w = node.widgets?.find(x => x.name === "layout");
+    if (!w) return;
+    const show = loaderModelType(source) === "flux3" || !!String(w.value || "").trim();
+    if (!w.hidden === show) return;
+    setWidgetVisible(w, show, node, { fallbackType: "customtext" });
+    fitNodeSize(node);
+}
+
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
@@ -165,6 +176,7 @@ function _refreshLiveState(node) {
     _applyResolutionVisibility(node, source);
     _applyReferenceLimit(node, source);
     _applyUpsamplerVisibility(node);
+    _applyLayoutVisibility(node, source);
     const liveState = _liveMiniMaxState(node, source);
     const cfgOne = _negativeUnusedDownstream(node);
     const locked = liveState === null ? cfgOne || !!node._radWeakNeg : liveState || cfgOne;

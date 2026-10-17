@@ -552,6 +552,81 @@ test('the Deliver render queue renders snapshots one by one, reports each job, a
     assert.deepEqual(out.afterStopPosted, ['slow']);
 });
 
+test('FLUX 3 layout boxes are drawn on the picture, kept in UV, and sent to the Prompt\'s layout input', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        n.onExecuted(__frames(1, 64, 48));
+        await __until(() => v.image, 10000);
+        await __sleep(100);
+        // Two Prompt nodes in the graph; the Viewer offers both.
+        const prompt = (id) => ({ id, type: 'RadianceCinematicPromptEncoder', title: `Prompt ${id}`,
+            widgets: [{ name: 'layout', value: '', callback(val) { this.calls = (this.calls || 0) + 1; } }], setDirtyCanvas() {} });
+        const p1 = prompt(11), p2 = prompt(12);
+        n.graph._nodes = [n, p1, p2];
+        const r = {};
+        v._runKeyAction('tools.layoutBoxes');
+        r.mode = v._layoutMode;
+        const panel = () => v.container.querySelector('.radiance-layout-panel');
+        r.targets = [...(panel()?.querySelectorAll('.radiance-layout-target option') || [])].map((o) => o.value);
+        const rect = v.canvas.getBoundingClientRect();
+        const sx = rect.width / v.canvas.width, sy = rect.height / v.canvas.height;
+        const at = (ix, iy) => ({ clientX: rect.left + (v.panX + ix * v.zoom) * sx, clientY: rect.top + (v.panY + iy * v.zoom) * sy });
+        const drag = (a, b) => {
+            v.canvas.dispatchEvent(new MouseEvent('mousedown', { ...at(...a), button: 0, bubbles: true }));
+            document.dispatchEvent(new MouseEvent('mousemove', { ...at(...b), bubbles: true }));
+            document.dispatchEvent(new MouseEvent('mouseup', { ...at(...b), bubbles: true }));
+        };
+        drag([-3, -3], [70, 19.2]);         // the top 40%, dragged past the edges: sky
+        drag([44.8, 47], [19.2, 21.6]);     // drawn bottom-right to top-left
+        drag([10, 10], [10.2, 30]);         // too thin: not a box
+        r.count = v._layoutBoxes.length;
+        const inputs = panel().querySelectorAll('.radiance-layout-row input');
+        r.focused = document.activeElement === inputs[1];
+        inputs[0].value = 'a stormy sky'; inputs[0].dispatchEvent(new Event('input'));
+        inputs[1].value = 'a lighthouse'; inputs[1].dispatchEvent(new Event('input'));
+        // Typing in a description never reaches the viewer's shortcuts.
+        let leaked = 0; const spy = () => leaked++;
+        window.addEventListener('keydown', spy);
+        inputs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', bubbles: true }));
+        window.removeEventListener('keydown', spy);
+        r.leaked = leaked;
+        r.stored = JSON.parse(n.properties.radiance_viewer_layout);
+        // Drawn at the box's corner, after a zoom.
+        v.zoom *= 2; v.panX += 5; v.renderOverlay();
+        const c = { x: Math.round(v.panX + 0.3 * 64 * v.zoom), y: Math.round(v.panY + 0.45 * 48 * v.zoom) + 20 };
+        const strip = v.overlayCtx.getImageData(c.x - 2, c.y, 5, 1).data;
+        r.edgePixel = [0, 1, 2, 3, 4].map((i) => Array.from(strip.slice(i * 4, i * 4 + 4))).sort((p, q) => q[3] - p[3])[0];
+        const sel = panel().querySelector('.radiance-layout-target');
+        sel.value = '12'; sel.dispatchEvent(new Event('change'));
+        panel().querySelector('.radiance-layout-send').click();
+        r.p1 = p1.widgets[0].value; r.p2 = JSON.parse(p2.widgets[0].value || 'null'); r.callback = p2.widgets[0].calls;
+        // Done keeps the boxes, hides them; a reload reads them back.
+        panel().querySelector('.radiance-layout-done').click();
+        r.panelGone = !panel(); r.modeOff = !v._layoutMode;
+        v._installLayoutTool();
+        r.reloaded = v._layoutBoxes.length;
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.mode, true);
+    assert.deepEqual(out.targets, ['11', '12']);
+    assert.equal(out.count, 2, 'a click-sized drag made a box, or a box was lost');
+    assert.equal(out.focused, true, 'the new box\'s description is not focused');
+    assert.equal(out.leaked, 0);
+    assert.deepEqual(out.stored.map((b) => b.desc), ['a stormy sky', 'a lighthouse']);
+    assert.ok(Math.abs(out.stored[1].x - 0.3) < 0.01 && Math.abs(out.stored[1].y - 0.45) < 0.01, JSON.stringify(out.stored[1]));
+    assert.ok(out.edgePixel[3] > 150, `no box edge where obj_2 starts after the zoom: ${out.edgePixel}`);
+    assert.equal(out.p1, '', 'the Prompt that was not chosen was written');
+    assert.deepEqual(out.p2.map((r) => r.id), ['obj_1', 'obj_2']);
+    assert.deepEqual(out.p2[0].bbox, [0, 0, 400, 1000]);
+    assert.ok(out.p2[1].bbox.every((v, i) => Math.abs(v - [450, 300, 980, 700][i]) <= 12), JSON.stringify(out.p2[1].bbox));
+    assert.equal(out.p2[1].desc, 'a lighthouse');
+    assert.equal(out.callback, 1);
+    assert.equal(out.panelGone, true); assert.equal(out.modeOff, true);
+    assert.equal(out.reloaded, 2);
+});
+
 test('File > Deliver Master opens the Deliver dialog, which offers PQ and HLG and moves an 8-bit format to H.265 10-bit', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make(); const v = n.radianceViewer;
