@@ -239,7 +239,12 @@ def setup_offload_mode(offload_mode: str, info_lines: list[str]) -> torch.device
             mm = comfy.model_management
             if mm.vram_state not in (mm.VRAMState.LOW_VRAM, mm.VRAMState.NO_VRAM):
                 mm.vram_state = mm.VRAMState.LOW_VRAM
-            logger.info("Sequential CPU offload enabled (ComfyUI LOW_VRAM state)")
+            # vram_state is a process global read while sampling, after the
+            # Loader returns, so it is not put back: it stays LOW_VRAM (or the
+            # NO_VRAM ComfyUI was launched with) for every later load until
+            # ComfyUI restarts (code review P2-4, open).
+            logger.info("Sequential CPU offload enabled: ComfyUI is on %s for the rest "
+                        "of this session, for every workflow", mm.vram_state.name)
             info_lines.append("Offload: sequential")
         except Exception as e:
             logger.warning(f"Could not enable sequential offload: {e}")
@@ -547,6 +552,26 @@ def load_clip_stack(
              ensure_model_exists(val, "text_encoders", auto_download)
 
     clip_paths = assemble_clip_paths(resolved_type, unet_path=unet_path, clip_l=clip_l, clip_g=clip_g, t5xxl=t5xxl, llm_encoder=llm_encoder, text_projection=text_projection)
+
+    # assemble_clip_paths drops a selected file it cannot find (downloads off, a
+    # failed download, a renamed file) with only a log line, and ComfyUI then
+    # loads whatever encoder the remaining files imply. A file the user chose
+    # that is not on disk is an error, not a smaller stack.
+    _chosen = {"clip_l": clip_l, "clip_g": clip_g, "t5xxl": t5xxl,
+               "llm_encoder": llm_encoder, "text_projection": text_projection}
+    _not_found = [
+        f"{slot}: {val}"
+        for slot in CLIP_SLOT_ORDER.get(resolved_type, list(_chosen))
+        for val in [_chosen.get(slot)]
+        if val not in (None, "", "None", "Baked (from UNET)")
+        and not folder_paths.get_full_path("text_encoders", val)
+    ]
+    if _not_found:
+        raise ValueError(
+            f"❌ {resolved_type} text encoder file(s) not found on disk: {'; '.join(_not_found)}. "
+            f"Loading with the remaining files would make ComfyUI pick a different encoder and "
+            f"encode the prompt wrongly. Download the file(s) (or allow downloads) and try again."
+        )
 
     if not clip_paths:
         raise ValueError(

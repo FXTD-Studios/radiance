@@ -41,9 +41,11 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -339,6 +341,42 @@ def _is_float32_tiff(path: str) -> bool:
         return False
 
 
+def _needs_oiio(ext: str) -> bool:
+    """Pillow has no reader for this extension and OpenImageIO is the one.
+
+    Until 4.0 only .dpx went to OpenImageIO. Cineon, ARRIRAW, camera raw, IFF,
+    RLA and the rest were listed as readable once OIIO was installed and then
+    handed to Pillow, which failed with "cannot identify image file". An
+    extension Pillow does register (HEIC with pillow-heif) stays with Pillow.
+    """
+    if ext in _formats._pillow_extensions():
+        return False
+    return ext in _formats.OIIO_ONLY_EXTENSIONS or ext in _formats._oiio_extensions()
+
+
+def _read_oiio(path: str, ext: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """(IMAGE, MASK) through OpenImageIO, the VFX-standard reader for these."""
+    name = ext.lstrip(".").upper()
+    if not _HAS_OIIO:
+        raise ImportError(f"Reading {name} requires OpenImageIO (pip install OpenImageIO).")
+    inp = _oiio.ImageInput.open(path)
+    if inp is None:
+        raise RuntimeError(f"Cannot read {name} '{path}': {_oiio.geterror()}")
+    try:
+        spec = inp.spec()
+        pixels = inp.read_image(format=_oiio.FLOAT)
+    finally:
+        inp.close()
+    if pixels is None:
+        raise RuntimeError(f"Cannot read {name} '{path}': {_oiio.geterror()}")
+    # read_image() normalises integer samples (e.g. 10-bit DPX) to [0, 1] float.
+    arr = np.array(pixels, dtype=np.float32).reshape(spec.height, spec.width, spec.nchannels)
+    n = spec.nchannels
+    alpha = arr[..., 3] if n >= 4 else (arr[..., 1] if n == 2 else None)
+    arr = arr[..., :3] if n >= 3 else np.repeat(arr[..., :1], 3, axis=-1)
+    return _np_to_tensor(arr), (_np_to_tensor(alpha) if alpha is not None else None)
+
+
 def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Return (IMAGE, MASK) tensors from a single image file."""
     ext = Path(path).suffix.lower()
@@ -346,7 +384,9 @@ def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     if ext == ".exr":
         return _read_exr_single(path)
 
-    if ext == ".hdr":
+    if ext in (".hdr", ".pic"):
+        # .pic is Radiance's other extension for the same RGBE file; it went to
+        # Pillow, which has no reader for it.
         import cv2  # type: ignore
         arr = cv2.imread(path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_COLOR)
         if arr is None:
@@ -355,24 +395,8 @@ def _read_image(path: str) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB).astype(np.float32)
         return _np_to_tensor(arr), None
 
-    if ext == ".dpx":
-        # ALBABIT-FIX: Pillow has no DPX plugin at all; use OpenImageIO, the
-        # VFX-industry-standard library for this format.
-        if not _HAS_OIIO:
-            raise ImportError("Reading DPX requires OpenImageIO (pip install OpenImageIO).")
-        inp = _oiio.ImageInput.open(path)
-        if inp is None:
-            raise RuntimeError(f"Cannot read DPX '{path}': {_oiio.geterror()}")
-        try:
-            spec = inp.spec()
-            pixels = inp.read_image(format=_oiio.FLOAT)
-        finally:
-            inp.close()
-        # read_image() auto-normalises integer DPX samples (e.g. 10-bit) to [0, 1] float.
-        arr = np.array(pixels, dtype=np.float32).reshape(spec.height, spec.width, spec.nchannels)
-        alpha = arr[..., 3] if spec.nchannels >= 4 else None     # was dropped
-        arr = arr[..., :3] if spec.nchannels >= 3 else np.repeat(arr[..., :1], 3, axis=-1)
-        return _np_to_tensor(arr), (_np_to_tensor(alpha) if alpha is not None else None)
+    if _needs_oiio(ext):
+        return _read_oiio(path, ext)
 
     # ALBABIT-FIX: a genuine 16-bit-per-channel RGB(A) PNG/TIFF is silently
     # collapsed to 8-bit by Pillow's .convert("RGB"/"RGBA") below -- Pillow has
@@ -601,6 +625,78 @@ def _resolve_sequence_paths(
 _SEQ_READERS = min(8, os.cpu_count() or 1)
 
 
+#: What a sequence reports when no frame of it declares a rate. PNG, TIFF and
+#: JPEG have nowhere to store one, so 24, the film default.
+_SEQUENCE_FPS_DEFAULT = 24.0
+
+#: Where OpenImageIO puts a DPX or Cineon header's frame rate.
+_OIIO_FPS_ATTRIBUTES = ("FramesPerSecond", "dpx:FrameRate", "dpx:TemporalFrameRate",
+                        "cineon:FramesPerSecond")
+
+
+def _parse_fps(value: Any) -> Optional[float]:
+    """A header frame rate as a float, or None when absent or nonsense.
+
+    EXR's `framesPerSecond` is a rational: a Fraction from OpenEXR 3, the
+    string "24000/1001" once made printable, a (num, den) pair from OIIO.
+    DPX stores a float, and an unset field is NaN or 0.
+    """
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            fps = float(Fraction(int(value[0]), int(value[1])))
+        elif isinstance(value, str):
+            fps = float(Fraction(value.strip()))
+        else:
+            fps = _snap_float_rate(float(value))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return fps if math.isfinite(fps) and 0.0 < fps <= 1000.0 else None
+
+
+def _snap_float_rate(fps: float) -> float:
+    """A float32 header rate (DPX) as the rate it stands for: 23.97599983 is
+    24000/1001, 25.00000095 is 25. Anything else is returned as stored."""
+    if not math.isfinite(fps) or fps <= 0:
+        return fps
+    whole = round(fps)
+    if whole and abs(fps - whole) < 1e-4:
+        return float(whole)
+    ntsc = round(fps * 1.001)
+    if ntsc and abs(fps - ntsc * 1000 / 1001) < 1e-4:
+        return ntsc * 1000 / 1001
+    return fps
+
+
+def _header_fps(path: str, exr_info=None) -> Optional[float]:
+    """The frame rate one frame's header declares, or None.
+
+    Never raises: a missing rate falls back to the default, and an unreadable
+    header is the decoder's error to report, not this one's.
+    """
+    if exr_info is not None:
+        return _parse_fps((exr_info.attributes or {}).get("framesPerSecond"))
+    if not (_HAS_OIIO and _needs_oiio(Path(path).suffix.lower())):
+        return None
+    try:
+        inp = _oiio.ImageInput.open(path)
+        if inp is None:
+            _oiio.geterror()
+            return None
+        try:
+            spec = inp.spec()
+            for name in _OIIO_FPS_ATTRIBUTES:
+                fps = _parse_fps(spec.getattribute(name))
+                if fps:
+                    return fps
+        finally:
+            inp.close()
+    except Exception as exc:  # noqa: BLE001 - metadata only
+        log.debug("could not read a frame rate from %s: %s", os.path.basename(path), exc)
+    return None
+
+
 def _decode_sequence_file(path: str, layer: Optional[str], raw: bool):
     """Decode one file of a sequence: (image, alpha, EXR info or None). It
     does not touch the colour context, so it can run in a reader thread."""
@@ -701,11 +797,18 @@ def _read_sequence(
     # colour decode stays here, in frame order, with the read's colour context.
     on_disk = [p for p in paths if os.path.isfile(p)]
     present = set(on_disk)
+    # Until 4.0 every sequence reported 24 fps. The first frame's header is
+    # asked now (EXR framesPerSecond, DPX and Cineon frame rate); 24 is only
+    # the fallback, and the info says which one it was.
+    header_fps: Optional[float] = None
     with ThreadPoolExecutor(max_workers=_SEQ_READERS) as pool:
         decoded = pool.map(lambda p: _decode_sequence_file(p, layer, raw), on_disk)
         for p in paths:
             if p in present:
-                img_t, mask_t = _finish_sequence_frame(next(decoded), input_cs, raw)
+                frame = next(decoded)
+                if p == on_disk[0]:
+                    header_fps = _header_fps(p, frame[2])
+                img_t, mask_t = _finish_sequence_frame(frame, input_cs, raw)
                 frames.append(img_t)
                 masks.append(mask_t)
             else:
@@ -765,8 +868,13 @@ def _read_sequence(
         "missing": [os.path.basename(m) for m in missing_paths],
         "width": w, "height": h,
         "alpha": alpha_out is not None,
+        # None, not 24, when no header says: RadianceDigitalCinemaRead copies
+        # this key into shot_metadata as the source rate.
+        "fps": header_fps,
+        "fps_source": "header" if header_fps else "default",
     })
-    return batch, alpha_out, w, h, len(frames), 24.0, meta
+    return (batch, alpha_out, w, h, len(frames),
+            header_fps or _SEQUENCE_FPS_DEFAULT, meta)
 
 
 # ── Video read ────────────────────────────────────────────────────────────
@@ -778,6 +886,7 @@ def _read_video(
     start_frame: int = 0,
     end_frame: int = 0,
     frame_step: int = 1,
+    raw: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], float, int, int, int, str]:
     """Decode a video file to a batched IMAGE tensor, plus its alpha if it has one.
 
@@ -826,8 +935,15 @@ def _read_video(
         alpha_np = np.ascontiguousarray(arr[..., 3])
         arr = np.ascontiguousarray(arr[..., :3])
 
-    resolved_cs = _resolve_video_colorspace(input_cs, info, path)
-    arr = _apply_input_colorspace(arr, resolved_cs)
+    if raw:
+        # The file's values, as for an image. Until 4.0 raw only reset
+        # color_space to Auto, and Auto follows the tags, so a Rec.709-tagged
+        # clip was still decoded (and an ocio_colorspace still applied).
+        # ffmpeg's YUV to RGB conversion is the one step raw cannot skip.
+        resolved_cs = "raw (untransformed)"
+    else:
+        resolved_cs = _resolve_video_colorspace(input_cs, info, path)
+        arr = _apply_input_colorspace(arr, resolved_cs)
 
     batch = torch.from_numpy(np.ascontiguousarray(arr))
     alpha_t = torch.from_numpy(alpha_np) if alpha_np is not None else None
@@ -877,8 +993,11 @@ def _video_frame_range(path: str, start_frame: int, end_frame: int) -> Tuple[int
     except Exception:  # the decoder will produce the real error in a moment
         return 0, end
 
-    if info.frames > 0 and start >= info.frames:
-        if start == _SEQUENCE_START_DEFAULT:
+    # An estimated count (no ffprobe: container duration x fps) can exceed the
+    # real one, so the untouched sequence default is never a trim then.
+    untouched = start == _SEQUENCE_START_DEFAULT
+    if info.frames > 0 and (start >= info.frames or (untouched and info.frames_estimated)):
+        if untouched:
             log.debug(
                 "start_frame is at its sequence default (%d) and %s has only %d "
                 "frame(s), so the whole clip is being read.",
@@ -1271,9 +1390,8 @@ def _read_resolved(
     if kind == "video":
         v_start, v_end = _video_frame_range(path, start_frame, end_frame)
         batch, alpha, _fps, _w, _h, _n, meta = _read_video(
-            path, max_video_frames, "Auto / Linear (pass-through)" if raw
-            else color_space,
-            start_frame=v_start, end_frame=v_end, frame_step=frame_step,
+            path, max_video_frames, color_space,
+            start_frame=v_start, end_frame=v_end, frame_step=frame_step, raw=raw,
         )
         return batch, alpha, json.loads(meta)
 

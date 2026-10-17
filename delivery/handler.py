@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import tempfile
 import threading
 import re
 import math
@@ -26,7 +25,7 @@ import folder_paths
 # Re-import modular components
 from radiance.cache import _viewer_cache_get, _viewer_source_get, _progress_set
 from radiance.config.constants import VERSION as _RADIANCE_VERSION
-from radiance.color.grading import apply_grading
+from radiance.color.grading import apply_grading, viewer_grade_kwargs
 
 logger = logging.getLogger("radiance.delivery.handler")
 
@@ -51,13 +50,45 @@ _UI_TO_WRITE_FORMAT = {
 }
 
 _UI_TO_WRITE_COLORSPACE = {
-    'Linear (sRGB)':    'Linear (pass-through)',
-    'sRGB (Standard)':  'sRGB',
-    'ACEScg (AP1)':     'ACEScg',
-    'ARRI LogC3':       'ARRI LogC3',
-    'ARRI LogC4':       'ARRI LogC4',
-    'Sony S-Log3':      'Sony S-Log3',
+    'Linear (sRGB)':          'Linear (pass-through)',
+    'sRGB (Standard)':        'sRGB',
+    'ACEScg (AP1)':           'ACEScg',
+    'ACES2065-1 (AP0)':       'ACES2065-1',
+    'ACEScct':                'ACEScct',
+    'ARRI LogC3':             'ARRI LogC3',
+    'ARRI LogC4':             'ARRI LogC4',
+    'Sony S-Log3':            'Sony S-Log3',
+    'Panasonic V-Log':        'Panasonic V-Log',
+    'Canon Log 3':            'Canon Log 3',
+    'RED Log3G10':            'RED Log3G10',
+    'DaVinci Intermediate':   'DaVinci Intermediate',
+    # BT.2100 HDR. Scene-linear 1.0 is placed at 203 nits (BT.2408); the
+    # writer refuses an 8-bit format and stamps HDR10 metadata on H.265.
+    'PQ (HDR10 / ST.2084)':   'PQ (HDR10 / ST.2084)',
+    'HLG (Hybrid Log-Gamma)': 'HLG (Hybrid Log-Gamma)',
 }
+
+#: Writer colour spaces that are BT.2100 HDR, and the formats that cannot carry them.
+class _DeliveryRefused(ValueError):
+    """The master cannot be written as asked; answered as 422, nothing written."""
+
+
+_HDR_WRITE_COLORSPACES = ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)')
+_EIGHT_BIT_WRITE_FORMATS = ('VID │ MP4 (H.264)', 'SEQ │ PNG (8-bit)')
+
+
+def _check_hdr_format(write_format: str, write_colorspace: str) -> None:
+    """Refuse PQ/HLG into an 8-bit format before any grading runs.
+
+    The writer refuses an 8-bit HDR video too, but only at the encode, after
+    the whole batch was graded; and it does not refuse an 8-bit PNG, which
+    bands just as badly.
+    """
+    if write_colorspace in _HDR_WRITE_COLORSPACES and write_format in _EIGHT_BIT_WRITE_FORMATS:
+        raise ValueError(
+            f"{write_colorspace} needs a 10-bit or float format; {write_format.split(' │ ')[-1]} is 8-bit "
+            "and would band. Choose MP4 (H.265 10-bit) for HDR10 or HLG video, ProRes 422 HQ / 4444, "
+            "PNG (16-bit) or EXR.")
 
 
 #: Every grading key `/radiance/deliver` reads out of the payload.
@@ -72,12 +103,16 @@ _UI_TO_WRITE_COLORSPACE = {
 #: the other direction `tint` was sent and read nowhere.
 #:
 #: tests/test_delivery_contract.py compares this list against the keys the JS
-#: actually sends, in both directions, so the two cannot drift again.
+#: actually sends, in both directions, so the two cannot drift again. The grade
+#: keys are read by color/grading.py viewer_grade_kwargs.
 GRADE_PAYLOAD_KEYS = (
     "exposure", "gamma", "gain", "lift", "offset",
     "contrast", "pivot", "saturation", "temperature", "tint",
     "colorScience", "lumaMix",
     "shadows", "highlights", "hue_shift",
+    "colorBoost", "logShadow", "logMidtone", "logHighlight",
+    "printerR", "printerG", "printerB",
+    "curveTable", "curveMix", "secondaryCurveTable", "secondaryCurveMix", "sourceGamut",
     "lut_name", "lut_intensity", "gamut_compression",
     "grain", "bloom", "halation", "diffusion", "denoise",
 )
@@ -118,24 +153,14 @@ _SESSIONS_LOCK = threading.Lock()
 
 
 def _write_sessions_atomically(path: str, sessions: list) -> None:
-    """Write the session log via a temp file + os.replace, under a lock."""
+    """Write the session log atomically, under a lock, readable by the user only."""
+    from radiance.core.sequence_safety import write_text_atomic
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
     with _SESSIONS_LOCK:
-        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".radiance_sessions.",
-                                   suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(sessions, handle, indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(tmp, path)          # atomic on POSIX and on Windows
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        # Serialised before anything touches the disk: a value json cannot
+        # write raises here and the previous log stays as it was.
+        write_text_atomic(path, json.dumps(sessions, indent=2), mode=0o600)
 
 
 def _resolve_write_format(ui_format: str) -> str:
@@ -206,10 +231,50 @@ def _note(warnings: list, message: str) -> None:
         warnings.append(message)
 
 
+def _verify_written(receipt: dict, warnings: list) -> None:
+    """Check the writer's receipt against what is on disk and record any shortfall.
+
+    The writer returns ``(path, count)`` and fills ``receipt`` with every file it
+    wrote. Delivery used to discard both, so an EXR written by the OpenCV
+    fallback (no colour attributes, no compression) or a sequence with a missing
+    frame was reported as a clean ``success``.
+    """
+    if not receipt:
+        _note(warnings, "The writer returned no receipt, so the written files were not verified.")
+        return
+    if receipt.get("complete") is False:
+        _note(warnings,
+              f"Only {receipt.get('written_frames', '?')} of {receipt.get('requested_frames', '?')} "
+              "requested frame(s) were written.")
+    files = receipt.get("files") or []
+    missing = [e.get("path", "?") for e in files
+               if not os.path.isfile(e.get("path", "")) or os.path.getsize(e["path"]) == 0]
+    if missing:
+        _note(warnings, f"{len(missing)} written file(s) are missing or empty on disk, "
+                        f"for example {os.path.basename(missing[0])}.")
+    for w in receipt.get("warnings") or []:
+        _note(warnings, w)
+    degraded = [e for e in files if str(e.get("writer", "")).startswith("OpenCV fallback")]
+    if degraded:
+        _note(warnings, f"{len(degraded)} EXR file(s) were written by the OpenCV fallback: "
+                        "colour metadata and compression are not in the header.")
+
+
+def _write_json_atomic(path: str, data: dict) -> None:
+    """Write JSON so a failure keeps any earlier file."""
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(path, json.dumps(data, indent=4))
+
+
 def get_next_version(directory: str, filename_base: str) -> str:
-    """Scan directory for existing versions and returns the next one (e.g., v02)."""
+    """The next version after the highest on disk, as the writer stamps it (``v0002``).
+
+    Four digits since 4.0, matching ``write_frames``, so a delivery carries one
+    suffix (``Shot_v0002.mov``) instead of two (``Shot_v02_v0001.mov``). The scan
+    reads the first ``_v<digits>`` after the base, so 3.x names keep counting.
+    """
     if not os.path.exists(directory):
-        return "v01"
+        return "v0001"
     
     pattern = re.compile(rf"{re.escape(filename_base)}_v(\d+)")
     max_v = 0
@@ -224,11 +289,17 @@ def get_next_version(directory: str, filename_base: str) -> str:
     except Exception as exc:
         logger.warning("[radiance.delivery.handler] get_next_version: %s", exc)
         
-    return f"v{max_v + 1:02d}"
+    return f"v{max_v + 1:04d}"
 
 
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
     """Write an ACES Metadata File (.amf) alongside the exported media."""
+    if color_space in ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'):
+        # The map below has no output transform for these, and the fallback is
+        # the Rec.709 100-nit ODT: an AMF naming that for an HDR master would
+        # tell the next application to view it as SDR. Refuse instead.
+        raise ValueError(f"no ACES output transform is mapped for {color_space}; "
+                         "the AMF would name an SDR transform")
     # FIX-006: map the Viewer grade to SOP properly (power = 1/gamma,
     # offset scaled by gain, exposure folded into slope).
     from radiance.color.grading import grading_to_cdl
@@ -334,6 +405,21 @@ def _progress_refuse(instance_key, message: str) -> None:
         logger.debug("[Radiance] could not set refusal progress: %s", _exc)
 
 
+def _path_inside(path: str, root: str) -> bool:
+    """True when ``path`` resolves to ``root`` or somewhere under it.
+
+    Both sides go through ``realpath`` so a symlink under the output folder that
+    points to another volume does not pass, and ``commonpath`` so a sibling such
+    as ``output_evil`` or a folder named ``..x`` is judged correctly.
+    """
+    try:
+        real_path = os.path.realpath(path)
+        real_root = os.path.realpath(root)
+        return os.path.normcase(os.path.commonpath([real_path, real_root])) == os.path.normcase(real_root)
+    except ValueError:
+        return False
+
+
 async def radiance_deliver_endpoint(request):
     """
     VFX Delivery Endpoint: Receives grading state + export settings from HUD.
@@ -413,11 +499,7 @@ async def radiance_deliver_endpoint(request):
             except Exception:
                 _allowed_root = None
             if _allowed_root:
-                try:
-                    _rel = os.path.relpath(output_path, _allowed_root)
-                    _outside = _rel.startswith("..")
-                except ValueError:
-                    _outside = True
+                _outside = not _path_inside(output_path, _allowed_root)
                 if _outside:
                     logger.warning(f"[Deliver] Rejected output path outside ComfyUI output dir: {output_path[:120]}")
                     _progress_refuse(instance_key, "Output path outside the output directory")
@@ -428,7 +510,10 @@ async def radiance_deliver_endpoint(request):
         quality = max(0, min(quality, 51))
 
         color_space = settings.get('colorSpace', 'sRGB (Standard)')
-        broadcast_safe = settings.get('soft_clip', True)
+        # 'soft_clip' is the panel's Legal Range (16-235) box. It clamps RGB
+        # code values of an 8/16-bit image; it never rolled off highlights.
+        # Off unless asked: a full-range PNG with black at 16 is not a default.
+        broadcast_safe = bool(settings.get('soft_clip', False))
         
         upscale_2x = settings.get('upscale_2x', False)
         smart_ver = settings.get('smart_versioning', True)
@@ -445,6 +530,9 @@ async def radiance_deliver_endpoint(request):
         try:
             write_format = _resolve_write_format(output_format)
             write_colorspace = _resolve_write_colorspace(color_space)
+            # A baked EXR is written scene-linear whatever the colour space says.
+            if not (settings.get('bake_grade', False) and 'EXR' in write_format):
+                _check_hdr_format(write_format, write_colorspace)
         except ValueError as exc:
             logger.warning("[Deliver] Rejected before grading: %s", exc)
             # Terminal progress, at 100, exactly as the post-grading failure
@@ -463,57 +551,31 @@ async def radiance_deliver_endpoint(request):
 
 
         # Handle Versioning
-        version_str = "v01"
+        # One suffix: write_frames stamps `_v{version:04d}` onto filename_prefix.
+        # This used to append its own `_v02` first, giving Shot_v02_v0001.
+        version_str = "v0001"
         if smart_ver:
             base_path = output_path if output_path else folder_paths.get_output_directory()
             version_str = get_next_version(base_path, filename_prefix)
-            filename_prefix = f"{filename_prefix}_{version_str}"
+        version_num = int(version_str[1:])
 
         # ─── Process Grading ──────────────────────────────────────────
-        def safe_float(v, default):
-            if isinstance(v, (list, tuple)) and len(v) > 0: return float(v[0])
-            try: return float(v)
-            except (TypeError, ValueError): return default
-
-        def safe_array(v, default_scalar, length=3):
-            if isinstance(v, (list, tuple)) and len(v) >= length:
-                return [float(x) for x in v[:length]]
-            try:
-                s = float(v)
-                return [s] * length
-            except (TypeError, ValueError):
-                return [default_scalar] * length
-
         # Every key this function reads. The viewer must send all of them --
         # `_warn_on_missing_grade_keys` says so out loud rather than letting a
         # silent .get() default turn a colourist's decision into a no-op.
         _warn_on_missing_grade_keys(grading)
 
-        exposure    = safe_float(grading.get('exposure'), 0.0)
-        saturation  = safe_float(grading.get('saturation'), 1.0)
-
-        # TEMP/TINT are the viewer's additive sliders in [-2, 2], not Kelvin.
-        # This used to be `temperature = 6500.0 + temp * 3500.0`, feeding a
-        # Kelvin white-balance multiply that has nothing to do with the shader's
-        # `shift.r += temp` -- so the export applied a different curve from the
-        # one on screen. `tint` was read nowhere at all, so the green/magenta
-        # axis was silently dropped from every master.
-        temp_shift  = safe_float(grading.get('temperature'), 0.0)
-        tint_shift  = safe_float(grading.get('tint'), 0.0)
-        temperature = 6500.0
-        contrast    = safe_float(grading.get('contrast'), 1.0)
-        pivot       = safe_float(grading.get('pivot'), 0.18)
-        shadows     = safe_float(grading.get('shadows'), 0.0)
-        highlights  = safe_float(grading.get('highlights'), 0.0)
-        hue_shift   = safe_float(grading.get('hue_shift'), 0.0)
-        lut_name    = grading.get('lut_name', 'None')
-        lut_intensity = safe_float(grading.get('lut_intensity'), 1.0)
-        gamut_compression = bool(grading.get('gamut_compression', False))
-
-        gamma_rgb  = safe_array(grading.get('gamma'),  1.0)
-        gain_rgb   = safe_array(grading.get('gain'),   1.0)
-        lift_rgb   = safe_array(grading.get('lift'),   0.0)
-        offset_rgb = safe_array(grading.get('offset'), 0.0)
+        # The viewer's grade, mapped by the same function the parity test runs
+        # (color/grading.py viewer_grade_kwargs). Temperature and Tint are
+        # stops of luminance-preserving gain and contrast is a power curve about
+        # the pivot, as on screen; this read them as additive shifts and a
+        # linear contrast, so a master no longer matched the viewer.
+        grade_kwargs = viewer_grade_kwargs(grading)
+        exposure   = grade_kwargs['exposure']
+        saturation = grade_kwargs['saturation']
+        gamma_rgb  = grade_kwargs['gamma_rgb']
+        gain_rgb   = grade_kwargs['gain_rgb']
+        lift_rgb   = grade_kwargs['lift_rgb']
 
         # ── Everything below runs OFF the event loop ─────────────────────
         # This entire block used to execute inside `async def`, on aiohttp's
@@ -566,32 +628,7 @@ async def radiance_deliver_endpoint(request):
                     # export graded the encoded values. Decode first, as the
                     # Viewer does, so the grade and the master match it.
                     frame_np = _srgb_decode_np(frame_np)
-                graded = apply_grading(
-                    img=frame_np,
-                    exposure=exposure,
-                    gamma=1.0,
-                    gain=1.0,
-                    lift=0.0,
-                    saturation=saturation,
-                    temperature=temperature,
-                    temp_shift=temp_shift,
-                    tint_shift=tint_shift,
-                    offset=0.0,
-                    contrast=contrast,
-                    pivot=pivot,
-                    shadows=shadows,
-                    highlights=highlights,
-                    hue_shift=hue_shift,
-                    gamma_rgb=gamma_rgb,
-                    gain_rgb=gain_rgb,
-                    lift_rgb=lift_rgb,
-                    offset_rgb=offset_rgb,
-                    lut_name=lut_name,
-                    lut_intensity=lut_intensity,
-                    color_science=1 if str(grading.get('colorScience')) in ['1', 'ACEScct'] else 0,
-                    luma_mix=float(grading.get('lumaMix', 1.0)),
-                    gamut_compression=gamut_compression
-                )
+                graded = apply_grading(frame_np, **grade_kwargs)
                 if graded_tensor is None:
                     graded_tensor = torch.empty(
                         (images.shape[0],) + tuple(graded.shape),
@@ -704,12 +741,18 @@ async def radiance_deliver_endpoint(request):
                     # submodule loads from disk.
                     from radiance.image.upscale import RadianceAIUpscale
                     upscaler = RadianceAIUpscale()
-                    graded_tensor, _ = upscaler.upscale(
+                    graded_tensor, upscale_info = upscaler.upscale(
                         image=graded_tensor,
                         model_name="RealESRGAN_x2plus",
                         mode="Refine (HDR)",
                         tile_size=512
                     )
+                    # A missing model, failed download or failed inference does
+                    # not raise: upscale() returns a bicubic resize instead.
+                    if getattr(upscaler, "used_fallback", False):
+                        _note(warnings,
+                              f"AI upscale did not run, the master was resampled "
+                              f"(bicubic), not AI-upscaled: {upscale_info}")
                 except Exception as e:
                     logger.error(f"AI Upscale failed, continuing with original: {e}")
                     _note(warnings,
@@ -752,6 +795,27 @@ async def radiance_deliver_endpoint(request):
                           f"Aspect blanking to {aspect_ratio_str} did not run: "
                           f"{type(e).__name__}: {e}")
 
+            # ─── Pixel validity ───────────────────────────────────────────
+            # NaN and Inf have no code value: min/max turn NaN, every range
+            # check is then False and the QC passed a master of garbage. Refuse
+            # it instead of sanitising it; the source or the grade made them.
+            _rgb = graded_tensor[..., :3]
+            if not bool(torch.isfinite(_rgb).all()):
+                _bad = (~torch.isfinite(_rgb)).any(dim=-1)
+                _per_frame = _bad.flatten(1).sum(dim=1)
+                _frames = [int(i) for i in torch.nonzero(_per_frame).flatten()]
+                _n_bad = int(_per_frame.sum())
+                _kinds = []
+                if bool(torch.isnan(_rgb).any()):
+                    _kinds.append("NaN")
+                if bool(torch.isinf(_rgb).any()):
+                    _kinds.append("infinite")
+                raise _DeliveryRefused(
+                    f"{_n_bad:,} pixel(s) in {len(_frames)} frame(s) are {' or '.join(_kinds)} "
+                    f"after the grade (first: frame {range_in + _frames[0]} of the range). "
+                    "Nothing was written. Check the source frames and the grade "
+                    "(a log or power of a negative value is the usual cause).")
+
             # ─── Integrated QC Pass ───────────────────────────────────────
             qc_report = ""
             try:
@@ -787,6 +851,37 @@ async def radiance_deliver_endpoint(request):
                             qc_report = f"◎ [QC PASS — ACES] {color_space} output."
                     except Exception as _e:
                         qc_report = f"◎ [QC PASS — ACES] {color_space} (gamut check skipped: {_e})."
+                elif color_space in _HDR_WRITE_COLORSPACES:
+                    # Measured where the encoder clips: each frame to linear
+                    # Rec.2020 at 203 nits = 1.0 (BT.2408), as the writer does,
+                    # then the PQ ceiling or HLG's 1000-nit display (where a
+                    # saturated colour clips below 1000 nits). Scene-linear
+                    # above 1.0 is the point of an HDR master, not an error.
+                    from radiance.color.encodings import gamut_matrix, hdr_clipping
+                    from radiance.color import encodings as _enc
+                    _kind = "PQ" if color_space.startswith("PQ") else "HLG"
+                    _wk = _enc.ENCODINGS.get(source_colorspace) or _enc.ENCODINGS["Linear Rec.709 (sRGB)"]
+                    _m = gamut_matrix(_wk.gamut, "Rec.2020").astype(np.float32)
+                    _clip = _neg = 0.0
+                    peak_nits = 0.0
+                    _nf = int(graded_tensor.shape[0])
+                    for _i in range(_nf):
+                        _f = graded_tensor[_i, ..., :3].cpu().numpy().reshape(-1, 3) @ _m.T
+                        _c, _g, _p = hdr_clipping(_f, _kind)
+                        _clip += _c / _nf
+                        _neg += _g / _nf
+                        peak_nits = max(peak_nits, _p)
+                    _ceiling = "PQ's 10,000-nit ceiling" if _kind == "PQ" else "HLG's 1000-nit reference display"
+                    if _clip > 0.001:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: {_clip * 100:.2f}% of pixels clip at "
+                                     f"{_ceiling} (peak ≈ {peak_nits:,.0f} nits; scene-linear 1.0 = 203 nits, BT.2408).")
+                    elif _neg > 0.001:
+                        qc_report = (f"◎ [QC WARNING] {color_space}: {_neg * 100:.2f}% of pixels are outside "
+                                     "Rec.2020 and clip to black in the encode.")
+                    else:
+                        _note_clip = (f"; {_clip * 100:.3f}% clip at {_ceiling}" if _clip > 0 else "")
+                        qc_report = (f"◎ [QC PASS — HDR] {color_space}: peak ≈ {peak_nits:,.0f} nits "
+                                     f"(scene-linear 1.0 = 203 nits, BT.2408){_note_clip}.")
                 elif v_min < 0.0 or v_max > 1.0:
                     qc_report = (
                         f"◎ [QC WARNING] Out-of-Gamut detected: "
@@ -873,18 +968,22 @@ async def radiance_deliver_endpoint(request):
             # as 1001, and no way to tell from the filenames. `range_in` is
             # 1-based into the cached batch, so frame 1 maps to 1001, which is
             # the numbering the rest of the pipeline assumes.
+            _write_receipt: dict = {}
             path, _count = write_frames(
                 image=graded_tensor,
                 output_path=output_path,
                 format=write_format,
                 filename=filename_prefix,
+                version=version_num,
                 color_space=write_colorspace_effective,
                 working_space=write_working_space,
                 fps=fps,
                 quality=quality,
                 broadcast_safe=broadcast_safe,
                 start_frame=1000 + range_in,
+                receipt=_write_receipt,
             )
+            _verify_written(_write_receipt, warnings)
 
             # ─── Post-Export: Thumbnails & Sidecars ────────────────────────
             try:
@@ -914,6 +1013,8 @@ async def radiance_deliver_endpoint(request):
                     if not _cdl["exact"]:
                         logger.warning("[Deliver] CDL sidecar cannot carry: %s; it approximates the grade.",
                                        ", ".join(_cdl["not_represented"]))
+                        _note(warnings, "The CDL sidecar approximates the grade; it cannot carry: "
+                                        + ", ".join(_cdl["not_represented"]) + ".")
                     cdl_path = os.path.splitext(path)[0] + ".cdl"
                     try:
                         from radiance.io.formats import write_cdl_file
@@ -922,6 +1023,7 @@ async def radiance_deliver_endpoint(request):
                                        cc_id=os.path.splitext(os.path.basename(path))[0])
                     except Exception as _ce:
                         logger.warning("[Deliver] CDL export failed: %s", _ce)
+                        _note(warnings, f"The CDL sidecar was not written: {type(_ce).__name__}: {_ce}")
 
                 # AMF Export
                 if settings.get('export_amf', False):
@@ -929,6 +1031,7 @@ async def radiance_deliver_endpoint(request):
                         _export_aces_clip_xml(path, grading, color_space, version_str)
                     except Exception as _ae:
                         logger.warning("[Deliver] AMF export failed: %s", _ae)
+                        _note(warnings, f"The AMF sidecar was not written: {type(_ae).__name__}: {_ae}")
             
                 # Save Metadata Sidecar (.json)
                 meta = {
@@ -938,10 +1041,18 @@ async def radiance_deliver_endpoint(request):
                     "qc": qc_report,
                     "continuity": continuity_report if continuity_report else "PASS",
                     "bake_grade_exr": bake_grade_exr,
-                    "timestamp": os.path.getmtime(path)
+                    "timestamp": os.path.getmtime(path),
+                    "fps": fps,
+                    "range_in": range_in,
+                    "range_out": range_out,
+                    "write_format": write_format,
+                    "write_colorspace": write_colorspace_effective,
+                    "write_working_space": write_working_space,
+                    "files_written": len(_write_receipt.get("files") or []),
+                    "writers": sorted({str(e.get("writer", "")) for e in (_write_receipt.get("files") or [])}),
+                    "warnings": list(warnings),
                 }
-                with open(os.path.splitext(path)[0] + "_meta.json", 'w') as f:
-                    json.dump(meta, f, indent=4)
+                _write_json_atomic(os.path.splitext(path)[0] + "_meta.json", meta)
                 
                 # Reveal Folder Hook
                 if settings.get('reveal_folder', False):
@@ -959,6 +1070,7 @@ async def radiance_deliver_endpoint(request):
                     
             except Exception as e:
                 logger.error(f"Sidecar generation failed: {e}")
+                _note(warnings, f"A sidecar step failed: {type(e).__name__}: {e}")
 
             _progress_set(instance_key, {"current": 100, "total": 100, "status": "done", "message": "Delivery Complete"})
 
@@ -1031,6 +1143,12 @@ async def radiance_deliver_endpoint(request):
             "message": _message,
         })
 
+    except _DeliveryRefused as e:
+        logger.warning("[Deliver] Refused: %s", e)
+        if instance_key:
+            _progress_set(instance_key, {"current": 100, "total": 100,
+                                         "status": "error", "message": str(e)[:200]})
+        return web.json_response({"error": str(e), "status": "error"}, status=422)
     except Exception as e:
         logger.error(f"Delivery failed: {traceback.format_exc()}")
         # Mark the run failed so the client's poll loop terminates. Without this

@@ -1206,7 +1206,7 @@ class RadianceACES2Compliance:
             "optional": {
                 "peak_nits": ("FLOAT", {
                     "default": 100.0, "min": 48.0, "max": 10000.0, "step": 1.0,
-                    "tooltip": "Shown in the report header only; the peak comes from output_type.",
+                    "tooltip": "Label only: printed in the report header, never checked. The peak the reference is rendered for comes from output_type (SDR 100, PQ 1000/2000/4000, HLG 1000 nits).",
                 }),
             },
         }

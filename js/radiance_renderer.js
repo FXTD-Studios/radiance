@@ -308,3 +308,23 @@ export class RadianceRenderer {
         }
     }
 }
+
+/**
+ * A 3D LUT as RGBA floats for a backend that needs 4 channels (WebGPU), from
+ * the RGB triplets the viewer and the OCIO bake produce (the layout WebGL's
+ * texImage3D reads: red fastest, then green, then blue). RGBA input is copied
+ * as is. Values are kept exactly, zero included; a short buffer is refused.
+ */
+export function packLut3DRGBA(data, size) {
+    const n = size * size * size;
+    const stride = data && data.length >= n * 4 ? 4 : 3;
+    if (!data || data.length < n * stride) throw new Error(`3D LUT of size ${size} needs ${n * 3} floats, got ${data ? data.length : 0}`);
+    const out = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+        out[i * 4] = data[i * stride];
+        out[i * 4 + 1] = data[i * stride + 1];
+        out[i * 4 + 2] = data[i * stride + 2];
+        out[i * 4 + 3] = 1.0;
+    }
+    return out;
+}

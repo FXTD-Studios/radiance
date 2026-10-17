@@ -686,6 +686,7 @@ def _make_comfy_stubs():
     # comfy.utils
     utils = types.ModuleType("comfy.utils")
     utils.ProgressBar = MagicMock()
+    utils.PROGRESS_BAR_ENABLED = True
     comfy.utils = utils
 
     # comfy.model_base

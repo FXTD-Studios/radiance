@@ -6,6 +6,7 @@ Created by FXTD Studios.
 
 from __future__ import annotations
 import os
+import shutil
 import json
 import logging
 import traceback
@@ -319,10 +320,15 @@ def load_dynamic_gizmos() -> Tuple[Dict[str, Any], Dict[str, str]]:
 #                             API ROUTE HANDLERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_MAX_GIZMO_BYTES = 5 * 1024 * 1024
+
+
 @_route("post", "/radiance/gizmos/create")
 async def create_gizmo_api(request) -> web.Response:
     """API Endpoint: Receives a dynamic Gizmo configuration, validates and saves it."""
     try:
+        if request.content_length is not None and request.content_length > _MAX_GIZMO_BYTES:
+            return web.json_response({"success": False, "error": "Gizmo definition is too large"}, status=413)
         data = await request.json()
         name = data.get("name", "").strip()
         display_name = data.get("display_name", "").strip() or name
@@ -356,13 +362,21 @@ async def create_gizmo_api(request) -> web.Response:
 
         # Write to disk
         filepath = os.path.join(GIZMOS_DIR, f"{safe_name}.gizmo")
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(gizmo_payload, f, indent=2)
+        replaced = os.path.isfile(filepath)
+        if replaced:
+            # Re-saving a gizmo is how it is edited, so allow it, but keep the
+            # previous definition: it is loaded at the next restart.
+            try:
+                shutil.copy2(filepath, filepath + ".bak")
+            except OSError as exc:
+                logger.warning("[Radiance Gizmo] could not back up %s: %s", filepath, exc)
+        from radiance.core.sequence_safety import write_text_atomic
+        write_text_atomic(filepath, json.dumps(gizmo_payload, indent=2))
 
         logger.info(f"[Radiance Gizmo] Successfully wrote new dynamic Gizmo payload: {filepath}")
         return web.json_response({
             "success": True, 
-            "message": f"Gizmo '{display_name}' created successfully. Please restart your ComfyUI server to load it.",
+            "message": f"Gizmo '{display_name}' {'replaced (previous kept as .bak)' if replaced else 'created'} successfully. Please restart your ComfyUI server to load it.",
             "name": safe_name
         })
 

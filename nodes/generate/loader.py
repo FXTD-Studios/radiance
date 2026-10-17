@@ -162,6 +162,8 @@ MODEL_TYPES = [
     "hidream", "omnigen2", "longcat_image", "kandinsky5", "kandinsky5_image",
     # ALBABIT-FIX: Qwen-Image 2.1 (64ch RGBA VAE, Qwen3-VL-8B), see model/detect.py.
     "qwen_image21",
+    # FLUX 3 Image Klein (Flux.2 VAE, Qwen3-VL-4B), see model/detect.py.
+    "flux3",
 ]
 
 WEIGHT_DTYPES = ["default", "fp8_e4m3fn", "fp8_e5m2", "fp16", "bf16", "fp32"]
@@ -259,7 +261,8 @@ class RadianceUnifiedLoader:
                     "standalone text encoder file."),
                 "llm_encoder": clip_slot(
                     "LLM encoder. Used by: HunyuanVideo (Llava-Llama3), LTX 2.3 (Gemma 3), "
-                    "Lumina2 (Gemma-2), Z-Image (Qwen3), Flux.2 (Mistral-3/Qwen3)."),
+                    "Lumina2 (Gemma-2), Z-Image (Qwen3), Flux.2 (Mistral-3/Qwen3), "
+                    "Flux.3 Klein (Qwen3-VL-4B)."),
                 "text_projection": text_projection_slot(
                     "Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). "
                     "'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader."),
@@ -276,7 +279,9 @@ class RadianceUnifiedLoader:
                     {"default": "none",
                      "tooltip": "none = GPU only. "
                                 "cpu_offload = CLIP loaded to CPU RAM. "
-                                "sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs)."},
+                                "sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). "
+                                "This switches ComfyUI to LOW_VRAM (a --novram launch stays as it is) "
+                                "for the rest of the session, for every workflow; restart ComfyUI to undo it."},
                 ),
                 # ── LoRA (external stack input) ──
                 "lora_stack":      ("LORA_STACK", {"default": None,

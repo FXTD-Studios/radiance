@@ -126,6 +126,23 @@ except ImportError:  # pragma: no cover - only outside the package
 
 log = logging.getLogger("radiance.io.writer")
 
+
+def _check_filename_stays_inside(filename: str) -> None:
+    """E-08: `filename` is joined onto `output_path`; it must not leave it.
+
+    A subfolder ("shots/sh010") is fine. "..", an absolute path or a drive
+    letter would write outside the folder the person chose, so it is refused
+    with a message instead of being honoured or silently rewritten.
+    """
+    name = str(filename)
+    base = os.path.abspath(os.sep + "__radiance_output__")
+    full = os.path.normpath(os.path.abspath(os.path.join(base, name)))
+    if "\x00" in name or not full.startswith(base + os.sep):
+        raise ValueError(
+            f"RadianceWrite: filename {name!r} leaves output_path (it is absolute or "
+            "uses '..'). Put the folder in output_path and keep filename a plain name "
+            "or a subfolder inside it.")
+
 #: How much of ffmpeg's stderr to quote when an encode fails. Enough for the
 #: real reason, not so much that a log line becomes a wall.
 _STDERR_TAIL = 2000
@@ -202,6 +219,7 @@ OUTPUT_COLOR_SPACES = [
 ]
 
 from ..color.encodings import WORKING_SPACES as WRITE_WORKING_SPACES  # noqa: E402
+from ..core.sequence_safety import stale_sequence_frames, stale_warning  # noqa: E402
 
 # ── EXR compressions ───────────────────────────────────────────────────────
 EXR_COMPRESSIONS = ["ZIP", "ZIPS", "PIZ", "RLE", "Uncompressed", "PXR24", "B44", "B44A", "DWAA", "DWAB"]
@@ -844,6 +862,101 @@ def _frame_to_raw(fr: np.ndarray, src_pix_fmt: str) -> bytes:
         np.rint(np.clip(arr, 0, 1) * 255).astype(np.uint8)).tobytes()
 
 
+#: HDR10 mastering display (SMPTE ST 2086) stamped on PQ HEVC: P3-D65
+#: primaries in a Rec.2020 container, 1000 nits peak, 0.0001 nits black. The
+#: usual HDR10 grading display and the UHD / streaming delivery default; the
+#: frames say nothing about the monitor they were judged on, so this states
+#: the common case rather than inventing one.
+HDR10_MASTER_DISPLAY = {"primaries": "P3-D65", "max_nits": 1000.0, "min_nits": 0.0001}
+
+
+def _x265_master_display() -> str:
+    """HDR10_MASTER_DISPLAY in x265's syntax: xy in 0.00002, nits in 0.0001."""
+    from ..color.encodings import PRIMARIES
+    r, g, b, w = PRIMARIES[HDR10_MASTER_DISPLAY["primaries"]]
+
+    def xy(p):
+        return f"({round(p[0] * 50000)},{round(p[1] * 50000)})"
+
+    return (f"G{xy(g)}B{xy(b)}R{xy(r)}WP{xy(w)}"
+            f"L({round(HDR10_MASTER_DISPLAY['max_nits'] * 10000)},"
+            f"{round(HDR10_MASTER_DISPLAY['min_nits'] * 10000)})")
+
+
+def _is_hdr_video(colour: "OutputColour") -> bool:
+    """True when the encode applies PQ or HLG (not an OCIO colorspace)."""
+    enc = getattr(colour, "encoding", None)
+    return bool(enc is not None and enc.hdr and not colour.ocio_colorspace
+                and colour.color_space != "Linear (pass-through)")
+
+
+def hdr_light_levels(frames: Iterable[np.ndarray],
+                     colour: "OutputColour") -> Optional[Tuple[int, int]]:
+    """(MaxCLL, MaxFALL) in nits for a PQ encode, per CTA-861.3.
+
+    `frames` are the working-space linear frames *before* the PQ encode. Each
+    goes to linear Rec.2020 and is placed at the reference white exactly as
+    the encode does, clipped at PQ's 10,000 nits; MaxCLL is the brightest
+    max(R,G,B) of any pixel, MaxFALL the brightest frame-average of it.
+    None when `colour` is not PQ.
+    """
+    enc = getattr(colour, "encoding", None)
+    if not _is_hdr_video(colour) or enc.name != "PQ (ST.2084)":
+        return None
+    from ..color import encodings as _enc
+    m = _enc.gamut_matrix(_enc.ENCODINGS[colour.working].gamut, enc.gamut).astype(np.float32)
+    max_cll = max_fall = 0.0
+    for fr in frames:
+        a = np.asarray(fr, np.float32)
+        if a.ndim == 2:
+            a = a[..., None]
+        if a.shape[-1] >= 3:
+            rgb = a[..., :3] @ m.T
+        else:
+            rgb = a[..., :1]
+        peak = np.clip(rgb.max(axis=-1) * colour.ref_nits, 0.0, 10000.0)
+        if peak.size:
+            max_cll = max(max_cll, float(peak.max()))
+            max_fall = max(max_fall, float(peak.mean()))
+    return int(np.ceil(max_cll)), int(np.ceil(max_fall))
+
+
+def _hdr_video_args(codec: str, dst_pix_fmt: str, colour: "OutputColour",
+                    light_levels: Optional[Tuple[int, int]], fmt: str) -> List[str]:
+    """Refuse an 8-bit HDR encode; HEVC colour VUI and HDR10 SEI for libx265.
+
+    PQ and HLG spread 0-10,000 nits (or the HLG range) over the code values;
+    in 8 bits that bands visibly and HDR10 is defined as 10-bit. The format
+    widget names a codec and container outright (and "MP4 (H.265 10-bit)"
+    says its depth), so an 8-bit choice is refused with the formats that work
+    rather than swapped for a different codec behind the operator's back.
+    """
+    if not _is_hdr_video(colour):
+        return []
+    if not any(d in dst_pix_fmt for d in ("10le", "12le", "16le")):
+        raise ValueError(
+            f"RadianceWrite: {colour.label} needs a 10-bit video, but {fmt} is "
+            f"8-bit ({dst_pix_fmt}); BT.2100 HDR is 10-bit and an 8-bit "
+            f"{colour.label.split(' ')[0]} file bands. Choose 'MP4 (H.265 10-bit)', 'MOV (ProRes 422 HQ)' or "
+            "'MOV (ProRes 4444)'. Nothing was written.")
+    if codec != "libx265":
+        return []
+    pq = colour.encoding.name == "PQ (ST.2084)"
+    # ffmpeg passes -color_* to x265 too, but naming them here keeps the VUI
+    # right whatever the ffmpeg build does with frame colour properties.
+    params = ["colorprim=bt2020", "colormatrix=bt2020nc",
+              "transfer=" + ("smpte2084" if pq else "arib-std-b67")]
+    if pq:
+        if light_levels is None:
+            # CTA-861.3: 0 means "not known". The frames were streamed, so
+            # they were never all in hand to measure; a player then falls
+            # back to the mastering display's peak.
+            light_levels = (0, 0)
+        params += ["hdr10=1", f"master-display={_x265_master_display()}",
+                   "max-cll={},{}".format(*light_levels)]
+    return ["-x265-params", ":".join(params)]
+
+
 def _save_video_ffmpeg(
     frames: Iterable[np.ndarray],   # (H, W, C) float32 frames in [0, 1]
     output_path: str,
@@ -857,8 +970,14 @@ def _save_video_ffmpeg(
     colour: Optional["OutputColour"] = None,
     has_alpha: bool = False,
     frame_count: Optional[int] = None,
+    light_levels: Optional[Tuple[int, int]] = None,
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
+
+    PQ and HLG refuse an 8-bit format, and PQ HEVC carries HDR10 static
+    metadata: the mastering display and `light_levels` (MaxCLL, MaxFALL from
+    `hdr_light_levels`, else 0,0 for "unknown"). Until 4.0 PQ went into 8-bit
+    H.264 and HEVC carried no mastering or light level SEI.
 
     3.5: every codec is fed 16-bit RGB (10-bit codecs got 8-bit before), the
     RGB -> YUV conversion uses the BT.709 / BT.2020 matrix instead of
@@ -915,6 +1034,8 @@ def _save_video_ffmpeg(
         fmt, ("libx264", "rgb48le", "yuv420p", ".mp4", ["-crf", str(crf)])
     )
     colour = colour or OutputColour()
+    # Before anything is opened or created: an 8-bit HDR encode is refused.
+    hdr_args = _hdr_video_args(codec, dst_pix_fmt, colour, light_levels, fmt)
     matrix = colour.yuv_matrix()
     # swscale converts RGB -> YUV with BT.601 unless told otherwise.
     tags = colour.ffmpeg_tags()
@@ -925,7 +1046,7 @@ def _save_video_ffmpeg(
     # Stamp the converted frames too: newer ffmpeg filter paths can replace
     # output codec colour options with unspecified input frame metadata.
     extra = ["-vf", f"scale=out_color_matrix={matrix}:out_range=tv:flags=accurate_rnd+full_chroma_int,"
-             f"setparams=range=limited:{frame_tags}"] + extra + tags
+             f"setparams=range=limited:{frame_tags}"] + extra + tags + hdr_args
 
     # ALBABIT-FIX: the video branch used to build its own output path by string
     # concatenation and never call `resolve_output_path`, so `overwrite=False`
@@ -947,11 +1068,21 @@ def _save_video_ffmpeg(
     else:
         h, w = first.shape[:2]
 
+    # ffmpeg writes a hidden sibling, which replaces out_path only once the
+    # encode has succeeded. Writing out_path directly meant `-y` truncated an
+    # existing master the moment ffmpeg opened it, so any failure after that
+    # (an encoder error, a timeout, a cancel) lost the approved version.
+    # A random name rather than mkstemp: mkstemp creates the file 0600, and
+    # os.replace keeps that mode, so every master would have been unreadable to
+    # other users (a render farm, a shared NAS). ffmpeg creates this one, so the
+    # usual umask applies; `-n` refuses the vanishingly rare clash.
+    part_path = Path(out_path).with_name(
+        f".{Path(out_path).stem}.partial-{os.urandom(6).hex()}{Path(out_path).suffix}")
+
     cmd = [
-        # `-n` rather than `-y` when the operator asked not to overwrite.
-        # `out_path` is already collision-free by then, so this is a second
-        # lock on the door rather than the lock.
-        _ffmpeg_for(codec), "-v", "error", "-y" if overwrite else "-n",
+        # `-n` for the fresh sibling. `overwrite` is enforced when the sibling
+        # is moved into place, below.
+        _ffmpeg_for(codec), "-v", "error", "-n",
         "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{w}x{h}", "-pix_fmt", src_pix_fmt,
         "-r", str(fps),
@@ -967,17 +1098,39 @@ def _save_video_ffmpeg(
             end = frame_count / fps
             cmd += ["-af", f"apad=whole_dur={end},atrim=end={end}"]
         else:
-            cmd += ["-shortest"]
-    cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(out_path)]
+            # Length unknown (a generator): pad the audio without end and let
+            # "-shortest" stop it with the picture. Bare "-shortest" cut the
+            # picture to a short track.
+            cmd += ["-af", "apad", "-shortest"]
+    cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(part_path)]
 
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except BaseException:
+        _discard_partial(part_path)
+        raise
     errors: List[bytes] = []
     pump = threading.Thread(target=_drain, args=(proc.stderr, errors), daemon=True)
     pump.start()
 
     written = 0
     timed_out = False
+    # The cap covers the frame writes too: a stalled ffmpeg fills the pipe and
+    # a blocking stdin write used to wait forever, never reaching the
+    # proc.wait(timeout) below. Killing the child ends the write.
+    _expired = threading.Event()
+    _watchdog: Optional[threading.Timer] = None
+    if timeout is not None:
+        def _expire() -> None:
+            _expired.set()
+            try:
+                proc.kill()
+            except OSError:  # pragma: no cover - already gone
+                pass
+        _watchdog = threading.Timer(max(float(timeout), 0.0), _expire)
+        _watchdog.daemon = True
+        _watchdog.start()
     frame: Optional[np.ndarray] = first
     try:
         while frame is not None:
@@ -993,13 +1146,10 @@ def _save_video_ffmpeg(
         pass
     except BaseException:
         # ALBABIT-FIX: stopped mid-clip (cancelled from ComfyUI, or a frame
-        # failed): the truncated file is removed, as after a timeout.
+        # failed): the partial encode is removed, as after a timeout.
         proc.kill()
         proc.wait()
-        try:
-            Path(out_path).unlink(missing_ok=True)
-        except OSError:  # pragma: no cover
-            pass
+        _discard_partial(part_path)
         raise
     finally:
         try:
@@ -1012,18 +1162,18 @@ def _save_video_ffmpeg(
             timed_out = True
             proc.kill()
             proc.wait()
+        if _watchdog is not None:
+            _watchdog.cancel()
+        if _expired.is_set():
+            timed_out = True
         pump.join(timeout=5)
 
     tail = b"".join(errors).decode("utf-8", "replace").strip()[-_STDERR_TAIL:]
 
     if timed_out:
         # Never leave a half-written master behind: it is indistinguishable
-        # from a short delivery, and with `-y` it has already replaced the
-        # version that was approved.
-        try:
-            Path(out_path).unlink(missing_ok=True)
-        except OSError as _exc:  # pragma: no cover
-            log.debug("could not remove the truncated encode %s: %s", out_path, _exc)
+        # from a short delivery. The previous master, if any, is untouched.
+        _discard_partial(part_path)
         raise RuntimeError(
             f"ffmpeg did not finish encoding {Path(out_path).name} within "
             f"{timeout:g}s after {written} frame(s); the partial file was removed."
@@ -1031,14 +1181,55 @@ def _save_video_ffmpeg(
         )
 
     if proc.returncode not in (0, None):
+        # Like the timeout above: the partial encode goes, and whatever was at
+        # out_path before (a previous master) stays as it was.
+        _discard_partial(part_path)
         raise RuntimeError(
             f"ffmpeg failed to encode {Path(out_path).name} (exit "
-            f"{proc.returncode}) after {written} frame(s)."
+            f"{proc.returncode}) after {written} frame(s). The partial file was removed."
             + (f"\nffmpeg said: {tail}" if tail else
                "\nffmpeg printed nothing on stderr.")
         )
 
+    try:
+        if overwrite:
+            os.replace(part_path, out_path)
+        else:
+            _publish_without_replacing(part_path, Path(out_path))
+    except BaseException:
+        _discard_partial(part_path)
+        raise
     return str(out_path)
+
+
+def _publish_without_replacing(part_path: Path, out_path: Path) -> None:
+    """Move the finished encode to out_path, never over a file that is there.
+
+    resolve_output_path chose a free name, but a file can appear there while a
+    long encode runs. A hard link is created exclusively, so it refuses that
+    file; where links are not supported (FAT, some network shares) an
+    existence check stands in, with the small window that implies.
+    """
+    clash = FileExistsError(
+        f"{out_path} appeared while encoding; not replacing it (overwrite is off).")
+    try:
+        os.link(part_path, out_path)
+    except FileExistsError:
+        raise clash from None
+    except OSError:
+        if out_path.exists():
+            raise clash from None
+        os.replace(part_path, out_path)
+        return
+    _discard_partial(part_path)
+
+
+def _discard_partial(path: Path) -> None:
+    """Remove an unfinished encode, quietly: the caller is already failing."""
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError as _exc:  # pragma: no cover
+        log.debug("could not remove the partial encode %s: %s", path, _exc)
 
 
 def _write_audio_temp_wav(audio: Any) -> Optional[str]:
@@ -1336,6 +1527,7 @@ def write_frames(
     # Build output path from filename + version when provided
     if filename.strip():
         ver_str = f"v{version:04d}"
+        _check_filename_stays_inside(f"{filename}_{ver_str}")
         output_path = str(Path(output_path) / f"{filename}_{ver_str}")
     n, h, w, c = frames.shape
 
@@ -1363,9 +1555,22 @@ def write_frames(
     # Video is always encoded to legal (TV) range by the RGB -> YUV step, so
     # clamping RGB to 16-235 first squeezed the range twice.
     apply_legal_range = bool(broadcast_safe) and not _is_float_format and format not in _FMT_VIDEO
+    # A PQ or HLG code value is the light itself: 16/255 is 0.06 nits of PQ
+    # lifted from black, and 235/255 cuts the top of the range. Legal range
+    # for HDR belongs to the video encoder, which applies it in YUV.
+    if apply_legal_range and _is_hdr_video(colour):
+        apply_legal_range = False
+        log.info("RadianceWrite: broadcast_safe ignored for %s "
+                 "(no RGB legal-range clamp on a PQ or HLG image)", color_space)
     if broadcast_safe and _is_float_format:
         log.info("RadianceWrite: broadcast_safe ignored for %s "
                  "(legal-range limiting does not apply to float formats)", format)
+
+    # HDR10 MaxCLL / MaxFALL, measured while the whole clip is in memory
+    # anyway (the encode itself streams). Only HEVC carries them.
+    light_levels = None
+    if _fmt_stem(format) == "MP4 (H.265 10-bit)":
+        light_levels = hdr_light_levels(frames, colour)
 
     out_frames = transform_stream(
         frames, color_space=color_space,
@@ -1395,7 +1600,7 @@ def write_frames(
             effective_audio_source, overwrite,
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
-            on_frame=on_frame, receipt=receipt,
+            on_frame=on_frame, receipt=receipt, light_levels=light_levels,
         )
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
@@ -1425,7 +1630,7 @@ def write_frames(
 
 
 def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
-                   start_frame: int, count: int, overwrite: bool) -> str:
+                   start_frame: int, count: Optional[int], overwrite: bool) -> str:
     """Pick the sequence's filename stem once, for the whole sequence.
 
     ALBABIT-FIX: `overwrite=False` used to apply `_unique_path` PER FRAME, so a
@@ -1439,6 +1644,11 @@ def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
         return seq_stem
 
     def collides(stem: str) -> bool:
+        # Length unknown (a stream with no frame_count): any frame of the stem
+        # is a collision. Checking only the first frame let frame 1002 of an
+        # existing sequence be overwritten with overwrite off.
+        if count is None:
+            return bool(stale_sequence_frames(out_dir, stem, "_", ext, ()))
         return any(
             (out_dir / f"{stem}_{pad_fmt % (start_frame + i)}{ext}").exists()
             for i in range(max(1, count))
@@ -1471,6 +1681,7 @@ def dispatch_write(
     has_alpha:      bool = False,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
+    light_levels:   Optional[Tuple[int, int]] = None,
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
 
@@ -1555,6 +1766,7 @@ def dispatch_write(
             colour=colour,
             has_alpha=has_alpha,
             frame_count=n,
+            light_levels=light_levels,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:
@@ -1593,8 +1805,7 @@ def dispatch_write(
         seq_png_meta = _workflow_metadata(prompt, extra_pnginfo)
         seq_meta = {**seq_png_meta, **colour.exr_attributes()}
         seq_stem = _sequence_stem(out_dir, seq_stem, ext, pad_fmt,
-                                  start_frame, n if n is not None else 1,
-                                  overwrite)
+                                  start_frame, n, overwrite)
 
         def save(fr: np.ndarray, path: Path, frame: int) -> None:
             writer = stem
@@ -1634,6 +1845,17 @@ def dispatch_write(
                     finish(in_flight.popleft())
             for job in in_flight:
                 finish(job)
+
+        # Frames of the same stem outside this run (a longer earlier render
+        # overwritten by a shorter one, or another start frame) make one
+        # sequence of two shots for any reader. They are left in place and
+        # reported, as the DCC writers do.
+        _stale_msg = stale_warning(stale_sequence_frames(
+            out_dir, seq_stem, "_", ext, range(start_frame, start_frame + written)), seq_stem)
+        if _stale_msg:
+            log.warning("RadianceWrite: %s", _stale_msg)
+            if receipt is not None:
+                receipt.setdefault("warnings", []).append(_stale_msg)
 
         if receipt is not None:
             receipt.setdefault("files", []).sort(key=lambda e: (e["frame"] is None, e["frame"]))

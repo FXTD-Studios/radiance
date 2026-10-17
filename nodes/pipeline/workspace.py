@@ -147,9 +147,11 @@ class RadianceProjectManager:
         if not prompt:
             return ()
 
-        # Use prompt (always available) as primary graph data;
-        # extra_pnginfo adds workflow layout metadata when available.
-        graph_data = prompt or extra_pnginfo or {}
+        # Store the UI workflow (extra_pnginfo["workflow"]) when ComfyUI gives
+        # it: it is what the library reopens with loadGraphData. `prompt` is the
+        # API graph ({id: {class_type, inputs}}), kept only as the fallback.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        graph_data = workflow if isinstance(workflow, dict) and workflow.get("nodes") else prompt
         graph_json = json.dumps(graph_data)
 
         # Build pipeline metadata via scene inspector
@@ -178,7 +180,7 @@ class RadianceProjectManager:
 
         # Use v3 container for richer metadata
         binary = _pack_rad_v3(graph_json, metadata)
-        filepath.write_bytes(binary)
+        _atomic_write_bytes(filepath, binary)
 
         count = tech_profile.get("node_count", 0)
         return ()
@@ -277,7 +279,17 @@ def _inspect_graph_content(graph_json: str) -> dict:
 
     try:
         data  = json.loads(graph_json)
-        nodes = data.get("nodes", [])
+        nodes = data.get("nodes")
+        if nodes is None:
+            # API format: {id: {"class_type": ..., "inputs": {...}}}. Read it as
+            # nodes whose widget values are the literal inputs (lists are links).
+            nodes = [
+                {"type": n.get("class_type", ""),
+                 "widgets_values": [v for v in (n.get("inputs") or {}).values()
+                                    if not isinstance(v, (list, dict))]}
+                for n in data.values()
+                if isinstance(n, dict) and "class_type" in n
+            ]
         profile["node_count"] = len(nodes)
 
         for node in nodes:
@@ -324,11 +336,14 @@ def _inspect_graph_content(graph_json: str) -> dict:
 #                         VERSION CONTROL BACKEND (v3.5)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist") -> None:
+def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist",
+                           keep: "Path | None" = None) -> None:
     """
     Rotate existing file into a .vN backup before overwrite.
     Keeps at most MAX_VERSIONS backups, deleting the oldest.
     Also writes a .vN.json sidecar with commit metadata (message, author, timestamp).
+    ``keep`` is a backup that eviction must not delete (the version being
+    restored): at the limit, the oldest other backup goes instead.
     """
     if not filepath.exists():
         return
@@ -358,7 +373,9 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
 
     # Evict oldest if at capacity
     if len(existing) >= MAX_VERSIONS:
-        for old in existing[: len(existing) - MAX_VERSIONS + 1]:
+        _keep = Path(keep).resolve() if keep is not None else None
+        evictable = [p for p in existing if _keep is None or p.resolve() != _keep]
+        for old in evictable[: len(existing) - MAX_VERSIONS + 1]:
             old.unlink(missing_ok=True)
             old.with_suffix(old.suffix + ".json").unlink(missing_ok=True)
 
@@ -375,7 +392,7 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
         "timestamp": time.time(),
         "original_filename": filepath.name
     }
-    meta_path.write_text(json.dumps(commit_info, indent=2), encoding="utf-8")
+    _atomic_write_text(meta_path, json.dumps(commit_info, indent=2))
     
     logger.info(f"[Radiance] Commit: {message} ({backup_name})")
 
@@ -470,6 +487,24 @@ def _pack_rad_v3(
     return RAD_MAGIC_V3 + raw
 
 
+def _check_rad_zip_admission(zf: "zipfile.ZipFile") -> list:
+    """Entry-count and uncompressed-size limits for a .rad v3 ZIP, before any
+    entry is expanded. Shared by the unpacker and the preview route."""
+    infos = zf.infolist()
+    if len(infos) > MAX_RAD_ZIP_ENTRIES:
+        raise ValueError(".rad v3: too many ZIP entries")
+    total_uncompressed = sum(info.file_size for info in infos)
+    if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
+        )
+    return infos
+
+
+#: A preview is a thumbnail; anything larger is not one.
+MAX_RAD_PREVIEW_BYTES = 8 * 1024 * 1024
+
+
 def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
     """
     Unpack a .rad v3 ZIP container.
@@ -490,15 +525,7 @@ def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
         raise ValueError(f"Corrupt .rad v3 ZIP: {e}")
 
     with zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_RAD_ZIP_ENTRIES:
-            raise ValueError(".rad v3: too many ZIP entries")
-
-        total_uncompressed = sum(info.file_size for info in infos)
-        if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
-            raise ValueError(
-                f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
-            )
+        infos = _check_rad_zip_admission(zf)
 
         names = [info.filename for info in infos]
 
@@ -597,7 +624,12 @@ def _unpack_rad_v2(data: bytes) -> tuple[str, dict]:
     graph_start = meta_end
     # FIX 5: use graph_len from the header to slice exactly — previously
     # payload[graph_start:] was used which silently accepted any trailing bytes.
-    graph_data  = zlib.decompress(payload[graph_start:graph_start + graph_len])
+    # Bounded: a few KB of zlib can expand to gigabytes. A real workflow is far
+    # below MAX_WORKFLOW_SIZE_BYTES, so cap the output there plus one byte.
+    _dz = zlib.decompressobj()
+    graph_data = _dz.decompress(payload[graph_start:graph_start + graph_len], MAX_WORKFLOW_SIZE_BYTES + 1)
+    if len(graph_data) > MAX_WORKFLOW_SIZE_BYTES or _dz.unconsumed_tail:
+        raise ValueError(f"Workflow expands beyond the {MAX_WORKFLOW_SIZE_MB}MB limit")
     return graph_data.decode("utf-8"), metadata
 
 
@@ -623,6 +655,32 @@ def _route(method: str, path: str):
         return lambda f: f
     _reg.add(_key)
     return getattr(PromptServer.instance.routes, method)(path)
+
+
+def _atomic_write_bytes(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` so a failure leaves the previous file whole.
+
+    Raises on failure so the caller can say so. One implementation for the
+    package: ``core/sequence_safety.write_bytes_atomic``.
+    """
+    from radiance.core.sequence_safety import write_bytes_atomic
+    write_bytes_atomic(path, data)
+
+
+def _set_aside_corrupt(path) -> None:
+    """Copy an unreadable JSON file aside before an empty default replaces it."""
+    try:
+        path = Path(path)
+        if path.is_file():
+            shutil.copy2(path, path.with_name(f"{path.name}.corrupt-{int(time.time())}"))
+            logger.warning("[Radiance] %s is not valid JSON; kept a copy as .corrupt-*", path.name)
+    except OSError:
+        pass
+
+
+def _atomic_write_text(path, text: str) -> None:
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(path, text)
 
 
 def _format_bytes(size: int | float) -> str:
@@ -661,7 +719,9 @@ def _project_slug(value: str) -> str:
 
 def _shot_from_name(value: str) -> str:
     """Extract a VFX-style shot code from a filename or metadata string."""
-    match = re.search(r"\bsh[-_ ]?(\d{2,5})\b", value, flags=re.IGNORECASE)
+    # Not \b: "_" is a word character, so "sh010_v002" (the Project Manager's
+    # own naming) did not match. Bounded by anything but a letter or digit.
+    match = re.search(r"(?<![a-z0-9])sh[-_ ]?(\d{2,5})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"SH{match.group(1)}"
     return "GENERAL"
@@ -669,7 +729,7 @@ def _shot_from_name(value: str) -> str:
 
 def _version_from_name(value: str) -> str:
     """Extract a vNNN/vNNNN version token from a filename."""
-    match = re.search(r"\bv(\d{3,4})\b", value, flags=re.IGNORECASE)
+    match = re.search(r"(?<![a-z0-9])v(\d{3,4})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"v{match.group(1)}"
     return "v001"
@@ -795,7 +855,21 @@ def _find_project(project_id: str) -> tuple[dict | None, list[dict]]:
 
 
 def _shot_status_path(project: dict) -> Path:
-    return _WORKFLOW_DIR_RESOLVED / project["name"] / ".shot_status.json"
+    """Where a project's shot statuses live: <library>/<project name>/.
+
+    The name comes from metadata inside any .rad in the library, shared ones
+    included, so "../../x" would have put the file outside it. Raises
+    ValueError for a name that does not stay inside the library.
+    """
+    root = _WORKFLOW_DIR_RESOLVED
+    # Lexical, so only leaving the library is refused; a name that stays
+    # inside keeps the location it always had.
+    path = Path(os.path.normpath(root / str(project["name"]) / ".shot_status.json"))
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise ValueError(f"project name {project['name']!r} leaves the workflow library") from None
+    return path
 
 
 def _load_shot_status(project: dict) -> dict:
@@ -805,6 +879,9 @@ def _load_shot_status(project: dict) -> dict:
             data = json.loads(sp.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
+            _set_aside_corrupt(sp)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(sp)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_shot_status(): ignoring %s from `sp = _shot_status_path(project)`: %s",
@@ -814,12 +891,11 @@ def _load_shot_status(project: dict) -> dict:
 
 
 def _save_shot_status(project: dict, mapping: dict) -> None:
-    try:
-        sp = _shot_status_path(project)
-        sp.parent.mkdir(parents=True, exist_ok=True)
-        sp.write_text(json.dumps(mapping, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save shot status: %s", exc)
+    """Persist shot status atomically. Raises on failure: the route must not
+    report success for a status that was not saved."""
+    sp = _shot_status_path(project)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(sp, json.dumps(mapping, indent=2))
 
 
 def _versions_for_project(project: dict) -> list[dict]:
@@ -1129,7 +1205,7 @@ async def save_workflow(request):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         _create_version_backup(filepath, message=commit_message, author=author)
 
-        filepath.write_bytes(binary_rad)
+        _atomic_write_bytes(filepath, binary_rad)
 
         # Clean up legacy sidecar if it exists
         meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1283,7 +1359,7 @@ async def save_project_version(request):
                 "saved_at": time.time(),
                 "pipeline": _inspect_graph_content(content),
             }
-            filepath.write_bytes(_pack_rad_v3(content, metadata))
+            _atomic_write_bytes(filepath, _pack_rad_v3(content, metadata))
             
             # Clean up legacy sidecar if it exists
             meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1503,11 +1579,19 @@ async def restore_workflow_version(request):
         if not source_path.exists() or not source_path.is_file():
             return web.json_response({"error": "Version file not found"}, status=404)
 
-        # Before restoring, back up current state as a 'Restore Point' commit
-        _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}")
-
-        # Perform restore
-        shutil.copy2(str(source_path), str(target_path))
+        # Copy the chosen version beside the target first, then back up the
+        # current state, then swap. The pre-restore backup can evict the
+        # oldest version, which at the retention limit was the one being
+        # restored: the copy then failed and that version was gone.
+        tmp_path = target_path.with_name(f".{target_path.name}.restore-{os.getpid()}-{os.urandom(4).hex()}")
+        shutil.copy2(str(source_path), str(tmp_path))
+        try:
+            _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}",
+                                   keep=source_path)
+            os.replace(str(tmp_path), str(target_path))
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
         
         logger.info(f"[Radiance] Restored {filename} from {version_file}")
         return web.json_response({"success": True, "restored_from": version_file})
@@ -1535,10 +1619,23 @@ async def get_workflow_preview(request):
             return web.json_response({"error": "Previews only supported in .rad v3"}, status=400)
 
         with zipfile.ZipFile(filepath, "r") as zf:
-            if "preview.png" not in zf.namelist():
+            # The unpacker's limits apply here too: this route used to expand
+            # preview.png from an archive the unpacker refuses.
+            try:
+                _check_rad_zip_admission(zf)
+            except ValueError as exc:
+                return web.json_response({"error": str(exc)}, status=413)
+            try:
+                info = zf.getinfo("preview.png")
+            except KeyError:
                 return web.json_response({"error": "No preview image"}, status=404)
-            
-            preview_data = zf.read("preview.png")
+            if info.file_size > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
+            # Bounded read: the declared size is not trusted.
+            with zf.open(info) as fh:
+                preview_data = fh.read(MAX_RAD_PREVIEW_BYTES + 1)
+            if len(preview_data) > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
             return web.Response(body=preview_data, content_type='image/png')
 
     except Exception as e:
@@ -1605,6 +1702,9 @@ def _load_bins() -> "list[dict]":
             data = json.loads(_ASSETS_BINS_PATH.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return data
+            _set_aside_corrupt(_ASSETS_BINS_PATH)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(_ASSETS_BINS_PATH)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_bins(): ignoring %s from `if _ASSETS_BINS_PATH.exists():`: %s",
@@ -1614,10 +1714,8 @@ def _load_bins() -> "list[dict]":
 
 
 def _save_bins(bins: "list[dict]") -> None:
-    try:
-        _ASSETS_BINS_PATH.write_text(json.dumps(bins, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save asset bins: %s", exc)
+    """Persist asset bins atomically. Raises on failure (see _save_shot_status)."""
+    _atomic_write_text(_ASSETS_BINS_PATH, json.dumps(bins, indent=2))
 
 
 def _scan_assets() -> "list[dict]":
@@ -1743,7 +1841,11 @@ async def create_asset_bin(request):
     bin_id = _hashlib.sha1((name + str(time.time())).encode()).hexdigest()[:10]
     new_bin = {"id": bin_id, "name": name[:60], "assets": []}
     bins.append(new_bin)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True, "bin": new_bin})
 
 
@@ -1771,7 +1873,11 @@ async def modify_asset_bin(request):
         bins = [b for b in bins if b.get("id") != bin_id]
     else:
         return web.json_response({"error": "Unknown action"}, status=400)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True})
 
 
@@ -1863,6 +1969,37 @@ async def asset_thumb(request):
     return web.json_response({"error": "not previewable"}, status=415)
 
 
+def _claim_upload_path(dest_dir: Path, name: str):
+    """Create a new, empty file for ``name`` in dest_dir and return (path, handle).
+
+    Never replaces a file: a taken name becomes stem_1.ext, stem_2.ext, ...
+    Exclusive creation ("xb") also holds against a concurrent upload.
+    """
+    stem, suffix = Path(name).stem, Path(name).suffix
+    for n in range(10000):
+        candidate = dest_dir / (name if n == 0 else f"{stem}_{n}{suffix}")
+        try:
+            return candidate, open(candidate, "xb")
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"No free name for {name} in {dest_dir}")
+
+
+class _UploadTooLarge(Exception):
+    pass
+
+
+def _upload_limit_bytes() -> int:
+    try:
+        mb = int(os.environ.get("RADIANCE_UPLOAD_MAX_MB", "4096"))
+    except ValueError:
+        mb = 4096
+    return max(1, mb) * 1024 * 1024
+
+
+_MAX_UPLOAD_BYTES = _upload_limit_bytes()
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1873,20 +2010,45 @@ async def upload_asset(request):
         dest_dir.mkdir(parents=True, exist_ok=True)
         reader = await request.multipart()
         saved = []
-        async for part in reader:
-            if part.filename:
-                safe_name = os.path.basename(part.filename)
-                if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
-                    continue
-                dest = dest_dir / safe_name
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = await part.read_chunk()
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-                saved.append(safe_name)
-        return web.json_response({"success": True, "saved": saved})
+        renamed = {}
+        claimed: list[Path] = []
+        try:
+            async for part in reader:
+                if part.filename:
+                    safe_name = os.path.basename(part.filename)
+                    if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
+                        continue
+                    # Opening with "wb" replaced an existing file of the same
+                    # name, so a workflow that referenced it read the new one.
+                    dest, fh = _claim_upload_path(dest_dir, safe_name)
+                    claimed.append(dest)
+                    written = 0
+                    with fh:
+                        while True:
+                            chunk = await part.read_chunk()
+                            if not chunk:
+                                break
+                            written += len(chunk)
+                            if written > _MAX_UPLOAD_BYTES:
+                                raise _UploadTooLarge(safe_name)
+                            fh.write(chunk)
+                    saved.append(dest.name)
+                    if dest.name != safe_name:
+                        renamed[safe_name] = dest.name
+        except BaseException:
+            # All or nothing: the client gets an error and no list of what was
+            # saved, so no truncated file and no orphan from an earlier part.
+            for path in claimed:
+                path.unlink(missing_ok=True)
+            raise
+        result = {"success": True, "saved": saved}
+        if renamed:
+            result["renamed"] = renamed
+        return web.json_response(result)
+    except _UploadTooLarge as e:
+        return web.json_response(
+            {"error": f"{e.args[0]} is larger than the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit "
+                      "(RADIANCE_UPLOAD_MAX_MB raises it)"}, status=413)
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")
         return web.json_response({"error": str(e)}, status=500)
@@ -1908,6 +2070,10 @@ async def set_shot_status(request):
         allowed = {"WIP", "Review", "Approved", "Retake", "Final"}
         if status not in allowed:
             return web.json_response({"error": "status must be one of %s" % sorted(allowed)}, status=400)
+        try:
+            _shot_status_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
         mapping = _load_shot_status(project)
         if shot:
             mapping[shot] = status
