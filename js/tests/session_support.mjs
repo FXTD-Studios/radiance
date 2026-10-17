@@ -204,7 +204,7 @@ async function findChromium() {
 export function loadPlaywright() {
     const require = createRequire(import.meta.url);
     for (const spec of ['playwright',
-        '/home/claude/.npm-global/lib/node_modules/playwright/index.js']) {
+        process.env.PLAYWRIGHT_MODULE || 'playwright']) {
         try { return require(spec); } catch { /* keep looking */ }
     }
     return null;
