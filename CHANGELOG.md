@@ -40,8 +40,9 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **HDR video needs 10 bits.** PQ or HLG with "MP4 (H.264)" or "MOV (DNxHR
   HQ)" now stops with an error naming H.265 10-bit, ProRes 422 HQ and ProRes
   4444; before, it wrote an 8-bit file tagged as HDR. PQ H.265 files are now
-  HDR10: P3-D65 1000-nit mastering display and MaxCLL / MaxFALL measured from
-  the frames.
+  HDR10: a mastering display (P3-D65 or Rec.2020, 1000 or 4000 nits; P3-D65
+  1000 by default, chosen in Write's `hdr10_mastering_display` or Deliver's
+  HDR10 Display) and MaxCLL / MaxFALL measured from the frames.
 - **Viewer Deliver is back:** File > Deliver Master… opens the graded-master
   export as a dialog (it had no way in since the Pro viewer layout). It offers
   PQ (HDR10) and HLG; with either one the 8-bit formats are disabled and an
@@ -150,6 +151,24 @@ else is fixes. Read the upgrade notes before moving a production setup.
   - FLUX 3 (the larger multimodal model) has no downloadable weights yet.
 - The Flux.2 Loader presets and the Sampler's Flux.2 Klein file rule no longer
   match FLUX 3 Klein files (both read "klein" in a file name).
+- **Prompt upsampler** for FLUX 3 Image Klein and Qwen-Image 2.1, optional and
+  off by default. Connect the family's upsampler (loaded with Load CLIP:
+  `qwen3.5_9b_flux3_prompt_upsampler_*` or `qwen3.5_9b_qwen_image_2.1_pe_*`)
+  to the Prompt's `upsampler_clip` and turn on `upsample_prompt`: it rewrites
+  the built prompt with ComfyUI's Generate Text, the model authors' system
+  prompt and the official templates' sampling (with reference images, the
+  edit instructions, and it sees the images). `positive_text` shows the
+  rewrite; `upsampler_seed` makes it repeatable. Needs a ComfyUI whose
+  Generate Text takes a system prompt.
+- **FLUX 3 layout boxes in the Viewer:** Tools > FLUX 3 Layout Boxes. Drag on
+  the picture to draw boxes (kept in image coordinates, saved with the node),
+  describe each, and Send to Prompt writes them to the Prompt's new `layout`
+  input as the table ComfyUI's FLUX 3 Image Layout Prompt writes (bbox
+  `[ymin, xmin, ymax, xmax]` on a 0–1000 grid). Cite them as `<obj_1>`... The
+  Prompt checks the table and refuses it for any other family.
+- **Selectable HDR10 mastering display** for PQ H.265: Write's
+  `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
+  1000 or 4000 nits). An unknown value is refused with nothing written.
 
 ### Removed
 
@@ -278,6 +297,19 @@ are the results.
 - **Compare:** B follows A by time when B is a video at another frame rate;
   Difference has a gain (x1 to x16) and a signed mode; onion skin shows the
   frames before and after; a hint marks Compare when a B is connected.
+- **Scene-linear Difference.** Difference's Display / Scene switch subtracts
+  the graded scene-linear values, before the view transform, so HDR plates
+  compare on their real values instead of their tone-mapped ones. It needs B
+  as a float frame (the compare input); with a pinned still or a preview it
+  stays display-referred and the button says so. WebGL only.
+- **QC workspace.** QC is now a workspace (Alt+7 for its panel): run or stop
+  the checks, each check with its measured value and the frames it flagged,
+  and the flagged frames with what each failed; a frame number jumps there.
+- **Deliver render queue.** Add to Queue keeps the current settings and grade
+  as a job; Start Queue renders the jobs one after another through the same
+  export, each with its status, and a failed job does not stop the rest. Stop
+  finishes the job that is rendering and leaves the rest queued. Render Now
+  renders the current settings at once, as before.
 - **WebGPU** (opt-in) lists every gap where you will read it, and its 3D LUT
   upload is fixed. HDR peak readouts state their BT.2408 assumption.
 - **A deleted viewer is freed.** A detached `<select>` kept the whole panel,

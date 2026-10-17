@@ -24,7 +24,9 @@ test('window overlay and show-matte are skipped for scopes and graded exports', 
 });
 
 test('Deliver says when a window or qualifier is not baked', () => {
-    assert.match(viewer, /Not baked: \$\{_aids\.join\(' and '\)\}/);
+    // 4.0.0: the mattes are read when the job is made (a queued job keeps them) and named here.
+    assert.match(viewer, /Not baked: \$\{job\.aids\.join\(' and '\)\}/);
+    assert.match(viewer, /aids: unbakedAids\(\)/);
     assert.match(viewer, /_r\?\.maskType > 0/);
     assert.match(viewer, /_r\?\.qualifierEnabled/);
     // it feeds the same warnings list that turns the completion amber
