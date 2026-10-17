@@ -116,3 +116,30 @@ test('the Prompt allows 10 FLUX 3 references and shows resolution for them', () 
     const hide = src.match(/!\[([^\]]*)\]\.includes\(loaderModelType\(source\)\)/)[1];
     assert.ok(!hide.includes('flux3'), 'resolution sizes FLUX 3 references, it must not be hidden');
 });
+
+// ── Prompt upsampler widgets (4.0.0) ───────────────────────────────────────
+
+test('the upsampler switch and seed show only with an upsampler connected, or while on', () => {
+    const ctx = vm.createContext({
+        app: { registerExtension() {} }, console: { log() {}, warn() {} }, LiteGraph: {},
+        api: { fetchApi: () => Promise.resolve({ ok: false }), addEventListener() {} },
+        isInputLive: (node, input) => input.link != null,
+        setWidgetVisible: (w, visible) => { w.hidden = !visible; },
+        fitNodeSize() {}, loaderModelType() { return null; }, modelMetaSourceNode() { return null; },
+        setInterval() {}, clearInterval() {},
+    });
+    vm.runInContext(strip('radiance_prompt.js') + '\nglobalThis.apply = _applyUpsamplerVisibility;', ctx);
+    const control = { name: 'control_after_generate', hidden: false };
+    const node = {
+        inputs: [{ name: 'upsampler_clip', link: null }],
+        widgets: [{ name: 'upsample_prompt', value: false, hidden: false },
+            { name: 'upsampler_seed', value: 0, hidden: false, linkedWidgets: [control] }],
+    };
+    const shown = () => [node.widgets[0].hidden, node.widgets[1].hidden, control.hidden].map((h) => !h);
+    ctx.apply(node);
+    assert.deepEqual(shown(), [false, false, false]);
+    node.inputs[0].link = 3; ctx.apply(node);
+    assert.deepEqual(shown(), [true, true, true]);
+    node.widgets[0].value = true; node.inputs[0].link = null; ctx.apply(node);
+    assert.deepEqual(shown(), [true, true, true], 'a switch left on must stay reachable');
+});
