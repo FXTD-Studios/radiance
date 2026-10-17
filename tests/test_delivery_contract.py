@@ -29,9 +29,14 @@ def _src(rel):
 
 
 def _js_payload_keys():
-    """Keys of the `grading: { ... }` literal in the /radiance/deliver POST."""
+    """Keys of the `grading: { ... }` literal in the /radiance/deliver POST.
+
+    Since 4.0.0 the Deliver panel builds that body in buildPayload(), so a
+    render-queue job can keep a snapshot of it; the POST sends it as is.
+    """
     js = _src("js/radiance_viewer.js")
-    start = js.index("'/radiance/deliver'")
+    assert "body: JSON.stringify(payload)" in js[js.index("'/radiance/deliver'"):][:400]
+    start = js.index("const buildPayload = () => (")
     grading_at = js.index("grading: {", start)
     depth, i = 0, js.index("{", grading_at)
     for end in range(i, len(js)):
