@@ -8514,6 +8514,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'panel.effects': this._openPanel('effects'); break;
             case 'panel.scopes': this._openPanel('scopes'); this.updateScopes?.(); break;
             case 'panel.analysis': this._openPanel('analysis'); break;
+            case 'panel.qc': this._openPanel('qc'); break;
             case 'panel.curves': this._openPanel('inspector', 'COLOR CURVES'); break;
             case 'panel.presets': this._openPanel('grade', 'PRESETS'); break;
             case 'panel.ocio': this._openPanel('grade', 'COLOR TRANSFORM'); break;
@@ -9919,7 +9920,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         const ctl = new AbortController();
         this._qcAbort = ctl;
         const generation = this.generationID;
-        const label = (t) => { if (this._sbQC) this._sbQC.textContent = t; };
+        const label = (t) => {
+            if (this._sbQC) this._sbQC.textContent = t;
+            if (this._qcPanelStatus) this._qcPanelStatus.textContent = t;
+        };
+        this._qcRunning = true;
+        this._refreshQCPanel();
         label(`QC 0/${count}`);
         try {
             const analysis = await _analyzeSequence(count, (i) => this._qcFrame(i), {}, {
@@ -9944,7 +9950,126 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._termLog?.('error', `[QC] Failed: ${err?.message || err}`);
         } finally {
             if (this._qcAbort === ctl) this._qcAbort = null;
+            this._qcRunning = !!this._qcAbort;
+            this._refreshQCPanel();
         }
+    }
+
+    /** Rebuild the QC tab when it is the one showing. */
+    _refreshQCPanel() {
+        if (this.uiMode === 'advanced' && this._referenceRightTab === 'qc') this._renderReferenceRightHUD?.();
+    }
+
+    /**
+     * The QC workspace's panel: run or stop the checks, the overall verdict,
+     * each check with its measured value and the frames it flagged, and the
+     * flagged frames with what each one failed. A frame jumps the viewer to it.
+     */
+    _renderReferenceQC(parent) {
+        const LABELS = {
+            nan_inf: 'NaN / Inf', over_range: 'Over range', under_range: 'Under range',
+            alpha_range: 'Alpha range', alpha_premultiplied: 'Premultiplied alpha', flicker: 'Flicker',
+        };
+        const name = (id) => LABELS[id] || id;
+        const head = this._renderReferenceSection(parent, 'QC');
+        const row = document.createElement('div');
+        row.className = 'radiance-qc-actions';
+        const run = document.createElement('button');
+        run.type = 'button';
+        run.className = 'radiance-qc-run';
+        run.textContent = this._qcRunning ? 'Stop' : (this._qcReport ? 'Run again' : 'Run QC');
+        run.title = this._qcRunning ? 'Stop the run; what was measured is kept' : 'Measure every frame (float data, before the view and grade)';
+        run.addEventListener('click', () => this.runQC());
+        const report = document.createElement('button');
+        report.type = 'button';
+        report.className = 'radiance-qc-report';
+        report.textContent = 'Report';
+        report.title = 'Download the review report (notes, bookmarks and this QC run) as Markdown and JSON';
+        report.disabled = !this._qcReport;
+        report.addEventListener('click', () => this.exportReviewReport());
+        const status = document.createElement('div');
+        status.className = 'radiance-qc-status';
+        const rep = this._qcReport;
+        status.textContent = this._qcRunning ? (this._sbQC?.textContent || 'QC running')
+            : rep ? `${rep.overall}${rep.complete ? '' : ' (stopped)'} · ${rep.frames.analysed}/${rep.frames.total} frames`
+                : 'Not run. Checks read the float frames, before the view and the grade.';
+        status.dataset.overall = rep && !this._qcRunning ? rep.overall : '';
+        this._qcPanelStatus = status;
+        row.append(run, report);
+        head.append(row, status);
+        if (!rep) return;
+
+        const jump = (f) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'radiance-qc-frame';
+            b.textContent = String(f + 1);
+            b.title = `Go to frame ${f + 1}`;
+            b.addEventListener('click', () => this.setFrame(f));
+            return b;
+        };
+        const MAX_FRAMES = 24;
+        const checks = this._renderReferenceSection(parent, 'CHECKS');
+        const table = document.createElement('div');
+        table.className = 'radiance-qc-checks';
+        for (const c of rep.checks) {
+            const line = document.createElement('div');
+            line.className = 'radiance-qc-check';
+            line.dataset.check = c.id;
+            line.dataset.status = c.status;
+            const label = document.createElement('span');
+            label.className = 'name';
+            label.textContent = name(c.id);
+            label.title = [c.metric, c.limitations].filter(Boolean).join('\n');
+            const st = document.createElement('span');
+            st.className = 'status';
+            st.textContent = c.status;
+            const val = document.createElement('span');
+            val.className = 'value';
+            val.textContent = c.reason ? c.reason
+                : Number.isFinite(c.value) ? (Number.isInteger(c.value) ? String(c.value) : c.value.toPrecision(3)) : '';
+            line.append(label, st, val);
+            const frames = Array.isArray(c.frames) ? c.frames : [];
+            if (frames.length) {
+                const fr = document.createElement('div');
+                fr.className = 'frames';
+                frames.slice(0, MAX_FRAMES).forEach((f) => fr.appendChild(jump(f)));
+                if (frames.length > MAX_FRAMES) fr.append(` +${frames.length - MAX_FRAMES}`);
+                line.appendChild(fr);
+            }
+            table.appendChild(line);
+        }
+        checks.appendChild(table);
+
+        // Per frame: every flagged frame and the checks it failed, in frame order.
+        const byFrame = new Map();
+        for (const c of rep.checks) {
+            for (const f of (Array.isArray(c.frames) ? c.frames : [])) {
+                if (!byFrame.has(f)) byFrame.set(f, []);
+                byFrame.get(f).push(name(c.id));
+            }
+        }
+        const perFrame = this._renderReferenceSection(parent, `FLAGGED FRAMES (${byFrame.size})`);
+        if (!byFrame.size) {
+            const none = document.createElement('div');
+            none.className = 'radiance-qc-none';
+            none.textContent = 'No frame was flagged.';
+            perFrame.appendChild(none);
+            return;
+        }
+        const list = document.createElement('div');
+        list.className = 'radiance-qc-perframe';
+        [...byFrame.keys()].sort((a, b) => a - b).slice(0, 200).forEach((f) => {
+            const line = document.createElement('div');
+            line.className = 'radiance-qc-frameline';
+            line.dataset.frame = String(f);
+            line.classList.toggle('is-current', f === this.currentFrame);
+            const what = document.createElement('span');
+            what.textContent = byFrame.get(f).join(', ');
+            line.append(jump(f), what);
+            list.appendChild(line);
+        });
+        perFrame.appendChild(list);
     }
 
     _downloadText(name, text, type) {
@@ -14224,6 +14349,27 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-toggle.is-on::after { left:20px; background:var(--radiance-accent); }
                 .radiance-ref-status-pill { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 8px; border-radius:999px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); font:700 var(--radiance-fs-body)/1 var(--radiance-font-mono, monospace); letter-spacing:.4px; }
                 .radiance-ref-status-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+                .radiance-qc-actions { display:flex; gap:8px; margin-bottom:8px; }
+                .radiance-qc-actions button { min-height:28px; border-radius:5px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); padding:0 12px; font-size:var(--radiance-fs-body); cursor:pointer; font-weight:600; }
+                .radiance-qc-actions button:hover:not(:disabled) { border-color:var(--radiance-accent); background:var(--radiance-control-hover); }
+                .radiance-qc-actions button:disabled { opacity:.45; cursor:default; }
+                .radiance-qc-status { font-size:var(--radiance-fs-body); opacity:.85; }
+                .radiance-qc-status[data-overall="PASS"] { color:#7bd88f; }
+                .radiance-qc-status[data-overall="WARN"] { color:#e6c35c; }
+                .radiance-qc-status[data-overall="FAIL"] { color:#ef6f6c; }
+                .radiance-qc-checks { display:flex; flex-direction:column; gap:6px; }
+                .radiance-qc-check { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; font-size:var(--radiance-fs-body); }
+                .radiance-qc-check .status { font-weight:600; }
+                .radiance-qc-check[data-status="PASS"] .status { color:#7bd88f; }
+                .radiance-qc-check[data-status="WARN"] .status { color:#e6c35c; }
+                .radiance-qc-check[data-status="FAIL"] .status { color:#ef6f6c; }
+                .radiance-qc-check .value { grid-column:1 / -1; opacity:.7; overflow-wrap:anywhere; }
+                .radiance-qc-check .frames { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+                .radiance-qc-frame { min-width:28px; padding:1px 6px; border-radius:4px; border:1px solid rgba(255,255,255,.18); background:transparent; color:inherit; font:inherit; cursor:pointer; }
+                .radiance-qc-frame:hover { background:rgba(255,255,255,.08); }
+                .radiance-qc-perframe { display:flex; flex-direction:column; gap:4px; max-height:240px; overflow:auto; }
+                .radiance-qc-frameline { display:flex; gap:8px; align-items:center; font-size:var(--radiance-fs-body); }
+                .radiance-qc-frameline.is-current .radiance-qc-frame { border-color:currentColor; }
                 .radiance-ref-status-tile { min-width:0; min-height:58px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-surface-raised); padding:9px 10px; }
                 .radiance-ref-status-tile .label { color:var(--radiance-text-dim); font:600 var(--radiance-fs-body)/1 var(--radiance-font-ui, Inter, sans-serif); margin-bottom:8px; }
                 .radiance-ref-status-tile .value { color:var(--radiance-text); font:700 var(--radiance-fs-body)/1.25 var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -14303,6 +14449,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._renderReferenceScopes(col);
             } else if (activeTab === 'analysis') {
                 this._renderReferenceAnalysis(col);
+            } else if (activeTab === 'qc') {
+                this._renderReferenceQC(col);
             } else {
                 // Inspector is "what is this frame", so the grade *status*
                 // belongs here. The controls that change it live on GRADE.
@@ -14312,7 +14460,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._lastRenderContent = render;
         };
 
-        // In Alt+1 to Alt+6 order (radiance_keymap.js).
+        // In Alt+1 to Alt+7 order (radiance_keymap.js).
         [
             ['inspector', 'INSPECTOR', 'panel.inspector'],
             ['grade', 'GRADE', 'panel.grade'],
@@ -14320,6 +14468,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['effects', 'EFFECTS', 'panel.effects'],
             ['scopes', 'SCOPES', 'panel.scopes'],
             ['analysis', 'ANALYSIS', 'panel.analysis'],
+            ['qc', 'QC', 'panel.qc'],
         ].filter(([id]) => !shown || shown.includes(id)).forEach(([id, label, action]) => {
             const btn = document.createElement('button');
             btn.type = 'button';

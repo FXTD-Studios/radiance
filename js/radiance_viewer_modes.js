@@ -1,5 +1,5 @@
 /**
- * Viewer workspaces: Review, Color, Inspect, Compare (QC when it exists).
+ * Viewer workspaces: Review, Color, Inspect, Compare, QC.
  *
  * Pure data and functions, no DOM, so the rules are testable in Node.
  * radiance_viewer.js holds the DOM and calls in here.
@@ -20,8 +20,9 @@ export const LAYOUT_SIMPLE = 'simple';
 export const LAYOUT_ADVANCED = 'advanced';
 
 /**
- * `available: false` workspaces are defined but never offered: QC has no
- * implementation yet, and a button that opens nothing would be a phantom feature.
+ * `available: false` workspaces are defined but never offered: a button that
+ * opens nothing would be a phantom feature. QC is offered since 4.0.0 (its own
+ * panel tab runs radiance_qc.js over every frame).
  */
 export const WORKSPACES = Object.freeze([
     { id: 'review', label: 'Review', layout: LAYOUT_SIMPLE, available: true,
@@ -35,12 +36,13 @@ export const WORKSPACES = Object.freeze([
     { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true,
       tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis'],
       tip: 'A/B, wipe, difference and blink against a reference' },
-    { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: false,
-      tip: 'Measured checks (not implemented yet)' },
+    { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'qc', tabs: ['qc', 'scopes', 'analysis'],
+      tip: 'Measured checks over every frame: NaN/Inf, range, alpha and flicker' },
 ]);
 
-/** Every right-panel tab of the Advanced layout, in Alt+1..6 order. */
-export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis']);
+/** Every right-panel tab of the Advanced layout, in Alt+1..7 order. */
+export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis', 'qc']);
 
 const BY_ID = new Map(WORKSPACES.map((w) => [w.id, w]));
 

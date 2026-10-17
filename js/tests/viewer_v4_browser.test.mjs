@@ -419,6 +419,60 @@ test('a QC run can be stopped, and keeps what it measured as incomplete', { skip
     assert.match(out.label, /\(stopped\)$/);
 });
 
+test('the QC workspace runs the checks, lists each one and the flagged frames, and a frame jumps the viewer', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make(); const v = n.radianceViewer;
+        // Eight float frames at 0.05, frame 5 at 1.0: a flicker up and back down.
+        const seq = [0, 0, 0, 0, 0, 19, 0, 0];
+        const msg = __frames(8, 64, 48);
+        msg.radiance_images.forEach((e, i) => { e.hdr_sidecar = e.hdr_filename = `g_64x48_${seq[i]}.rhdr`; });
+        n.onExecuted(msg);
+        await __until(() => v.image && v.hdrData, 15000);
+        const r = { offered: v._modeBtns.has('qc') };
+        v._modeBtns.get('qc').click();
+        await __sleep(50);
+        const panel = () => v.container.querySelector('.radiance-ref-col') || document;
+        r.ws = v.workspace; r.tab = v._referenceRightTab;
+        r.tabs = [...v.container.querySelectorAll('.radiance-ref-tab')].map((b) => b.dataset.tabId);
+        r.before = panel().querySelector('.radiance-qc-status')?.textContent;
+        r.reportDisabled = panel().querySelector('.radiance-qc-report')?.disabled;
+        panel().querySelector('.radiance-qc-run').click();
+        await __until(() => v._qcReport && !v._qcRunning, 15000);
+        await __sleep(50);
+        r.status = panel().querySelector('.radiance-qc-status')?.textContent;
+        r.checks = [...panel().querySelectorAll('.radiance-qc-check')].map((c) => [c.dataset.check, c.dataset.status]);
+        const flick = panel().querySelector('.radiance-qc-check[data-check="flicker"]');
+        r.flickerFrames = [...(flick?.querySelectorAll('.radiance-qc-frame') || [])].map((b) => b.textContent);
+        r.perFrame = [...panel().querySelectorAll('.radiance-qc-frameline')].map((l) => [l.dataset.frame, l.textContent]);
+        r.runLabel = panel().querySelector('.radiance-qc-run')?.textContent;
+        flick?.querySelector('.radiance-qc-frame')?.click();
+        await __sleep(50);
+        r.frameAfterJump = v.currentFrame;
+        // Alt+7 from another workspace lands on QC.
+        v.setWorkspace('color');
+        v._runKeyAction('panel.qc');
+        r.altSeven = [v.workspace, v._referenceRightTab];
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.offered, true, 'QC is not in the workspace switch');
+    assert.equal(out.ws, 'qc'); assert.equal(out.tab, 'qc');
+    assert.deepEqual(out.tabs, ['scopes', 'analysis', 'qc']);
+    assert.match(out.before, /Not run/);
+    assert.equal(out.reportDisabled, true, 'Report is offered before any QC run');
+    assert.match(out.status, /^WARN · 8\/8 frames$/);
+    assert.deepEqual(out.checks.map(([id]) => id).sort(),
+        ['alpha_premultiplied', 'alpha_range', 'flicker', 'nan_inf', 'over_range', 'under_range']);
+    assert.deepEqual(out.checks.find(([id]) => id === 'flicker'), ['flicker', 'WARN']);
+    assert.deepEqual(out.flickerFrames, ['6', '7'], 'the jump into frame 5 and back out of it (shown 1-based)');
+    assert.deepEqual(out.perFrame.map(([f]) => f), ['5', '6']);
+    assert.match(out.perFrame[0][1], /Flicker/);
+    assert.equal(out.runLabel, 'Run again');
+    assert.equal(out.frameAfterJump, 5);
+    assert.deepEqual(out.altSeven, ['qc', 'qc']);
+});
+
 test('File > Deliver Master opens the Deliver dialog, which offers PQ and HLG and moves an 8-bit format to H.265 10-bit', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make(); const v = n.radianceViewer;
