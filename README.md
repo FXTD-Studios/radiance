@@ -24,6 +24,7 @@ Radiance adds 147 visible nodes to ComfyUI for generating and processing images 
 4.0 is in beta on the `version-4-Beta` branch. Read the [changelog](CHANGELOG.md) upgrade notes before moving a production setup.
 
 - **FLUX 3 Image Klein:** base and step-distilled, in the Loader, Sampler, Resolution and Prompt nodes, including reference-image editing and layout tables.
+- **Qwen-Image 2.1:** text-to-image and editing with up to 16 reference images, its RGBA VAE (images with transparency), and pinned downloads of the official files.
 - **Deliver Master:** a graded-master export dialog in the Viewer (**File > Deliver Master…**), with PQ (HDR10) and HLG, 10-bit enforced for HDR, and HDR QC that reports peak nits and clipping.
 - **Viewer workspaces:** Review, Color, Inspect and Compare, each showing only the panels it needs.
 - **Review tools:** frame bookmarks, notes and strokes on frames, a measured QC pass over the sequence, and an exportable review report.
@@ -34,7 +35,7 @@ Radiance adds 147 visible nodes to ComfyUI for generating and processing images 
 
 | Your task | Radiance tools |
 |---|---|
-| Generate images and video | Unified Loader with presets (FLUX 3 Klein, FLUX.2, Qwen-Image, Wan, LTX Video and more), Sampler Pro, Cinematic Prompt Encoder, Resolution |
+| Generate images and video | Unified Loader with presets (FLUX 3 Klein, Qwen-Image 2.1, FLUX.2, Qwen-Image, Wan, LTX Video and more), Sampler Pro, Cinematic Prompt Encoder, Resolution |
 | Create and process HDR | HDR VAE Encode and Decode, SDR → HDR (RUDRA), tone mapping, HDR analysis |
 | Manage colour | ACES 2.0, OpenColorIO, colour-space conversion, LUTs, CDL, grading |
 | Review images and video | Viewer with workspaces, scopes, compare, review notes and QC |
@@ -107,7 +108,7 @@ The SDR-to-HDR model downloads on first use when downloads are enabled.
 
 Open the [starter workflow](workflows/start.json) in ComfyUI. It uses FLUX.2 Klein 4B distilled at 1024 × 1024 in 4 steps. Select the model files in the Loader (see [Models and downloads](#models-and-downloads)), enter your prompt and run it. Review the result in the Viewer and connect a Write node to save it.
 
-To use FLUX 3 Image Klein instead, pick the **Flux.3 Klein** preset in the Loader. The Sampler sets the right steps and CFG for the base or distilled model on its own.
+To use another model, pick its preset in the Loader, for example **Flux.3 Klein** or **Qwen-Image 2.1**. With the Loader's `model_meta` connected (and for FLUX 3 Klein even without it), the Sampler sets that model's steps, CFG, sampler and scheduler on its own, and Resolution its latent size.
 
 <div align="center">
 <img src="basic_workflow.png" width="920" alt="Radiance starter workflow from model loading to HDR review">
@@ -116,6 +117,16 @@ To use FLUX 3 Image Klein instead, pick the **Flux.3 Klein** preset in the Loade
 ## Models and downloads
 
 To stop all automatic model downloads, set `RADIANCE_ALLOW_DOWNLOADS=0` before starting ComfyUI. Every automatic download is pinned to a file hash.
+
+### Image models at a glance
+
+| Model | Loader preset | Default sampling | Editing | Downloads |
+|---|---|---|---|---|
+| [FLUX 3 Image Klein](#flux-3-image-klein) | Flux.3 Klein | distilled 16 steps, CFG 1 · base 50 steps, CFG 3.5 | up to 10 references | manual (gated) |
+| [Qwen-Image 2.1](#qwen-image-21) | Qwen-Image 2.1 | 25 steps, CFG 1 | up to 16 references | automatic |
+| [FLUX.2 Klein](#flux2-klein-starter-workflow) | Flux.2 | distilled 4 steps · base 50 steps | references | partly automatic |
+
+All three use euler with the simple scheduler, and each has a **(Low VRAM)** preset that picks the smaller files and offloads to the CPU.
 
 ### RUDRA for SDR to HDR
 
@@ -155,6 +166,22 @@ Download them from [black-forest-labs/flux-3-image-klein-comfy](https://huggingf
 - Use **Flux.3 Klein (Low VRAM)** on cards with 8 to 12 GB: it picks the int8 or nvfp4 files and offloads to the CPU.
 - To edit, connect up to 10 images to the Prompt's `images` inputs and the VAE. Cite them in the prompt as `<ref_image_0>`, `<ref_image_1>` and so on. `resolution` 1024 sizes each to about 1 megapixel; 0 keeps each at its own size, up to 16 MP.
 - A layout table from ComfyUI's **FLUX 3 Image Layout Prompt** node can go at the end of the prompt; it reaches the model unchanged.
+
+### Qwen-Image 2.1
+
+Qwen's image model with its own 64-channel RGBA VAE, so it can make and edit images with transparency, and a Qwen3-VL-8B text encoder. The Loader downloads these files on first use (the official Comfy-Org files, pinned to their hashes), or you can place them yourself:
+
+| File | Download | Save in |
+|---|---|---|
+| `qwen_image_2.1_bf16.safetensors` or `qwen_image_2.1_int8_convrot.safetensors` | [Qwen-Image 2.1 model](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/diffusion_models) | `ComfyUI/models/diffusion_models/` |
+| `qwen3vl_8b_bf16.safetensors`, `qwen3vl_8b_int8_convrot.safetensors` or `qwen3vl_8b_w4a8.safetensors` | [Qwen3-VL-8B text encoder](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/text_encoders) | `ComfyUI/models/text_encoders/` |
+| `qwen_image_2.1_vae_bf16.safetensors` | [Qwen-Image 2.1 VAE](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/vae) | `ComfyUI/models/vae/` |
+
+- The **Qwen-Image 2.1** preset prefers the bf16 files; **Qwen-Image 2.1 (Low VRAM)** picks int8 and w4a8 and offloads to the CPU.
+- The Sampler runs the official template's 25 steps at CFG 1 (euler, simple). Qwen's own pipeline uses 40 to 50 steps if you want more detail.
+- To edit, connect images to the Prompt's `images` inputs (the VAE is optional) and cite them in the prompt as `<image1>`, `<image2>` and so on. `resolution` sizes the references to about that many pixels square; 0 keeps each at its own size.
+- Avoid seed 0: edits at that seed fail or come out oversaturated, in ComfyUI's own nodes too. The Sampler warns and its default seed is 1.
+- The `qwen3.5_9b_*_pe_*` files in the same repository are prompt enhancers for ComfyUI's Text Generate node, not text encoders.
 
 Review each model's licence before use.
 
