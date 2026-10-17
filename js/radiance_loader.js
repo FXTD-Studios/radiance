@@ -36,6 +36,9 @@ const PRESET_SLOTS = {
     "Flux.1 (Low VRAM)": ["clip_l", "t5xxl"],
     "Flux.2": ["llm_encoder"],
     "Flux.2 (Low VRAM)": ["llm_encoder"],
+    // FLUX 3 Image Klein: one Qwen3-VL-4B file.
+    "Flux.3 Klein": ["llm_encoder"],
+    "Flux.3 Klein (Low VRAM)": ["llm_encoder"],
     "HunyuanVideo": ["clip_l", "llm_encoder"],
     // ALBABIT-FIX: text_projection dropped -- pre-2.3 LTX only ever loads 1
     // CLIP file (comfy/text_encoders/lt.py's ltxv_te, T5-only). Providing a
@@ -165,6 +168,8 @@ const PRESET_CONFIGS = {
             "flux2-dev", "flux2_dev", "flux.2-dev",
             "flux2-klein", "flux2_klein", "flux.2-klein", "klein",
         ],
+        // The bare "klein" hint above also matches FLUX 3 Image Klein files.
+        "unet_exclude": ["flux3", "flux-3", "flux_3", "flux.3"],
         // full_encoder_small_decoder is a lighter/faster decoder (same
         // encoder) -- only used if the full-quality flux2-vae isn't present.
         "vae_hints":     ["flux2-vae", "flux2_vae", "flux2_ae", "full_encoder_small_decoder"],
@@ -211,6 +216,40 @@ const PRESET_CONFIGS = {
         // ALBABIT-FIX: "Low VRAM" presets force offload_mode — expose the
         // widget so the user can still override it (e.g. on a higher-VRAM
         // GPU where cpu_offload is unnecessarily slow).
+        "extra_widgets": ["offload_mode"],
+        "offload_mode": "cpu_offload",
+    },
+    // FLUX 3 Image Klein (BFL's ComfyUI pack and the official templates). The
+    // step-distilled "_sd_" files first, the speed BFL ships by default; the
+    // Sampler sets base or distilled from the loaded weights either way.
+    // Quality-first: bf16, then int8_convrot, then nvfp4 (Blackwell). The
+    // text-encoder hints never match the Qwen3.5-9B prompt upsampler.
+    "Flux.3 Klein": {
+        "unet_hints": [
+            "flux3_image_klein_sd_bf16.safetensors", "flux3_image_klein_bf16.safetensors",
+            "flux3_image_klein_sd_int8_convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
+            "flux3_image_klein_base_int8_convrot.safetensors",
+            "flux3_image_klein_sd_nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
+            "flux3_image_klein", "flux-3-image-klein", "flux3-klein", "flux3_klein",
+        ],
+        "vae_hints":     ["flux2-vae", "flux2_vae", "flux2_ae"],
+        "clip_hints":    {
+            "llm_encoder": [
+                "qwen3vl_4b_bf16.safetensors", "qwen3vl_4b_int8_convrot.safetensors",
+                "qwen3vl_4b", "qwen3-vl-4b",
+            ],
+        },
+    },
+    "Flux.3 Klein (Low VRAM)": {
+        "unet_hints": [
+            "flux3_image_klein_sd_int8_convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
+            "flux3_image_klein_base_int8_convrot.safetensors",
+            "flux3_image_klein_sd_nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
+        ],
+        "vae_hints":     ["flux2-vae", "flux2_vae", "flux2_ae"],
+        "clip_hints":    {
+            "llm_encoder": ["qwen3vl_4b_int8_convrot.safetensors"],
+        },
         "extra_widgets": ["offload_mode"],
         "offload_mode": "cpu_offload",
     },
@@ -696,6 +735,11 @@ function _resolveUpscaleHints(node, config) {
  */
 function _resolveUnetMatch(config, values) {
     if (!config?.unet_hints || !values) return null;
+    // unet_exclude: files another preset owns that a loose hint would match.
+    if (config.unet_exclude) {
+        const ex = config.unet_exclude.map(x => x.toLowerCase());
+        values = values.filter(v => !ex.some(x => v.toLowerCase().includes(x)));
+    }
     if (!config.unet_size_priority) return findMatchingFile(config.unet_hints, values);
     const candidates = values.filter(v => config.unet_hints.some(h => v.toLowerCase().includes(h.toLowerCase())));
     for (const token of config.unet_size_priority) {

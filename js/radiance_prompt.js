@@ -98,7 +98,7 @@ function _applyNegStrengthLock(node, hidden) {
     fitNodeSize(node);
 }
 
-// ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's reference images, so it
+// ALBABIT-FIX: resolution only sizes Qwen-Image 2.1's and Flux.3 Klein's reference images, so it
 // stays hidden until one arrives from a node that runs, and under the models
 // that size them on their own.
 function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
@@ -113,7 +113,8 @@ function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
-const REFERENCE_LIMITS = { qwen_image: 3 };
+// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code).
+const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10 };
 
 function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;

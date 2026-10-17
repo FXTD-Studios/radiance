@@ -844,7 +844,8 @@ PROSE_ARCHS = {"flux", "sd3", "sd3.5", "wan", "ltxv", "ltxav", "pixart",  # ALBA
                "flux2", "flux2-klein", "z_image", "lumina2", "chroma", "qwen_image",
                "hidream", "cosmos", "cogvideox", "mochi", "wan_ti2v", "krea2",
                "hunyuan_image", "hunyuan_video_15", "kandinsky5", "kandinsky5_image",
-               "longcat_image", "omnigen2", "qwen3_llm", "qwen25_llm", "llm"}
+               "longcat_image", "omnigen2", "qwen3_llm", "qwen25_llm", "llm",
+               "flux3"}
 
 # Only these read their prompt through CLIP alone (77-token chunks, weighted
 # tags). Anything else, including an arch this file has never heard of, is a
@@ -988,6 +989,11 @@ def _detect_arch_from_clip(clip, target_arch: str,
         return "wan"
     if "mistral3_24b" in keys:
         return "flux2"
+    # FLUX 3 Image Klein's Qwen3-VL-4B registers as "qwen3vl_4b", as Mage-Flow's
+    # does; only the tokenizer class tells them apart (comfy.text_encoders.flux).
+    if "qwen3vl_4b" in keys and any(
+            c.__name__ == "Flux3Tokenizer" for c in type(getattr(clip, "tokenizer", None)).__mro__):
+        return "flux3"
     if "qwen3_4b" in keys or "qwen3_8b" in keys:
         return "qwen3_llm"          # Z-Image or Flux.2 Klein: same encoder
     if "gemma2_2b" in keys:
@@ -1914,7 +1920,15 @@ def _zero_conditioning(cond):
 
 # ALBABIT-FIX: the architectures whose reference images the Prompt passes on
 # (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models).
-_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein")
+_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3")
+
+# The architectures that read reference images as VAE latents only.
+_LATENT_REFERENCE_ARCHS = ("flux2", "flux2-klein", "flux3")
+
+#: FLUX 3 Image Klein: reference images per edit (BFL's reference code), and the
+#: largest a reference is kept at native size (BFL's pipeline, ~16 MP).
+FLUX3_MAX_REFERENCES = 10
+FLUX3_MAX_REFERENCE_MP = 16.0
 
 
 # ALBABIT-FIX: Qwen-Image Edit reference images, wired as the official 2511
@@ -1950,6 +1964,50 @@ def _flux2_references(vae, references):
         if empty is None:
             empty = nodes_flux.EmptyFlux2LatentImage.execute(width=scaled.shape[2], height=scaled.shape[1]).args[0]
     return latents, empty
+
+
+def _flux3_references(vae, references, resolution):
+    """FLUX 3 Image Klein reference images, as ReferenceMultiLatent encodes them.
+
+    Each image is resized to about (resolution / 1024)^2 megapixels, keeping
+    its aspect ratio (1024: the official templates' 1 MP), or kept at its own
+    size with resolution 0 (BFL's pipeline), capped at 16 MP either way. The
+    empty latent is the first reference's latent times 0, so the output takes
+    its size, as in BFL's code. Cite them in the prompt as <ref_image_0>...
+    """
+    import math
+    if len(references) > FLUX3_MAX_REFERENCES:
+        raise ValueError(f"Prompt: FLUX 3 Image Klein reads {FLUX3_MAX_REFERENCES} reference "
+                         f"images and {len(references)} are connected. Disconnect image_"
+                         f"{FLUX3_MAX_REFERENCES + 1} and above.")
+    latents = []
+    for image in references.values():
+        image = image[:, :, :, :3]
+        height, width = image.shape[1:3]
+        mp = (resolution / 1024.0) ** 2 if resolution and resolution > 0 else width * height / (1024 * 1024)
+        mp = min(mp, FLUX3_MAX_REFERENCE_MP)
+        scale = math.sqrt(mp * 1024 * 1024 / (width * height))
+        w, h = max(1, round(width * scale)), max(1, round(height * scale))
+        if (w, h) != (width, height):
+            image = comfy.utils.common_upscale(image.movedim(-1, 1), w, h, "lanczos", "disabled").movedim(1, -1)
+        latents.append(vae.encode(image))
+    return latents, {"samples": latents[0] * 0.0}
+
+
+#: A FLUX 3 layout table (the native "FLUX 3 Image Layout Prompt" node's output,
+#: or typed by hand): a JSON list of {"id", "bbox", "desc"} rows at the end.
+def _split_flux3_layout(text):
+    """(prompt, layout): a trailing layout table is kept out of the prompt
+    builder, which would otherwise rewrite its punctuation, and re-attached."""
+    for i in [m.start() for m in re.finditer(r"\[", text)]:
+        tail = text[i:].strip()
+        try:
+            rows = json.loads(tail)
+        except ValueError:
+            continue
+        if isinstance(rows, list) and rows and all(isinstance(r, dict) and "bbox" in r for r in rows):
+            return text[:i].rstrip(), tail
+    return text, ""
 
 
 def _with_reference_latents(cond, latents):
@@ -2061,24 +2119,28 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 io.Vae.Input(
                     "vae", optional=True,
                     tooltip="Encodes the reference images into the latents the model edits "
-                            "from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without "
-                            "it read the images through the text encoder only.",
+                            "from. Flux.2 and Flux.3 Klein need it; Qwen-Image 2.1 and Qwen-Image "
+                            "Edit without it read the images through the text encoder only.",
                 ),
                 io.Int.Input(
                     "resolution", default=1024, min=0, max=4096, step=32, optional=True,
                     tooltip="Qwen-Image 2.1: reference images are resized to about resolution "
                             "x resolution pixels, at multiples of 32, keeping their aspect "
                             "ratio. 0 keeps each at its own size, rounded to a multiple of 32. "
-                            "Flux.2 and Qwen-Image Edit size them on their own.",
+                            "Flux.3 Klein: about resolution x resolution pixels (1024 is the "
+                            "templates' 1 MP), 0 keeps each at its own size, up to 16 MP; the "
+                            "output takes image_1's size. Flux.2 and Qwen-Image Edit size "
+                            "them on their own.",
                 ),
                 io.Autogrow.Input(
                     "images", optional=True,
                     template=io.Autogrow.TemplateNames(
                         io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
-                    tooltip="Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) "
-                            "and Flux.2 editing. image_1 is the image to edit, the others are "
-                            "references. With Qwen-Image 2.1, cite them in the prompt as "
-                            "<image1>, <image2>...",
+                    tooltip="Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most), "
+                            "Flux.2 and Flux.3 Klein (10 at most) editing. image_1 is the image "
+                            "to edit, the others are references. With Qwen-Image 2.1, cite them "
+                            "in the prompt as <image1>, <image2>...; with Flux.3 Klein as "
+                            "<ref_image_0> (image_1), <ref_image_1>...",
                 ),
             ],
             outputs=[
@@ -2139,9 +2201,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         references = {name: images[name] for name in slots if images[name] is not None}
         if references and resolved_arch not in _REFERENCE_ARCHS:
             raise ValueError(
-                f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit and "
-                f"Flux.2 only, and the text encoder resolves to '{resolved_arch}'. Connect "
-                f"model_meta from the Loader, or disconnect the images.")
+                f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit, "
+                f"Flux.2 and Flux.3 Klein only, and the text encoder resolves to '{resolved_arch}'. "
+                f"Connect model_meta from the Loader, or disconnect the images.")
         # qwen_image is also plain Qwen-Image, which has no image input. The
         # weights do not tell the two apart, so the file name is the only hint;
         # a warning, not an error, so a renamed Edit checkpoint still runs.
@@ -2152,9 +2214,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 "only Qwen-Image Edit reads them, and plain Qwen-Image gives an off-target "
                 "result. Load a Qwen-Image Edit checkpoint, or disconnect the images.",
                 unet_file)
-        if references and resolved_arch not in ("qwen_image21", "qwen_image") and vae is None:
-            raise ValueError("Prompt: Flux.2 reads reference images as VAE latents. "
+        if references and resolved_arch in _LATENT_REFERENCE_ARCHS and vae is None:
+            family = "Flux.3 Klein" if resolved_arch == "flux3" else "Flux.2"
+            raise ValueError(f"Prompt: {family} reads reference images as VAE latents. "
                              "Connect the vae input.")
+
+        # FLUX 3 layout table: kept verbatim, past the prompt builder.
+        flux3_layout = ""
+        if resolved_arch == "flux3":
+            base_prompt, flux3_layout = _split_flux3_layout(base_prompt)
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2200,6 +2268,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ── Formatting clean-up (spacing, stray commas) ───────────────────────
         # Auto-fix punctuation/spacing. Prose archs don't need danbooru tag enhancers.
         final_prompt = enhance_prompt_grammar(final_prompt, "Grammar & Formatting", arch=resolved_arch)
+        if flux3_layout:
+            final_prompt = f"{final_prompt.rstrip()} {flux3_layout}"
 
         # ── Tokenize, count, encode ─────────────────────────────────────────
         # 3.5.0: no BREAK insertion and no truncation. ComfyUI has no BREAK
@@ -2233,7 +2303,10 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 clip=clip, prompt=final_prompt, vae=vae, **qwen_edit_images).args[0]
         else:
             positive_cond, latent = _encode_tokens(clip, pos_tokens), None
-            if references:
+            if references and resolved_arch == "flux3":
+                flux2_refs, latent = _flux3_references(vae, references, resolution)
+                positive_cond = _with_reference_latents(positive_cond, flux2_refs)
+            elif references:
                 flux2_refs, latent = _flux2_references(vae, references)
                 positive_cond = _with_reference_latents(positive_cond, flux2_refs)
         progress.update(1)

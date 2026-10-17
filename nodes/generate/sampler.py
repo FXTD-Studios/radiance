@@ -45,7 +45,7 @@ try:
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
@@ -72,7 +72,7 @@ except (ImportError, ValueError):
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
@@ -1309,6 +1309,14 @@ class RadianceSamplerPro:
         if preset in ("Auto", "Custom"):
             defaults = get_model_defaults(detected_type)
             distilled = refine_distillation_from_meta(detected_type, meta_unet_file, [*meta_loras, *chain_loras])
+            # FLUX 3 Image Klein: the weights say whether this is the base or the
+            # step-distilled model, so the choice is known without model_meta
+            # (and wins over a file name that does not follow BFL's naming).
+            flux3_known = False
+            if detected_type == "flux3":
+                from_weights = refine_flux3_from_model(model)
+                if from_weights is not None:
+                    distilled, flux3_known = (from_weights or None), True
 
             # Apply defaults if user has them at "default" values -- distilled
             # (e.g. SDXL/SD3.5 Turbo) takes priority over the generic default.
@@ -1322,10 +1330,10 @@ class RadianceSamplerPro:
             # kept and the base value is suggested.
             if kwargs.get('cfg') == 1.0 and detected_type != "flux":
                 suggested = (distilled or {}).get("cfg", defaults.get("cfg", 1.0))
-                if meta_unet_file and suggested != 1.0:
+                if (meta_unet_file or flux3_known) and suggested != 1.0:
                     kwargs['cfg'] = suggested
                     logger.info(f"Auto-applied cfg={suggested} for {detected_type} "
-                                f"({meta_unet_file})")
+                                f"({meta_unet_file or 'from the model weights'})")
                 elif suggested != 1.0:
                     logger.info(
                         f"cfg=1.0 kept for {detected_type}: without model_meta the "

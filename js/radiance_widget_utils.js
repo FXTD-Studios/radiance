@@ -104,6 +104,7 @@ const LOADER_PRESET_MODEL_TYPE = {
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
     "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
+    "Flux.3 Klein": "flux3", "Flux.3 Klein (Low VRAM)": "flux3",
 };
 
 // ALBABIT-FIX: the architecture the Loader 'loaderNode' loads, as its
@@ -116,7 +117,10 @@ export function loaderModelType(loaderNode) {
     // unet_name tells them apart, as Auto-Detect does at execution.
     if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
         const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
-        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
+        const n = unetName.toLowerCase();
+        // A FLUX 3 Klein file in a Flux.2 preset still loads as FLUX 3 (Auto-Detect).
+        if (/flux[-_.]?3/.test(n)) return "flux3";
+        return n.includes("klein") ? "flux2-klein" : "flux2";
     }
     if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
         return LOADER_PRESET_MODEL_TYPE[presetVal];

@@ -62,6 +62,7 @@ const ARCHS_BY_MODEL_TYPE_JS = {
     "WAN TI2V (48ch)": ["wan_ti2v"],
     "HunyuanVideo (16ch)": ["hunyuan_video"],
     "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "Flux.3 Klein (128ch)": ["flux3"],
     "MiniMax H3 (24ch)": ["minimax"],
     "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
     "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
@@ -81,6 +82,7 @@ const SPATIAL_SCALE_JS = {
     // see resolution.py's SPATIAL_SCALE for the full explanation.
     "LTXV (128ch)": 32,
     "Flux.2 / Flux.2 Klein (128ch)": 16,
+    "Flux.3 Klein (128ch)": 16,
     // ALBABIT-FIX: WAN 2.2 TI2V-5B's VAE compresses 16x spatially (double
     // standard WAN's 8x) -- real bug fix, see resolution.py's SPATIAL_SCALE.
     "WAN TI2V (48ch)": 16,

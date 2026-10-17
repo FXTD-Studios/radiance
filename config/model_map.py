@@ -639,6 +639,25 @@ MODEL_VAE_CONFIG: dict[str, dict] = {
         "clip_slots":          ["qwen3_4b"],
         "notes":               "Flux.2 Klein — 128ch latent (post pixel-shuffle), 16x -> 4 upsample stages.",
     },
+    # FLUX 3 Image Klein (5.6B): the Flux.2 VAE, so the latent figures are
+    # Flux.2's. Its text conditioning is eight Qwen3-VL-4B layers stacked
+    # (8 x 2560 = 20480 wide), padded to a multiple of 80 tokens, not 512.
+    # The exact key keeps resolve_model_vae_config off the "flux" (16ch)
+    # entry, which "flux3" contains as a substring.
+    "flux3": {
+        "latent_channels":     128,
+        "scale_factor":        0.3611,
+        "log_curve":           "ARRI LogC4",
+        "compression_ratio":   0.50,
+        "norm_center":         3.0,
+        "vae_spatial_factor":  16,
+        "vae_temporal_factor": 1,
+        "noise_schedule":      "flow",
+        "text_embed_seq_len":  80,
+        "text_embed_hidden":   20480,
+        "clip_slots":          ["qwen3vl_4b"],
+        "notes":               "FLUX 3 Image Klein — Flux.2 VAE (128ch, 16x), Qwen3-VL-4B text encoder.",
+    },
     # ALBABIT-FIX: Cosmos (16ch, T5XXL-old encoder) and Mochi (12ch, T5XXL encoder)
     "cosmos": {
         "latent_channels":     16,
@@ -1081,6 +1100,20 @@ CHECKPOINT_PRESETS: dict = {
         "model_type": "Auto-Detect",
         "weight_dtype": "default",
         "clip_dtype": "fp8_e4m3fn",
+    },
+    # FLUX 3 Image Klein, base and step-distilled in one preset: the Sampler
+    # tells them apart from the weights (the distilled DiT has a ref_time_in
+    # flow-map head). Low VRAM picks the int8 / nvfp4 files; it does not cast
+    # the text encoder, whose int8_convrot file is already quantised.
+    "Flux.3 Klein": {
+        "model_type": "flux3",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "Flux.3 Klein (Low VRAM)": {
+        "model_type": "flux3",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
     },
     "HunyuanVideo": {
         "model_type": "hunyuan_video",
