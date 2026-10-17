@@ -658,28 +658,13 @@ def _route(method: str, path: str):
 
 
 def _atomic_write_bytes(path, data: bytes) -> None:
-    """Write ``data`` to ``path`` through a hidden sibling and ``os.replace``.
+    """Write ``data`` to ``path`` so a failure leaves the previous file whole.
 
-    A crash, full disk or kill mid-write leaves the previous file whole instead
-    of a truncated one. Raises on failure so the caller can say so.
+    Raises on failure so the caller can say so. One implementation for the
+    package: ``core/sequence_safety.write_bytes_atomic``.
     """
-    path = Path(path)
-    tmp = path.with_name(f".{path.name}.partial-{os.getpid()}")
-    try:
-        with open(tmp, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            try:
-                os.fsync(fh.fileno())
-            except OSError:
-                pass
-        os.replace(tmp, path)
-    finally:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
+    from radiance.core.sequence_safety import write_bytes_atomic
+    write_bytes_atomic(path, data)
 
 
 def _set_aside_corrupt(path) -> None:
@@ -694,7 +679,8 @@ def _set_aside_corrupt(path) -> None:
 
 
 def _atomic_write_text(path, text: str) -> None:
-    _atomic_write_bytes(path, text.encode("utf-8"))
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(path, text)
 
 
 def _format_bytes(size: int | float) -> str:
