@@ -223,6 +223,7 @@ const CFG_GUIDED_MODELS = new Set([
     "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
+    "flux3",
 ]);
 const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 
@@ -800,7 +801,14 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     }
     if (!filename) return null;
     const f = filename.toLowerCase();
-    if (f.includes("klein")) {
+    // FLUX 3 Image Klein: BFL names the step-distilled files flux3_image_klein_sd_*.
+    // Mirrors refine_distillation_from_meta; at run time the weights decide
+    // (refine_flux3_from_model) and onExecuted shows what was used.
+    if (detectedType === "flux3") {
+        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")) ? { cfg: 1.0, steps: 16 } : null;
+    }
+    // Flux.2 Klein only: a FLUX 3 Klein file has "klein" in its name too.
+    if (f.includes("klein") && !/flux[-_.]?3/.test(f)) {
         return f.includes("base") ? { flux_guidance: 4.0, steps: 50 } : { flux_guidance: 1.0, steps: 4 };
     }
     if (f.includes("schnell")) return { flux_guidance: 0.0, steps: 4 };
@@ -848,6 +856,9 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     flux:          { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 3.5, steps: 20 },
     flux2:         { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
     "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
+    // FLUX 3 Image Klein base (image_flux3_klein_t2i.json); the step-distilled
+    // file is refined to cfg 1, 16 steps by _deriveDistillationOverride.
+    flux3:         { cfg: 3.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 50 },
     // ALBABIT-FIX: cfg/scheduler/steps verified against lodestones' own
     // official Chroma1-HD ComfyUI workflow (cfg was 1.0, scheduler "simple" --
     // both wrong). "steps" is a generic fallback, new for this architecture.
