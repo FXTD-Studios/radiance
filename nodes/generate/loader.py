@@ -330,7 +330,9 @@ class RadianceUnifiedLoader:
                     "Prompt upsampler (a Qwen3.5 9B LLM) for the Prompt's upsample_prompt: connect "
                     "upsampler_clip to the Prompt. FLUX 3 Klein: qwen3.5_9b_flux3_prompt_upsampler_*. "
                     "Qwen-Image 2.1: qwen3.5_9b_qwen_image_2.1_pe_t2i* for text-to-image, pe_i2i* "
-                    "for editing. 'None' loads nothing."),
+                    "for editing. 'None' loads nothing. Under the Flux.3 Klein and Qwen-Image 2.1 "
+                    "presets it is picked while a connected Prompt has upsample_prompt on, and set "
+                    "back to 'None' when it is off."),
             },
         }
 
