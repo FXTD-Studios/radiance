@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Iterable, List
 
@@ -34,13 +36,48 @@ def _temp_sibling(final: Path) -> Path:
     return final.with_name(f".{final.stem}.partial-{os.getpid()}-{secrets.token_hex(4)}{final.suffix}")
 
 
+# Package audit R6: on Windows, os.replace onto a file that another thread is
+# replacing at the same moment (or that a virus scanner or the indexer has
+# open) fails with "Access is denied" (winerror 5) or a sharing violation
+# (32). Replacements of one destination are serialised within the process,
+# and those two errors alone are retried for about a second; anything else,
+# and a real lack of permission that outlasts the retries, still raises.
+_IS_WINDOWS = os.name == "nt"
+_TRANSIENT_WINERRORS = (5, 32)
+_REPLACE_RETRIES = 8
+_REPLACE_LOCKS: dict = {}
+_REPLACE_LOCKS_GUARD = threading.Lock()
+
+
+def _replace_lock(final: Path) -> threading.Lock:
+    key = os.path.normcase(os.path.abspath(str(final)))
+    with _REPLACE_LOCKS_GUARD:
+        lock = _REPLACE_LOCKS.get(key)
+        if lock is None:
+            lock = _REPLACE_LOCKS[key] = threading.Lock()
+        return lock
+
+
+def _replace(tmp: Path, final: Path) -> None:
+    with _replace_lock(final):
+        for attempt in range(_REPLACE_RETRIES):
+            try:
+                os.replace(tmp, final)
+                return
+            except PermissionError as exc:
+                transient = _IS_WINDOWS and getattr(exc, "winerror", None) in _TRANSIENT_WINERRORS
+                if not transient or attempt == _REPLACE_RETRIES - 1:
+                    raise
+                time.sleep(0.01 * (2 ** attempt))      # 10 ms .. 1.3 s, about 2.5 s in all
+
+
 def _replace_from_temp(final: Path, write_fn: Callable[[Path], Any], require_data: bool) -> Any:
     tmp = _temp_sibling(final)
     try:
         result = write_fn(tmp)
         if require_data and (not tmp.is_file() or tmp.stat().st_size == 0):
             raise RuntimeError(f"the writer produced no data for {final.name}")
-        os.replace(tmp, final)
+        _replace(tmp, final)
         return result
     finally:
         if tmp.exists():

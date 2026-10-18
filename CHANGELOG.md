@@ -319,6 +319,34 @@ are the results.
 
 ### Fixed
 
+- **Concurrent exports no longer overwrite each other.** Two writes with
+  overwrite off (two viewers delivering, or a script and a node) could both
+  pick `Shot_v0001`, both report success, and the second replaced the first.
+  A name or sequence stem is now claimed while its write runs, and two
+  deliveries of one shot at once get v0002 and v0003. Separate ComfyUI
+  processes sharing a folder still only see each other's finished files.
+- **A queued delivery can no longer export newer frames.** A job queued in
+  Deliver kept its settings and grade but looked up the Viewer's frames when
+  it ran, so re-running the workflow in between delivered the new plate under
+  the old job's name, range and grade. Each job now names the frame set it was
+  queued for, and the server refuses it (HTTP 409, nothing written) if the
+  Viewer holds other frames by then.
+- **The prompt upsampler works from a wheel install.** Its four system prompts
+  were not in the package data, so a built wheel or sdist failed on first use.
+  The release check now fails on any tracked package file that no wheel ships.
+- **Gizmos keep every output of a node** that returns `ui` and `result` (the
+  Prompt, the Viewer) or a V3 `NodeOutput`; slot 0 used to receive the whole
+  dictionary and slot 1 nothing. Graph expansion, execution blockers and async
+  nodes stop with a message inside a Gizmo.
+- **Write accepts a list of IMAGE batches** and joins them along the frame
+  axis; mismatched sizes are refused by name.
+- **Atomic saves on Windows:** concurrent saves of one file failed with "Access
+  is denied". Replacements of one file are serialised, and the two transient
+  Windows errors are retried briefly.
+- The Nuke listener closes a refused connection gracefully, so the protocol 2
+  upgrade message is no longer lost to a connection reset (update
+  `start_nuke_server.py` inside Nuke).
+
 - **SDR reference conditioning** crashed with every real VAE (it expected a
   dict from `vae.encode`). It takes a tensor or a dict, encodes RGB only, and
   warns when a video VAE drops reference frames.

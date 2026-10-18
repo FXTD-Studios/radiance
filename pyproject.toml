@@ -86,7 +86,8 @@ test = [
     "scipy>=1.9",
     "Pillow>=9.0",
     "defusedxml>=0.7",
-    "opencv-python-headless>=4.7",
+    # cv2 comes from the runtime dependency opencv-python; a second, headless
+    # distribution here installed two packages that both provide cv2.
     "safetensors>=0.4.0",
     "tqdm>=4.66",
     "tifffile>=2023.7.10",
@@ -181,6 +182,9 @@ radiance = [
     "workflows/TEMPLATES/*.rad",
     "scripts/training/train_temporal_rudra.py",
     "scripts/start_nuke_server.py",
+    # The prompt upsampler's system prompts (nodes/generate/upsampler.py reads
+    # them at run time); a wheel without them failed on first use (audit R3).
+    "nodes/generate/upsampler_prompts/*.txt",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

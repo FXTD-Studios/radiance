@@ -71,6 +71,7 @@ from radiance.color.gamut import aces2_gamut_compress as _aces2_gamut_compress
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from radiance import viewer_utils as _viewer_utils
+from radiance.cache import _viewer_cache_generation  # R2: the cached frame set's generation
 
 _VIEWER_UTIL_NAMES = (
     "DEFAULT_PNG_COMPRESSION", "BIT_16_MAX", "BIT_8_MAX", "BIT_16_TO_8_DIVISOR",
@@ -730,6 +731,11 @@ class RadianceViewer:
             # the prompt id scopes the key to one execution of one graph. The
             # key round-trips through the UI payload below and comes back on
             # /radiance/deliver, so the JS needs no change -- it just echoes it.
+            # Package audit R2: ComfyUI's hidden PROMPT input is the node graph,
+            # not the request envelope, so in practice the key is the workflow
+            # id and the node id, the same on every run. The cache generation
+            # sent with the key (cache_generation) is what ties a delivery to
+            # one run's frames.
             _node_part = str(unique_id).strip() if unique_id and str(unique_id).strip() else str(id(self))
             _graph_part = ""
             try:
@@ -800,6 +806,9 @@ class RadianceViewer:
                 "audio": [{"filename": audio_filename, "subfolder": "", "type": "temp"}] if audio_filename else [],
                 "audio_fps": [source_fps or play_fps],
                 "instance_id": [instance_key],
+                # R2: the frame set's generation, echoed by Deliver so a queued
+                # job can be refused once the Viewer holds other frames.
+                "cache_generation": [_viewer_cache_generation(instance_key)],
                 "batch_size": [batch_size],
                 "bit_depth": [depth_label],
                 "flicker_data": flicker_data,

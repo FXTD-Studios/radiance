@@ -179,7 +179,8 @@ def _import_in_clean_process(module: str):
     }
     return subprocess.run(
         [sys.executable, "-c", textwrap.dedent(script)],
-        capture_output=True, text=True, timeout=180,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"}, timeout=180,
     )
 
 
