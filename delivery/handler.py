@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - exercised by the CI import smoke-test
 import folder_paths
 
 # Re-import modular components
-from radiance.cache import _viewer_cache_get, _viewer_source_get, _progress_set
+from radiance.cache import _viewer_cache_get, _viewer_cache_get_with_generation, _viewer_source_get, _progress_set
 from radiance.config.constants import VERSION as _RADIANCE_VERSION
 from radiance.color.grading import apply_grading, viewer_grade_kwargs
 
@@ -292,6 +292,32 @@ def get_next_version(directory: str, filename_base: str) -> str:
     return f"v{max_v + 1:04d}"
 
 
+# Versions handed to deliveries still running in this process (AUDIT-FIX R1):
+# the scan above only sees finished files, so two deliveries of one shot at
+# once both picked v0002 and the second replaced the first.
+_VERSION_LOCK = threading.Lock()
+_VERSIONS_CLAIMED: set = set()
+
+
+def _version_key(directory: str, filename_base: str, version: int) -> tuple:
+    return (os.path.normcase(os.path.abspath(directory)), filename_base, version)
+
+
+def claim_next_version(directory: str, filename_base: str) -> str:
+    """The next version on disk that no running delivery holds, claimed for this one."""
+    with _VERSION_LOCK:
+        v = int(get_next_version(directory, filename_base)[1:])
+        while _version_key(directory, filename_base, v) in _VERSIONS_CLAIMED:
+            v += 1
+        _VERSIONS_CLAIMED.add(_version_key(directory, filename_base, v))
+        return f"v{v:04d}"
+
+
+def release_version(directory: str, filename_base: str, version_str: str) -> None:
+    with _VERSION_LOCK:
+        _VERSIONS_CLAIMED.discard(_version_key(directory, filename_base, int(version_str[1:])))
+
+
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
     """Write an ACES Metadata File (.amf) alongside the exported media."""
     if color_space in ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'):
@@ -432,7 +458,7 @@ async def radiance_deliver_endpoint(request):
         grading = data.get('grading', {})
         settings = data.get('settings', {})
 
-        images = _viewer_cache_get(instance_key)
+        images, cached_generation = _viewer_cache_get_with_generation(instance_key)
         # Initialise progress immediately. It was only ever set at 90% and 100%,
         # so a client polling before the first update read a stale value from a
         # previous run -- and a failure left it pinned at 90% for the life of
@@ -442,6 +468,17 @@ async def radiance_deliver_endpoint(request):
         if images is None:
             _progress_refuse(instance_key, "No frames in cache")
             return web.json_response({"error": "No frames found in cache for this node. Run the workflow first.", "status": "error"}, status=400)
+        # AUDIT-FIX (R2): a queued job names the frame set it was queued for.
+        # A re-run into the same Viewer replaces the frames under the same key,
+        # so without this the job exported the new plate under its own name,
+        # range and grade, and reported success. Refuse instead.
+        wanted_generation = data.get('source_generation')
+        if wanted_generation is not None and cached_generation is not None \
+                and str(wanted_generation) != str(cached_generation):
+            _msg = ("The Viewer's frames changed after this job was queued (the workflow ran again). "
+                    "Nothing was written. Queue the job again to deliver the frames the Viewer shows now.")
+            _progress_refuse(instance_key, "Frames changed since the job was queued")
+            return web.json_response({"error": _msg, "status": "error"}, status=409)
         
         # ─── Render Range ──────────────────────────────────────────────
         range_in = max(1, int(settings.get('range_in', 1)))
@@ -559,11 +596,11 @@ async def radiance_deliver_endpoint(request):
         # Handle Versioning
         # One suffix: write_frames stamps `_v{version:04d}` onto filename_prefix.
         # This used to append its own `_v02` first, giving Shot_v02_v0001.
+        # The version is claimed just before the export runs (claim_next_version),
+        # so two deliveries of the same shot at once get v0002 and v0003.
+        version_base = (output_path if output_path else folder_paths.get_output_directory()) if smart_ver else None
         version_str = "v0001"
-        if smart_ver:
-            base_path = output_path if output_path else folder_paths.get_output_directory()
-            version_str = get_next_version(base_path, filename_prefix)
-        version_num = int(version_str[1:])
+        version_num = 1
 
         # ─── Process Grading ──────────────────────────────────────────
         # Every key this function reads. The viewer must send all of them --
@@ -1125,8 +1162,15 @@ async def radiance_deliver_endpoint(request):
             return path, qc_report, _cont_warn, continuity_report, warnings
 
         loop = asyncio.get_running_loop()
-        path, qc_report, _cont_warn, continuity_report, warnings = (
-            await loop.run_in_executor(None, _run_export))
+        if version_base is not None:
+            version_str = claim_next_version(version_base, filename_prefix)
+            version_num = int(version_str[1:])
+        try:
+            path, qc_report, _cont_warn, continuity_report, warnings = (
+                await loop.run_in_executor(None, _run_export))
+        finally:
+            if version_base is not None:
+                release_version(version_base, filename_prefix, version_str)
 
         # AUDIT-FIX: this returned status "success" unconditionally, so a
         # master delivered at 1x because the ESRGAN model was missing, or

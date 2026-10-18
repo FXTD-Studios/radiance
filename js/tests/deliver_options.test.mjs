@@ -60,3 +60,10 @@ test('every HDR10 mastering display in the panel is one the writer knows, and th
     assert.deepEqual(panel, server);
     assert.match(viewer, /mastering_display: dvMastering\.value/);
 });
+
+test('a Deliver job names the frame set it is for (package audit R2)', () => {
+    const viewer = readFileSync(new URL('../radiance_viewer.js', import.meta.url), 'utf8');
+    const build = viewer.slice(viewer.indexOf('const buildPayload = () => ('), viewer.indexOf('const unbakedAids'));
+    assert.match(build, /source_generation: this\.cacheGeneration \?\? null/);
+    assert.match(viewer, /viewer\.cacheGeneration = message\.cache_generation\?\.\[0\] \?\? null;/);
+});
