@@ -2165,9 +2165,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 # Appended after every older input, so saved widget values keep their slots.
                 io.Clip.Input(
                     "upsampler_clip", optional=True,
-                    tooltip="The family's prompt upsampler, loaded with Load CLIP: "
-                            "qwen3.5_9b_flux3_prompt_upsampler_* (type flux3) or "
-                            "qwen3.5_9b_qwen_image_2.1_pe_* (type qwen_image). Used only "
+                    tooltip="The family's prompt upsampler: the Loader's upsampler_clip output, "
+                            "or Load CLIP with qwen3.5_9b_flux3_prompt_upsampler_* (type flux3) "
+                            "or qwen3.5_9b_qwen_image_2.1_pe_* (type qwen_image). Used only "
                             "when upsample_prompt is on.",
                 ),
                 io.Boolean.Input(
