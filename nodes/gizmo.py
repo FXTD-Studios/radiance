@@ -178,10 +178,7 @@ def run_subgraph_executor(gizmo_data: Dict[str, Any], outer_inputs: Dict[str, An
 
             # Execute
             try:
-                res = execution_method(**resolved_inputs)
-                # Ensure output is a tuple (ComfyUI standard)
-                if not isinstance(res, tuple):
-                    res = (res,)
+                res = _node_outputs(execution_method(**resolved_inputs), node_type)
                 node_outputs[node_id] = res
             except Exception as exc:
                 logger.error(f"[Radiance Gizmo] Execution failed on internal node '{node_type}' (ID: {node_id}) inside Gizmo: {exc}")
@@ -213,6 +210,43 @@ def run_subgraph_executor(gizmo_data: Dict[str, Any], outer_inputs: Dict[str, An
 # ═══════════════════════════════════════════════════════════════════════════════
 #                        DYNAMIC CLASS REGISTRATION
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _node_outputs(res: Any, node_type: str = "") -> tuple:
+    """A node's outputs as the tuple ComfyUI's executor reads, from any return form.
+
+    Package audit R4: every non-tuple result used to be wrapped as
+    ``(result,)``, so a node returning ``{"ui": ..., "result": (a, b)}`` (the
+    Prompt, the Viewer) or a V3 ``NodeOutput`` put the whole dict or object in
+    output slot 0 and left slot 1 empty. The UI part has no viewer inside a
+    Gizmo and is dropped; forms the subgraph executor cannot honour (graph
+    expansion, an execution blocker, a coroutine from an async node) stop with
+    a message rather than passing the wrong type on.
+    """
+    import inspect as _inspect
+    where = f" (internal node '{node_type}')" if node_type else ""
+    if _inspect.isawaitable(res):
+        if hasattr(res, "close"):
+            res.close()
+        raise RuntimeError(f"An async node cannot run inside a Gizmo{where}.")
+    if isinstance(res, tuple):
+        return res
+    if res is None:
+        return ()
+    if isinstance(res, dict) and ("result" in res or "ui" in res or "expand" in res):
+        if res.get("expand") is not None:
+            raise RuntimeError(f"A node that expands into a graph cannot run inside a Gizmo{where}.")
+        out = res.get("result", ())
+        return tuple(out) if isinstance(out, (list, tuple)) else (out,)
+    # V3 NodeOutput (comfy_api.latest.io), recognised by shape so older
+    # ComfyUI builds without it still import this module.
+    if hasattr(res, "args") and hasattr(res, "ui") and hasattr(res, "expand"):
+        if getattr(res, "expand", None) is not None:
+            raise RuntimeError(f"A node that expands into a graph cannot run inside a Gizmo{where}.")
+        if getattr(res, "block_execution", None) is not None:
+            raise RuntimeError(f"A node blocked execution inside a Gizmo{where}: {res.block_execution}")
+        return tuple(res.args)
+    return (res,)
+
 
 def generate_gizmo_class(gizmo_data: Dict[str, Any]) -> Tuple[str, Any]:
     """
