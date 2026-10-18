@@ -179,3 +179,24 @@ def test_the_system_prompts_ship_with_the_node():
     for arch, spec in upsampler.UPSAMPLERS.items():
         for mode in ("t2i", "edit"):
             assert len(upsampler.system_prompt(arch, mode)) > 1000, (arch, mode)
+
+
+# ── The Loader's upsampler slot ──────────────────────────────────────────────
+
+def test_the_loader_loads_the_upsampler_once_as_load_clip_does(monkeypatch):
+    from radiance.nodes.generate import loader
+    loads = []
+    monkeypatch.setattr(loader.folder_paths, "get_full_path_or_raise", lambda kind, name: f"{kind}/{name}",
+                        raising=False)
+    monkeypatch.setattr(loader.folder_paths, "get_folder_paths", lambda kind: [], raising=False)
+    monkeypatch.setattr(loader, "_file_fingerprint", lambda path: "fp")
+    monkeypatch.setattr(loader, "get_clip_type_enum", lambda arch: f"CLIPType for {arch}")
+    monkeypatch.setattr(loader.comfy.sd, "load_clip",
+                        lambda ckpt_paths, clip_type, embedding_directory: loads.append((ckpt_paths, clip_type)) or "llm",
+                        raising=False)
+    monkeypatch.setattr(loader, "_upsampler_cache", loader.LRUCache())
+    info = []
+    for _ in range(2):
+        assert loader._load_upsampler("pup.safetensors", "flux3", True, info) == "llm"
+    assert loads == [(["text_encoders/pup.safetensors"], "CLIPType for flux3")]
+    assert info[-1] == "UPSAMPLER: pup.safetensors (cached)"
