@@ -11,8 +11,9 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
     .replace(/^export /gm, '');
 
 const loaderCtx = vm.createContext({
-    app: { registerExtension() {} }, console: { log() {} },
+    app: { registerExtension(ext) { loaderCtx.ext = ext; } }, console: { log() {} },
     getWidget: (node, name) => node.widgets.find((w) => w.name === name) ?? null,
+    setTimeout() {}, setInterval() {},
 });
 vm.runInContext(strip('radiance_loader.js') + `
     globalThis.find = findMatchingFile;
@@ -101,6 +102,38 @@ test("the Loader's upsampler is picked only while a Prompt it feeds has upsample
     for (const name of ['Flux.3 Klein', 'Flux.3 Klein (Low VRAM)', 'Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
         assert.ok(loaderCtx.presets[name].extra_widgets.includes('upsampler'), name);
     }
+});
+
+test("a bypassed node between the Loader and the Prompt passes the upsampler on, a muted one does not", () => {
+    const w = { name: 'upsampler', value: 'None', options: { values: ['None', PUP] } };
+    const prompt = { mode: 0, widgets: [{ name: 'upsample_prompt', value: true }] };
+    const between = { mode: 4, outputs: [{ type: 'CLIP', links: [8] }] };
+    const nodes = { 2: between, 3: prompt };
+    const loader = {
+        widgets: [{ name: 'preset', value: 'Flux.3 Klein' }, w],
+        outputs: [{ name: 'upsampler_clip', links: [7] }], setDirtyCanvas() {},
+        graph: { links: { 7: { target_id: 2 }, 8: { target_id: 3 } }, getNodeById: (id) => nodes[id] },
+    };
+    loaderCtx.sync(loader);
+    assert.equal(w.value, PUP);
+    between.mode = 2;
+    loaderCtx.sync(loader);
+    assert.equal(w.value, 'None');
+});
+
+test('the upsampler syncs right before a run is queued, not only on the 250 ms poll', async () => {
+    const nodeType = function () {};
+    await loaderCtx.ext.beforeRegisterNodeDef(nodeType, { name: 'RadianceUnifiedLoader' });
+    const w = { name: 'upsampler', value: 'None', options: { values: ['None', PUP] } };
+    const prompt = { mode: 0, widgets: [{ name: 'upsample_prompt', value: true }] };
+    const node = Object.assign(Object.create(nodeType.prototype), {
+        widgets: [{ name: 'preset', value: 'Flux.3 Klein' }, w],
+        outputs: [{ name: 'upsampler_clip', links: [7] }], setDirtyCanvas() {},
+        graph: { links: { 7: { target_id: 2 } }, getNodeById: () => prompt },
+    });
+    node.onNodeCreated();
+    w.beforeQueued();
+    assert.equal(w.value, PUP);
 });
 
 test('the Flux.2 presets no longer grab a FLUX 3 Klein file through their bare "klein" hint', () => {

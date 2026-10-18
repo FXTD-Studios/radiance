@@ -852,6 +852,22 @@ function autoFillPresetFiles(node, cleanPreset) {
     }
 }
 
+// ALBABIT-FIX: a bypassed node passes the CLIP on (the Prompt's isInputLive reads
+// it so), so its CLIP outputs are followed; a muted one ends the chain.
+function _feedsUpsamplerUser(graph, linkIds, depth = 0) {
+    return linkIds.some(id => {
+        const link = graph.links?.[id];
+        const target = link && graph.getNodeById(link.target_id);
+        if (!target || target.mode === 2 || depth > 32) return false;
+        if (target.mode === 4) {
+            const clipLinks = (target.outputs ?? []).filter(o => o.type === "CLIP").flatMap(o => o.links ?? []);
+            return _feedsUpsamplerUser(graph, clipLinks, depth + 1);
+        }
+        const sw = target.widgets?.find(x => x.name === "upsample_prompt");
+        return !sw || sw.value === true;
+    });
+}
+
 // ALBABIT-FIX: the preset's upsampler, a 9B LLM, is picked only while a node fed
 // by upsampler_clip uses it (a Prompt with upsample_prompt on, or any other
 // node), and goes back to "None" otherwise, so it is never loaded for nothing.
@@ -861,12 +877,7 @@ function _syncUpsampler(node) {
     const w = getWidget(node, "upsampler");
     if (!w?.options?.values || !config?.upsampler_hints) return;
     const links = node.outputs?.find(o => o.name === "upsampler_clip")?.links ?? [];
-    const used = links.some(id => {
-        const link = node.graph?.links?.[id];
-        const target = link && node.graph.getNodeById(link.target_id);
-        const sw = target?.widgets?.find(x => x.name === "upsample_prompt");
-        return !!target && target.mode !== 2 && target.mode !== 4 && (!sw || sw.value === true);
-    });
+    const used = !!node.graph && _feedsUpsamplerUser(node.graph, links);
     const value = !used ? "None"
         : (w.value !== "None" ? w.value : findMatchingFile(config.upsampler_hints, w.options.values) || "None");
     if (w.value !== value) {
@@ -1134,6 +1145,11 @@ app.registerExtension({
                     }, 10);
                 };
             }
+
+            // ALBABIT-FIX: ComfyUI calls every widget's beforeQueued right before it
+            // builds the prompt, so a switch turned on inside the 250 ms poll counts.
+            const upsamplerW = getWidget(node, "upsampler");
+            if (upsamplerW) upsamplerW.beforeQueued = () => _syncUpsampler(node);
 
             // Apply initial layout folding on creation, unless onConfigure
             // (loaded workflow) is about to do it with the restored values.
