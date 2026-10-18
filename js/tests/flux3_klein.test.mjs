@@ -11,8 +11,9 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
     .replace(/^export /gm, '');
 
 const loaderCtx = vm.createContext({
-    app: { registerExtension() {} }, console: { log() {} },
+    app: { registerExtension(ext) { loaderCtx.ext = ext; } }, console: { log() {} },
     getWidget: (node, name) => node.widgets.find((w) => w.name === name) ?? null,
+    setTimeout() {}, setInterval() {},
 });
 vm.runInContext(strip('radiance_loader.js') + `
     globalThis.find = findMatchingFile;
@@ -20,6 +21,7 @@ vm.runInContext(strip('radiance_loader.js') + `
     globalThis.presets = PRESET_CONFIGS;
     globalThis.slots = PRESET_SLOTS;
     globalThis.autoFill = autoFillPresetFiles;
+    globalThis.sync = _syncUpsampler;
 `, loaderCtx);
 
 const BASE_BF16 = 'flux3_image_klein_bf16.safetensors';
@@ -57,26 +59,81 @@ test('the Low VRAM preset never picks a bf16 file', () => {
     assert.equal(c.offload_mode, 'cpu_offload');
 });
 
-test("the Loader's upsampler slot gets the family's upsampler, and None under other presets", () => {
+test("the Loader's upsampler is picked only while a Prompt it feeds has upsample_prompt on", () => {
     const PUP_BF16 = 'qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors';
     const PE_T2I = 'qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors';
     const PE_I2I = 'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors';
     const files = ['None', TE_BF16, TE_INT8, 'qwen3vl_8b_bf16.safetensors', PE_I2I, PE_T2I, PUP, PUP_BF16];
-    const w = { name: 'upsampler', value: 'None', options: { values: files } };
-    const fill = (preset, values = files) => {
+    const w = { name: 'upsampler', value: PUP, options: { values: files } };
+    const preset = { name: 'preset', value: 'Flux.3 Klein' };
+    const prompt = { mode: 0, widgets: [{ name: 'upsample_prompt', value: false }] };
+    const loader = {
+        widgets: [preset, w], outputs: [{ name: 'upsampler_clip', links: [] }], setDirtyCanvas() {},
+        graph: { links: { 7: { target_id: 2 } }, getNodeById: () => prompt },
+    };
+    const sync = (presetName, values = files) => {
+        preset.value = presetName;
         w.options.values = values;
-        loaderCtx.autoFill({ widgets: [w] }, preset);
+        loaderCtx.sync(loader);
         return w.value;
     };
-    assert.equal(fill('Flux.3 Klein'), PUP_BF16);
-    assert.equal(fill('Flux.3 Klein (Low VRAM)'), PUP);
-    assert.equal(fill('Qwen-Image 2.1'), PE_T2I);
-    assert.equal(fill('Qwen-Image 2.1', ['None', PE_I2I]), PE_I2I, "editing's own when it is the one on disk");
-    assert.equal(fill('Flux.3 Klein', ['None', TE_BF16, PE_T2I]), 'None');
-    assert.equal(fill('Flux.2', files), 'None');
-    for (const preset of ['Flux.3 Klein', 'Flux.3 Klein (Low VRAM)', 'Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
-        assert.ok(loaderCtx.presets[preset].extra_widgets.includes('upsampler'), preset);
+    loaderCtx.autoFill(loader, 'Flux.3 Klein');
+    assert.equal(w.value, 'None', 'a preset no longer picks it on its own');
+    assert.equal(sync('Flux.3 Klein'), 'None', 'nothing connected');
+    loader.outputs[0].links = [7];
+    assert.equal(sync('Flux.3 Klein'), 'None', 'connected, switch off');
+    prompt.widgets[0].value = true;
+    assert.equal(sync('Flux.3 Klein'), PUP_BF16);
+    w.value = 'None';
+    assert.equal(sync('Flux.3 Klein (Low VRAM)'), PUP);
+    w.value = 'None';
+    assert.equal(sync('Qwen-Image 2.1'), PE_T2I);
+    w.value = PE_I2I;
+    assert.equal(sync('Qwen-Image 2.1'), PE_I2I, 'a file picked by hand stays while it is used');
+    w.value = 'None';
+    assert.equal(sync('Qwen-Image 2.1', ['None', PE_I2I]), PE_I2I, "editing's own when it is the one on disk");
+    prompt.mode = 4;
+    assert.equal(sync('Qwen-Image 2.1'), 'None', 'a bypassed Prompt does not use it');
+    prompt.mode = 0; prompt.widgets = [];
+    w.value = 'None';
+    assert.equal(sync('Flux.3 Klein'), PUP_BF16, 'another consumer (Generate Text) always uses it');
+    w.value = TE_BF16;
+    assert.equal(sync('Flux.2'), TE_BF16, 'presets without an upsampler leave the slot alone');
+    for (const name of ['Flux.3 Klein', 'Flux.3 Klein (Low VRAM)', 'Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
+        assert.ok(loaderCtx.presets[name].extra_widgets.includes('upsampler'), name);
     }
+});
+
+test("a bypassed node between the Loader and the Prompt passes the upsampler on, a muted one does not", () => {
+    const w = { name: 'upsampler', value: 'None', options: { values: ['None', PUP] } };
+    const prompt = { mode: 0, widgets: [{ name: 'upsample_prompt', value: true }] };
+    const between = { mode: 4, outputs: [{ type: 'CLIP', links: [8] }] };
+    const nodes = { 2: between, 3: prompt };
+    const loader = {
+        widgets: [{ name: 'preset', value: 'Flux.3 Klein' }, w],
+        outputs: [{ name: 'upsampler_clip', links: [7] }], setDirtyCanvas() {},
+        graph: { links: { 7: { target_id: 2 }, 8: { target_id: 3 } }, getNodeById: (id) => nodes[id] },
+    };
+    loaderCtx.sync(loader);
+    assert.equal(w.value, PUP);
+    between.mode = 2;
+    loaderCtx.sync(loader);
+    assert.equal(w.value, 'None');
+});
+
+test('the upsampler syncs right before a run is queued, not only on the 250 ms poll', async () => {
+    const nodeType = function () {};
+    await loaderCtx.ext.beforeRegisterNodeDef(nodeType, { name: 'RadianceUnifiedLoader' });
+    const w = { name: 'upsampler', value: 'None', options: { values: ['None', PUP] } };
+    const prompt = { mode: 0, widgets: [{ name: 'upsample_prompt', value: true }] };
+    const node = Object.assign(Object.create(nodeType.prototype), {
+        widgets: [{ name: 'preset', value: 'Flux.3 Klein' }, w],
+        outputs: [{ name: 'upsampler_clip', links: [7] }], setDirtyCanvas() {},
+        graph: { links: { 7: { target_id: 2 } }, getNodeById: () => prompt },
+    });
+    node.onNodeCreated();
+    w.beforeQueued();
+    assert.equal(w.value, PUP);
 });
 
 test('the Flux.2 presets no longer grab a FLUX 3 Klein file through their bare "klein" hint', () => {
@@ -150,7 +207,6 @@ function upsamplerPrompt(archOf) {
         app: { registerExtension() {} }, console: { log() {}, warn() {} }, LiteGraph: {},
         api: { fetchApi: () => Promise.resolve({ ok: false }), addEventListener() {} },
         isInputLive: (node, input) => input.link != null,
-        liveSourceNode: (node, input) => (input.link != null ? input.sender ?? {} : null),
         setWidgetVisible: (w, visible) => { w.hidden = !visible; },
         fitNodeSize() {}, loaderModelType: archOf, modelMetaSourceNode() { return null; },
         setInterval() {}, clearInterval() {},
@@ -180,10 +236,6 @@ test('the upsampler switch shows with an upsampler under a family that has one, 
         ctx.apply(node);
         assert.deepEqual(shown(), [true, false, false]);
     }
-    node.inputs[0].sender = { widgets: [{ name: 'upsampler', value: 'None' }] }; ctx.apply(node);
-    assert.deepEqual(shown(), [false, false, false], 'a Loader whose upsampler is None sends nothing');
-    node.inputs[0].sender.widgets[0].value = 'qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors'; ctx.apply(node);
-    assert.deepEqual(shown(), [true, false, false]);
     node.widgets[0].value = true; ctx.apply(node);
     assert.deepEqual(shown(), [true, true, true], 'the seed shows while the switch is on');
     arch = 'ltxav'; node.inputs[0].link = null; ctx.apply(node);
