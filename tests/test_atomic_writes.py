@@ -206,3 +206,50 @@ def test_concurrent_saves_of_one_file_do_not_mix(tmp_path):
     assert errors == []
     assert p.read_bytes() in payloads, "the saved file mixes two writers"
     assert _leftovers(tmp_path, {"store.json"}) == []
+
+
+# ── Package audit R6: Windows refuses a replace that races another ──────────
+
+def _flaky_replace(monkeypatch, failures, winerror):
+    import radiance.core.sequence_safety as ss
+    real = os.replace
+    calls = {"n": 0}
+
+    def replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] <= failures:
+            exc = PermissionError(13, "Access is denied")
+            exc.winerror = winerror
+            raise exc
+        return real(src, dst)
+    monkeypatch.setattr(ss, "_IS_WINDOWS", True)
+    monkeypatch.setattr(ss.os, "replace", replace)
+    monkeypatch.setattr(ss.time, "sleep", lambda s: None)
+    return calls
+
+
+@pytest.mark.parametrize("winerror", [5, 32])
+def test_a_transient_windows_refusal_is_retried(tmp_path, monkeypatch, winerror):
+    from radiance.core.sequence_safety import write_bytes_atomic
+    calls = _flaky_replace(monkeypatch, 3, winerror)
+    write_bytes_atomic(tmp_path / "f.json", b"ok")
+    assert (tmp_path / "f.json").read_bytes() == b"ok" and calls["n"] == 4
+    assert _leftovers(tmp_path, {"f.json"}) == []
+
+
+def test_a_refusal_that_lasts_still_raises_and_cleans_up(tmp_path, monkeypatch):
+    from radiance.core.sequence_safety import write_bytes_atomic
+    (tmp_path / "f.json").write_bytes(b"old")
+    _flaky_replace(monkeypatch, 100, 5)
+    with pytest.raises(PermissionError):
+        write_bytes_atomic(tmp_path / "f.json", b"new")
+    assert (tmp_path / "f.json").read_bytes() == b"old"
+    assert _leftovers(tmp_path, {"f.json"}) == []
+
+
+def test_other_permission_errors_are_not_retried(tmp_path, monkeypatch):
+    from radiance.core.sequence_safety import write_bytes_atomic
+    calls = _flaky_replace(monkeypatch, 1, None)      # a POSIX-style error, no winerror
+    with pytest.raises(PermissionError):
+        write_bytes_atomic(tmp_path / "f.json", b"new")
+    assert calls["n"] == 1
