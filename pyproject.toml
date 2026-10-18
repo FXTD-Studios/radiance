@@ -181,6 +181,9 @@ radiance = [
     "workflows/TEMPLATES/*.rad",
     "scripts/training/train_temporal_rudra.py",
     "scripts/start_nuke_server.py",
+    # The prompt upsampler's system prompts (nodes/generate/upsampler.py reads
+    # them at run time); a wheel without them failed on first use (audit R3).
+    "nodes/generate/upsampler_prompts/*.txt",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
