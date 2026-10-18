@@ -292,6 +292,32 @@ def get_next_version(directory: str, filename_base: str) -> str:
     return f"v{max_v + 1:04d}"
 
 
+# Versions handed to deliveries still running in this process (AUDIT-FIX R1):
+# the scan above only sees finished files, so two deliveries of one shot at
+# once both picked v0002 and the second replaced the first.
+_VERSION_LOCK = threading.Lock()
+_VERSIONS_CLAIMED: set = set()
+
+
+def _version_key(directory: str, filename_base: str, version: int) -> tuple:
+    return (os.path.normcase(os.path.abspath(directory)), filename_base, version)
+
+
+def claim_next_version(directory: str, filename_base: str) -> str:
+    """The next version on disk that no running delivery holds, claimed for this one."""
+    with _VERSION_LOCK:
+        v = int(get_next_version(directory, filename_base)[1:])
+        while _version_key(directory, filename_base, v) in _VERSIONS_CLAIMED:
+            v += 1
+        _VERSIONS_CLAIMED.add(_version_key(directory, filename_base, v))
+        return f"v{v:04d}"
+
+
+def release_version(directory: str, filename_base: str, version_str: str) -> None:
+    with _VERSION_LOCK:
+        _VERSIONS_CLAIMED.discard(_version_key(directory, filename_base, int(version_str[1:])))
+
+
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
     """Write an ACES Metadata File (.amf) alongside the exported media."""
     if color_space in ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'):
@@ -559,11 +585,11 @@ async def radiance_deliver_endpoint(request):
         # Handle Versioning
         # One suffix: write_frames stamps `_v{version:04d}` onto filename_prefix.
         # This used to append its own `_v02` first, giving Shot_v02_v0001.
+        # The version is claimed just before the export runs (claim_next_version),
+        # so two deliveries of the same shot at once get v0002 and v0003.
+        version_base = (output_path if output_path else folder_paths.get_output_directory()) if smart_ver else None
         version_str = "v0001"
-        if smart_ver:
-            base_path = output_path if output_path else folder_paths.get_output_directory()
-            version_str = get_next_version(base_path, filename_prefix)
-        version_num = int(version_str[1:])
+        version_num = 1
 
         # ─── Process Grading ──────────────────────────────────────────
         # Every key this function reads. The viewer must send all of them --
@@ -1125,8 +1151,15 @@ async def radiance_deliver_endpoint(request):
             return path, qc_report, _cont_warn, continuity_report, warnings
 
         loop = asyncio.get_running_loop()
-        path, qc_report, _cont_warn, continuity_report, warnings = (
-            await loop.run_in_executor(None, _run_export))
+        if version_base is not None:
+            version_str = claim_next_version(version_base, filename_prefix)
+            version_num = int(version_str[1:])
+        try:
+            path, qc_report, _cont_warn, continuity_report, warnings = (
+                await loop.run_in_executor(None, _run_export))
+        finally:
+            if version_base is not None:
+                release_version(version_base, filename_prefix, version_str)
 
         # AUDIT-FIX: this returned status "success" unconditionally, so a
         # master delivered at 1x because the ESRGAN model was missing, or
