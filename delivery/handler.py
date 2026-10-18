@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - exercised by the CI import smoke-test
 import folder_paths
 
 # Re-import modular components
-from radiance.cache import _viewer_cache_get, _viewer_source_get, _progress_set
+from radiance.cache import _viewer_cache_get, _viewer_cache_get_with_generation, _viewer_source_get, _progress_set
 from radiance.config.constants import VERSION as _RADIANCE_VERSION
 from radiance.color.grading import apply_grading, viewer_grade_kwargs
 
@@ -458,7 +458,7 @@ async def radiance_deliver_endpoint(request):
         grading = data.get('grading', {})
         settings = data.get('settings', {})
 
-        images = _viewer_cache_get(instance_key)
+        images, cached_generation = _viewer_cache_get_with_generation(instance_key)
         # Initialise progress immediately. It was only ever set at 90% and 100%,
         # so a client polling before the first update read a stale value from a
         # previous run -- and a failure left it pinned at 90% for the life of
@@ -468,6 +468,17 @@ async def radiance_deliver_endpoint(request):
         if images is None:
             _progress_refuse(instance_key, "No frames in cache")
             return web.json_response({"error": "No frames found in cache for this node. Run the workflow first.", "status": "error"}, status=400)
+        # AUDIT-FIX (R2): a queued job names the frame set it was queued for.
+        # A re-run into the same Viewer replaces the frames under the same key,
+        # so without this the job exported the new plate under its own name,
+        # range and grade, and reported success. Refuse instead.
+        wanted_generation = data.get('source_generation')
+        if wanted_generation is not None and cached_generation is not None \
+                and str(wanted_generation) != str(cached_generation):
+            _msg = ("The Viewer's frames changed after this job was queued (the workflow ran again). "
+                    "Nothing was written. Queue the job again to deliver the frames the Viewer shows now.")
+            _progress_refuse(instance_key, "Frames changed since the job was queued")
+            return web.json_response({"error": _msg, "status": "error"}, status=409)
         
         # ─── Render Range ──────────────────────────────────────────────
         range_in = max(1, int(settings.get('range_in', 1)))

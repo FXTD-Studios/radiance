@@ -5404,6 +5404,9 @@ class RadianceViewer {
         // settings afterwards changes the next job, not the ones queued.
         const buildPayload = () => ({
             instance_id: this.instanceId || this.node.id,
+            // The frame set this job is for (package audit R2): a queued job
+            // is refused if the Viewer holds other frames by the time it runs.
+            source_generation: this.cacheGeneration ?? null,
             grading: {
                 exposure: this.exposure,
                 // Full per-channel arrays — NOT [0] only. Avoids silently
@@ -25427,6 +25430,7 @@ app.registerExtension({
             if (message.instance_id && message.instance_id.length > 0) {
                 viewer.instanceId = message.instance_id[0];
             }
+            viewer.cacheGeneration = message.cache_generation?.[0] ?? null;
         };
     }
 });
