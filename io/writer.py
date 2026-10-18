@@ -66,6 +66,7 @@ difference to be flat.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -73,6 +74,8 @@ import subprocess
 import tempfile
 import threading
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
@@ -422,17 +425,71 @@ def _apply_output_colorspace(arr: np.ndarray, cs: str) -> np.ndarray:
 # ═══════════════════════════════════════════════════════════════════════════
 # § 2  Write helpers
 # ═══════════════════════════════════════════════════════════════════════════
-def _unique_path(path: Path) -> Path:
-    """Append _001, _002 ... if path already exists."""
-    if not path.exists():
-        return path
-    stem, ext = path.stem, path.suffix
-    i = 1
-    while True:
-        candidate = path.parent / f"{stem}_{i:03d}{ext}"
-        if not candidate.exists():
+# Destinations claimed by writes still in progress in this process.
+#
+# AUDIT-FIX (R1): `_unique_path` and `_sequence_stem` only checked the disk, so
+# two writes with overwrite off (two viewers delivering, or a script and a
+# node) could both see "Shot_v0001.png" free, both report success, and the
+# second replaced the first. A name is now claimed under a lock when it is
+# chosen and released when the write that claimed it ends, so a concurrent
+# write moves on to the next free name. One ComfyUI process is the case this
+# covers; separate processes sharing a folder still only see each other's
+# finished files.
+_RESERVE_LOCK = threading.Lock()
+_RESERVED: set = set()
+_RESERVATIONS: ContextVar = ContextVar("radiance_write_reservations", default=None)
+
+
+def _reserve_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+@contextmanager
+def _reservation_scope():
+    """Names claimed inside are released when the outermost scope ends."""
+    held = _RESERVATIONS.get()
+    if held is not None:            # nested: the outer write owns the claims
+        yield
+        return
+    held = []
+    token = _RESERVATIONS.set(held)
+    try:
+        yield
+    finally:
+        _RESERVATIONS.reset(token)
+        with _RESERVE_LOCK:
+            for key in held:
+                _RESERVED.discard(key)
+
+
+def _claim_first_free(candidates: Iterator[Path], taken: Callable[[Path], bool]) -> Path:
+    """The first candidate that is neither taken on disk nor claimed, claimed.
+
+    Outside a reservation scope nothing is claimed (no write owns the release),
+    but claimed names are still skipped.
+    """
+    held = _RESERVATIONS.get()
+    with _RESERVE_LOCK:
+        for candidate in candidates:
+            key = _reserve_key(candidate)
+            if key in _RESERVED or taken(candidate):
+                continue
+            if held is not None:
+                _RESERVED.add(key)
+                held.append(key)
             return candidate
-        i += 1
+    raise RuntimeError("unreachable: candidate generator ended")  # pragma: no cover
+
+
+def _unique_path(path: Path) -> Path:
+    """Append _001, _002 ... if path already exists or another write claimed it."""
+    def candidates():
+        yield path
+        i = 1
+        while True:
+            yield path.parent / f"{path.stem}_{i:03d}{path.suffix}"
+            i += 1
+    return _claim_first_free(candidates(), lambda p: p.exists())
 
 
 def _workflow_metadata(prompt=None, extra_pnginfo=None) -> dict:
@@ -1334,11 +1391,28 @@ def coerce_to_frames(
     # ── 2. List / tuple of tensors ────────────────────────────────────
     if isinstance(data, (list, tuple)):
         # If all elements are tensors, stack them
-        if data and isinstance(data[0], torch.Tensor):
-            arr = np.stack(
-                [t.detach().cpu().float().numpy() for t in data], axis=0
-            )
-            return arr, detected_fps
+        # AUDIT-FIX (R5): np.stack put a fifth axis on a list of IMAGE batches
+        # ((B,H,W,C) each), and write_frames then failed unpacking four. Each
+        # item is now a (H,W,C) frame or a (B,H,W,C) batch, and they join
+        # along the frame axis in order.
+        if data and all(isinstance(t, torch.Tensor) for t in data):
+            parts = []
+            for i, t in enumerate(data):
+                a = t.detach().cpu().float().numpy()
+                if a.ndim == 3:
+                    a = a[np.newaxis]
+                if a.ndim != 4:
+                    raise ValueError(f"RadianceWrite: list item {i} has shape {tuple(t.shape)}; "
+                                     "expected an IMAGE (B,H,W,C) or one frame (H,W,C).")
+                if parts and a.shape[1:] != parts[0].shape[1:]:
+                    raise ValueError(f"RadianceWrite: list item {i} is {a.shape[2]}x{a.shape[1]} with "
+                                     f"{a.shape[3]} channel(s), item 0 is {parts[0].shape[2]}x"
+                                     f"{parts[0].shape[1]} with {parts[0].shape[3]}; the frames of one "
+                                     "write must share a size and channel count.")
+                parts.append(a)
+            return np.concatenate(parts, axis=0), detected_fps
+        if not data:
+            raise ValueError("RadianceWrite: an empty list has no frames to write.")
         # Otherwise, recurse on first element that looks like frames.
         #
         # ALBABIT-FIX: this loop used to `except Exception: continue`, throwing
@@ -1677,15 +1751,19 @@ def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
             for i in range(max(1, count))
         )
 
-    if not collides(seq_stem):
-        return seq_stem
-    i = 1
-    while collides(f"{seq_stem}_{i:03d}"):
-        i += 1
-    return f"{seq_stem}_{i:03d}"
+    # Claimed like a single file (R1): the key is the sequence's stem and
+    # extension in its folder, so two sequence writes cannot share a stem.
+    def candidates():
+        yield out_dir / f"{seq_stem}#{ext}"
+        i = 1
+        while True:
+            yield out_dir / f"{seq_stem}_{i:03d}#{ext}"
+            i += 1
+    chosen = _claim_first_free(candidates(), lambda p: collides(p.name[:-len(f"#{ext}")]))
+    return chosen.name[:-len(f"#{ext}")]
 
 
-def dispatch_write(
+def _dispatch_write(
     frames:         Iterable[np.ndarray],
     output_path:    str,
     format:         str,
@@ -1888,6 +1966,13 @@ def dispatch_write(
 
 
 _RECEIPT_LOCK = threading.Lock()
+
+
+@functools.wraps(_dispatch_write)
+def dispatch_write(*args, **kwargs):
+    """Write the frames; the destination names it picks are claimed until it returns (R1)."""
+    with _reservation_scope():
+        return _dispatch_write(*args, **kwargs)
 
 
 def _record(receipt: Optional[Dict[str, Any]], path, frame: Optional[int], writer: Optional[str]) -> None:
