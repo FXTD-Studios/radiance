@@ -119,29 +119,58 @@ test('the Prompt allows 10 FLUX 3 references and shows resolution for them', () 
 
 // ── Prompt upsampler widgets (4.0.0) ───────────────────────────────────────
 
-test('the upsampler switch and seed show only with an upsampler connected, or while on', () => {
+function upsamplerPrompt(archOf) {
     const ctx = vm.createContext({
         app: { registerExtension() {} }, console: { log() {}, warn() {} }, LiteGraph: {},
         api: { fetchApi: () => Promise.resolve({ ok: false }), addEventListener() {} },
         isInputLive: (node, input) => input.link != null,
         setWidgetVisible: (w, visible) => { w.hidden = !visible; },
-        fitNodeSize() {}, loaderModelType() { return null; }, modelMetaSourceNode() { return null; },
+        fitNodeSize() {}, loaderModelType: archOf, modelMetaSourceNode() { return null; },
         setInterval() {}, clearInterval() {},
     });
-    vm.runInContext(strip('radiance_prompt.js') + '\nglobalThis.apply = _applyUpsamplerVisibility;', ctx);
+    vm.runInContext(strip('radiance_prompt.js')
+        + '\nglobalThis.apply = _applyUpsamplerVisibility; globalThis.hold = _holdHiddenSeed;', ctx);
     const control = { name: 'control_after_generate', hidden: false };
     const node = {
         inputs: [{ name: 'upsampler_clip', link: null }],
         widgets: [{ name: 'upsample_prompt', value: false, hidden: false },
             { name: 'upsampler_seed', value: 0, hidden: false, linkedWidgets: [control] }],
     };
+    return { ctx, node, control };
+}
+
+test('the upsampler switch shows with an upsampler under a family that has one, or while on', () => {
+    let arch = null;
+    const { ctx, node, control } = upsamplerPrompt(() => arch);
     const shown = () => [node.widgets[0].hidden, node.widgets[1].hidden, control.hidden].map((h) => !h);
     ctx.apply(node);
     assert.deepEqual(shown(), [false, false, false]);
     node.inputs[0].link = 3; ctx.apply(node);
-    assert.deepEqual(shown(), [true, true, true]);
-    node.widgets[0].value = true; node.inputs[0].link = null; ctx.apply(node);
+    assert.deepEqual(shown(), [true, false, false], 'Auto-Detect: the switch, the seed waits for it');
+    arch = 'ltxav'; ctx.apply(node);
+    assert.deepEqual(shown(), [false, false, false], 'a family without an upsampler hides it');
+    for (arch of ['flux3', 'qwen_image21']) {
+        ctx.apply(node);
+        assert.deepEqual(shown(), [true, false, false]);
+    }
+    node.widgets[0].value = true; ctx.apply(node);
+    assert.deepEqual(shown(), [true, true, true], 'the seed shows while the switch is on');
+    arch = 'ltxav'; node.inputs[0].link = null; ctx.apply(node);
     assert.deepEqual(shown(), [true, true, true], 'a switch left on must stay reachable');
+});
+
+test('a hidden upsampler seed keeps its value through "randomize"', () => {
+    const { ctx, node, control } = upsamplerPrompt(() => 'ltxav');
+    const seed = node.widgets[1];
+    control.beforeQueued = () => {};
+    control.afterQueued = () => { seed.value += 1; };
+    ctx.hold(node);
+    ctx.apply(node);
+    control.beforeQueued(); control.afterQueued();
+    assert.equal(seed.value, 0, 'a new seed each run re-ran the Prompt and everything after it');
+    node.widgets[0].value = true; ctx.apply(node);
+    control.afterQueued();
+    assert.equal(seed.value, 1);
 });
 
 test('the layout input shows under a FLUX 3 Loader, or while it holds a table', () => {
