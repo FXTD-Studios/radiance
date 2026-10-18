@@ -1555,3 +1555,46 @@ def test_an_unknown_mastering_display_is_400(h):
     resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)",
                   "mastering_display": "Dolby 9000"})
     assert resp.status == 400 and "mastering display" in h.body(resp)["error"]
+
+
+# ── Package audit R2: a queued job is tied to the frames it was queued for ──
+
+def _payload(h, generation):
+    return {"instance_id": h.key, "grading": dict(IDENTITY_GRADE), "settings": dict(BASE_SETTINGS),
+            "source_generation": generation}
+
+
+def test_a_job_queued_for_plate_a_is_refused_once_the_viewer_holds_plate_b(h):
+    h.put(flat(0.1))
+    queued_for = cache._viewer_cache_generation(h.key)
+    h.put(flat(0.8))                                  # the workflow ran again
+    resp = h.run(payload=_payload(h, queued_for))
+    assert resp.status == 409, h.body(resp)
+    assert "changed after this job was queued" in h.body(resp)["error"]
+    assert h.exrs() == [], "plate B was written under plate A's job"
+    assert h.progress()["status"] == "error"
+
+
+def test_a_job_for_the_frames_the_viewer_holds_is_delivered(h):
+    h.put(flat(0.375))
+    resp = h.run(payload=_payload(h, cache._viewer_cache_generation(h.key)))
+    assert resp.status == 200, h.body(resp)
+    assert h.pixel(h.exrs()[0])[0] == pytest.approx(0.375, abs=1e-5)
+
+
+def test_a_client_that_sends_no_generation_is_unchanged(h):
+    h.put(flat(0.375))
+    assert h.run().status == 200
+
+
+def test_every_cache_insert_is_a_new_generation_and_eviction_forgets_it():
+    cache._viewer_cache_set("gen-a", flat(0.1))
+    g1 = cache._viewer_cache_generation("gen-a")
+    cache._viewer_cache_set("gen-a", flat(0.1))
+    g2 = cache._viewer_cache_generation("gen-a")
+    assert g1 is not None and g2 is not None and g2 != g1
+    frames, g = cache._viewer_cache_get_with_generation("gen-a")
+    assert g == g2 and frames is not None
+    with cache._VIEWER_CACHE_LOCK:
+        cache._VIEWER_CACHE.pop("gen-a", None)
+    assert cache._viewer_cache_generation("gen-a") is None

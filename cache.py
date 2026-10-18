@@ -24,6 +24,14 @@ _VIEWER_CACHE_MAX_BYTES = int(os.environ.get("RADIANCE_VIEWER_CACHE_BYTES", 2 * 
 _VIEWER_CACHE: collections.OrderedDict = collections.OrderedDict()
 _VIEWER_CACHE_LOCK = threading.Lock()
 
+#: AUDIT-FIX (R2): which frame set a cache entry holds. Every insert gets a
+#: new number, so a delivery queued for one run can tell that the Viewer has
+#: since been given other frames (a re-run replaces the entry under the same
+#: key) and refuse, instead of exporting the new pixels under the old job's
+#: name, range and grade.
+_VIEWER_GENERATION: Dict[str, int] = {}
+_VIEWER_GENERATION_NEXT = [0]
+
 
 def _tensor_nbytes(t: Any) -> int:
     try:
@@ -57,12 +65,15 @@ def _viewer_cache_set(key: str, value: torch.Tensor) -> None:
         if key in _VIEWER_CACHE:
             _VIEWER_CACHE.move_to_end(key)
         _VIEWER_CACHE[key] = value
+        _VIEWER_GENERATION_NEXT[0] += 1
+        _VIEWER_GENERATION[key] = _VIEWER_GENERATION_NEXT[0]
 
         total = sum(_tensor_nbytes(v) for v in _VIEWER_CACHE.values())
         while len(_VIEWER_CACHE) > 1 and (
             len(_VIEWER_CACHE) > _VIEWER_CACHE_MAX or total > _VIEWER_CACHE_MAX_BYTES
         ):
             evicted_key, evicted_val = _VIEWER_CACHE.popitem(last=False)
+            _VIEWER_GENERATION.pop(evicted_key, None)
             total -= _tensor_nbytes(evicted_val)
             logger.debug(
                 "[Radiance] Cache evicted node %s (entries=%d, %.1f MB in use, "
@@ -78,6 +89,21 @@ def _viewer_cache_set(key: str, value: torch.Tensor) -> None:
                 "RADIANCE_VIEWER_CACHE_BYTES if delivery of this shot needs a private copy.",
                 nbytes / 1e6, _VIEWER_CACHE_MAX_BYTES / 1e6,
             )
+
+
+def _viewer_cache_generation(key: str) -> Optional[int]:
+    """The generation of the frame set cached under ``key``, or None."""
+    with _VIEWER_CACHE_LOCK:
+        return _VIEWER_GENERATION.get(key) if key in _VIEWER_CACHE else None
+
+
+def _viewer_cache_get_with_generation(key: str):
+    """``(frames, generation)`` read together, or ``(None, None)``."""
+    with _VIEWER_CACHE_LOCK:
+        if key in _VIEWER_CACHE:
+            _VIEWER_CACHE.move_to_end(key)
+            return _VIEWER_CACHE[key], _VIEWER_GENERATION.get(key)
+        return None, None
 
 
 def _viewer_cache_get(key: str) -> Optional[torch.Tensor]:
