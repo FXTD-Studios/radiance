@@ -3,69 +3,107 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/radiance-logo-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/radiance-logo-light.svg">
-  <img src="assets/radiance-logo-light.svg" width="440" alt="Radiance">
+  <img src="assets/radiance-logo-light.svg" width="420" alt="Radiance">
 </picture>
 
-**HDR, colour management, VFX tools, and image review inside ComfyUI.**
+### HDR, colour and VFX review for ComfyUI
 
-[![Version](https://img.shields.io/badge/version-4.0.0-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
-[![Release](https://img.shields.io/badge/release-4.0%20beta-orange?style=for-the-badge)](CHANGELOG.md)
-[![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
-[![OS](https://img.shields.io/badge/OS-Windows%20%7C%20Mac%20%7C%20Linux-5C7CFA?style=for-the-badge)](https://github.com/fxtd-studios/radiance)
-[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=for-the-badge)](LICENSE)
-[![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
-[![Hugging Face](https://img.shields.io/badge/Hugging_Face-RUDRA_models-ffd21e?style=for-the-badge)](https://huggingface.co/fxtdstudios/RUDRA)
-[![RUDRA GitHub](https://img.shields.io/badge/GitHub-RUDRA-181717?style=for-the-badge&logo=github)](https://github.com/FXTD-Studios/RUDRA)
+Generate in HDR, grade and review like a finishing suite, and deliver masters to Nuke and DaVinci Resolve,<br>without leaving ComfyUI.
 
-Radiance adds 147 visible nodes to ComfyUI for generating and processing images and video in HDR, working with EXR, ACES and OpenColorIO, reviewing shots in a professional viewer, and delivering masters to Nuke and DaVinci Resolve.
+[![Version](https://img.shields.io/badge/version-4.0.0-c8a96e?style=flat-square)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-beta-orange?style=flat-square)](CHANGELOG.md)
+[![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=flat-square)](https://registry.comfy.org/nodes/radiance)
+[![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=flat-square)](https://registry.comfy.org/nodes/radiance)
+[![Platforms](https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux-5C7CFA?style=flat-square)](#before-you-start)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](LICENSE)
 
-[What's new](#whats-new-in-40) · [Install](#installation) · [Quick start](#quick-start) · [Models](#models-and-downloads) · [Workflows](#example-workflows) · [Viewer](#using-the-viewer) · [Delivery](#delivering-masters) · [Docs](#documentation) · [Support](#support)
+**[Install](#installation)** &nbsp;·&nbsp; **[Quick start](#quick-start)** &nbsp;·&nbsp; **[Models](#choose-a-model)** &nbsp;·&nbsp; **[Viewer](#using-the-viewer)** &nbsp;·&nbsp; **[Deliver](#delivering-masters)** &nbsp;·&nbsp; **[Help](#support)**
+
+<br>
+
+<img src="viewer.png" width="920" alt="The Radiance Viewer: picture, grade controls and scopes">
 
 </div>
+
+<br>
+
+## What Radiance does
+
+147 visible nodes, grouped around four jobs:
+
+<table>
+<tr>
+<td width="25%" valign="top">
+
+**Generate**
+
+FLUX 3 Klein, Qwen-Image 2.1, FLUX.2, Wan, LTX Video and more, from one Loader with presets. The Sampler and Resolution set themselves for the model.
+
+</td>
+<td width="25%" valign="top">
+
+**Make it HDR**
+
+SDR → HDR with the RUDRA model, HDR VAE encode and decode, tone mapping, ACES 2.0 and OpenColorIO, EXR in and out.
+
+</td>
+<td width="25%" valign="top">
+
+**Review**
+
+A pro Viewer: grade, scopes, A/B compare, notes on frames, and a QC pass that checks every frame for you.
+
+</td>
+<td width="25%" valign="top">
+
+**Deliver**
+
+EXR, ProRes and HDR10 / HLG masters with your grade baked in, a render queue, and hand-off to Nuke and Resolve.
+
+</td>
+</tr>
+</table>
 
 ## What's new in 4.0
 
-4.0 is in beta on the `version-4-Beta` branch. Read the [changelog](CHANGELOG.md) upgrade notes before moving a production setup.
+> [!NOTE]
+> 4.0 is in **beta** on the `version-4-Beta` branch. Coming from 3.x? Read the [upgrade notes](CHANGELOG.md) first.
 
-- **FLUX 3 Image Klein:** base and step-distilled, in the Loader, Sampler, Resolution and Prompt nodes, including reference-image editing and layout boxes you draw in the Viewer.
-- **Prompt upsampler:** optional, for FLUX 3 Klein and Qwen-Image 2.1, with the model authors' upsampler and instructions.
-- **Qwen-Image 2.1:** text-to-image and editing with up to 16 reference images, its RGBA VAE (images with transparency), and pinned downloads of the official files.
-- **Deliver Master:** a graded-master export dialog in the Viewer (**File > Deliver Master…**), with a render queue, PQ (HDR10, selectable mastering display) and HLG, 10-bit enforced for HDR, and HDR QC that reports peak nits and clipping.
-- **Viewer workspaces:** Review, Color, Inspect, Compare and QC, each showing only the panels it needs.
-- **Review tools:** frame bookmarks, notes and strokes on frames, a measured QC pass over the sequence, and an exportable review report.
-- **Channels and compare:** Depth and 3D Normal channels, difference with gain, signed mode and a scene-linear option for HDR plates, onion skin, and compare inputs at their own frame rate.
-- **Safer files:** workflow saves, sidecars and DCC frames are written atomically, sequence writes warn about stale frames, and a remote DCC bridge needs signed requests.
-
-## What you can do
-
-| Your task | Radiance tools |
+| New | What you get |
 |---|---|
-| Generate images and video | Unified Loader with presets (FLUX 3 Klein, Qwen-Image 2.1, FLUX.2, Qwen-Image, Wan, LTX Video and more), Sampler Pro, Cinematic Prompt Encoder, Resolution |
-| Create and process HDR | HDR VAE Encode and Decode, SDR → HDR (RUDRA), tone mapping, HDR analysis |
-| Manage colour | ACES 2.0, OpenColorIO, colour-space conversion, LUTs, CDL, grading |
-| Review images and video | Viewer with workspaces, scopes, compare, review notes and QC |
-| Prepare VFX shots | Masks, depth, optical effects, estimated passes, relighting, scene cuts |
-| Save and deliver | Read and Write for images, video and EXR sequences; Deliver Master with HDR10 and HLG |
-| Hand off to other tools | Nuke and DaVinci Resolve bridges, metadata, project handoff |
-| Organize your work | Project Manager, Workflow Library with version history, Assets, Gizmos |
+| **FLUX 3 Image Klein** | Base and distilled, with reference editing and layout boxes you draw in the Viewer |
+| **Qwen-Image 2.1** | Text-to-image and editing with up to 16 references, and images with transparency |
+| **Prompt upsampler** | Turns a short prompt into the detailed one FLUX 3 Klein and Qwen-Image 2.1 were trained on |
+| **Deliver Master** | Graded-master export from the Viewer, with a render queue and HDR10 / HLG |
+| **Viewer workspaces** | Review, Color, Inspect, Compare and QC, each showing only what that job needs |
+| **Compare and QC** | Scene-linear difference for HDR plates, onion skin, and a QC workspace that lists problem frames |
 
-<div align="center">
-<img src="viewer.png" width="920" alt="Radiance Viewer with image review, colour controls and scopes">
-</div>
+<details>
+<summary><b>Everything else in 4.0</b></summary>
+<br>
+
+- **Review tools:** bookmarks, notes and drawings on frames, saved with the node, and an exportable review report.
+- **Channels:** Depth and 3D Normal beside R, G, B and A; compare inputs at their own frame rate.
+- **HDR10:** choose the mastering display (P3-D65 or Rec.2020, 1000 or 4000 nits); MaxCLL / MaxFALL are measured from the frames.
+- **Safer files:** saves, sidecars and DCC frames are written atomically, sequence writes warn about stale frames, and a remote DCC bridge needs signed requests.
+
+The full list is in the [changelog](CHANGELOG.md).
+
+</details>
 
 ## Installation
 
-### With ComfyUI Manager
+**With ComfyUI Manager** (recommended)
 
-1. Open **ComfyUI Manager**.
-2. Search for **Radiance** and install it.
+1. Open **ComfyUI Manager** and search for **Radiance**.
+2. Click **Install**.
 3. Restart ComfyUI and refresh your browser.
 
-Radiance is also listed in the [Comfy Registry](https://registry.comfy.org/nodes/radiance).
+<details>
+<summary><b>Install manually with Git</b></summary>
+<br>
 
-### Manually
-
-Run these commands with the Python environment that runs ComfyUI:
+Run these with the Python that runs ComfyUI:
 
 ```sh
 cd ComfyUI/custom_nodes
@@ -74,200 +112,256 @@ cd radiance
 python -m pip install -r requirements.txt
 ```
 
-Restart ComfyUI and refresh your browser.
+**Windows portable:** use ComfyUI's bundled `python_embeded\python.exe` instead of `python`.
 
-**Windows portable:** install the requirements with ComfyUI's bundled `python_embeded\python.exe`.
-
-**The 4.0 beta:** check out the beta branch after cloning, then install the requirements again:
+**To try the 4.0 beta**, switch branch and install the requirements again:
 
 ```sh
 git checkout version-4-Beta
 python -m pip install -r requirements.txt
 ```
 
-### Updating
+Restart ComfyUI and refresh your browser.
 
-Use **Update** in ComfyUI Manager, or inside the `radiance` folder:
+</details>
+
+<details>
+<summary><b>Update</b></summary>
+<br>
+
+Click **Update** in ComfyUI Manager, or inside the `radiance` folder:
 
 ```sh
 git pull
 python -m pip install -r requirements.txt
 ```
 
-Restart ComfyUI and refresh your browser after updating. Coming from 3.x? Back up your workflows and read the [upgrade notes](CHANGELOG.md): four placeholder nodes were removed, delivered files are named `Shot_v0002`, and a few controls that did nothing now act.
+Restart ComfyUI and refresh your browser. Back up your workflows before a major update.
+
+</details>
 
 ## Quick start
 
-### Process an existing image
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### Turn an image into HDR
 
 **Read → SDR → HDR Universal → Viewer**
 
-1. Load your image with **Read**.
+1. Load an image with **Read**.
 2. Connect it to **SDR → HDR Universal**.
-3. Connect the result to **Viewer** and run the workflow.
-4. Add **Write** to save the result as EXR.
+3. Connect that to **Viewer** and press **Run**.
+4. Add **Write** to save it as EXR.
 
-The SDR-to-HDR model downloads on first use when downloads are enabled.
+The HDR model downloads the first time.
+
+</td>
+<td width="50%" valign="top">
 
 ### Generate an image
 
-Open the [starter workflow](workflows/start.json) in ComfyUI. It uses FLUX.2 Klein 4B distilled at 1024 × 1024 in 4 steps. Select the model files in the Loader (see [Models and downloads](#models-and-downloads)), enter your prompt and run it. Review the result in the Viewer and connect a Write node to save it.
+1. Drag the [starter workflow](workflows/start.json) onto the canvas.
+2. Pick the model files in the **Loader** ([which files?](#flux2-klein-starter-workflow)).
+3. Type your prompt and press **Run**.
+4. Review it in the **Viewer**; add **Write** to save.
 
-To use another model, pick its preset in the Loader, for example **Flux.3 Klein** or **Qwen-Image 2.1**. With the Loader's `model_meta` connected (and for FLUX 3 Klein even without it), the Sampler sets that model's steps, CFG, sampler and scheduler on its own, and Resolution its latent size.
+For another model, pick its preset in the Loader. The Sampler sets its steps and CFG for you.
+
+</td>
+</tr>
+</table>
 
 <div align="center">
-<img src="basic_workflow.png" width="920" alt="Radiance starter workflow from model loading to HDR review">
+<img src="basic_workflow.png" width="920" alt="The starter workflow: Loader, Prompt, Sampler and Viewer">
 </div>
 
-## Models and downloads
+## Choose a model
 
-To stop all automatic model downloads, set `RADIANCE_ALLOW_DOWNLOADS=0` before starting ComfyUI. Every automatic download is pinned to a file hash.
-
-### Image models at a glance
-
-| Model | Loader preset | Default sampling | Editing | Downloads |
+| Model | Best for | Loader preset | Speed | Downloads |
 |---|---|---|---|---|
-| [FLUX 3 Image Klein](#flux-3-image-klein) | Flux.3 Klein | distilled 16 steps, CFG 1 · base 50 steps, CFG 3.5 | up to 10 references | manual (gated) |
-| [Qwen-Image 2.1](#qwen-image-21) | Qwen-Image 2.1 | 25 steps, CFG 1 | up to 16 references | automatic |
-| [FLUX.2 Klein](#flux2-klein-starter-workflow) | Flux.2 | distilled 4 steps · base 50 steps | references | partly automatic |
+| [FLUX.2 Klein](#flux2-klein-starter-workflow) | Getting started, fast drafts | Flux.2 | 4 steps | partly automatic |
+| [FLUX 3 Image Klein](#flux-3-image-klein) | Quality, editing with up to 10 references, layouts | Flux.3 Klein | 16 steps (distilled) · 50 (base) | manual, gated |
+| [Qwen-Image 2.1](#qwen-image-21) | Editing with up to 16 references, transparency | Qwen-Image 2.1 | 25 steps | automatic |
+| [RUDRA](#rudra-sdr-to-hdr) | Turning SDR images into HDR | (SDR → HDR nodes) | one pass | automatic |
 
-All three use euler with the simple scheduler, and each has a **(Low VRAM)** preset that picks the smaller files and offloads to the CPU.
+Every image model has a **(Low VRAM)** preset that picks smaller files and offloads to the CPU. To turn off automatic downloads, set `RADIANCE_ALLOW_DOWNLOADS=0` before starting ComfyUI; every automatic download is checked against a file hash.
 
-### RUDRA for SDR to HDR
-
-[RUDRA on Hugging Face](https://huggingface.co/fxtdstudios/RUDRA) is the learned SDR-to-HDR model behind **SDR → HDR Universal** and **SDR → HDR Recover**. The default model downloads on first use.
-
-| Model | Download | Save in |
-|---|---|---|
-| `sdr2hdr_shadow_v1.safetensors` | [Default model](https://huggingface.co/fxtdstudios/RUDRA/resolve/main/sdr2hdr/sdr2hdr_shadow_v1.safetensors) | `ComfyUI/models/radiance/` |
-| Other RUDRA image checkpoints | [Browse models](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `ComfyUI/models/radiance/` |
-
-Create the `radiance` folder if it does not exist. Leave `pixel_checkpoint` empty to use the default model.
-
-**Model licence:** RUDRA weights are for non-commercial use. Read the [RUDRA weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE). It is separate from the Radiance code licence.
-
-### FLUX.2 Klein (starter workflow)
+<a id="flux2-klein-starter-workflow"></a>
+<details>
+<summary><b>FLUX.2 Klein (starter workflow): files</b></summary>
+<br>
 
 | File | Download | Save in |
 |---|---|---|
-| `flux-2-klein-4b-fp8.safetensors` | [FLUX.2 Klein 4B distilled](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/main/flux-2-klein-4b-fp8.safetensors) | `ComfyUI/models/diffusion_models/` |
-| `flux2-vae.safetensors` | [FLUX.2 VAE](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | `ComfyUI/models/vae/` |
-| `qwen_3_4b.safetensors` | [Qwen3 4B text encoder](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | `ComfyUI/models/text_encoders/` |
+| `flux-2-klein-4b-fp8.safetensors` | [FLUX.2 Klein 4B distilled](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/main/flux-2-klein-4b-fp8.safetensors) | `models/diffusion_models/` |
+| `flux2-vae.safetensors` | [FLUX.2 VAE](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | `models/vae/` |
+| `qwen_3_4b.safetensors` | [Qwen3 4B text encoder](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | `models/text_encoders/` |
 
-The starter workflow is set up for the distilled model. The `base` variant needs different sampling settings.
+The starter workflow is set up for the distilled model; the `base` variant needs different sampling settings.
 
-### FLUX 3 Image Klein
+</details>
 
-Black Forest Labs' 5.6B open-weights model, in two versions: **distilled** (fast, 16 steps, CFG 1) and **base** (50 steps, CFG 3.5, for fine-tuning and the highest fidelity). It needs **ComfyUI 0.41.1** or a build from 15 October 2026 or later.
+<a id="flux-3-image-klein"></a>
+<details>
+<summary><b>FLUX 3 Image Klein: files and tips</b></summary>
+<br>
+
+Black Forest Labs' 5.6B open-weights model. **Distilled** is fast (16 steps, CFG 1); **base** is for the highest fidelity and fine-tuning (50 steps, CFG 3.5). Needs **ComfyUI 0.41.1** or a build from 15 October 2026 or later.
 
 | File | Save in |
 |---|---|
-| `flux3_image_klein_sd_*.safetensors` (distilled) or `flux3_image_klein_*.safetensors` (base): bf16, int8 or nvfp4 | `ComfyUI/models/diffusion_models/` |
-| `qwen3vl_4b_bf16.safetensors` or `qwen3vl_4b_int8_convrot.safetensors` | `ComfyUI/models/text_encoders/` |
-| `flux2-vae.safetensors` (the FLUX.2 VAE above) | `ComfyUI/models/vae/` |
+| `flux3_image_klein_sd_*.safetensors` (distilled) or `flux3_image_klein_*.safetensors` (base): bf16, int8 or nvfp4 | `models/diffusion_models/` |
+| `qwen3vl_4b_bf16.safetensors` or `qwen3vl_4b_int8_convrot.safetensors` | `models/text_encoders/` |
+| `flux2-vae.safetensors` (the FLUX.2 VAE) | `models/vae/` |
 
-Download them from [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy). The repository is gated: accept the FLUX Kommunity licence on Hugging Face first. The Loader does not download these files.
+Download from [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy). The repository is gated: accept the FLUX Kommunity licence on Hugging Face first. The Loader does not download these files.
 
-- Use **Flux.3 Klein (Low VRAM)** on cards with 8 to 12 GB: it picks the int8 or nvfp4 files and offloads to the CPU.
-- To edit, connect up to 10 images to the Prompt's `images` inputs and the VAE. Cite them in the prompt as `<ref_image_0>`, `<ref_image_1>` and so on. `resolution` 1024 sizes each to about 1 megapixel; 0 keeps each at its own size, up to 16 MP.
-- **Layout boxes:** in the Viewer, **Tools > FLUX 3 Layout Boxes**: drag on the picture to draw boxes, describe each, and **Send to Prompt** fills the Prompt's `layout` input. Cite the boxes in the prompt as `<obj_1>`, `<obj_2>` and so on. A table from ComfyUI's **FLUX 3 Image Layout Prompt** node at the end of the prompt also works.
-- **Prompt upsampler (optional):** load `qwen3.5_9b_flux3_prompt_upsampler_*.safetensors` from the same repository with a **Load CLIP** node (type `flux3`), connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`. `positive_text` shows the rewritten prompt.
+- **8 to 12 GB cards:** use **Flux.3 Klein (Low VRAM)**.
+- **Edit:** connect up to 10 images to the Prompt's `images` and the VAE, and refer to them as `<ref_image_0>`, `<ref_image_1>`…
+- **Layout boxes:** in the Viewer, **Tools > FLUX 3 Layout Boxes**. Draw boxes, describe each, click **Send to Prompt**, and refer to them as `<obj_1>`, `<obj_2>`…
+- **Prompt upsampler (optional):** load `qwen3.5_9b_flux3_prompt_upsampler_*` with **Load CLIP** (type `flux3`), connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`.
 
-### Qwen-Image 2.1
+</details>
 
-Qwen's image model with its own 64-channel RGBA VAE, so it can make and edit images with transparency, and a Qwen3-VL-8B text encoder. The Loader downloads these files on first use (the official Comfy-Org files, pinned to their hashes), or you can place them yourself:
+<a id="qwen-image-21"></a>
+<details>
+<summary><b>Qwen-Image 2.1: files and tips</b></summary>
+<br>
+
+Qwen's image model with its own RGBA VAE, so it can make and edit images with transparency. The Loader downloads the official files on first use, or place them yourself:
 
 | File | Download | Save in |
 |---|---|---|
-| `qwen_image_2.1_bf16.safetensors` or `qwen_image_2.1_int8_convrot.safetensors` | [Qwen-Image 2.1 model](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/diffusion_models) | `ComfyUI/models/diffusion_models/` |
-| `qwen3vl_8b_bf16.safetensors`, `qwen3vl_8b_int8_convrot.safetensors` or `qwen3vl_8b_w4a8.safetensors` | [Qwen3-VL-8B text encoder](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/text_encoders) | `ComfyUI/models/text_encoders/` |
-| `qwen_image_2.1_vae_bf16.safetensors` | [Qwen-Image 2.1 VAE](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/vae) | `ComfyUI/models/vae/` |
+| `qwen_image_2.1_bf16.safetensors` or `qwen_image_2.1_int8_convrot.safetensors` | [Model](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/diffusion_models) | `models/diffusion_models/` |
+| `qwen3vl_8b_bf16.safetensors`, `_int8_convrot` or `_w4a8` | [Text encoder](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/text_encoders) | `models/text_encoders/` |
+| `qwen_image_2.1_vae_bf16.safetensors` | [VAE](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/tree/main/vae) | `models/vae/` |
 
-- The **Qwen-Image 2.1** preset prefers the bf16 files; **Qwen-Image 2.1 (Low VRAM)** picks int8 and w4a8 and offloads to the CPU.
-- The Sampler runs the official template's 25 steps at CFG 1 (euler, simple). Qwen's own pipeline uses 40 to 50 steps if you want more detail.
-- To edit, connect images to the Prompt's `images` inputs (the VAE is optional) and cite them in the prompt as `<image1>`, `<image2>` and so on. `resolution` sizes the references to about that many pixels square; 0 keeps each at its own size.
-- Avoid seed 0: edits at that seed fail or come out oversaturated, in ComfyUI's own nodes too. The Sampler warns and its default seed is 1.
-- **Prompt upsampler (optional):** the `qwen3.5_9b_qwen_image_2.1_pe_*` files in the same repository are its prompt enhancers, not text encoders. Load one with a **Load CLIP** node (type `qwen_image`), connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`.
+- **Edit:** connect images to the Prompt's `images` and refer to them as `<image1>`, `<image2>`…
+- **Avoid seed 0:** edits at that seed fail or oversaturate (in ComfyUI's own nodes too). The Sampler's default is 1.
+- **More detail:** the template runs 25 steps; Qwen's own pipeline uses 40 to 50.
+- **Prompt upsampler (optional):** the `qwen3.5_9b_qwen_image_2.1_pe_*` files are prompt enhancers, not text encoders. Load one with **Load CLIP** (type `qwen_image`), connect it to `upsampler_clip` and turn on `upsample_prompt`.
+
+</details>
+
+<a id="rudra-sdr-to-hdr"></a>
+<details>
+<summary><b>RUDRA (SDR to HDR): files and licence</b></summary>
+<br>
+
+[RUDRA](https://huggingface.co/fxtdstudios/RUDRA) is the learned model behind **SDR → HDR Universal** and **SDR → HDR Recover**. The default downloads on first use.
+
+| File | Download | Save in |
+|---|---|---|
+| `sdr2hdr_shadow_v1.safetensors` | [Default model](https://huggingface.co/fxtdstudios/RUDRA/resolve/main/sdr2hdr/sdr2hdr_shadow_v1.safetensors) | `models/radiance/` |
+| Other checkpoints | [Browse](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `models/radiance/` |
+
+**Licence:** RUDRA weights are for non-commercial use ([weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE)), separate from the Radiance code licence.
+
+</details>
 
 Review each model's licence before use.
 
 ## Example workflows
 
-Drag a workflow file onto the ComfyUI canvas to open it.
+Drag a file onto the ComfyUI canvas to open it.
 
-| Workflow | Purpose |
+| Workflow | What it does |
 |---|---|
-| [Starter](workflows/start.json) | Generate and review an image |
-| [SDR to HDR](workflows/sdr_to_hdr.json) | Convert an existing image to HDR and save EXR |
-| [Colour grading](workflows/colour_grade.json) | Grade an image and save the result |
+| [Starter](workflows/start.json) | Generate an image and review it |
+| [SDR to HDR](workflows/sdr_to_hdr.json) | Turn an image into HDR and save EXR |
+| [Colour grading](workflows/colour_grade.json) | Grade an image and save it |
 | [HDR VAE](workflows/hdr_vae_encode_decode.json) | Encode, decode and compare an HDR image |
-| [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight an image |
-| [HDR delivery](workflows/hdr_delivery.json) | Create EXR, HDR10 and SDR outputs |
+| [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight |
+| [HDR delivery](workflows/hdr_delivery.json) | Make EXR, HDR10 and SDR outputs |
 
 ## Using the Viewer
 
-Start in **Simple** mode for review, comparison and playback. Switch to **Advanced** for the workspaces:
+The Viewer opens in **Simple** mode: picture, compare and playback. Switch to **Advanced** in its title bar for the workspaces.
 
-| Workspace | For |
+| Workspace | Use it to |
 |---|---|
-| Review | Playback, bookmarks, notes and the review report |
-| Color | Grade, masks, effects and scopes |
-| Inspect | Pixel inspector, scopes and analysis |
-| Compare | A/B wipe, difference (display or scene-linear), onion skin and blink |
-| QC | Measured checks over every frame, with the flagged frames |
+| **Review** | Play, bookmark frames, write notes, export a review report |
+| **Color** | Grade, mask, add effects, read the scopes |
+| **Inspect** | Read pixel values, channels and analysis |
+| **Compare** | Wipe, difference (display or scene-linear), onion skin and blink against a reference |
+| **QC** | Check every frame for NaN/Inf, range, alpha and flicker, and jump to the bad ones |
 
-- **Review:** **D** bookmarks a frame, **,** and **.** jump between bookmarks, **T** writes a note on the frame, and Alt+drag draws on it. **File > Export Review Report** saves the notes, marks and QC results.
-- **QC:** the QC workspace (or **Tools > Run QC on the Sequence**) measures every frame for NaN/Inf, range, alpha and flicker, and lists the flagged frames; click one to go there.
-- **Layout boxes:** **Tools > FLUX 3 Layout Boxes** draws FLUX 3 layout boxes on the picture and sends them to the Prompt.
-- **Channels:** R, G, B, A, plus Depth and 3D Normal when those inputs are connected.
-- **Shortcuts:** hover or select the Viewer to use them. **H** or **?** lists every key.
-- **Audio:** VIDEO inputs can carry audio; IMAGE batches do not.
-- **Renderer:** WebGL is the default and the tested path. WebGPU is experimental and lists what it does not support yet.
+<details>
+<summary><b>Handy keys</b> (hover the Viewer first; <b>H</b> or <b>?</b> lists them all)</summary>
+<br>
 
-Viewer adjustments affect the preview only, until you export through **Deliver Master** or apply the same processing in the workflow.
+| Key | Does |
+|---|---|
+| **F** | Fit the picture |
+| **X** | Compare on or off |
+| **D** | Bookmark this frame |
+| **,** and **.** | Previous / next bookmark |
+| **T** | Write a note on this frame |
+| **Alt + drag** | Draw on the frame |
+| **Alt + 1…7** | Open a panel (Inspector … QC) |
+
+</details>
+
+- **Tools > FLUX 3 Layout Boxes** draws layout boxes on the picture and sends them to the Prompt.
+- **File > Deliver Master…** exports the graded result (see below).
+- Viewer adjustments change the preview only, until you deliver or add the same processing to the workflow.
+- WebGL is the default renderer. WebGPU is experimental and lists what it can't do yet.
 
 ## Delivering masters
 
-- **Write** saves images, image sequences (EXR, PNG, TIFF, DPX) and video from the graph.
-- **Deliver Master** (**File > Deliver Master…** in the Viewer) exports the graded result with the Viewer's grade baked in. It offers ACES, camera log, PQ (HDR10) and HLG colour spaces, writes CDL and AMF sidecars, and versions files automatically.
-- **Render queue:** **Add to Queue** keeps the current settings and grade as a job; add one per version, then **Start Queue** renders them one after another. A failed job does not stop the rest.
-- **HDR:** PQ and HLG need 10 bits or float, so 8-bit formats are disabled for them. MP4 (H.265 10-bit) carries HDR10 metadata for PQ (a mastering display you choose, P3-D65 or Rec.2020 at 1000 or 4000 nits, and measured MaxCLL / MaxFALL); ProRes carries the colour tags. Scene-linear 1.0 is placed at 203 nits (BT.2408).
-- **QC:** frames with NaN or infinite pixels are refused before anything is written, and HDR QC reports the peak and the share of pixels that clip.
-- **Legal Range (16–235)** is off by default and applies only to 8- and 16-bit image formats.
+- **Write** saves images, sequences (EXR, PNG, TIFF, DPX) and video from the graph.
+- **Deliver Master** (Viewer > **File > Deliver Master…**) exports with the Viewer's grade baked in: ACES, camera log, PQ (HDR10) or HLG, with CDL and AMF sidecars and automatic versioning.
+- **Render queue:** set up a version, **Add to Queue**, repeat, then **Start Queue**. A failed job doesn't stop the rest.
+- **HDR:** PQ and HLG need 10-bit or float, so 8-bit formats are disabled for them. H.265 10-bit carries HDR10 metadata with the mastering display you choose; scene-linear 1.0 sits at 203 nits (BT.2408).
+- **Checks before writing:** frames with NaN or infinite pixels are refused, and HDR QC reports the peak and how much clips.
 
 ## Before you start
 
-- **OpenColorIO 2.5+:** the ACES 2.0 Output Transform uses the Academy reference from OCIO's built-in ACES 2.0 config. An older OCIO falls back to an approximation and says so in its info output.
-- **ffmpeg:** video needs ffmpeg on the PATH, the `imageio-ffmpeg` package, or `RADIANCE_FFMPEG` pointing at a binary. Release and nightly builds both work.
-- **Additional models:** some tools download models on first use. Multipass Estimate downloads much more than SDR → HDR.
-- **Long-video windowing:** experimental and off by default; some scenes distort when split into temporal windows.
-- **Estimated passes:** depth and material predictions are estimates, so results vary and video may flicker.
-- **Temporary previews:** rerun the workflow if ComfyUI's temporary preview files have been cleared.
+| You need | Why |
+|---|---|
+| A recent **ComfyUI** | FLUX 3 Klein needs 0.41.1 or later; the prompt upsampler needs a Generate Text node with a system prompt |
+| **ffmpeg** | For video: on the PATH, the `imageio-ffmpeg` package, or `RADIANCE_FFMPEG` pointing at it |
+| **OpenColorIO 2.5+** | For the reference ACES 2.0 output transform (older versions fall back to an approximation and say so) |
+| **Disk space** | Some tools download models on first use; Multipass Estimate downloads the most |
 
-Read the full [known limitations](KNOWN_ISSUES.md).
+<details>
+<summary><b>Known limits</b></summary>
+<br>
+
+- Long-video windowing is experimental and off by default; some scenes distort when split.
+- Depth and material passes are estimates, so results vary and video may flicker.
+- If ComfyUI has cleared its temporary previews, run the workflow again.
+
+The full list is in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+
+</details>
 
 ## Documentation
 
-- [Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)
-- [Wiki: guides, tutorials and troubleshooting](https://github.com/fxtd-studios/radiance/wiki)
-- [Node reference](docs/nodes/README.md)
-- [Changelog and upgrade notes](CHANGELOG.md)
-- [Release notes](https://github.com/fxtd-studios/radiance/releases)
+- **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
+- **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
+- **[Node reference](docs/nodes/README.md)**: every node and input
+- **[Changelog](CHANGELOG.md)**: what changed and upgrade notes
 
-In ComfyUI, hover over a node or an input to read its description.
+Tip: in ComfyUI, hover over any node or input to read what it does.
 
 ## Support
 
-If something does not work:
+Something not working? Try these first:
 
 1. Restart ComfyUI and refresh your browser.
-2. Check the ComfyUI console for errors or missing dependencies.
-3. Make sure the requirements were installed into ComfyUI's own Python environment.
+2. Look in the ComfyUI console for errors or missing packages.
+3. Make sure the requirements went into ComfyUI's own Python.
 
-[Report an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance version, ComfyUI version, operating system, the error message, and a minimal workflow that reproduces it.
+Still stuck? [Open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
 
 ## License
 
-Radiance is licensed under [GPL-3.0](LICENSE). Downloaded model weights have their own licences; review them before using or distributing them.
+Radiance is licensed under [GPL-3.0](LICENSE). Model weights have their own licences; check them before you use or share them.
 
-Built by [FXTD Studios](https://fxtdstudios.com).
+<div align="center">
+<br>
+Made by <a href="https://fxtdstudios.com"><b>FXTD Studios</b></a>
+</div>
