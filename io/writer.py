@@ -1390,11 +1390,28 @@ def coerce_to_frames(
     # ── 2. List / tuple of tensors ────────────────────────────────────
     if isinstance(data, (list, tuple)):
         # If all elements are tensors, stack them
-        if data and isinstance(data[0], torch.Tensor):
-            arr = np.stack(
-                [t.detach().cpu().float().numpy() for t in data], axis=0
-            )
-            return arr, detected_fps
+        # AUDIT-FIX (R5): np.stack put a fifth axis on a list of IMAGE batches
+        # ((B,H,W,C) each), and write_frames then failed unpacking four. Each
+        # item is now a (H,W,C) frame or a (B,H,W,C) batch, and they join
+        # along the frame axis in order.
+        if data and all(isinstance(t, torch.Tensor) for t in data):
+            parts = []
+            for i, t in enumerate(data):
+                a = t.detach().cpu().float().numpy()
+                if a.ndim == 3:
+                    a = a[np.newaxis]
+                if a.ndim != 4:
+                    raise ValueError(f"RadianceWrite: list item {i} has shape {tuple(t.shape)}; "
+                                     "expected an IMAGE (B,H,W,C) or one frame (H,W,C).")
+                if parts and a.shape[1:] != parts[0].shape[1:]:
+                    raise ValueError(f"RadianceWrite: list item {i} is {a.shape[2]}x{a.shape[1]} with "
+                                     f"{a.shape[3]} channel(s), item 0 is {parts[0].shape[2]}x"
+                                     f"{parts[0].shape[1]} with {parts[0].shape[3]}; the frames of one "
+                                     "write must share a size and channel count.")
+                parts.append(a)
+            return np.concatenate(parts, axis=0), detected_fps
+        if not data:
+            raise ValueError("RadianceWrite: an empty list has no frames to write.")
         # Otherwise, recurse on first element that looks like frames.
         #
         # ALBABIT-FIX: this loop used to `except Exception: continue`, throwing
