@@ -66,6 +66,7 @@ difference to be flat.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -1762,12 +1763,6 @@ def _sequence_stem(out_dir: Path, seq_stem: str, ext: str, pad_fmt: str,
     return chosen.name[:-len(f"#{ext}")]
 
 
-def dispatch_write(*args, **kwargs):
-    """Write the frames; the destination names it picks are claimed until it returns (R1)."""
-    with _reservation_scope():
-        return _dispatch_write(*args, **kwargs)
-
-
 def _dispatch_write(
     frames:         Iterable[np.ndarray],
     output_path:    str,
@@ -1971,6 +1966,13 @@ def _dispatch_write(
 
 
 _RECEIPT_LOCK = threading.Lock()
+
+
+@functools.wraps(_dispatch_write)
+def dispatch_write(*args, **kwargs):
+    """Write the frames; the destination names it picks are claimed until it returns (R1)."""
+    with _reservation_scope():
+        return _dispatch_write(*args, **kwargs)
 
 
 def _record(receipt: Optional[Dict[str, Any]], path, frame: Optional[int], writer: Optional[str]) -> None:
