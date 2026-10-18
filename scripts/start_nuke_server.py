@@ -481,6 +481,16 @@ def handle_client(conn):
         _close_gracefully(conn)
 
 
+def _refuse_busy(conn):
+    """Tell a sender over the connection cap to retry, then close cleanly."""
+    try:
+        conn.sendall(("ERROR: Too many connections; try again" + RADIANCE_END).encode("utf-8"))
+    except OSError:
+        pass
+    finally:
+        _close_gracefully(conn)
+
+
 def _close_gracefully(conn):
     """Close after the reply is through.
 
@@ -543,10 +553,13 @@ def start_radiance_server():
                 if nuke.GUI:
                     # E-11: at most MAX_CONNECTIONS threads; refuse the rest.
                     if not _CONN_SLOTS.acquire(blocking=False):
-                        try:
-                            conn.sendall(("ERROR: Too many connections; try again" + RADIANCE_END).encode("utf-8"))
-                        finally:
-                            conn.close()
+                        # Refused on a short thread of its own: the reply is
+                        # followed by a graceful close (the frame the sender is
+                        # still writing has to be read first, or Windows resets
+                        # the connection and the sender gets WinError 10053
+                        # instead of this message), and that wait must not
+                        # hold up the accept loop.
+                        threading.Thread(target=_refuse_busy, args=(conn,), daemon=True).start()
                         continue
 
                     def _run(c=conn):
