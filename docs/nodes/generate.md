@@ -162,7 +162,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
 | `auto_download` (optional) | boolean | on |  | If a selected model is missing and is one Radiance knows, download it on first run from its pinned Hugging Face source, checked against its SHA-256 before it is installed (large: 4 to 60 GB). Gated repositories (FLUX.2-dev, FLUX.2-klein 9B, LTX-2.5) need their licence accepted on Hugging Face and HF_TOKEN set. RADIANCE_ALLOW_DOWNLOADS=0 always stops downloads. |
 | `model_shift` (optional) | float | 0 | 0 to 100, step 0.01 | Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it. |
-| `upsampler` (optional) | choice | `None` | `None` | Prompt upsampler (a Qwen3.5 9B LLM) for the Prompt's upsample_prompt: connect upsampler_clip to the Prompt. FLUX 3 Klein: qwen3.5_9b_flux3_prompt_upsampler_*. Qwen-Image 2.1: qwen3.5_9b_qwen_image_2.1_pe_t2i* for text-to-image, pe_i2i* for editing. 'None' loads nothing. |
+| `upsampler` (optional) | choice | `None` | `None` | Prompt upsampler (a Qwen3.5 9B LLM) for the Prompt's upsample_prompt: connect upsampler_clip to the Prompt. FLUX 3 Klein: qwen3.5_9b_flux3_prompt_upsampler_*. Qwen-Image 2.1: qwen3.5_9b_qwen_image_2.1_pe_t2i* for text-to-image, pe_i2i* for editing. 'None' loads nothing. Under the Flux.3 Klein and Qwen-Image 2.1 presets it is picked while a connected Prompt has upsample_prompt on, and set back to 'None' when it is off. |
 
 **Outputs**
 
