@@ -1452,7 +1452,7 @@ def test_a_pq_h265_delivery_carries_hdr10_metadata_end_to_end(h):
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
          "-show_entries", "stream=pix_fmt,color_transfer,color_primaries,color_space:frame=side_data_list",
-         "-of", "json", str(mp4)], capture_output=True, text=True, check=True)
+         "-of", "json", str(mp4)], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     info = json.loads(r.stdout)
     s = info["streams"][0]
     assert s["pix_fmt"] == "yuv420p10le"
@@ -1544,7 +1544,7 @@ def test_the_chosen_mastering_display_reaches_the_hdr10_file(h):
     (mp4,) = list(h.root.rglob("*.mp4"))
     r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
                         "-show_entries", "frame=side_data_list", "-of", "json", str(mp4)],
-                       capture_output=True, text=True, check=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     side = {d["side_data_type"]: d for d in json.loads(r.stdout)["frames"][0]["side_data_list"]}
     md = side["Mastering display metadata"]
     assert md["red_x"] == "35400/50000" and md["max_luminance"] == "40000000/10000", md

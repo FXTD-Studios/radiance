@@ -21,6 +21,7 @@ cannot even reach the measurement -- `dispatch_write` was typed
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -74,7 +75,8 @@ def _run(body: str) -> int:
         sys.stderr.write("RSS=%d\\n" % peak_rss_kb())
     """)
     proc = subprocess.run([sys.executable, "-c", script],
-                          capture_output=True, text=True, timeout=600)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"}, timeout=600)
     assert proc.returncode == 0, proc.stderr[-4000:]
     line = [l for l in proc.stderr.splitlines() if l.startswith("RSS=")]
     assert line, proc.stderr[-4000:]
