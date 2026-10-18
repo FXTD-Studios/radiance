@@ -10,12 +10,16 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
     .replace(/^export default .*$/m, '')
     .replace(/^export /gm, '');
 
-const loaderCtx = vm.createContext({ app: { registerExtension() {} }, console: { log() {} } });
+const loaderCtx = vm.createContext({
+    app: { registerExtension() {} }, console: { log() {} },
+    getWidget: (node, name) => node.widgets.find((w) => w.name === name) ?? null,
+});
 vm.runInContext(strip('radiance_loader.js') + `
     globalThis.find = findMatchingFile;
     globalThis.unetMatch = _resolveUnetMatch;
     globalThis.presets = PRESET_CONFIGS;
     globalThis.slots = PRESET_SLOTS;
+    globalThis.autoFill = autoFillPresetFiles;
 `, loaderCtx);
 
 const BASE_BF16 = 'flux3_image_klein_bf16.safetensors';
@@ -51,6 +55,28 @@ test('the Low VRAM preset never picks a bf16 file', () => {
     assert.equal(loaderCtx.unetMatch(c, [SD_BF16, SD_INT8]), SD_INT8);
     assert.equal(loaderCtx.find(c.clip_hints.llm_encoder, [TE_BF16]), null);
     assert.equal(c.offload_mode, 'cpu_offload');
+});
+
+test("the Loader's upsampler slot gets the family's upsampler, and None under other presets", () => {
+    const PUP_BF16 = 'qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors';
+    const PE_T2I = 'qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors';
+    const PE_I2I = 'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors';
+    const files = ['None', TE_BF16, TE_INT8, 'qwen3vl_8b_bf16.safetensors', PE_I2I, PE_T2I, PUP, PUP_BF16];
+    const w = { name: 'upsampler', value: 'None', options: { values: files } };
+    const fill = (preset, values = files) => {
+        w.options.values = values;
+        loaderCtx.autoFill({ widgets: [w] }, preset);
+        return w.value;
+    };
+    assert.equal(fill('Flux.3 Klein'), PUP_BF16);
+    assert.equal(fill('Flux.3 Klein (Low VRAM)'), PUP);
+    assert.equal(fill('Qwen-Image 2.1'), PE_T2I);
+    assert.equal(fill('Qwen-Image 2.1', ['None', PE_I2I]), PE_I2I, "editing's own when it is the one on disk");
+    assert.equal(fill('Flux.3 Klein', ['None', TE_BF16, PE_T2I]), 'None');
+    assert.equal(fill('Flux.2', files), 'None');
+    for (const preset of ['Flux.3 Klein', 'Flux.3 Klein (Low VRAM)', 'Qwen-Image 2.1', 'Qwen-Image 2.1 (Low VRAM)']) {
+        assert.ok(loaderCtx.presets[preset].extra_widgets.includes('upsampler'), preset);
+    }
 });
 
 test('the Flux.2 presets no longer grab a FLUX 3 Klein file through their bare "klein" hint', () => {
@@ -124,6 +150,7 @@ function upsamplerPrompt(archOf) {
         app: { registerExtension() {} }, console: { log() {}, warn() {} }, LiteGraph: {},
         api: { fetchApi: () => Promise.resolve({ ok: false }), addEventListener() {} },
         isInputLive: (node, input) => input.link != null,
+        liveSourceNode: (node, input) => (input.link != null ? input.sender ?? {} : null),
         setWidgetVisible: (w, visible) => { w.hidden = !visible; },
         fitNodeSize() {}, loaderModelType: archOf, modelMetaSourceNode() { return null; },
         setInterval() {}, clearInterval() {},
@@ -153,6 +180,10 @@ test('the upsampler switch shows with an upsampler under a family that has one, 
         ctx.apply(node);
         assert.deepEqual(shown(), [true, false, false]);
     }
+    node.inputs[0].sender = { widgets: [{ name: 'upsampler', value: 'None' }] }; ctx.apply(node);
+    assert.deepEqual(shown(), [false, false, false], 'a Loader whose upsampler is None sends nothing');
+    node.inputs[0].sender.widgets[0].value = 'qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors'; ctx.apply(node);
+    assert.deepEqual(shown(), [true, false, false]);
     node.widgets[0].value = true; ctx.apply(node);
     assert.deepEqual(shown(), [true, true, true], 'the seed shows while the switch is on');
     arch = 'ltxav'; node.inputs[0].link = null; ctx.apply(node);

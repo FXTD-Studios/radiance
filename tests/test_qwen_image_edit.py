@@ -61,10 +61,10 @@ class TestQwenImageEditLoader:
             assert entry["url"].startswith(f"https://huggingface.co/Comfy-Org/{repo}/resolve/")
             assert entry["url"].endswith(f"split_files/{kind}/{fname}")
 
-    def test_model_shift_is_the_image_loaders_last_input(self):
+    def test_model_shift_and_upsampler_are_the_image_loaders_last_inputs(self):
         from radiance.nodes.generate.loader import RadianceUnifiedLoader, RadianceVideoLoader
-        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-1] == "model_shift"
-        assert "model_shift" not in RadianceVideoLoader.INPUT_TYPES()["optional"]
+        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-2:] == ["model_shift", "upsampler"]
+        assert not {"model_shift", "upsampler"} & set(RadianceVideoLoader.INPUT_TYPES()["optional"])
 
     @pytest.fixture
     def load(self, monkeypatch):

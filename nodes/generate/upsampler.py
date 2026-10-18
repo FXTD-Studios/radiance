@@ -85,9 +85,10 @@ def upsample(upsampler_clip, arch: str, prompt: str, references=None, seed: int 
     if upsampler_clip is None:
         spec = UPSAMPLERS[arch]
         raise ValueError(
-            f"Prompt: upsample_prompt is on and upsampler_clip is not connected. Load the "
-            f"{spec['label']} upsampler ({spec['file_hint']}_*.safetensors) with a Load CLIP "
-            f"node and connect it, or turn upsample_prompt off.")
+            f"Prompt: upsample_prompt is on and no upsampler reaches upsampler_clip. Pick the "
+            f"{spec['label']} upsampler ({spec['file_hint']}_*.safetensors) in the Loader's "
+            f"upsampler and connect its upsampler_clip output (or load it with Load CLIP), "
+            f"or turn upsample_prompt off.")
     spec = UPSAMPLERS[arch]
     mode = "edit" if references else "t2i"
     node = _text_generate()

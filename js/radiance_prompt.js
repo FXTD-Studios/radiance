@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -113,8 +113,8 @@ function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
 // 4.0.0: the prompt upsampler's switch shows once an upsampler is connected
 // (upsampler_clip), and stays while on so it can be turned off.
 // ALBABIT-FIX: only under a family that has an upsampler, or a Loader left to
-// Auto-Detect. The seed and its "control after generate" widget only matter,
-// and show, while the switch is on.
+// Auto-Detect, and not from a Loader whose upsampler is "None". The seed and
+// its "control after generate" widget only matter, and show, while it is on.
 const UPSAMPLER_FAMILIES = ["flux3", "qwen_image21"];
 
 function _applyUpsamplerVisibility(node, source = modelMetaSourceNode(node)) {
@@ -123,7 +123,9 @@ function _applyUpsamplerVisibility(node, source = modelMetaSourceNode(node)) {
     if (!input || !onW) return;
     const on = onW.value === true;
     const arch = loaderModelType(source);
-    const showSwitch = on || (isInputLive(node, input) && (arch === null || UPSAMPLER_FAMILIES.includes(arch)));
+    const sender = liveSourceNode(node, input);
+    const loaded = !!sender && sender.widgets?.find(w => w.name === "upsampler")?.value !== "None";
+    const showSwitch = on || (loaded && (arch === null || UPSAMPLER_FAMILIES.includes(arch)));
     const seedW = node.widgets.find(w => w.name === "upsampler_seed");
     const targets = [[onW, "toggle", showSwitch], [seedW, "number", on],
         ...(seedW?.linkedWidgets || []).map(w => [w, "combo", on])];

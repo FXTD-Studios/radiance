@@ -14,6 +14,7 @@ import time
 
 import torch
 import folder_paths
+import comfy.sd
 import comfy.utils
 import comfy.model_management
 from comfy_extras import nodes_model_advanced
@@ -44,14 +45,35 @@ from ...loader_utils import (
     _audio_vae_cache,
 )
 from radiance.model.cache import LRUCache
+from radiance.model.detect import get_clip_type_enum
 
 # ALBABIT-FIX: dedicated cache for RadianceVideoLoader's latent upscale model
 # extra (LTX 2.3 / HunyuanVideo SR). Kept separate from the core unet/clip/vae
 # caches so it doesn't compete for eviction with the main pipeline models.
 _upscale_model_cache = LRUCache()
+# ALBABIT-FIX: same for the prompt upsampler, so it never evicts the text encoder.
+_upsampler_cache = LRUCache()
 
 logger = logging.getLogger("radiance.loader")
 from radiance.core.logging import print_premium_loader_hud
+
+
+def _load_upsampler(name, resolved_type, caching, info_lines):
+    """The Prompt's upsampler LLM (FLUX 3 Klein, Qwen-Image 2.1), loaded as Load CLIP does."""
+    path = folder_paths.get_full_path_or_raise("text_encoders", name)
+    key = f"upsampler:{path}:{_file_fingerprint(path)}"
+    if caching and _upsampler_cache.has(key):
+        info_lines.append(f"UPSAMPLER: {name} (cached)")
+        return _upsampler_cache.get(key)
+    t0 = time.time()
+    upsampler = comfy.sd.load_clip(ckpt_paths=[path], clip_type=get_clip_type_enum(resolved_type),
+                                   embedding_directory=folder_paths.get_folder_paths("embeddings"))
+    loaded = f"{name} ({time.time() - t0:.1f}s)"
+    logger.info(f"Upsampler loaded: {loaded}")
+    info_lines.append(f"UPSAMPLER: {loaded}")
+    if caching:
+        _upsampler_cache.put(key, upsampler)
+    return upsampler
 
 
 
@@ -302,11 +324,18 @@ class RadianceUnifiedLoader:
                 # workflows keep their widget positions.
                 "model_shift": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.01,
                     "tooltip": "Noise-schedule shift written into the model, as ModelSamplingAuraFlow does, for flow models such as Qwen-Image. 0 keeps the model's own. The Qwen-Image presets set their templates' 3.1. The Sampler's flux_shift applies on top of it."}),
+                # ALBABIT-FIX: the Prompt's upsampler, so it needs no Load CLIP node.
+                # Last, after model_shift, for the same reason.
+                "upsampler": clip_slot(
+                    "Prompt upsampler (a Qwen3.5 9B LLM) for the Prompt's upsample_prompt: connect "
+                    "upsampler_clip to the Prompt. FLUX 3 Klein: qwen3.5_9b_flux3_prompt_upsampler_*. "
+                    "Qwen-Image 2.1: qwen3.5_9b_qwen_image_2.1_pe_t2i* for text-to-image, pe_i2i* "
+                    "for editing. 'None' loads nothing."),
             },
         }
 
-    RETURN_TYPES  = ("MODEL", "CLIP", "VAE", "LORA_STACK", "STRING")
-    RETURN_NAMES  = ("model", "clip", "vae", "lora_stack", "model_meta")
+    RETURN_TYPES  = ("MODEL", "CLIP", "VAE", "LORA_STACK", "STRING", "CLIP")
+    RETURN_NAMES  = ("model", "clip", "vae", "lora_stack", "model_meta", "upsampler_clip")
     FUNCTION      = "load_radiance_stack"
     CATEGORY      = "FXTD STUDIOS/Radiance/◎ Generate"
     DESCRIPTION   = (
@@ -340,6 +369,7 @@ class RadianceUnifiedLoader:
         lora_on_error="raise",
         auto_download=True,
         model_shift=0.0,
+        upsampler="None",
     ):
         def _none(val):
             return None if val in ("None", "", None) else val
@@ -349,6 +379,7 @@ class RadianceUnifiedLoader:
         t5xxl = _none(t5xxl)
         llm_encoder = _none(llm_encoder)
         text_projection = _none(text_projection)
+        upsampler = _none(upsampler)
 
         load_start  = time.time()
         info_lines  = []
@@ -405,6 +436,7 @@ class RadianceUnifiedLoader:
             resolved_type, unet_path, clip_l, clip_g, t5xxl, llm_encoder, text_projection,
             clip_dtype, offload_mode, clip_load_device, caching, divider, auto_download, info_lines
         )
+        upsampler_clip = _load_upsampler(upsampler, resolved_type, caching, info_lines) if upsampler else None
 
         # ════════════════════════════════════════════════════════════════
         # 6. LOAD STANDALONE VAE  (mtime cache key) — skipped if baked
@@ -489,6 +521,7 @@ class RadianceUnifiedLoader:
             vae,
             out_lora_stack,
             json.dumps(model_meta, sort_keys=True),
+            upsampler_clip,
         )
 
 
@@ -572,9 +605,10 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
             ),
             **old_optional,
         }
-        # ALBABIT-FIX: model_shift is the image Loader's (Qwen-Image); this
-        # loader's load_radiance_stack does not take it.
+        # ALBABIT-FIX: model_shift and upsampler are the image Loader's
+        # (Qwen-Image, FLUX 3 Klein); this loader's load_radiance_stack takes neither.
         types["optional"].pop("model_shift")
+        types["optional"].pop("upsampler")
 
         return types
 
