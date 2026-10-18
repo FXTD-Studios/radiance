@@ -478,6 +478,31 @@ def handle_client(conn):
         except Exception:  # nosec B110
             pass
     finally:
+        _close_gracefully(conn)
+
+
+def _close_gracefully(conn):
+    """Close after the reply is through.
+
+    A refusal is sent after only the 5-byte prefix is read; closing with the
+    rest of the frame unread makes the OS reset the connection, and the reset
+    can reach the sender before the reply does (seen on Windows as
+    ConnectionResetError instead of the protocol 2 upgrade message). So: stop
+    sending, read and drop what the sender still has in flight (bounded), then
+    close.
+    """
+    try:
+        conn.shutdown(socket.SHUT_WR)
+        conn.settimeout(0.5)
+        drained = 0
+        while drained < 2 * 1_048_576:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            drained += len(chunk)
+    except OSError:
+        pass
+    finally:
         conn.close()
 
 

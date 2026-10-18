@@ -219,7 +219,7 @@ def test_a_real_pq_hevc_file_carries_hdr10_side_data(tmp_path):
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames",
          "-read_intervals", "%+#1", "-show_entries",
          "stream=pix_fmt,color_transfer,color_primaries,color_space:frame=side_data_list",
-         "-of", "json", out], capture_output=True, text=True, check=True)
+         "-of", "json", out], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     info = json.loads(r.stdout)
     s = info["streams"][0]
     assert s["pix_fmt"] == "yuv420p10le"
