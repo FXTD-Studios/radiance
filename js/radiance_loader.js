@@ -844,15 +844,49 @@ function autoFillPresetFiles(node, cleanPreset) {
         shiftW.value = config.model_shift ?? 0;
     }
 
-    // ALBABIT-FIX: 8. Prompt upsampler (FLUX 3 Klein, Qwen-Image 2.1), "None"
-    // under every other preset so nothing extra loads.
+    // ALBABIT-FIX: 8. Prompt upsampler: "None" under every preset until a
+    // Prompt asks for it (_syncUpsampler).
     const upsamplerW = getWidget(node, "upsampler");
-    if (upsamplerW?.options?.values) {
-        upsamplerW.value = findMatchingFile(config.upsampler_hints, upsamplerW.options.values) || "None";
+    if (upsamplerW) {
+        upsamplerW.value = "None";
     }
 }
 
-// ALBABIT-FIX: unet_name/vae_name/CLIP slots/audio_vae_name/upscale_model_name/upsampler
+// ALBABIT-FIX: a bypassed node passes the CLIP on (the Prompt's isInputLive reads
+// it so), so its CLIP outputs are followed; a muted one ends the chain.
+function _feedsUpsamplerUser(graph, linkIds, depth = 0) {
+    return linkIds.some(id => {
+        const link = graph.links?.[id];
+        const target = link && graph.getNodeById(link.target_id);
+        if (!target || target.mode === 2 || depth > 32) return false;
+        if (target.mode === 4) {
+            const clipLinks = (target.outputs ?? []).filter(o => o.type === "CLIP").flatMap(o => o.links ?? []);
+            return _feedsUpsamplerUser(graph, clipLinks, depth + 1);
+        }
+        const sw = target.widgets?.find(x => x.name === "upsample_prompt");
+        return !sw || sw.value === true;
+    });
+}
+
+// ALBABIT-FIX: the preset's upsampler, a 9B LLM, is picked only while a node fed
+// by upsampler_clip uses it (a Prompt with upsample_prompt on, or any other
+// node), and goes back to "None" otherwise, so it is never loaded for nothing.
+function _syncUpsampler(node) {
+    const presetVal = getWidget(node, "preset")?.value;
+    const config = PRESET_CONFIGS[presetVal ? presetVal.replace("→ ", "").replace("▶ ", "").replace("◈ ", "").trim() : "Custom"];
+    const w = getWidget(node, "upsampler");
+    if (!w?.options?.values || !config?.upsampler_hints) return;
+    const links = node.outputs?.find(o => o.name === "upsampler_clip")?.links ?? [];
+    const used = !!node.graph && _feedsUpsamplerUser(node.graph, links);
+    const value = !used ? "None"
+        : (w.value !== "None" ? w.value : findMatchingFile(config.upsampler_hints, w.options.values) || "None");
+    if (w.value !== value) {
+        w.value = value;
+        node.setDirtyCanvas(true, true);
+    }
+}
+
+// ALBABIT-FIX: unet_name/vae_name/CLIP slots/audio_vae_name/upscale_model_name
 // stay visible and editable while a preset is active (unlike model_type/
 // weight_dtype/clip_dtype, hidden by design — loader_utils.py). Flag any that
 // no longer match what autoFillPresetFiles() would pick right now, with a "✎"
@@ -983,7 +1017,6 @@ function updatePresetDivergenceMarkers(node) {
     }
     check("audio_vae_name", config?.audio_vae_hints);
     check("upscale_model_name", config ? _resolveUpscaleHints(node, config) : null);
-    check("upsampler", config?.upsampler_hints);
 
     if (changed) node.setDirtyCanvas(true, true);
 }
@@ -1113,6 +1146,11 @@ app.registerExtension({
                 };
             }
 
+            // ALBABIT-FIX: ComfyUI calls every widget's beforeQueued right before it
+            // builds the prompt, so a switch turned on inside the 250 ms poll counts.
+            const upsamplerW = getWidget(node, "upsampler");
+            if (upsamplerW) upsamplerW.beforeQueued = () => _syncUpsampler(node);
+
             // Apply initial layout folding on creation, unless onConfigure
             // (loaded workflow) is about to do it with the restored values.
             setTimeout(() => {
@@ -1124,7 +1162,10 @@ app.registerExtension({
             // edits (same pattern as radiance_sampler.js/radiance_prompt.js).
             // Calls only the lightweight marker check, never updateLoaderUI()
             // itself, which remounts every widget on each call.
-            node._presetMarkerInterval = setInterval(() => updatePresetDivergenceMarkers(node), 250);
+            node._presetMarkerInterval = setInterval(() => {
+                _syncUpsampler(node);
+                updatePresetDivergenceMarkers(node);
+            }, 250);
             const origOnRemoved = node.onRemoved;
             node.onRemoved = function () {
                 if (node._presetMarkerInterval) {

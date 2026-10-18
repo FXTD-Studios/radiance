@@ -154,9 +154,10 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **Prompt upsampler** for FLUX 3 Image Klein and Qwen-Image 2.1, optional and
   off by default. The Loader's new `upsampler` slot loads the family's
   upsampler (`qwen3.5_9b_flux3_prompt_upsampler_*` or
-  `qwen3.5_9b_qwen_image_2.1_pe_*`, picked by the presets) and sends it out of
-  `upsampler_clip`. Connect it to the Prompt's `upsampler_clip` and turn on
-  `upsample_prompt`: it rewrites
+  `qwen3.5_9b_qwen_image_2.1_pe_*`) and sends it out of `upsampler_clip`.
+  Connect it to the Prompt's `upsampler_clip` and turn on `upsample_prompt`:
+  the presets pick the file only while the switch is on (None otherwise, so
+  the 9B model is never loaded for nothing). It rewrites
   the built prompt with ComfyUI's Generate Text, the model authors' system
   prompt and the official templates' sampling (with reference images, the
   edit instructions, and it sees the images). `positive_text` shows the

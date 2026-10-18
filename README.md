@@ -221,7 +221,7 @@ Download from [black-forest-labs/flux-3-image-klein-comfy](https://huggingface.c
 - **8 to 12 GB cards:** use **Flux.3 Klein (Low VRAM)**.
 - **Edit:** connect up to 10 images to the Prompt's `images` and the VAE, and refer to them as `<ref_image_0>`, `<ref_image_1>`…
 - **Layout boxes:** in the Viewer, **Tools > FLUX 3 Layout Boxes**. Draw boxes, describe each, click **Send to Prompt**, and refer to them as `<obj_1>`, `<obj_2>`…
-- **Prompt upsampler (optional):** the Flux.3 Klein presets pick `qwen3.5_9b_flux3_prompt_upsampler_*` in the Loader's `upsampler`. Connect its `upsampler_clip` output to the Prompt's `upsampler_clip` and turn on `upsample_prompt`.
+- **Prompt upsampler (optional):** connect the Loader's `upsampler_clip` output to the Prompt's `upsampler_clip` and turn on `upsample_prompt`: the Flux.3 Klein presets then pick `qwen3.5_9b_flux3_prompt_upsampler_*` in the Loader's `upsampler` (back to None when it is off, so it is not loaded for nothing).
 
 </details>
 
@@ -241,7 +241,7 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 - **Edit:** connect images to the Prompt's `images` and refer to them as `<image1>`, `<image2>`…
 - **Avoid seed 0:** edits at that seed fail or oversaturate (in ComfyUI's own nodes too). The Sampler's default is 1.
 - **More detail:** the template runs 25 steps; Qwen's own pipeline uses 40 to 50.
-- **Prompt upsampler (optional):** the `qwen3.5_9b_qwen_image_2.1_pe_*` files are prompt enhancers, not text encoders. The Qwen-Image 2.1 presets pick the text-to-image one (`pe_t2i`) in the Loader's `upsampler`; choose `pe_i2i` there for editing. Connect the Loader's `upsampler_clip` to the Prompt's and turn on `upsample_prompt`.
+- **Prompt upsampler (optional):** the `qwen3.5_9b_qwen_image_2.1_pe_*` files are prompt enhancers, not text encoders. Connect the Loader's `upsampler_clip` to the Prompt's and turn on `upsample_prompt`: the Qwen-Image 2.1 presets then pick the text-to-image one (`pe_t2i`) in the Loader's `upsampler`; choose `pe_i2i` there for editing.
 
 </details>
 
