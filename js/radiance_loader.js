@@ -224,6 +224,8 @@ const PRESET_CONFIGS = {
     // Sampler sets base or distilled from the loaded weights either way.
     // Quality-first: bf16, then int8_convrot, then nvfp4 (Blackwell). The
     // text-encoder hints never match the Qwen3.5-9B prompt upsampler.
+    // ALBABIT-FIX: upsampler_hints pick that upsampler for the Loader's own
+    // upsampler slot, in the same order (its smallest file is w4a8).
     "Flux.3 Klein": {
         "unet_hints": [
             "flux3_image_klein_sd_bf16.safetensors", "flux3_image_klein_bf16.safetensors",
@@ -239,6 +241,12 @@ const PRESET_CONFIGS = {
                 "qwen3vl_4b", "qwen3-vl-4b",
             ],
         },
+        "upsampler_hints": [
+            "qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors",
+            "qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+            "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors", "flux3_prompt_upsampler",
+        ],
+        "extra_widgets": ["upsampler"],
     },
     "Flux.3 Klein (Low VRAM)": {
         "unet_hints": [
@@ -250,7 +258,11 @@ const PRESET_CONFIGS = {
         "clip_hints":    {
             "llm_encoder": ["qwen3vl_4b_int8_convrot.safetensors"],
         },
-        "extra_widgets": ["offload_mode"],
+        "upsampler_hints": [
+            "qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+            "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors",
+        ],
+        "extra_widgets": ["offload_mode", "upsampler"],
         "offload_mode": "cpu_offload",
     },
     "HunyuanVideo": {
@@ -491,6 +503,13 @@ const PRESET_CONFIGS = {
                 "qwen3vl_8b_w4a8.safetensors", "qwen3vl_8b", "qwen-image-2.1-text_encoder",
             ],
         },
+        // ALBABIT-FIX: text-to-image's upsampler (pe_t2i); editing has its own
+        // (pe_i2i), picked only when it is the one on disk.
+        "upsampler_hints": [
+            "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
+            "qwen3.5_9b_qwen_image_2.1_pe_t2i_w4a8.safetensors", "qwen3.5_9b_qwen_image_2.1_pe",
+        ],
+        "extra_widgets": ["upsampler"],
     },
     "Qwen-Image 2.1 (Low VRAM)": {
         "unet_hints":    ["qwen_image_2.1_int8_convrot.safetensors", "qwen-image-2.1-int8", "qwen-image-2.1-fp8"],
@@ -501,7 +520,11 @@ const PRESET_CONFIGS = {
                 "qwen-image-2.1-text_encoder-fp8",
             ],
         },
-        "extra_widgets": ["offload_mode"],
+        "upsampler_hints": [
+            "qwen3.5_9b_qwen_image_2.1_pe_t2i_w4a8.safetensors",
+            "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors", "qwen3.5_9b_qwen_image_2.1_pe",
+        ],
+        "extra_widgets": ["offload_mode", "upsampler"],
         "offload_mode": "cpu_offload",
     },
     // ALBABIT-FIX: the files of the official ComfyUI templates, the newest
@@ -820,9 +843,16 @@ function autoFillPresetFiles(node, cleanPreset) {
     if (shiftW) {
         shiftW.value = config.model_shift ?? 0;
     }
+
+    // ALBABIT-FIX: 8. Prompt upsampler (FLUX 3 Klein, Qwen-Image 2.1), "None"
+    // under every other preset so nothing extra loads.
+    const upsamplerW = getWidget(node, "upsampler");
+    if (upsamplerW?.options?.values) {
+        upsamplerW.value = findMatchingFile(config.upsampler_hints, upsamplerW.options.values) || "None";
+    }
 }
 
-// ALBABIT-FIX: unet_name/vae_name/CLIP slots/audio_vae_name/upscale_model_name
+// ALBABIT-FIX: unet_name/vae_name/CLIP slots/audio_vae_name/upscale_model_name/upsampler
 // stay visible and editable while a preset is active (unlike model_type/
 // weight_dtype/clip_dtype, hidden by design — loader_utils.py). Flag any that
 // no longer match what autoFillPresetFiles() would pick right now, with a "✎"
@@ -953,6 +983,7 @@ function updatePresetDivergenceMarkers(node) {
     }
     check("audio_vae_name", config?.audio_vae_hints);
     check("upscale_model_name", config ? _resolveUpscaleHints(node, config) : null);
+    check("upsampler", config?.upsampler_hints);
 
     if (changed) node.setDirtyCanvas(true, true);
 }

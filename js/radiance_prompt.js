@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -110,23 +110,45 @@ function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
     fitNodeSize(node);
 }
 
-// 4.0.0: the prompt upsampler's switch and seed show once an upsampler is
-// connected (upsampler_clip), and stay while the switch is on so it can be
-// turned off. The seed's "control after generate" widget follows it.
-function _applyUpsamplerVisibility(node) {
+// 4.0.0: the prompt upsampler's switch shows once an upsampler is connected
+// (upsampler_clip), and stays while on so it can be turned off.
+// ALBABIT-FIX: only under a family that has an upsampler, or a Loader left to
+// Auto-Detect, and not from a Loader whose upsampler is "None". The seed and
+// its "control after generate" widget only matter, and show, while it is on.
+const UPSAMPLER_FAMILIES = ["flux3", "qwen_image21"];
+
+function _applyUpsamplerVisibility(node, source = modelMetaSourceNode(node)) {
     const input = node.inputs?.find(i => i.name === "upsampler_clip");
     const onW = node.widgets?.find(w => w.name === "upsample_prompt");
     if (!input || !onW) return;
-    const show = isInputLive(node, input) || onW.value === true;
+    const on = onW.value === true;
+    const arch = loaderModelType(source);
+    const sender = liveSourceNode(node, input);
+    const loaded = !!sender && sender.widgets?.find(w => w.name === "upsampler")?.value !== "None";
+    const showSwitch = on || (loaded && (arch === null || UPSAMPLER_FAMILIES.includes(arch)));
     const seedW = node.widgets.find(w => w.name === "upsampler_seed");
-    const targets = [[onW, "toggle"], [seedW, "number"], ...(seedW?.linkedWidgets || []).map(w => [w, "combo"])];
+    const targets = [[onW, "toggle", showSwitch], [seedW, "number", on],
+        ...(seedW?.linkedWidgets || []).map(w => [w, "combo", on])];
     let changed = false;
-    for (const [w, type] of targets) {
+    for (const [w, type, show] of targets) {
         if (!w || !w.hidden === show) continue;
         setWidgetVisible(w, show, node, { fallbackType: type });
         changed = true;
     }
     if (changed) fitNodeSize(node);
+}
+
+// ALBABIT-FIX: ComfyUI runs "control after generate" on hidden widgets too: a
+// hidden "randomize" gave every run a new seed, which re-ran the Prompt and
+// everything after it. The control now acts only while the seed is shown.
+function _holdHiddenSeed(node) {
+    const seedW = node.widgets?.find(w => w.name === "upsampler_seed");
+    for (const w of seedW?.linkedWidgets || []) {
+        for (const hook of ["beforeQueued", "afterQueued"]) {
+            const run = w[hook];
+            if (run) w[hook] = function () { if (!seedW.hidden) return run.apply(this, arguments); };
+        }
+    }
 }
 
 // 4.0.0: the FLUX 3 layout input shows under a FLUX 3 Loader, or while it
@@ -175,7 +197,7 @@ function _refreshLiveState(node) {
     const source = modelMetaSourceNode(node);
     _applyResolutionVisibility(node, source);
     _applyReferenceLimit(node, source);
-    _applyUpsamplerVisibility(node);
+    _applyUpsamplerVisibility(node, source);
     _applyLayoutVisibility(node, source);
     const liveState = _liveMiniMaxState(node, source);
     const cfgOne = _negativeUnusedDownstream(node);
@@ -277,6 +299,7 @@ app.registerExtension({
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
+            _holdHiddenSeed(this);
 
             const self = this;
             const presetWidget = this.widgets?.find(w => w.name === "style_preset");
