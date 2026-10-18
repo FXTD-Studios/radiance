@@ -152,9 +152,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - The Flux.2 Loader presets and the Sampler's Flux.2 Klein file rule no longer
   match FLUX 3 Klein files (both read "klein" in a file name).
 - **Prompt upsampler** for FLUX 3 Image Klein and Qwen-Image 2.1, optional and
-  off by default. Connect the family's upsampler (loaded with Load CLIP:
-  `qwen3.5_9b_flux3_prompt_upsampler_*` or `qwen3.5_9b_qwen_image_2.1_pe_*`)
-  to the Prompt's `upsampler_clip` and turn on `upsample_prompt`: it rewrites
+  off by default. The Loader's new `upsampler` slot loads the family's
+  upsampler (`qwen3.5_9b_flux3_prompt_upsampler_*` or
+  `qwen3.5_9b_qwen_image_2.1_pe_*`, picked by the presets) and sends it out of
+  `upsampler_clip`. Connect it to the Prompt's `upsampler_clip` and turn on
+  `upsample_prompt`: it rewrites
   the built prompt with ComfyUI's Generate Text, the model authors' system
   prompt and the official templates' sampling (with reference images, the
   edit instructions, and it sees the images). `positive_text` shows the
