@@ -513,6 +513,11 @@ function applyFolding(node) {
         hiddenNames.add("noise_alpha_start");
         hiddenNames.add("noise_alpha_end");
     }
+    // ALBABIT-FIX: restart_count only runs on a connected restart_schedule,
+    // temporal_overlap only with a window, force_exact_steps only below denoise 1.
+    if (!node.inputs?.some(i => i.name === "restart_schedule" && i.link !== null)) hiddenNames.add("restart_count");
+    if (!(parseInt(find("temporal_window")?.value, 10) > 0)) hiddenNames.add("temporal_overlap");
+    if (Number(find("denoise")?.value) >= 1) hiddenNames.add("force_exact_steps");
 
     // 3.4. Sigma blend steps: visible if Phase-Shift sampler_mode OR ays_schedule
     // is active. phase_split: only meaningful in a Phase-Shift sampler_mode.
@@ -583,6 +588,16 @@ function applyFolding(node) {
     if (effectiveModel !== "ltxav") {
         hiddenNames.add("ltx_guidance");
         LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+    }
+    // ALBABIT-FIX: a packed LTX-AV latent (video + audio) is never windowed
+    // (the wrapper only splits 5D tensors) and only takes Gaussian noise: the
+    // other types build a video-only tensor that the audio stream cannot use.
+    if (effectiveModel === "ltxav") {
+        hiddenNames.add("temporal_window");
+        hiddenNames.add("temporal_overlap");
+        hiddenNames.add("noise_type");
+        const noiseTypeW = find("noise_type");
+        if (noiseTypeW && noiseTypeW.value !== "Gaussian") noiseTypeW.value = "Gaussian";
     }
 
     // ── Apply the final state in one pass (preset_info / control_after_generate
