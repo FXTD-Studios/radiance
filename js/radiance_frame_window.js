@@ -120,6 +120,12 @@ export class RadianceFrameWindow {
         this.playhead = 0;
         /** A looping range, { start, end }, or null (see _wanted). */
         this.loop = null;
+        /**
+         * Frames wanted besides the playhead's window, nearest first: a Ref
+         * Wipe block's B frames (playhead + slip), which can lie far outside
+         * it (issue #74). Set with setExtra.
+         */
+        this.extra = [];
 
         this._resident = new Map();   // idx -> payload
         this._bytes = new Map();      // idx -> charged size
@@ -233,6 +239,31 @@ export class RadianceFrameWindow {
      * point, so playback no longer stops at the loop to load it.
      */
     _wanted() {
+        const wanted = this._wantedWindow();
+        // Extra frames rank just after the playhead, so the byte bound trims
+        // the far end of the read-ahead before them.
+        this.extra.forEach((f, k) => {
+            if (!Number.isInteger(f) || f < 0 || f >= this.entries.length) return;
+            const d = 1 + k;
+            if (!wanted.has(f) || wanted.get(f) > d) wanted.set(f, d);
+        });
+        return wanted;
+    }
+
+    /**
+     * Frames besides the window to hold (an array of indices, nearest first),
+     * or [] for none. Evicts extra frames no longer wanted and queues new ones.
+     */
+    setExtra(indices) {
+        const next = (Array.isArray(indices) ? indices : []).filter((f) => Number.isInteger(f));
+        if (next.length === this.extra.length && next.every((f, i) => f === this.extra[i])) return;
+        this.extra = next;
+        this._evictOutsideSpan();
+        this._dropQueuedOutsideSpan();
+        this._refill();
+    }
+
+    _wantedWindow() {
         const wanted = new Map();
         const loop = this.loop;
         if (loop && this.playhead >= loop.start && this.playhead <= loop.end) {
@@ -318,6 +349,7 @@ export class RadianceFrameWindow {
         this.retainedBytes = 0;
         this._generation++;
         this.entries = [];
+        this.extra = [];
         if (ACTIVE_WINDOWS.delete(this)) rebalanceWindows(this);
     }
 
