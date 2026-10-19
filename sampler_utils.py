@@ -1404,6 +1404,49 @@ def apply_cfg_plus_plus(cfg: float, sigma: torch.Tensor, sigma_max: float) -> fl
     return effective_cfg
 
 
+# ALBABIT-FIX: LTX-AV guidance recipes, as (stg_scale, stg_end, modality_scale). Lightricks'
+# reference guider for LTX 2.3 / 2.5 Dev runs STG 1 on block 28 and modality 3
+# over the whole schedule; "early" stops STG halfway, before fine skin texture forms.
+LTX_GUIDANCE_RECIPES = {
+    "Off": (0.0, 1.0, 1.0),
+    "Modality": (0.0, 1.0, 3.0),
+    "Modality + STG (early)": (1.0, 0.5, 3.0),
+    "Modality + STG (full)": (1.0, 1.0, 3.0),
+}
+LTX_GUIDANCE_MODES = [*LTX_GUIDANCE_RECIPES, "Custom"]
+LTX_STG_BLOCKS = "28"
+
+
+def resolve_ltx_guidance(mode: str, stg_scale: float, stg_end: float, modality_scale: float):
+    """(stg_scale, stg_end, modality_scale) for an ltx_guidance mode; Custom keeps the widget values."""
+    return LTX_GUIDANCE_RECIPES.get(mode, (stg_scale, stg_end, modality_scale))
+
+
+def make_guidance_rescale_patch(phi: float, video_numel: Optional[int] = None):
+    """sampler_post_cfg_function for guidance rescale (Lin et al.), in denoised space.
+
+    With *video_numel*, the size of the video part of a packed LTX-AV latent,
+    video and audio are each rescaled against their own std, as Lightricks'
+    guider does: the video holds most of the values, so one std left the audio
+    uncorrected.
+    """
+    def rescale(guided, cond):
+        dims = list(range(1, guided.ndim))
+        guided_std = guided.std(dim=dims, keepdim=True).clamp(min=1e-6)
+        cond_std = cond.std(dim=dims, keepdim=True).clamp(min=1e-6)
+        return guided * (cond_std / guided_std) * phi + guided * (1.0 - phi)
+
+    def patch(args):
+        guided, cond = args["denoised"], args["cond_denoised"]
+        if video_numel is None:
+            return rescale(guided, cond)
+        v = video_numel
+        return torch.cat((rescale(guided[..., :v], cond[..., :v]),
+                          rescale(guided[..., v:], cond[..., v:])), dim=-1)
+
+    return patch
+
+
 def perpendicular_cfg_function(args):
     """ComfyUI sampler_cfg_function for CFG++ (Perpendicular), since 4.0.
 

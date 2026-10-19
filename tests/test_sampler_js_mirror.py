@@ -65,3 +65,10 @@ def test_lightning_lora_pattern_matches_sampler_utils():
     py = re.search(r'LIGHTNING_LORA = re.compile\(r"(.*?)"\)', (ROOT / "sampler_utils.py").read_text(encoding="utf-8"))
     js = re.search(r"const LIGHTNING_LORA = /(.*?)/;", JS)
     assert js.group(1) == py.group(1)
+
+
+def test_ltx_guidance_recipes_match_sampler_utils():
+    py = _py_literal("sampler_utils.py", "LTX_GUIDANCE_RECIPES")
+    rows = re.findall(r'"([^"]+)":\s*\[([^\]]*)\]', _js_object("LTX_GUIDANCE_RECIPES"))
+    assert {name: tuple(float(v) for v in values.split(",")) for name, values in rows} == py
+
