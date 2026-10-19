@@ -169,6 +169,22 @@ else is fixes. Read the upgrade notes before moving a production setup.
   input as the table ComfyUI's FLUX 3 Image Layout Prompt writes (bbox
   `[ymin, xmin, ymax, xmax]` on a 0–1000 grid). Cite them as `<obj_1>`... The
   Prompt checks the table and refuses it for any other family.
+- **LTX guidance in the Sampler** (LTX 2.3 / 2.5 only): `ltx_guidance` adds
+  Lightricks' guidance for the Dev model through ComfyUI's LTXV STG and
+  modality nodes. Modality guidance keeps sound and picture coupled
+  (lip-sync, sounds that follow the action); STG on block 28 steadies
+  structure and motion but can harden skin. Recipes: Off, Modality,
+  Modality + STG (early: STG stops halfway), Modality + STG (full), and
+  Custom (`stg_scale`, `stg_end`, `modality_scale`, starting from the recipe
+  it replaces). Each active guidance adds one model pass per step. The LTX
+  2.5 LowRes preset uses Modality + STG (early) with `guidance_rescale_phi`
+  0.45; the other LTX presets and Auto leave it Off. Not applied to
+  `refiner_model`. Needs a ComfyUI with LTX 2.5 support. Export Preset now
+  saves these settings, `audio_cfg` and `guidance_rescale_phi` too.
+- **Guidance rescale per modality on LTX 2.3 / 2.5:** `guidance_rescale_phi`
+  rescales video and audio against their own spread, as Lightricks' guider
+  does. It used one spread for both, which the video decided. With
+  `ltx_guidance` active it also applies at cfg 1.
 - **Selectable HDR10 mastering display** for PQ H.265: Write's
   `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
   1000 or 4000 nits). An unknown value is refused with nothing written.
@@ -180,6 +196,19 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Changed
 
+- **Sampler hides settings that do nothing on the run:** `restart_count`
+  without a connected `restart_schedule`, `noise_alpha_start` / `_end` with
+  Gaussian noise and `noise_alpha_end` at start_step 0 (they followed
+  `restart_count`), `temporal_overlap` while
+  `temporal_window` is 0, `force_exact_steps` at denoise 1, and on LTX 2.3 /
+  2.5 `temporal_window` / `temporal_overlap` (a packed audio + video latent
+  is never windowed) and `noise_type` (only Gaussian noise covers the audio
+  stream; it is set back to Gaussian). Custom still shows everything.
+- **Sampler guidance settings together:** `guidance_rescale_phi`,
+  `ltx_guidance` and its Custom settings sit under `audio_cfg`. The node now
+  restores saved values by name, as ComfyUI's frontend allows a node to
+  declare (frontend 1.49.6 or later, mid-August 2026); graphs saved before
+  keep their values.
 - **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
   orthogonal to the conditional prediction, per batch item (projected
   guidance). It used to be only a cosine cfg schedule per stage, which stays.
