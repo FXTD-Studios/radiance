@@ -1,6 +1,7 @@
 """LTX-AV guidance in the Sampler: the ltx_guidance recipes, ComfyUI's STG and
 modality patches, and the guidance rescale computed per modality."""
 
+import logging
 import types
 
 import pytest
@@ -99,6 +100,13 @@ def test_a_recipe_registers_stg_then_modality_before_the_rescale(monkeypatch):
     calls, post_cfg = _run_ltx_av(monkeypatch, ltx_guidance="Modality + STG (early)", guidance_rescale_phi=0.45)
     assert calls == [("stg", (1.0, "28", 0.0, 0.5)), ("modality", (3.0, 0.0, 1.0))]
     assert post_cfg[:2] == ["stg", "modality"] and callable(post_cfg[2])
+
+
+def test_the_rescale_follows_ltx_guidance_at_cfg_1(monkeypatch, caplog):
+    with caplog.at_level(logging.WARNING, logger="radiance.sampler"):
+        _, post_cfg = _run_ltx_av(monkeypatch, ltx_guidance="Modality", guidance_rescale_phi=0.45, cfg=1.0)
+    assert post_cfg[0] == "modality" and callable(post_cfg[1])
+    assert not any("ignored at cfg" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.parametrize("mode, expected", [
