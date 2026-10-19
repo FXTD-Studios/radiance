@@ -477,3 +477,143 @@ test('touch drags pan, two fingers pinch-zoom, and a pen pans like a mouse', { s
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
+
+// ── Issue #74: Ref Wipe, pinned B, menus, focus ────────────────────────────
+
+
+test('#74: turning B off drops the pin B made for itself, and a Ref Wipe block then wipes', { skip }, async () => {
+    const page = await viewerPage(24);
+    try {
+        const r = await page.evaluate(async () => {
+            const block = (start, end, offset = 0) => ({ id: 1, type: 'reference', name: 'Ref Match Wipe', color: '#ffad26', startFrame: start, endFrame: end, offset });
+            v.v2Segments = [block(10, 20)];
+            v.setFrame(2); await __sleep(50);
+            const out = {};
+            v._vbAbBtn.click();                     // no B connected: pins A as B
+            out.pinnedByB = v.compareSource;
+            v._vbAbBtn.click();                     // B off again
+            out.afterOff = v.compareSource;
+            v.setFrame(15); await __sleep(80);
+            out.inBlock = { mode: v.compareMode, frame: v._refWipeFrame };
+            return out;
+        });
+        assert.equal(r.pinnedByB, 'pinned');
+        assert.equal(r.afterOff, null, 'the pin made for B stayed after B was turned off');
+        assert.deepEqual(r.inBlock, { mode: 'wipe', frame: 15 });
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('#74: an explicit pin is shown and released from the viewer bar and the File menu', { skip }, async () => {
+    const page = await viewerPage(24);
+    try {
+        const r = await page.evaluate(async () => {
+            const block = (start, end, offset = 0) => ({ id: 1, type: 'reference', name: 'Ref Match Wipe', color: '#ffad26', startFrame: start, endFrame: end, offset });
+            v.v2Segments = [block(10, 20)];
+            v.setFrame(3); await __sleep(50);
+            v._runKeyAction('file.pinB');
+            const out = { shown: v._vbPinBtn.style.display !== 'none', text: v._vbPinBtn.textContent };
+            const toasts = [];
+            const realToast = v._showToast; v._showToast = (m) => { toasts.push(m); };
+            v.setFrame(12); await __sleep(50);
+            v.setFrame(13); await __sleep(50);
+            out.toasts = toasts.length; out.toast = toasts[0] || '';
+            out.ignored = v._refWipeFrame;
+            v._runKeyAction('file.releaseB');
+            await __sleep(80);
+            out.released = v.compareSource;
+            out.hidden = v._vbPinBtn.style.display === 'none';
+            out.inBlock = { mode: v.compareMode, frame: v._refWipeFrame };
+            v._showToast = realToast;
+            out.menuItem = [...document.querySelectorAll('.radiance-pro-dropdown [data-action]')].length >= 0;
+            return out;
+        });
+        assert.equal(r.shown, true);
+        assert.match(r.text, /Release B \(frame 4\)/);
+        assert.equal(r.toasts, 1, 'the "B is pinned" notice must come once per entry into the block');
+        assert.match(r.toast, /B is pinned \(frame 4\)/);
+        assert.equal(r.ignored ?? null, null);
+        assert.equal(r.released, null);
+        assert.equal(r.hidden, true);
+        assert.deepEqual(r.inBlock, { mode: 'wipe', frame: 13 }, 'releasing the pin did not hand the block its wipe');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('#74: a slip beyond the frame window fetches B, and B changing inside the block brings the wipe back', { skip }, async () => {
+    const page = await viewerPage(60);
+    try {
+        const r = await page.evaluate(async () => {
+            const block = (start, end, offset = 0) => ({ id: 1, type: 'reference', name: 'Ref Match Wipe', color: '#ffad26', startFrame: start, endFrame: end, offset });
+            v.v2Segments = [block(5, 25, 30)];
+            v.setFrame(10); await __sleep(50);
+            v._refreshSequenceDock();
+            await __until(() => v._refWipeFrame === 40, 10000);
+            const out = { frame: v._refWipeFrame, mode: v.compareMode, held: v._frameWindow.extra.slice() };
+            // B twice: compare off inside the block.
+            v._vbAbBtn.click(); v._vbAbBtn.click();
+            out.off = v.compareMode;
+            v.v2Segments[0].offset = 31;
+            v._refreshSequenceDock();
+            await __until(() => v._refWipeFrame === 41, 10000);
+            out.back = v.compareMode;
+            v.setFrame(40); await __sleep(50);
+            out.outside = { mode: v.compareMode, held: v._frameWindow.extra.length };
+            return out;
+        });
+        assert.equal(r.frame, 40, 'B at playhead + 30 was never fetched');
+        assert.equal(r.mode, 'wipe');
+        assert.deepEqual(r.held, [40, 41, 42, 43]);
+        assert.equal(r.off, 'none');
+        assert.equal(r.back, 'wipe', 'a new B inside the block did not bring the wipe back');
+        assert.deepEqual(r.outside, { mode: 'none', held: 0 });
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('#74: a menu closes on a press outside the node, and its own button toggles it', { skip }, async () => {
+    const page = await viewerPage(4);
+    try {
+        const r = await page.evaluate(async () => {
+            const fileBtn = [...v.container.querySelectorAll('.radiance-pro-menu-items button')].find((b) => b.textContent === 'File');
+            const count = () => document.querySelectorAll('.radiance-pro-dropdown').length;
+            const out = {};
+            fileBtn.click(); await __sleep(20);
+            out.open = count();
+            fileBtn.click(); await __sleep(20);
+            out.toggled = count();
+            fileBtn.click(); await __sleep(20);
+            // The ComfyUI canvas prevents the default of pointerdown, so no mousedown follows.
+            const outside = document.createElement('canvas');
+            document.body.appendChild(outside);
+            outside.addEventListener('pointerdown', (e) => e.preventDefault());
+            outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+            await __sleep(20);
+            out.outside = count();
+            outside.remove();
+            return out;
+        });
+        assert.deepEqual(r, { open: 1, toggled: 0, outside: 0 });
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('#74: a button clicked with the pointer gives focus back, so a shortcut leaves one button lit', { skip }, async () => {
+    const page = await viewerPage(4);
+    try {
+        const sel = await page.evaluate(() => {
+            const b = [...v.sequenceDock.querySelectorAll('.radiance-pro-timeline-tools button')][0];
+            const r = b.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        });
+        await page.mouse.click(sel.x, sel.y);
+        await page.waitForTimeout(30);
+        await page.keyboard.press('Shift+R');
+        const r = await page.evaluate(() => ({
+            focused: document.activeElement?.tagName === 'BUTTON' && v.container.contains(document.activeElement),
+            tool: v.activeTimelineTool,
+        }));
+        assert.deepEqual(r, { focused: false, tool: 'reference' });
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});

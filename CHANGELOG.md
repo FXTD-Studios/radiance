@@ -320,6 +320,25 @@ are the results.
 
 ### Fixed
 
+- **Viewer (issue #74).**
+  - Turning B off drops the frame B pinned for itself when nothing else was
+    connected. That hidden pin stayed, was shown only in Review, and switched
+    every Ref Wipe block off. A pin you set yourself stays, is now shown in
+    every workspace (Release B on the viewer bar, File > Release Pinned B),
+    and entering a Ref Wipe block while it holds says why the block is off.
+  - A Ref Wipe block slipped past the frame window (about +11 or more) now
+    fetches and holds its B frames; it showed nothing.
+  - Inside a block, a new B (a slip) brings the wipe back after compare was
+    turned off, and a compare mode picked inside the block is kept on leaving
+    it while a B remains.
+  - Menus (File, Edit, View…), the settings popover and the export menu close
+    on a click on the ComfyUI canvas, and clicking a menu's own button closes
+    it instead of opening a second one.
+  - A button clicked with the mouse no longer keeps the focus ring, so a
+    shortcut leaves only the active button lit (Tab still shows the ring).
+  - The Ref Wipe block label is readable (10 px, was 7 px), and 876 lines of
+    unreachable HUD code are gone.
+
 - **Concurrent exports no longer overwrite each other.** Two writes with
   overwrite off (two viewers delivering, or a script and a node) could both
   pick `Shot_v0001`, both report success, and the second replaced the first.

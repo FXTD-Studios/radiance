@@ -2644,8 +2644,21 @@ class RadianceViewer {
         if (tabId === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
     }
 
-    _showProMenu(anchor, items) {
+    /** Close the open menu-bar dropdown, if any. */
+    _closeProMenu() {
+        this._proDropdownAbort?.abort();
+        this._proDropdownAbort = null;
         this._proDropdown?.remove();
+        this._proDropdown = null;
+        this._proDropdownAnchor = null;
+    }
+
+    _showProMenu(anchor, items) {
+        // Issue #74: clicking the open menu's own button closes it. It used to
+        // build a second menu over the first.
+        const reopen = this._proDropdown && this._proDropdownAnchor === anchor;
+        this._closeProMenu();
+        if (reopen) return;
         const menu = document.createElement('div');
         menu.className = 'radiance-pro-dropdown';
         items.forEach(item => {
@@ -2667,8 +2680,7 @@ class RadianceViewer {
             btn.append(label, shortcut);
             btn.onclick = (e) => {
                 e.stopPropagation();
-                menu.remove();
-                this._proDropdown = null;
+                this._closeProMenu();
                 item.action?.();
             };
             menu.appendChild(btn);
@@ -2678,14 +2690,19 @@ class RadianceViewer {
         menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
         menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - menu.offsetHeight - 8)}px`;
         this._proDropdown = menu;
+        this._proDropdownAnchor = anchor;
+        // pointerdown, not mousedown: ComfyUI's canvas calls preventDefault()
+        // on pointerdown, so a click on the empty canvas never produced a
+        // mousedown and the menu stayed open (issue #74).
+        const ctl = new AbortController();
+        this._proDropdownAbort = ctl;
+        this._listenerSignal?.addEventListener('abort', () => ctl.abort(), { signal: ctl.signal });
         const close = (e) => {
-            if (!menu.contains(e.target) && e.target !== anchor) {
-                menu.remove();
-                this._proDropdown = null;
-                document.removeEventListener('mousedown', close, true);
-            }
+            if (!menu.contains(e.target) && !anchor.contains(e.target)) this._closeProMenu();
         };
-        setTimeout(() => document.addEventListener('mousedown', close, { capture: true, signal: this._listenerSignal }), 0);
+        setTimeout(() => {
+            if (!ctl.signal.aborted) document.addEventListener('pointerdown', close, { capture: true, signal: ctl.signal });
+        }, 0);
     }
 
     // ── 3.5.0: Simple / Advanced ─────────────────────────────────────────────
@@ -3456,7 +3473,8 @@ class RadianceViewer {
         }, { signal });
         setTimeout(() => {
             if (signal.aborted) return;
-            document.addEventListener('mousedown', (e) => {
+            // pointerdown: ComfyUI's canvas swallows mousedown (issue #74).
+            document.addEventListener('pointerdown', (e) => {
                 if (!pop.contains(e.target) && !anchor.contains(e.target)) this._closeSettings({ restoreFocus: false });
             }, { capture: true, signal });
         }, 0);
@@ -3816,6 +3834,9 @@ class RadianceViewer {
         this._vbWipeBtn = _vbBtn('Wipe',       _toggle('wipe'));
         this._vbDiffBtn = _vbBtn('Difference', _toggle('difference'));
         this._vbBlinkBtn= _vbBtn('Blink',      _toggle('blink'));
+        // Issue #74: a pinned B shows here in every workspace, with its release.
+        this._vbPinBtn  = _vbBtn('Release B', () => { if (this.compareSource === 'pinned') this.unpinFrame(); });
+        this._vbPinBtn.className = 'radiance-vb-pin';
         this._syncViewerBarBtns();
         bar.appendChild(left);
 
@@ -3996,38 +4017,80 @@ class RadianceViewer {
      * frame at the playhead plus the block's slip, through the compare path
      * compare_image uses (its float frame when it is paged in). It used to set
      * compareImage, which the GPU path never reads, so the wipe had no B. A
-     * pinned B is the user's own choice and wins.
+     * pinned B is the user's own choice and wins, and the viewer says so.
+     *
+     * Issue #74: a B frame outside the playhead's frame window was never
+     * requested, so a slip past it showed nothing; it is now held by the
+     * window (setExtra) and fetched when missing. The wipe came on only on
+     * entering a block; it now comes back when B changes inside the block
+     * with compare off, and a mode picked inside the block is kept on leaving
+     * it when a B is still there.
      */
     _applyTimelineRefWipe(total) {
         const cur = this.currentFrame || 0;
-        const seg = this.compareSource === 'pinned' ? null
-            : (this.v2Segments || []).find(s => s.type === 'reference' && cur >= s.startFrame && cur <= s.endFrame);
-        if (seg && total > 0) {
-            const idx = Math.max(0, Math.min(total - 1, cur + (seg.offset || 0)));
+        const seg = (this.v2Segments || []).find(s => s.type === 'reference' && cur >= s.startFrame && cur <= s.endFrame);
+        const pinned = this.compareSource === 'pinned';
+        if (seg && pinned) {
+            if (!this._refWipePinNotice) {
+                this._refWipePinNotice = true;
+                const msg = `B is pinned (frame ${(this._pinnedFrame ?? 0) + 1}), so Ref Wipe blocks are off. `
+                    + 'Release it with Release B on the viewer bar or File > Release Pinned B.';
+                this._showToast?.(msg, 'info');
+                this._termLog?.('info', `[Ref Wipe] ${msg}`);
+            }
+        } else if (!seg) {
+            this._refWipePinNotice = false;
+        }
+        const block = seg && !pinned ? seg : null;
+        if (block && total > 0) {
+            const idx = Math.max(0, Math.min(total - 1, cur + (block.offset || 0)));
+            // Hold B and the next few frames for playback, wherever the slip puts them.
+            if (this._frameWindow?.setExtra) {
+                this._frameWindow.setExtra(block.offset
+                    ? [idx, idx + 1, idx + 2, idx + 3].filter((f) => f < total) : []);
+            }
             const img = this.frameImages?.[idx] || null;
             const hdr = this.frameHDRData?.[idx] || null;
-            if (!img && !hdr) return;                       // not paged in yet; the next refresh tries again
+            if (!img && !hdr) {
+                // Not paged in yet: fetch it, then try again if still wanted.
+                // Once per frame: a fetch that lands without pixels must not loop.
+                if (this._frameWindow?.ensure && this._refWipeFetching !== idx) {
+                    this._refWipeFetching = idx;
+                    // The frame window's onReady refreshes the dock when it lands.
+                    this._frameWindow.ensure(idx).catch(() => { /* the next frame change tries a new B */ });
+                }
+                return;
+            }
+            this._refWipeFetching = null;
+            let changed = false;
             if (this._refWipeFrame !== idx || this._refWipeSrc !== (hdr || img)) {
                 this._refWipeFrame = idx;
                 this._refWipeSrc = hdr || img;
+                changed = true;
                 try { this._pushCompareToRenderer(img, hdr); } catch (e) { /* backend without compare */ }
             }
             if (!this._refWipeActive) {
                 this._refWipeActive = true;
                 this._refWipeModeBefore = this.compareMode;
                 this.setCompareMode('wipe');
+            } else if (changed && (this.compareMode || 'none') === 'none') {
+                this.setCompareMode('wipe');
             } else {
                 this.requestRender();
             }
-        } else if (this._refWipeActive) {
+        } else {
+            this._frameWindow?.setExtra?.([]);
+            if (!this._refWipeActive) return;
             this._refWipeActive = false;
             this._refWipeFrame = null;
             this._refWipeSrc = null;
-            // Back to the compare input when there is one, else no B.
-            if (this.renderer?.setCompareSource) this.renderer.setCompareSource(null);
+            const inside = this.compareMode || 'none';
+            // Back to the compare input when there is one (a pin keeps its own B), else no B.
+            if (this.compareSource !== 'pinned' && this.renderer?.setCompareSource) this.renderer.setCompareSource(null);
             if (this.compareSource === 'input') this._updateCompareForFrame(cur, true);
             const before = this._refWipeModeBefore;
-            this.setCompareMode(before && before !== 'none' && this._hasCompareB() ? before : 'none');
+            const wanted = inside !== 'wipe' ? inside : before;
+            this.setCompareMode(wanted && wanted !== 'none' && this._hasCompareB() ? wanted : 'none');
         }
     }
 
@@ -4116,7 +4179,7 @@ class RadianceViewer {
                 block.title = `${seg.name}: B is ${seg.offset ? `${seg.offset > 0 ? '+' : ''}${seg.offset} frames from` : 'the same frame as'} the playhead. Slip tool to move B, double-click to remove.`;
 
                 const label = document.createElement('div');
-                label.style.cssText = 'color:#e8e8f0; font:800 7px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none;';
+                label.style.cssText = 'color:#e8e8f0; font:700 10px var(--radiance-font); padding:0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none;';
                 label.textContent = `${seg.name} (${segFrames}f${seg.offset ? `, B ${seg.offset > 0 ? '+' : ''}${seg.offset}` : ''})`;
                 block.appendChild(label);
 
@@ -7952,6 +8015,8 @@ else:
                     }
                 }
                 if (idx === this.currentFrame) this._displaySequenceFrame(idx);
+                // A Ref Wipe block waiting for its B frame (issue #74).
+                if (idx === this._refWipeFetching) setTimeout(() => this._refreshSequenceDock?.(), 0);
                 if ((payload.bracketLow || payload.bracketHigh) && this._referenceRightTab === 'analysis') {
                     this._syncReferenceReadouts('analysis');
                 }
@@ -8631,6 +8696,10 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'file.exportCDL': this._exportCDL(); break;
             case 'file.exportCUBE': this._exportGradeLUT(); break;
             case 'file.pinB': this.pinCurrentFrame(); break;
+            case 'file.releaseB':
+                if (this.compareSource === 'pinned') this.unpinFrame();
+                else this._termLog?.('info', '[Pin Frame] No frame is pinned as B.');
+                break;
             case 'review.exportReport': this.exportReviewReport(); break;
             case 'review.bookmark': this.toggleBookmark(); break;
             case 'review.prevBookmark': this.stepBookmark(-1); break;
@@ -8827,7 +8896,13 @@ self.onmessage = async ({ data: { id, url } }) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     showExportMenu(e) {
+        // A second click on the button that opened it closes it (issue #74).
+        const reopen = this.exportMenu?.isConnected && this._exportMenuAnchor === e?.currentTarget;
+        this._exportMenuAbort?.abort();
         if (this.exportMenu) this.exportMenu.remove();
+        this.exportMenu = null;
+        if (reopen) return;
+        this._exportMenuAnchor = e?.currentTarget || null;
 
         const menu = document.createElement('div');
         this.exportMenu = menu;
@@ -8880,13 +8955,21 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         document.body.appendChild(menu);
 
+        const ctl = new AbortController();
+        this._exportMenuAbort = ctl;
+        this._listenerSignal?.addEventListener('abort', () => ctl.abort(), { signal: ctl.signal });
+        const anchor = this._exportMenuAnchor;
         const closeMenu = (ev) => {
-            if (!menu.contains(ev.target) && ev.target !== e.target) {
+            if (!menu.contains(ev.target) && !(anchor && anchor.contains(ev.target))) {
                 menu.remove();
-                document.removeEventListener('mousedown', closeMenu);
+                if (this.exportMenu === menu) this.exportMenu = null;
+                ctl.abort();
             }
         };
-        setTimeout(() => document.addEventListener('mousedown', closeMenu, { signal: this._listenerSignal }), 10);
+        // pointerdown: ComfyUI's canvas swallows mousedown (issue #74).
+        setTimeout(() => {
+            if (!ctl.signal.aborted) document.addEventListener('pointerdown', closeMenu, { capture: true, signal: ctl.signal });
+        }, 10);
     }
 
     // _exportCDL and _exportGradeLUT live with the grade state (GRADE EXPORT &
@@ -9549,8 +9632,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!modes.includes(mode)) mode = 'none';
         if (mode !== 'none' && !this._hasCompareB()) {
             if (this.frameCompareImages?.length) this._updateCompareForFrame(this.currentFrame || 0, true);
-            if (!this._hasCompareB()) this.pinReference();
+            if (!this._hasCompareB() && this.pinReference()) this._pinImplicit = true;
         }
+        // Issue #74: a pin this method made only so B had something to show
+        // goes again when compare is turned off. It used to stay, hidden
+        // outside Review, and switched every Ref Wipe block off.
+        if (mode === 'none' && this.compareSource === 'pinned' && this._pinImplicit) this._dropPin();
         this.compareMode = mode;
         if (this._blinkTimer) { clearInterval(this._blinkTimer); this._blinkTimer = null; }
         this._blinkB = false;
@@ -9607,16 +9694,24 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this.compareSource = 'pinned';
         this._pinnedFrame = this.currentFrame || 0;
+        this._pinImplicit = false;           // setCompareMode marks its own pins
         this._syncCompareUI();
         return true;
+    }
+
+    /** Forget the pinned still, leaving the compare mode to the caller. */
+    _dropPin() {
+        this.compareSource = null;
+        this._pinImplicit = false;
+        this.renderer?.clearReferenceShelf?.();
+        this.compareImage = null;
+        if (this.frameCompareImages?.length) this._updateCompareForFrame(this.currentFrame || 0, true);
     }
 
     /** Release a pinned B: back to the compare input if there is one, else compare off. */
     releaseReference() {
         if (this.compareSource !== 'pinned') return;
-        this.compareSource = null;
-        this.renderer?.clearReferenceShelf?.();
-        this.compareImage = null;
+        this._dropPin();
         if (this.frameCompareImages?.length) {
             this._updateCompareForFrame(this.currentFrame || 0, true);
             this._applyCompareToRenderer();
@@ -9625,6 +9720,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         } else {
             this.setCompareMode('none');
         }
+        this._refreshSequenceDock?.();      // a Ref Wipe block under the playhead takes over now
     }
 
     /** Sync the A|B toolbar button appearance to the current compare state. */
@@ -9650,6 +9746,13 @@ self.onmessage = async ({ data: { id, url } }) => {
         setActive(this._vbWipeBtn,  cm === 'wipe');
         setActive(this._vbDiffBtn,  cm === 'difference');
         setActive(this._vbBlinkBtn, cm === 'blink');
+        if (this._vbPinBtn) {
+            const pinned = this.compareSource === 'pinned';
+            this._vbPinBtn.style.display = pinned ? '' : 'none';
+            this._vbPinBtn.textContent = pinned ? `Release B (frame ${(this._pinnedFrame ?? 0) + 1})` : 'Release B';
+            this._vbPinBtn.title = 'B is a pinned frame of A; it replaces compare_image and switches Ref Wipe blocks off. Click to release it.';
+            this._vbPinBtn.classList.toggle('is-active', pinned);
+        }
     }
 
     /** Draw the wipe split-line, A/B labels and drag handle on top of the rendered canvas. */
@@ -11246,6 +11349,17 @@ self.onmessage = async ({ data: { id, url } }) => {
         });
 
         this._installLayoutTool();
+
+        // Issue #74: a button clicked with the pointer kept focus, so the
+        // first key press after it (a shortcut that activates another button)
+        // drew the :focus-visible ring on it and two buttons looked active.
+        // Pointer clicks give the focus back; Tab and Enter keep the ring.
+        // On pointerup: the button took focus on pointerdown, and its click
+        // handler (which may move focus on purpose) runs after this.
+        this.container?.addEventListener('pointerup', (e) => {
+            const b = e.target?.closest?.('button');
+            if (b && this.container.contains(b) && document.activeElement === b) b.blur();
+        }, { capture: true, signal: this._listenerSignal });
 
         // Alt+drag annotation drawing (Sprint 4)
         this._review = _ReviewStore.parse(this.node?.properties?.radiance_viewer_review);
@@ -16529,882 +16643,6 @@ self.onmessage = async ({ data: { id, url } }) => {
             this.rightControlPanel.appendChild(this.controlsPanel);
         }
         this._renderReferenceRightHUD();
-        return;
-
-        // ─── Core helpers ────────────────────────────────────────────────────────
-        const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-        const MIN_W = 320, MIN_H = 120;
-
-        const persistSize = () => {
-            localStorage.setItem('radiance_hud_width', Math.round(this.hudPanelWidth));
-            if (this.hudPanelHeight) localStorage.setItem('radiance_hud_height2', Math.round(this.hudPanelHeight));
-            else localStorage.removeItem('radiance_hud_height2');
-        };
-
-        // Panel-embedded mode: position/size controlled by rightControlPanel — these are no-ops
-        const applyHUDPosition = (x, y) => { /* no-op in panel mode */ };
-        const applyHUDSize = (w, h) => { /* no-op in panel mode */ };
-
-        // No window resize re-clamping needed in panel mode
-
-
-        // ─── Panel-embedded mode: no floating resize handles needed ─────────────
-        // (Resize is handled by the rightControlPanel's left-edge drag handle)
-
-
-
-        // ─── Inner scroll wrapper (all HUD content lives here) ───────────────────
-        const innerWrap = document.createElement('div');
-        innerWrap.style.cssText = `
-            display: flex; flex-direction: column; gap: 10px;
-            padding: 10px 14px 12px;
-            overflow-x: hidden; overflow-y: auto;
-            flex: 1; min-height: 0;
-            box-sizing: border-box;
-        `;
-        this._hudInnerWrap = innerWrap;
-        this.controlsPanel.appendChild(innerWrap);
-
-        // ─── Title bar: minimize | grip | reset ──────────────────────────────────
-        const tabsHeader = document.createElement('div');
-        tabsHeader.style.cssText = `
-            display: flex; flex-direction: column; gap: 0;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
-            padding-bottom: 6px; margin-bottom: 0;
-            user-select: none; flex-shrink: 0;
-        `;
-
-        // Panel-embedded: gripRow is now a simple header bar (no drag)
-        const gripRow = document.createElement('div');
-        gripRow.style.cssText = `
-            display: flex; align-items: center; justify-content: space-between;
-            height: 28px; padding: 0 8px; gap: 4px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        `;
-
-        // Minimize / expand button
-        const minBtn = document.createElement('div');
-        minBtn.title = this.hudMinimized ? 'Expand panel' : 'Collapse panel';
-        const updateMinBtn = () => {
-            minBtn.innerHTML = this.hudMinimized
-                ? `<svg width="13" height="13" viewBox="0 0 13 13"><line x1="2" y1="6.5" x2="11" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6.5" y1="2" x2="6.5" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
-                : `<svg width="13" height="13" viewBox="0 0 13 13"><line x1="2" y1="6.5" x2="11" y2="6.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-            minBtn.title = this.hudMinimized ? 'Expand panel' : 'Collapse panel';
-        };
-        updateMinBtn();
-        minBtn.style.cssText = `
-            width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-            color: rgba(255,255,255,0.3); cursor: pointer; border-radius: 6px;
-            transition: color 0.15s, background 0.15s; flex-shrink: 0;
-        `;
-        minBtn.onmouseenter = () => { minBtn.style.color = '#fff'; minBtn.style.background = 'rgba(255,255,255,0.08)'; };
-        minBtn.onmouseleave = () => { minBtn.style.color = 'rgba(255,255,255,0.3)'; minBtn.style.background = ''; };
-        minBtn.addEventListener('mousedown', e => e.stopPropagation());
-        minBtn.onclick = () => {
-            this.hudMinimized = !this.hudMinimized;
-            localStorage.setItem('radiance_hud_minimized', this.hudMinimized);
-            updateMinBtn();
-            if (innerWrap._contentNode) {
-                innerWrap._contentNode.style.display = this.hudMinimized ? 'none' : '';
-            }
-            // Also hide the footer inside innerWrap
-            if (innerWrap._footerNode) {
-                innerWrap._footerNode.style.display = this.hudMinimized ? 'none' : '';
-            }
-            this.controlsPanel.style.height = 'auto';
-            this.hudPanelHeight = null;
-            persistSize();
-        };
-
-        // Title label for the panel
-        const panelTitle = document.createElement('div');
-        panelTitle.textContent = 'GRADING CONTROLS';
-        panelTitle.style.cssText = `flex: 1; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; color: rgba(255,255,255,0.28); user-select: none;`;
-
-        gripRow.appendChild(minBtn);
-        gripRow.appendChild(panelTitle);
-
-        tabsHeader.appendChild(gripRow);
-
-        // Inject LED pulse keyframe animation and micro-interactions
-        if (!document.getElementById('radiance-pulse-style')) {
-            const style = document.createElement('style');
-            style.id = 'radiance-pulse-style';
-            style.innerHTML = `
-                @keyframes radiance-pulse {
-                    0% { transform: scale(0.9); opacity: 0.6; box-shadow: 0 0 4px rgba(110,255,110,0.5); }
-                    100% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 12px rgba(110,255,110,1), 0 0 20px rgba(110,255,110,0.4); }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        // Tabs row styled as a floating glass pill container
-        const tabsRow = document.createElement('div');
-        tabsRow.style.cssText = `
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            padding: 5px;
-            margin: 6px 8px 10px 8px;
-            background: rgba(10, 10, 15, 0.65);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-        `;
-
-        const baseTabStyle = `
-            flex: 1 1 auto;
-            min-width: 60px;
-            text-align: center;
-            padding: 6px 6px;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 1px solid transparent;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            box-sizing: border-box;
-            user-select: none;
-        `;
-        const activeTabStyle = `
-            background: rgba(0, 242, 255, 0.08);
-            border: 1px solid rgba(0, 242, 255, 0.25);
-            text-shadow: 0 0 8px rgba(0, 242, 255, 0.3);
-            color: #00f2ff;
-            font-weight: 800;
-        `;
-        const inactiveTabStyle = `
-            background: transparent;
-            color: ${t.textDim};
-            border: 1px solid transparent;
-        `;
-
-        const active = this;
-        active.activeTab = 'primaries';
-        const tabContentContainer = document.createElement('div');
-        this.tabContentContainer = tabContentContainer;
-
-        const tabs = [
-            { id: 'prompt', label: '⚡ PROMPT' },
-            { id: 'primaries', label: '🎨 PRIMARIES' },
-            { id: 'curves', label: '📈 CURVES' },
-            { id: 'effects', label: '🎬 EFFECTS' },
-            { id: 'masks', label: '🛡️ MASKS' },
-            { id: 'probe', label: '🔬 PROBE' },
-            { id: 'view', label: '👁️ VIEW' }
-        ];
-        this._hudTabs = [];
-
-        const renderTabs = () => {
-            const active = this;
-            tabsRow.innerHTML = '';
-            tabs.forEach(tab => {
-                const btn = document.createElement('div');
-                btn.textContent = tab.label;
-                btn.dataset.tabId = tab.id;
-                btn.style.cssText = baseTabStyle + (active.activeTab === tab.id ? activeTabStyle : inactiveTabStyle);
-                btn.onmouseover = () => {
-                    btn.style.transform = 'scale(1.03)';
-                    if (active.activeTab !== tab.id) {
-                        btn.style.background = 'rgba(255, 255, 255, 0.05)';
-                        btn.style.borderColor = 'rgba(255, 255, 255, 0.03)';
-                        btn.style.color = '#fff';
-                    }
-                };
-                btn.onmouseout = () => {
-                    btn.style.transform = 'scale(1)';
-                    if (active.activeTab !== tab.id) {
-                        btn.style.background = 'transparent';
-                        btn.style.borderColor = 'transparent';
-                        btn.style.color = t.textDim;
-                    }
-                };
-                btn.onclick = () => {
-                    active.activeTab = tab.id;
-                    // Switching any tab clears depth/overlay modes that override rendering
-                    active.showZdepth = false;
-                    if (active.renderer) active.renderer.setShowDepth(false);
-                    renderTabs();
-                    renderContent();
-                    active.render();
-                };
-                this._hudTabs.push(btn);
-                tabsRow.appendChild(btn);
-            });
-        };
-
-        tabsHeader.appendChild(tabsRow);
-        innerWrap.appendChild(tabsHeader);
-
-
-        const renderContent = () => {
-            const active = this;
-            tabContentContainer.innerHTML = '';
-            tabContentContainer.style.cssText = 'display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto;';
-
-            if (active.activeTab === 'prompt') {
-                active.renderPromptTab(tabContentContainer);
-            } else if (active.activeTab === 'primaries') {
-                active.renderPrimariesTab(tabContentContainer);
-            } else if (active.activeTab === 'curves') {
-                active.renderCurvesTab(tabContentContainer);
-            } else if (active.activeTab === 'effects') {
-                active.renderEffectsTab(tabContentContainer);
-                active.renderLensTab(tabContentContainer);
-            } else if (active.activeTab === 'masks') {
-                active.renderQualifiersTab(tabContentContainer);
-                active.renderMasksTab(tabContentContainer);
-            } else if (active.activeTab === 'probe') {
-                active.renderProbeTab(tabContentContainer);
-            } else if (active.activeTab === 'view') {
-                active.renderViewTab(tabContentContainer);
-            } else if (active.activeTab === 'terminal') {
-                active.renderTerminalTab(tabContentContainer);
-            }
-        };
-
-        active._triggerRenderTabs = () => {
-            renderTabs();
-            renderContent();
-        };
-
-        innerWrap.appendChild(tabContentContainer);
-
-        // Initialize
-        renderTabs();
-        renderContent();
-        // Save reference for undo/redo panel refresh
-        this._lastRenderContent = renderContent;
-
-        // Track nodes for minimize toggle
-        innerWrap._contentNode = tabContentContainer;
-        if (this.hudMinimized) tabContentContainer.style.display = 'none';
-
-        // Footer: A/B Bypass + Reset All
-        const footer = document.createElement('div');
-        footer.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 4px;';
-        if (this.hudMinimized) footer.style.display = 'none';
-        innerWrap._footerNode = footer;
-
-        // A/B Bypass Toggle
-        const bypassBtn = document.createElement('div');
-        bypassBtn.onclick = () => {
-            const active = this;
-            active._gradingBypassed = !active._gradingBypassed;
-            if (active._gradingBypassed) {
-                // Save current state and set identity
-                active._savedGrading = {
-                    exposure: active.exposure, lift: [...(active.lift || [0, 0, 0])], gamma: [...(active.gamma || [1, 1, 1])], gain: [...(active.gain || [1, 1, 1])],
-                    temperature: active.temperature, tint: active.tint, contrast: active.contrast, pivot: active.pivot, saturation: active.saturation,
-                    grain: active.grain, grainSize: active.grainSize ?? 1.0, grainColor: active.grainColor ?? 0.0, grainAnimate: active.grainAnimate ?? false,
-                    denoise: active.denoise,
-                    bloom: active.bloom ?? 0.0, halation: active.halation ?? 0.0, diffusion: active.diffusion ?? 0.0,
-                    lensDistortion: active.lensDistortion, lensFringe: active.lensFringe,
-                    vignetteIntensity: active.vignetteIntensity, vignetteFalloff: active.vignetteFalloff,
-                    bokehHighlightBias: active.bokehHighlightBias ?? 0.0, bokehSoapBubble: active.bokehSoapBubble ?? 0.0, bokehOpticalVig: active.bokehOpticalVig ?? 0.0,
-                    apertureBlades: active.apertureBlades ?? 0, apertureRotation: active.apertureRotation ?? 0.0, apertureAnamorphic: active.apertureAnamorphic ?? 1.0,
-                    anamorphicStreaks: active.anamorphicStreaks ?? 0.0,
-                };
-                if (active.renderer) {
-                    active.renderer.setExposure(0); active.renderer.setLift(0, 0, 0); active.renderer.setGamma(1, 1, 1); active.renderer.setGain(1, 1, 1);
-                    active.renderer.setTemperature(0); active.renderer.setTint(0); active.renderer.setContrast(1); active.renderer.setPivot(0.5); active.renderer.setSaturation(1);
-                    active.renderer.setGrain(0); active.renderer.setGrainSize(1.0); active.renderer.setGrainColor(0.0); active.renderer.setGrainAnimate(false);
-                    active.renderer.setDenoise(0); active.renderer.setBloom(0); active.renderer.setHalation(0); active.renderer.setDiffusion(0);
-                    active.renderer.setLensDistortion(0, 0); active.renderer.setVignette(0, 0.5);
-                    active.renderer.setBokehPhysics(0, 0, 0); active.renderer.setApertureShape(0, 0, 1.0);
-                    if (active.renderer.setAnamorphicStreaks) active.renderer.setAnamorphicStreaks(0);
-                }
-                bypassBtn.textContent = '● BYPASSED'; bypassBtn.style.color = '#ff6b6b'; bypassBtn.style.borderColor = 'rgba(255,100,100,0.3)';
-            } else {
-                // Restore saved state
-                const s = active._savedGrading;
-                if (s && active.renderer) {
-                    active.renderer.setExposure(s.exposure); active.renderer.setLift(s.lift[0], s.lift[1], s.lift[2]);
-                    active.renderer.setGamma(s.gamma[0], s.gamma[1], s.gamma[2]); active.renderer.setGain(s.gain[0], s.gain[1], s.gain[2]);
-                    active.renderer.setTemperature(s.temperature); active.renderer.setTint(s.tint); active.renderer.setContrast(s.contrast); active.renderer.setPivot(s.pivot); active.renderer.setSaturation(s.saturation);
-                    active.renderer.setGrain(s.grain); active.renderer.setGrainSize(s.grainSize ?? 1.0); active.renderer.setGrainColor(s.grainColor ?? 0.0); active.renderer.setGrainAnimate(s.grainAnimate ?? false);
-                    active.renderer.setDenoise(s.denoise);
-                    active.renderer.setBloom(s.bloom ?? 0.0); active.renderer.setHalation(s.halation ?? 0.0); active.renderer.setDiffusion(s.diffusion ?? 0.0);
-                    active.renderer.setLensDistortion(s.lensDistortion, s.lensFringe); active.renderer.setVignette(s.vignetteIntensity, s.vignetteFalloff);
-                    active.renderer.setBokehPhysics(s.bokehHighlightBias ?? 0.0, s.bokehSoapBubble ?? 0.0, s.bokehOpticalVig ?? 0.0);
-                    active.renderer.setApertureShape(s.apertureBlades ?? 0, s.apertureRotation ?? 0.0, s.apertureAnamorphic ?? 1.0);
-                    if (active.renderer.setAnamorphicStreaks) active.renderer.setAnamorphicStreaks(s.anamorphicStreaks ?? 0.0);
-                }
-                bypassBtn.textContent = 'A/B'; bypassBtn.style.color = '#666'; bypassBtn.style.borderColor = 'rgba(255,255,255,0.08)';
-            }
-            active.render();
-        };
-        footer.appendChild(bypassBtn);
-
-        // Undo / Redo Buttons
-        const undoRedoGroup = document.createElement('div');
-        undoRedoGroup.style.cssText = 'display: flex; gap: 4px;';
-
-        const undoBtn = document.createElement('div');
-        undoBtn.textContent = '↶';
-        undoBtn.title = 'Undo (Ctrl+Z)';
-        undoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
-        undoBtn.onmouseenter = () => { undoBtn.style.color = this._undoStack.length > 0 ? this.theme.accent : '#555'; };
-        undoBtn.onmouseleave = () => { undoBtn.style.color = '#555'; };
-        undoBtn.onclick = () => { this.undo(); };
-
-        const redoBtn = document.createElement('div');
-        redoBtn.textContent = '↷';
-        redoBtn.title = 'Redo (Ctrl+Shift+Z)';
-        redoBtn.style.cssText = 'font-size: 14px; color: #555; cursor: pointer; padding: 0 4px; user-select: none; transition: color 0.15s;';
-        redoBtn.onmouseenter = () => {
-            const active = this;
-            redoBtn.style.color = active._redoStack.length > 0 ? active.theme.accent : '#555';
-        };
-        redoBtn.onmouseleave = () => { redoBtn.style.color = '#555'; };
-        redoBtn.onclick = () => { this.redo(); };
-
-        undoRedoGroup.appendChild(undoBtn);
-        undoRedoGroup.appendChild(redoBtn);
-        footer.appendChild(undoRedoGroup);
-
-        // Reset All Button
-        const resetBtn = document.createElement('div');
-        resetBtn.textContent = 'RESET ALL';
-        resetBtn.style.cssText = 'font-size: 9px; color: #666; cursor: pointer; letter-spacing: 1px;';
-        resetBtn.onclick = () => {
-            const active = this;
-            // Push undo before resetting
-            active._pushUndo();
-            // Primaries
-            active.exposure = 0.0;
-            active.lift = [0, 0, 0]; active.gamma = [1, 1, 1]; active.gain = [1, 1, 1];
-            active.temperature = 0.0; active.tint = 0.0;
-            active.contrast = 1.0; active.pivot = 0.5; active.saturation = 1.0;
-            // Film / Effects
-            active.grain = 0.0; active.grainSize = 1.0; active.grainColor = 0.0; active.grainAnimate = false;
-            active.denoise = 0.0; active.bloom = 0.0; active.halation = 0.0; active.diffusion = 0.0;
-            active.anamorphicStreaks = 0.0;
-            // Lens
-            active.focusDistance = 0.5; active.aperture = 0.0; active.dofEnabled = false;
-            active.apertureBlades = 0; active.apertureRotation = 0.0; active.apertureAnamorphic = 1.0;
-            active.lensDistortion = 0.0; active.lensFringe = 0.0;
-            active.vignetteIntensity = 0.0; active.vignetteFalloff = 0.5;
-            active.bokehHighlightBias = 0.0; active.bokehSoapBubble = 0.0; active.bokehOpticalVig = 0.0;
-            active.activeLensSignature = null; active._activeFilmPreset = 'No Grain';
-            // Curves
-            if (active.curveEditor) active.curveEditor.resetAllChannels?.();
-            // Qualifier
-            if (active.qualifierState) {
-                active.qualifierState.enabled = false; active.qualifierState.showMask = false;
-            }
-
-            if (active.renderer) {
-                active.renderer.setExposure(0);
-                active.renderer.setLift(0, 0, 0); active.renderer.setGamma(1, 1, 1); active.renderer.setGain(1, 1, 1);
-                active.renderer.setTemperature(0); active.renderer.setTint(0);
-                active.renderer.setContrast(1); active.renderer.setPivot(0.5); active.renderer.setSaturation(1);
-                active.renderer.setGrain(0); active.renderer.setGrainSize(1.0); active.renderer.setGrainColor(0.0); active.renderer.setGrainAnimate(false);
-                active.renderer.setDenoise(0); active.renderer.setBloom(0); active.renderer.setHalation(0); active.renderer.setDiffusion(0);
-                active.renderer.setDoFEnabled(false); active.renderer.setFocusDistance(0.5); active.renderer.setAperture(0);
-                active.renderer.setApertureShape(0, 0, 1.0);
-                active.renderer.setLensDistortion(0, 0); active.renderer.setVignette(0, 0.5);
-                active.renderer.setBokehPhysics(0, 0, 0);
-                if (active.renderer.setAnamorphicStreaks) active.renderer.setAnamorphicStreaks(0);
-                active.renderer.setCurveMix(0);
-                if (active.qualifierState && active.renderer.setQualifier) {
-                    active.renderer.setQualifier(active.qualifierState);
-                }
-            }
-            active._gradingBypassed = false;
-            active.render();
-            renderContent();
-        };
-        footer.appendChild(resetBtn);
-        innerWrap.appendChild(footer);
-
-        // Keyboard shortcuts for undo/redo (scoped to document when HUD is visible)
-        if (!this._undoKeyListener) {
-            this._undoKeyListener = (e) => {
-                if (!this._ownsKeyboard(e)) return;
-                // Only respond when HUD is visible and not in a text input
-                if (!this.controlsPanel || this.controlsPanel.style.opacity === '0') return;
-                const active = this;
-                if (!active) return;
-
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                    e.preventDefault();
-                    active.undo();
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-                    e.preventDefault();
-                    active.redo();
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-                    e.preventDefault();
-                    active.redo();
-                }
-
-                // --- Printer Lights (1-4) ---
-                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-                    const step = e.shiftKey ? -0.01 : 0.01;
-                    let changed = false;
-
-                    if (e.key === '1') { // Red
-                        active.offset[0] += step; changed = true;
-                    } else if (e.key === '2') { // Green
-                        active.offset[1] += step; changed = true;
-                    } else if (e.key === '3') { // Blue
-                        active.offset[2] += step; changed = true;
-                    } else if (e.key === '4') { // Master
-                        active.offset[0] += step; active.offset[1] += step; active.offset[2] += step;
-                        changed = true;
-                    }
-
-                    if (changed) {
-                        e.preventDefault();
-                        active._pushUndoDebounced();
-                        if (active.renderer) active.renderer.setOffset(active.offset[0], active.offset[1], active.offset[2]);
-                        active.render();
-                        if (active._lastRenderContent) active._lastRenderContent(); // Refresh knobs
-                    }
-                }
-            };
-            document.addEventListener('keydown', this._undoKeyListener, { signal: this._listenerSignal });
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════════
-        //               TRANSPORT CONTROLS — Real-time Video + Frame Sequence
-        // ═══════════════════════════════════════════════════════════════════════════
-
-        if (this.transportPanel) this.transportPanel.remove();
-
-        this.transportPanel = document.createElement('div');
-        this.transportPanel.style.cssText = `
-            position: absolute;
-            bottom: 16px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: none;
-            flex-direction: column;
-            align-items: stretch;
-            gap: 0;
-            background: rgba(8, 8, 14, 0.92);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 0;
-            backdrop-filter: blur(12px);
-            z-index: 101;
-            width: min(640px, 90vw);
-            box-shadow: 0 4px 24px rgba(0,0,0,0.5);
-            overflow: hidden;
-            pointer-events: auto;
-        `;
-
-        // ── Top: Video drop zone / filename strip ──────────────────────────────
-        const fileStrip = document.createElement('div');
-        fileStrip.style.cssText = `
-            display: flex; align-items: center; gap: 8px;
-            padding: 5px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            font-size: 10px; font-family: monospace;
-            color: rgba(255,255,255,0.35);
-            cursor: pointer;
-        `;
-        const fileIcon = document.createElement('span');
-        fileIcon.innerHTML = `<svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <rect x="2" y="1" width="8" height="11" rx="1" stroke="currentColor" stroke-width="1.1"/>
-            <path d="M5 6l3 1.5L5 9V6z" fill="currentColor"/>
-        </svg>`;
-        fileIcon.style.cssText = 'opacity: 0.6; flex-shrink: 0; display: flex; align-items: center;';
-        this._fileNameLabel = document.createElement('span');
-        this._fileNameLabel.textContent = 'Drop video  •  MP4 / WebM / MOV  •  or click to browse';
-        this._fileNameLabel.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
-
-        const unloadBtn = document.createElement('div');
-        unloadBtn.innerHTML = '✕';
-        unloadBtn.title = 'Unload video';
-        unloadBtn.style.cssText = `
-            font-size: 10px; color: rgba(255,255,255,0.25); cursor: pointer; padding: 2px 4px;
-            border-radius: 4px; transition: color 0.15s; display: none;
-        `;
-        unloadBtn.onmouseenter = () => { unloadBtn.style.color = '#ff6b6b'; };
-        unloadBtn.onmouseleave = () => { unloadBtn.style.color = 'rgba(255,255,255,0.25)'; };
-        unloadBtn.onclick = (e) => {
-            e.stopPropagation();
-            this.unloadVideo();
-            this._fileNameLabel.textContent = 'Drop video  •  MP4 / WebM / MOV  •  or click to browse';
-            unloadBtn.style.display = 'none';
-            if (this.totalFrames <= 1) this.transportPanel.style.display = 'none';
-        };
-
-        fileStrip.appendChild(fileIcon);
-        fileStrip.appendChild(this._fileNameLabel);
-        fileStrip.appendChild(unloadBtn);
-
-        // Hidden file input
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'video/mp4,video/webm,video/quicktime,video/x-matroska,video/*';
-        fileInput.style.display = 'none';
-        fileInput.onchange = (e) => {
-            const f = e.target.files[0];
-            if (!f) return;
-            this._fileNameLabel.textContent = f.name;
-            unloadBtn.style.display = '';
-            this.loadVideo(f);
-        };
-        fileStrip.appendChild(fileInput);
-
-        fileStrip.onclick = (e) => {
-            if (e.target === unloadBtn) return;
-            fileInput.click();
-        };
-
-        // Drag-and-drop on canvasWrapper — accepts video AND image/HDR files
-        this.canvasWrapper.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            if ([...e.dataTransfer.types].includes('Files')) {
-                e.dataTransfer.dropEffect = 'copy';
-                fileStrip.style.background = 'rgba(0,168,255,0.08)';
-            }
-        });
-        this.canvasWrapper.addEventListener('dragleave', () => {
-            fileStrip.style.background = '';
-        });
-        this.canvasWrapper.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileStrip.style.background = '';
-            const files = [...e.dataTransfer.files];
-
-            // Priority: video first, then image/HDR
-            const videoFile = files.find(f => f.type.startsWith('video/'));
-            if (videoFile) {
-                this._fileNameLabel.textContent = videoFile.name;
-                unloadBtn.style.display = '';
-                this.transportPanel.style.display = 'none';
-                this.loadVideo(videoFile);
-                return;
-            }
-
-            // Image / HDR / float file
-            const IMAGE_EXTS = /\.(exr|hdr|tif|tiff|f32|rf32|rhdr|npy|png|jpg|jpeg|webp)$/i;
-            const imgFile = files.find(f =>
-                IMAGE_EXTS.test(f.name) ||
-                f.type.startsWith('image/') ||
-                f.type === 'application/octet-stream'
-            );
-            if (imgFile) {
-                this._fileNameLabel.textContent = imgFile.name;
-                this._loadDroppedImageFile(imgFile);
-            }
-        });
-
-        this.transportPanel.appendChild(fileStrip);
-
-        // ── v2.4: Thumbnail Filmstrip ────────────────────────────────────────
-        // Shows a row of small frame thumbnails above the scrubber.
-        // Clicking a thumbnail jumps directly to that frame.
-        this._filmStrip = document.createElement('div');
-        this._filmStrip.style.cssText = `
-            display: flex; align-items: center; gap: 2px;
-            overflow-x: auto; scrollbar-width: none;
-            padding: 4px 10px 2px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            min-height: 36px; max-height: 52px;
-        `;
-        this._filmStrip.style.setProperty('scrollbar-width', 'none');
-        // Hide scrollbar on webkit
-        const filmScrollStyle = document.createElement('style');
-        filmScrollStyle.textContent = '.radiance-filmstrip::-webkit-scrollbar { display: none; }';
-        this._filmStrip.className = 'radiance-filmstrip';
-        if (!document.getElementById('radiance-filmstrip-style')) {
-            filmScrollStyle.id = 'radiance-filmstrip-style';
-            document.head.appendChild(filmScrollStyle);
-        }
-        // Will be populated by _rebuildFilmStrip() when frames arrive
-        this.transportPanel.appendChild(this._filmStrip);
-
-        // ── v4.3: HDR Sparkline bar — luma histogram per frame ────────────────
-        // Thin amber-coloured canvas sitting between filmstrip and scrubber.
-        // Each frame slot draws a mini 8-bin luma histogram so flashes, dark
-        // shots, and HDR spikes are visible at a glance across the sequence.
-        const sparklineCanvas = document.createElement('canvas');
-        sparklineCanvas.height = 28;
-        sparklineCanvas.style.cssText = `
-            width: 100%; height: 28px; display: none;
-            padding: 0 12px; box-sizing: border-box;
-            cursor: pointer;
-        `;
-        sparklineCanvas.title = 'Per-frame luma sparklines — click to jump to frame';
-        this._sparklineCanvas = sparklineCanvas;
-        this.transportPanel.appendChild(sparklineCanvas);
-
-        // Click on sparkline → jump to that frame
-        sparklineCanvas.addEventListener('click', e => {
-            if (!this.totalFrames || this.totalFrames < 2) return;
-            const rect = sparklineCanvas.getBoundingClientRect();
-            const pct = (e.clientX - rect.left) / rect.width;
-            const frameIdx = Math.round(pct * (this.totalFrames - 1));
-            this.setFrame(Math.max(0, Math.min(this.totalFrames - 1, frameIdx)));
-        });
-
-        // ── Scrubber / Progress bar ────────────────────────────────────────────
-        const scrubberWrap = document.createElement('div');
-        scrubberWrap.style.cssText = 'position: relative; padding: 4px 12px 2px; display: flex; align-items: center; gap: 8px;';
-
-        // Timecode start
-        this._videoTimecode = document.createElement('span');
-        this._videoTimecode.textContent = '00:00:00:00';
-        this._videoTimecode.style.cssText = 'font-size: 9.5px; font-family: monospace; color: rgba(255,255,255,0.45); min-width: 62px; user-select: none;';
-
-        const scrubber = document.createElement('input');
-        scrubber.type = 'range';
-        scrubber.min = '0'; scrubber.max = '10000'; scrubber.step = '1'; scrubber.value = '0';
-        scrubber.style.cssText = `
-            flex: 1; height: 3px; cursor: pointer;
-            accent-color: ${this.theme.accent};
-            -webkit-appearance: none; appearance: none;
-            background: linear-gradient(to right, ${this.theme.accent} 0%, rgba(255,255,255,0.15) 0%);
-        `;
-        this._videoScrubber = scrubber;
-        this.frameCounter = scrubber; // alias so updateFrameDisplay() doesn't crash
-
-        let _scrubbing = false;
-        scrubber.addEventListener('mousedown', () => { _scrubbing = true; });
-        scrubber.addEventListener('mouseup', () => { _scrubbing = false; });
-        scrubber.addEventListener('input', () => {
-            const pct = parseInt(scrubber.value) / 10000;
-            // Update scrubber fill
-            scrubber.style.background = `linear-gradient(to right, ${this.theme.accent} ${pct * 100}%, rgba(255,255,255,0.15) ${pct * 100}%)`;
-            if (this.videoMode && this.videoEl) {
-                this.seekVideoTo(pct);
-            } else if (this.totalFrames > 1) {
-                const frameIdx = Math.round(pct * (this.totalFrames - 1));
-                this.setFrame(frameIdx);
-            }
-        });
-
-        // Duration label
-        this._videoDuration = document.createElement('span');
-        this._videoDuration.textContent = '00:00:00:00';
-        this._videoDuration.style.cssText = 'font-size: 9.5px; font-family: monospace; color: rgba(255,255,255,0.28); min-width: 62px; text-align: right; user-select: none;';
-
-        scrubberWrap.appendChild(this._videoTimecode);
-        scrubberWrap.appendChild(scrubber);
-        scrubberWrap.appendChild(this._videoDuration);
-        this.transportPanel.appendChild(scrubberWrap);
-
-        // ── Controls row ──────────────────────────────────────────────────────
-        const ctrlRow = document.createElement('div');
-        ctrlRow.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 6px 12px 8px; justify-content: space-between;';
-
-        // Left group: loop | step-back | prev | play | next | step-fwd
-        const leftGroup = document.createElement('div');
-        leftGroup.style.cssText = 'display: flex; align-items: center; gap: 6px;';
-
-        const mkBtn = (html, title, onClick, small = false) => {
-            const b = document.createElement('div');
-            b.innerHTML = html;
-            b.title = title;
-            b.style.cssText = `
-                color: ${small ? 'rgba(255,255,255,0.55)' : '#ddd'}; cursor: pointer;
-                font-size: ${small ? '12px' : '15px'}; width: ${small ? '18px' : '22px'};
-                display: flex; align-items: center; justify-content: center;
-                transition: color 0.12s; user-select: none;
-            `;
-            b.onmouseenter = () => { b.style.color = '#fff'; };
-            b.onmouseleave = () => { b.style.color = small ? 'rgba(255,255,255,0.55)' : '#ddd'; };
-            b.onclick = onClick;
-            return b;
-        };
-
-        const loopBtn = mkBtn('∞', 'Toggle Loop', () => {
-            this.loop = !this.loop;
-            if (this.videoEl) this.videoEl.loop = this.loop;
-            loopBtn.style.color = this.loop ? this.theme.accent : 'rgba(255,255,255,0.55)';
-        }, true);
-        loopBtn.style.fontSize = '17px';
-        loopBtn.style.color = this.loop ? this.theme.accent : 'rgba(255,255,255,0.55)';
-
-        const stepBackBtn = mkBtn('⇤', 'Step back 1 frame (Shift+←)', () => {
-            if (this.videoMode && this.videoEl) {
-                const fps = this._videoNativeFps || 25;
-                this.videoEl.currentTime = Math.max(0, this.videoEl.currentTime - 1 / fps);
-            } else this.prevFrame();
-        }, true);
-
-        const prevBtn = mkBtn('⏮', 'Previous frame (←)', () => {
-            if (this.videoMode && this.videoEl) this.videoEl.currentTime = 0;
-            else this.prevFrame();
-        }, false);
-
-        const playBtn = document.createElement('div');
-        playBtn.textContent = '▶';
-        playBtn.title = 'Play / Pause (Space)';
-        playBtn.style.cssText = `
-            color: #fff; cursor: pointer; font-size: 18px; width: 30px; height: 30px;
-            display: flex; align-items: center; justify-content: center;
-            background: ${this.theme.accent}22; border: 1px solid ${this.theme.accent}55;
-            border-radius: 50%; transition: background 0.15s; user-select: none; flex-shrink: 0;
-        `;
-        playBtn.onmouseenter = () => { playBtn.style.background = this.theme.accent + '44'; };
-        playBtn.onmouseleave = () => { playBtn.style.background = this.theme.accent + '22'; };
-        playBtn.onclick = () => this.togglePlayback();
-        this.playBtn = playBtn;
-
-        const nextBtn = mkBtn('⏭', 'Next frame (→)', () => {
-            if (this.videoMode && this.videoEl) this.videoEl.currentTime = this.videoEl.duration;
-            else this.nextFrame();
-        }, false);
-
-        const stepFwdBtn = mkBtn('⇥', 'Step forward 1 frame (Shift+→)', () => {
-            if (this.videoMode && this.videoEl) {
-                const fps = this._videoNativeFps || 25;
-                this.videoEl.currentTime = Math.min(this.videoEl.duration, this.videoEl.currentTime + 1 / fps);
-            } else this.nextFrame();
-        }, true);
-
-        leftGroup.appendChild(loopBtn);
-        leftGroup.appendChild(stepBackBtn);
-        leftGroup.appendChild(prevBtn);
-        leftGroup.appendChild(playBtn);
-        leftGroup.appendChild(nextBtn);
-        leftGroup.appendChild(stepFwdBtn);
-
-        // Center: frame counter
-        this.frameCounter = document.createElement('div');
-        this.frameCounter.textContent = '1 / 1';
-        this.frameCounter.style.cssText = 'color: rgba(255,255,255,0.35); font-size: 10px; font-family: monospace; min-width: 70px; text-align: center; user-select: none;';
-
-        // Right group: FPS selector | Speed selector
-        const rightGroup = document.createElement('div');
-        rightGroup.style.cssText = 'display: flex; align-items: center; gap: 8px;';
-
-        const mkSel = (label, options, current, onChange) => {
-            const wrap = document.createElement('div');
-            wrap.style.cssText = 'display: flex; align-items: center; gap: 4px;';
-            const lbl = document.createElement('span');
-            lbl.textContent = label;
-            lbl.style.cssText = 'font-size: 9px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.5px;';
-            const sel = document.createElement('select');
-            sel.style.cssText = `
-                background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
-                border: 1px solid rgba(255,255,255,0.1); border-radius: 4px;
-                padding: 2px 4px; font-size: 10px; font-family: monospace; cursor: pointer; outline: none;
-            `;
-            options.forEach(([val, txt]) => {
-                const opt = document.createElement('option');
-                opt.value = String(val); opt.textContent = txt;
-                if (String(val) === String(current)) opt.selected = true;
-                sel.appendChild(opt);
-            });
-            sel.onchange = (e) => onChange(e.target.value);
-            wrap.appendChild(lbl);
-            wrap.appendChild(sel);
-            return { wrap, sel };
-        };
-
-        const { wrap: fpsWrap, sel: fpsSel } = mkSel('FPS',
-            [[12, '12'], [15, '15'], [23.976, '23.97'], [24, '24'], [25, '25'], [29.97, '29.97'], [30, '30'], [48, '48'], [50, '50'], [60, '60']],
-            this.playbackFps || 24,
-            (v) => {
-                this.playbackFps = parseFloat(v);
-                if (this.videoEl) this._videoNativeFps = this.playbackFps;
-            }
-        );
-        this._fpsSel = fpsSel;
-
-        const { wrap: spdWrap, sel: spdSel } = mkSel('×',
-            [[0.25, '¼'], [0.5, '½'], [1, '1'], [1.5, '1.5'], [2, '2'], [4, '4']],
-            this.playbackSpeed || 1,
-            (v) => {
-                this.playbackSpeed = parseFloat(v);
-                if (this.videoEl) this.videoEl.playbackRate = this.playbackSpeed;
-            }
-        );
-
-        rightGroup.appendChild(fpsWrap);
-        rightGroup.appendChild(spdWrap);
-
-        // v3.0 #8.2: GPU Cache Purge Button
-
-        const purgeBtn = mkBtn('◎', 'Clear GPU Frame Cache', () => {
-            if (this.renderer) {
-                this.renderer.clearFrameCache();
-                // If sequence mode, clear the frameImages array to force reload from disk/network
-                if (this.totalFrames > 1) {
-                    this.frameImages = [];
-                    this.updateFrameDisplay();
-                }
-                this._termLog('info', '[GPU] Cache purged. Memory released.');
-            }
-        }, true);
-        purgeBtn.style.marginLeft = '4px';
-        rightGroup.appendChild(purgeBtn);
-
-        // v2.4: Pin Frame button for A/B wipe
-        const pinBtn = mkBtn('📌', 'Pin current frame as A/B reference (P)', () => {
-            if (this._pinned) {
-                this._pinned = false;
-                this.unpinFrame();
-                pinBtn.style.color = 'rgba(255,255,255,0.55)';
-                pinBtn.style.borderColor = 'rgba(255,255,255,0.12)';
-            } else {
-                this._pinned = true;
-                this.pinCurrentFrame();
-                pinBtn.style.color = '#00a8ff';
-                pinBtn.style.borderColor = '#00a8ff88';
-            }
-        }, true);
-        pinBtn.title = 'Pin current frame as A/B reference (P key)';
-        pinBtn.style.fontSize = '11px';
-        pinBtn.style.marginLeft = '4px';
-        this._pinFrameBtn = pinBtn;
-        rightGroup.appendChild(pinBtn);
-
-        ctrlRow.appendChild(leftGroup);
-        ctrlRow.appendChild(this.frameCounter);
-        ctrlRow.appendChild(rightGroup);
-        this.transportPanel.appendChild(ctrlRow);
-
-        // ── Space bar shortcut ─────────────────────────────────────────────────
-        // Wire into existing docKeyHandler if possible, otherwise add here
-        const spaceHandler = (e) => {
-            if (!this._ownsKeyboard(e)) return;
-            if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-                e.preventDefault();
-                this.togglePlayback();
-            }
-            if (e.code === 'ArrowLeft' && e.shiftKey) { stepBackBtn.onclick(); }
-            if (e.code === 'ArrowRight' && e.shiftKey) { stepFwdBtn.onclick(); }
-        };
-        if (!this._transportSpaceHandler) {
-            this._transportSpaceHandler = spaceHandler;
-            document.addEventListener('keydown', this._transportSpaceHandler, { signal: this._listenerSignal });
-        }
-
-        // Float transport over the canvas
-        this.canvasWrapper.appendChild(this.transportPanel);
-
-
-        // ── Embed HUD into the right control panel (not floating on body) ──────
-        this.controlsPanel.classList.add('radiance-panel-embedded');
-        // Remove position/size override styles that only apply to floating mode
-        this.controlsPanel.style.left = '';
-        this.controlsPanel.style.top = '';
-        this.controlsPanel.style.width = '';
-        this.controlsPanel.style.height = '';
-        if (this.controlsPanel.parentNode !== this.rightControlPanel) {
-            if (this.controlsPanel.parentNode) this.controlsPanel.parentNode.removeChild(this.controlsPanel);
-            this.rightControlPanel.appendChild(this.controlsPanel);
-        }
-
-        // Relative ordering for info bar
-        if (this.bottomInfoBar) {
-            this.container.appendChild(this.bottomInfoBar);
-        }
     }
 
     renderPrimariesTab(container) {

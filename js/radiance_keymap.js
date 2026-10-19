@@ -38,6 +38,7 @@ export const KEYMAP = Object.freeze([
     { id: 'file.exportCDL', keys: [], label: 'Export Grade as .CDL', menu: 'File', group: 'grade' },
     { id: 'file.exportCUBE', keys: [], label: 'Export Grade as .CUBE', menu: 'File', group: 'grade' },
     { id: 'file.pinB', keys: [], label: 'Pin Current Frame as B', menu: 'File', group: 'pin' },
+    { id: 'file.releaseB', keys: [], label: 'Release Pinned B', menu: 'File', group: 'pin' },
     { id: 'review.exportReport', keys: [], label: 'Export Review Report', menu: 'File', group: 'review' },
 
     // ── Edit ──

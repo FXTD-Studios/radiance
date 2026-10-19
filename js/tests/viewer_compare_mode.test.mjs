@@ -34,7 +34,7 @@ function methodSource(name) {
 }
 
 const METHODS = ['setCompareMode', '_applyCompareToRenderer', '_hasCompareB', 'pinReference',
-    'releaseReference', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode', '_compareRates'];
+    'releaseReference', '_dropPin', '_updateCompareForFrame', '_pushCompareToRenderer', 'setCompareImage', 'cycleCompareMode', '_compareRates'];
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from '../radiance_compare.js';
 const Proto = new Function('_mapCompareFrame', '_compareGeometry',
     `return class { ${METHODS.map(methodSource).join('\n')} }`)(_mapCompareFrame, _compareGeometry);
