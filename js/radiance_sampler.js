@@ -530,14 +530,12 @@ function applyFolding(node) {
         hiddenNames.add("tile_blend");
     }
 
-    // ALBABIT-FIX: the noise alpha ramp only weighs a non-Gaussian noise_type (it
-    // was tied to restart_count), restart_count only runs on a connected
-    // restart_schedule, temporal_overlap only with a window, force_exact_steps
-    // only below denoise 1.
-    if (find("noise_type")?.value === "Gaussian") {
-        hiddenNames.add("noise_alpha_start");
-        hiddenNames.add("noise_alpha_end");
-    }
+    // ALBABIT-FIX: the noise alpha ramp weighs a non-Gaussian noise_type at start_step
+    // (its end only past step 0), restart_count needs a connected restart_schedule,
+    // temporal_overlap a window, force_exact_steps a denoise below 1.
+    const gaussian = find("noise_type")?.value === "Gaussian";
+    if (gaussian) hiddenNames.add("noise_alpha_start");
+    if (gaussian || !(parseInt(find("start_step")?.value, 10) > 0)) hiddenNames.add("noise_alpha_end");
     if (!node.inputs?.some(i => i.name === "restart_schedule" && i.link !== null)) hiddenNames.add("restart_count");
     if (!(parseInt(find("temporal_window")?.value, 10) > 0)) hiddenNames.add("temporal_overlap");
     if (Number(find("denoise")?.value) >= 1) hiddenNames.add("force_exact_steps");
