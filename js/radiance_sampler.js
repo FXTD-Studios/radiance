@@ -225,6 +225,31 @@ const LTX_GUIDANCE_RECIPES = {
 };
 const LTX_GUIDANCE_SETTINGS = ["stg_scale", "stg_end", "modality_scale"];
 
+// ALBABIT-FIX: the guidance settings sit together under audio_cfg. Graphs
+// saved before 4.0 hold positional widgets_values in this order; declaring it
+// makes the frontend restore this node by name, so its widgets can move.
+const SAMPLER_SAVED_WIDGET_ORDER = [
+    "preset", "steps", "start_step", "end_step", "cfg", "audio_cfg", "sampler", "sampler_mode",
+    "phase_split", "scheduler", "scheduler_mode", "denoise", "flux_shift", "flux_guidance",
+    "flux_guidance_profile", "seed", "fixed", "pag_scale", "model_type", "sigma_blend_steps",
+    "guidance_rescale_phi", "preview_method", "noise_type", "conditioning_clip_target", "add_noise",
+    "return_with_leftover_noise", "ays_schedule", "tile_mode", "tile_size", "tile_overlap",
+    "tile_blend", "terminal_sigma_to_zero", "force_exact_steps", "refiner_start_step",
+    "_js_export_btn", "_js_import_btn", "_js_preset_info", "restart_count", "noise_alpha_start",
+    "noise_alpha_end", "sdr_blend", "sdr_inject_steps", "sdr_decay", "temporal_window",
+    "temporal_overlap", "› Export Preset", "› Import Preset", "preset_info",
+];
+const GUIDANCE_WIDGETS = ["guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
+
+function groupGuidanceWidgets(node) {
+    const widgets = node.widgets;
+    if (!widgets?.some(w => w.name === "audio_cfg")) return;
+    const block = GUIDANCE_WIDGETS.map(name => widgets.find(w => w.name === name)).filter(Boolean);
+    const ordered = widgets.filter(w => !block.includes(w));
+    ordered.splice(ordered.findIndex(w => w.name === "audio_cfg") + 1, 0, ...block);
+    widgets.splice(0, widgets.length, ...ordered);
+}
+
 // ALBABIT-FIX: Custom starts from the recipe it replaces (the last one applyFolding saw).
 function fillLtxGuidanceSettings(node) {
     const values = LTX_GUIDANCE_RECIPES[node._radLtxRecipe];
@@ -417,8 +442,7 @@ function applyFolding(node) {
     const isCustom = presetVal === "Custom";
 
     // Dummy compatibility absorbers that are always hidden
-    const dummyWidgets = ["_js_export_btn", "_js_import_btn", "_js_preset_info",
-        "_js_export_btn_2", "_js_import_btn_2", "_js_preset_info_2"];
+    const dummyWidgets = ["_js_export_btn", "_js_import_btn", "_js_preset_info"];
 
     // ALBABIT-FIX: "Auto" (formerly "None") no longer hides everything -- it
     // falls through to the same smart-fold branch as named presets below,
@@ -1314,6 +1338,7 @@ app.registerExtension({
     name: "FXTD.RadianceSampler",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== "RadianceSamplerPro") return;
+        nodeData.fallbackWidgetsValuesNames = SAMPLER_SAVED_WIDGET_ORDER;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 
@@ -1321,6 +1346,7 @@ app.registerExtension({
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
 
             const self = this;
+            groupGuidanceWidgets(this);
 
             this.addWidget("button", "› Export Preset", null, () => exportPreset(this), { serialize: false });
             this.addWidget("button", "› Import Preset", null, () => importPreset(this), { serialize: false });
@@ -1365,7 +1391,7 @@ app.registerExtension({
             };
 
             // ALBABIT-FIX: onConfigure refreshes it too; the text saved in a graph
-            // is an older preset's, or lands in _js_preset_info_2.
+            // is an older preset's description.
             this._radUpdateDescription = updateDescription;
 
             let lastPresetValue = presetWidget.value;

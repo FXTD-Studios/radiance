@@ -72,3 +72,12 @@ def test_ltx_guidance_recipes_match_sampler_utils():
     rows = re.findall(r'"([^"]+)":\s*\[([^\]]*)\]', _js_object("LTX_GUIDANCE_RECIPES"))
     assert {name: tuple(float(v) for v in values.split(",")) for name, values in rows} == py
 
+
+def test_sampler_saved_widget_order_names_current_inputs():
+    """The frontend restores old Sampler graphs by these names: a renamed input would lose its value."""
+    from radiance.nodes.generate.sampler import RadianceSamplerPro
+    body = re.search(r"const SAMPLER_SAVED_WIDGET_ORDER = \[(.*?)\];", JS, re.S).group(1)
+    inputs = {name for section in ("required", "optional")
+              for name in RadianceSamplerPro.INPUT_TYPES()[section]}
+    js_only = [name for name in re.findall(r'"([^"]+)"', body) if name not in inputs]
+    assert js_only == ["fixed", "› Export Preset", "› Import Preset", "preset_info"]

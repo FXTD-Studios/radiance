@@ -14,6 +14,7 @@ saved value against its input's type, so the next added input that breaks a
 shipped workflow fails here instead of in a user's first queue.
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,12 @@ def _ok(value, typ):
     return True
 
 
+def _sampler_saved_order():
+    js = (Path(__file__).resolve().parents[1] / "js" / "radiance_sampler.js").read_text(encoding="utf-8")
+    body = re.search(r"const SAMPLER_SAVED_WIDGET_ORDER = \[(.*?)\];", js, re.S).group(1)
+    return re.findall(r'"([^"]+)"', body)
+
+
 def test_there_are_shipped_workflows():
     assert WORKFLOWS, "no workflows/*.json found"
 
@@ -86,10 +93,17 @@ def test_every_radiance_widget_value_fits_its_input(path):
             continue
         values = node.get("widgets_values") or []
         expected = _expected_widgets(cls)
-        # Fewer values than widgets is fine when only the tail is missing (the
-        # frontend gives newer trailing inputs their defaults); a gap in the
-        # middle shows up below as a value that does not fit its input.
-        for (name, typ, _), value in zip(expected, values):
+        # The Sampler is restored by name (radiance_sampler.js declares the order
+        # its graphs were saved in); the others by position. Fewer values than
+        # widgets is fine when only the tail is missing (the frontend gives
+        # newer trailing inputs their defaults); a gap in the middle shows up
+        # below as a value that does not fit its input.
+        named = node.get("widgets_values_named")
+        if named is None and node.get("type") == "RadianceSamplerPro":
+            named = dict(zip(_sampler_saved_order(), values))
+        pairs = ([(name, typ, named[name]) for name, typ, _ in expected if name in named] if named is not None
+                 else [(name, typ, value) for (name, typ, _), value in zip(expected, values)])
+        for name, typ, value in pairs:
             # The _js_* placeholders exist to absorb old JS button values (None).
             if not name.startswith("_js_") and not _ok(value, typ):
                 problems.append(f"{node['type']} #{node['id']}.{name} = {value!r} does not fit {typ if isinstance(typ, str) else 'its options'}")
