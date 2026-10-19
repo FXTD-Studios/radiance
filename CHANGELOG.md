@@ -194,6 +194,12 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Changed
 
+- **Sampler hides settings that do nothing on the run:** `restart_count`
+  without a connected `restart_schedule`, `temporal_overlap` while
+  `temporal_window` is 0, `force_exact_steps` at denoise 1, and on LTX 2.3 /
+  2.5 `temporal_window` / `temporal_overlap` (a packed audio + video latent
+  is never windowed) and `noise_type` (only Gaussian noise covers the audio
+  stream; it is set back to Gaussian). Custom still shows everything.
 - **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
   orthogonal to the conditional prediction, per batch item (projected
   guidance). It used to be only a cosine cfg schedule per stage, which stays.
