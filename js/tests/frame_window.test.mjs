@@ -531,3 +531,27 @@ test('measureFramePayload charges the depth and normal frames too', () => {
     assert.equal(measureFramePayload({ img }), 400);
     assert.equal(measureFramePayload({ img, zdepth: img, normal: img }), 1200);
 });
+
+test('extra frames (a Ref Wipe B far from the playhead) are fetched and held, then let go (issue #74)', async () => {
+    const loaded = [];
+    const w = new RadianceFrameWindow({
+        windowSize: 16, maxBytes: 1 << 30, concurrency: 4,
+        load: async (entry, idx) => { loaded.push(idx); return { idx }; },
+        measure: () => 1,
+    });
+    w.entries = Array.from({ length: 100 }, (_, i) => ({ i }));
+    w.setPlayhead(10);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(!w.has(45));
+    w.setExtra([45, 46]);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(w.has(45) && w.has(46), 'the extra frames were not fetched');
+    w.setPlayhead(11);                                  // a playhead move keeps them
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(w.has(45) && w.has(46), 'a playhead move evicted the extra frames');
+    w.setExtra([]);
+    assert.ok(!w.has(45) && !w.has(46), 'cleared extra frames stayed resident');
+    w.setExtra([5000, -1, 2.5]);                         // out of range is ignored
+    assert.deepEqual(w.extra, [5000, -1]);
+    assert.ok(!w.has(5000));
+});
