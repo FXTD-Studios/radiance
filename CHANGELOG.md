@@ -178,11 +178,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Custom (`stg_scale`, `stg_end`, `modality_scale`, starting from the recipe
   it replaces). Each active guidance adds one model pass per step. The LTX
   2.5 LowRes preset uses Modality + STG (early) with `guidance_rescale_phi`
-  0.45; the other LTX presets and Auto leave it Off. Needs a ComfyUI with
-  LTX 2.5 support.
+  0.45; the other LTX presets and Auto leave it Off. Not applied to
+  `refiner_model`. Needs a ComfyUI with LTX 2.5 support. Export Preset now
+  saves these settings, `audio_cfg` and `guidance_rescale_phi` too.
 - **Guidance rescale per modality on LTX 2.3 / 2.5:** `guidance_rescale_phi`
   rescales video and audio against their own spread, as Lightricks' guider
-  does. It used one spread for both, which the video decided.
+  does. It used one spread for both, which the video decided. With
+  `ltx_guidance` active it also applies at cfg 1.
 - **Selectable HDR10 mastering display** for PQ H.265: Write's
   `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
   1000 or 4000 nits). An unknown value is refused with nothing written.
@@ -195,7 +197,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
 ### Changed
 
 - **Sampler hides settings that do nothing on the run:** `restart_count`
-  without a connected `restart_schedule`, `temporal_overlap` while
+  without a connected `restart_schedule`, `noise_alpha_start` / `_end` with
+  Gaussian noise (they followed `restart_count`), `temporal_overlap` while
   `temporal_window` is 0, `force_exact_steps` at denoise 1, and on LTX 2.3 /
   2.5 `temporal_window` / `temporal_overlap` (a packed audio + video latent
   is never windowed) and `noise_type` (only Gaussian noise covers the audio

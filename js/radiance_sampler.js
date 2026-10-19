@@ -494,7 +494,6 @@ function applyFolding(node) {
 
     // ── Preset/Auto: compute the smart, model-aware hidden set ──
     const tileModeW = find("tile_mode");
-    const restartCountW = find("restart_count");
     const aysScheduleW = find("ays_schedule");
     const modelTypeW = find("model_type");
     const samplerModeW = find("sampler_mode");
@@ -531,14 +530,14 @@ function applyFolding(node) {
         hiddenNames.add("tile_blend");
     }
 
-    // 3.3. Restart schedules: visible if restart_count > 0
-    const hasRestartCount = restartCountW && parseInt(restartCountW.value, 10) > 0;
-    if (!hasRestartCount) {
+    // ALBABIT-FIX: the noise alpha ramp only weighs a non-Gaussian noise_type (it
+    // was tied to restart_count), restart_count only runs on a connected
+    // restart_schedule, temporal_overlap only with a window, force_exact_steps
+    // only below denoise 1.
+    if (find("noise_type")?.value === "Gaussian") {
         hiddenNames.add("noise_alpha_start");
         hiddenNames.add("noise_alpha_end");
     }
-    // ALBABIT-FIX: restart_count only runs on a connected restart_schedule,
-    // temporal_overlap only with a window, force_exact_steps only below denoise 1.
     if (!node.inputs?.some(i => i.name === "restart_schedule" && i.link !== null)) hiddenNames.add("restart_count");
     if (!(parseInt(find("temporal_window")?.value, 10) > 0)) hiddenNames.add("temporal_overlap");
     if (Number(find("denoise")?.value) >= 1) hiddenNames.add("force_exact_steps");
@@ -620,6 +619,8 @@ function applyFolding(node) {
         hiddenNames.add("temporal_window");
         hiddenNames.add("temporal_overlap");
         hiddenNames.add("noise_type");
+        hiddenNames.add("noise_alpha_start");
+        hiddenNames.add("noise_alpha_end");
         const noiseTypeW = find("noise_type");
         if (noiseTypeW && noiseTypeW.value !== "Gaussian") noiseTypeW.value = "Gaussian";
     }
@@ -1135,7 +1136,9 @@ async function exportPreset(node) {
     const widgets = node.widgets;
     if (!widgets) return;
 
-    const exportFields = ["steps", "cfg", "sampler", "scheduler", "denoise", "flux_shift", "flux_guidance"];
+    // ALBABIT-FIX: with the LTX settings, so an imported preset renders the same.
+    const exportFields = ["steps", "cfg", "audio_cfg", "sampler", "scheduler", "denoise", "flux_shift",
+        "flux_guidance", "guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
     const settings = {};
     for (const widget of widgets) {
         if (exportFields.includes(widget.name)) {
