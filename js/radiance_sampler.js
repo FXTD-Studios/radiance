@@ -98,6 +98,7 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 LowRes. Optimal settings for 720p base generation.",
     },
     "▶ LTX 2.3 HighRes (40 steps)": {
@@ -112,11 +113,14 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
     // ALBABIT-FIX: the official 2.5 templates are distilled (8 steps,
     // euler_ancestral). Tested on Dev: euler gives a natural face where
     // euler_ancestral smooths it, and 30 LowRes steps add fine detail.
+    // ALBABIT-FIX: Modality + STG (early) with rescale 0.45 won on 3 seeds of 4
+    // (lip-sync, sounds that follow the action); STG to the end hardened the skin.
     "▶ LTX 2.5 LowRes (30 steps)": {
         steps: 30, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
@@ -124,11 +128,12 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        guidance_rescale_phi: 0.45, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice.",
+        ltx_guidance: "Modality + STG (early)", stg_scale: 1.0, stg_end: 0.5, modality_scale: 3.0,
+        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice; ltx_guidance couples sound and picture (lip-sync).",
     },
     "▶ LTX 2.5 HighRes (40 steps)": {
         steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
@@ -141,6 +146,7 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
     },
     "▶ HunyuanVideo (30 steps)": {
@@ -208,6 +214,26 @@ const LTX_PRESETS = [
     "▶ LTX 2.5 LowRes (30 steps)",
     "▶ LTX 2.5 HighRes (40 steps)"
 ];
+
+// ALBABIT-FIX: mirrors sampler_utils.py's LTX_GUIDANCE_RECIPES (test_sampler_js_mirror.py):
+// [stg_scale, stg_end, modality_scale]. "Custom" shows these three settings.
+const LTX_GUIDANCE_RECIPES = {
+    "Off": [0.0, 1.0, 1.0],
+    "Modality": [0.0, 1.0, 3.0],
+    "Modality + STG (early)": [1.0, 0.5, 3.0],
+    "Modality + STG (full)": [1.0, 1.0, 3.0],
+};
+const LTX_GUIDANCE_SETTINGS = ["stg_scale", "stg_end", "modality_scale"];
+
+// ALBABIT-FIX: Custom starts from the recipe it replaces (the last one applyFolding saw).
+function fillLtxGuidanceSettings(node) {
+    const values = LTX_GUIDANCE_RECIPES[node._radLtxRecipe];
+    if (!values) return;
+    LTX_GUIDANCE_SETTINGS.forEach((name, i) => {
+        const w = node.widgets?.find(x => x.name === name);
+        if (w) w.value = values[i];
+    });
+}
 
 // Model taxonomy — mirrors sampler_utils.py so the UI folds the same way the
 // backend resolves models. GUIDANCE_EMBED models use flux_guidance; CFG_GUIDED
@@ -391,7 +417,8 @@ function applyFolding(node) {
     const isCustom = presetVal === "Custom";
 
     // Dummy compatibility absorbers that are always hidden
-    const dummyWidgets = ["_js_export_btn", "_js_import_btn", "_js_preset_info"];
+    const dummyWidgets = ["_js_export_btn", "_js_import_btn", "_js_preset_info",
+        "_js_export_btn_2", "_js_import_btn_2", "_js_preset_info_2"];
 
     // ALBABIT-FIX: "Auto" (formerly "None") no longer hides everything -- it
     // falls through to the same smart-fold branch as named presets below,
@@ -402,6 +429,11 @@ function applyFolding(node) {
     // re-hiding remounted each folded widget's Vue component on every poll tick,
     // which interrupted typing; the steady state now changes nothing.
     const hiddenNames = new Set(dummyWidgets);
+
+    // ALBABIT-FIX: ltx_guidance's three settings are its Custom mode's.
+    const ltxGuidance = find("ltx_guidance")?.value;
+    if (ltxGuidance !== undefined && ltxGuidance !== "Custom") node._radLtxRecipe = ltxGuidance;
+    if (ltxGuidance !== "Custom") LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
 
     // ── Custom: full manual control → everything visible, only tile sub-options follow tile_mode ──
     if (isCustom) {
@@ -547,6 +579,11 @@ function applyFolding(node) {
     // 3.5f. audio_cfg (LTX-AV dual-CFG) is hidden for every other model. The
     // backend applies it to all LTX-AV models, LTX 2.3 included.
     if (effectiveModel !== "ltxav") hiddenNames.add("audio_cfg");
+    // 3.5f-2. ltx_guidance (STG + modality) is LTX-AV only too.
+    if (effectiveModel !== "ltxav") {
+        hiddenNames.add("ltx_guidance");
+        LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+    }
 
     // ── Apply the final state in one pass (preset_info / control_after_generate
     // are never added to hiddenNames, so they stay visible automatically) ──
@@ -1312,6 +1349,10 @@ app.registerExtension({
                 }
             };
 
+            // ALBABIT-FIX: onConfigure refreshes it too; the text saved in a graph
+            // is an older preset's, or lands in _js_preset_info_2.
+            this._radUpdateDescription = updateDescription;
+
             let lastPresetValue = presetWidget.value;
 
             // Handle Preset changes explicitly
@@ -1355,6 +1396,17 @@ app.registerExtension({
                     };
                 }
             });
+
+            const ltxGuidanceW = self.widgets?.find(x => x.name === "ltx_guidance");
+            if (ltxGuidanceW) {
+                const origLtxCallback = ltxGuidanceW.callback;
+                ltxGuidanceW.callback = function (value, ...rest) {
+                    const res = origLtxCallback ? origLtxCallback.call(this, value, ...rest) : undefined;
+                    if (value === "Custom") fillLtxGuidanceSettings(self);
+                    toggleFields(self);
+                    return res;
+                };
+            }
 
             // Hook connection change events (optional ports linked/unlinked)
             const origConnect = this.onConnectionsChange;
@@ -1425,7 +1477,10 @@ app.registerExtension({
             self._configuredByLoad = true;
             const reapply = () => {
                 const presetW = self.widgets?.find(w => w.name === "preset");
-                if (presetW) updateUILocks(self, presetW.value);
+                if (presetW) {
+                    updateUILocks(self, presetW.value);
+                    self._radUpdateDescription?.(presetW.value);
+                }
                 toggleFields(self);
                 // ALBABIT-FIX: flag widgets already diverging from the preset in
                 // the loaded workflow (e.g. cfg edited before saving).
