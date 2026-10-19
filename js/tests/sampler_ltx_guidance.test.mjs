@@ -11,7 +11,7 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
 const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 function samplerContext() {
-    const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} } });
+    const context = vm.createContext({ app: { registerExtension(ext) { context.extension = ext; } }, console: { log() {} } });
     vm.runInContext(source + `
         _setWidgetVisible = (w, visible) => { const changed = !w.hidden !== visible; w.hidden = !visible; return changed; };
         _forceWidgetReinsert = () => {};
@@ -20,6 +20,7 @@ function samplerContext() {
         globalThis.fold = applyFolding;
         globalThis.fill = fillLtxGuidanceSettings;
         globalThis.markers = updatePresetDivergenceMarkers;
+        globalThis.group = groupGuidanceWidgets;
     `, context);
     return context;
 }
@@ -80,4 +81,18 @@ test('the LTX 2.5 LowRes preset carries Modality + STG (early); leaving it marks
     node.widgets[6].value = 0.6;
     context.markers(node);
     assert.equal(label(node, 'stg_end'), 'stg_end ✎');
+});
+
+test('the guidance settings sit together under audio_cfg, restored by name', async () => {
+    const context = samplerContext();
+    const names = ['preset', 'cfg', 'audio_cfg', 'sampler', 'guidance_rescale_phi', 'preview_method',
+        'temporal_overlap', 'ltx_guidance', 'stg_scale', 'stg_end', 'modality_scale'];
+    const node = { widgets: names.map(name => ({ name })) };
+    context.group(node);
+    assert.deepEqual(node.widgets.map(w => w.name), ['preset', 'cfg', 'audio_cfg', 'guidance_rescale_phi',
+        'ltx_guidance', 'stg_scale', 'stg_end', 'modality_scale', 'sampler', 'preview_method', 'temporal_overlap']);
+    const nodeData = { name: 'RadianceSamplerPro' };
+    await context.extension.beforeRegisterNodeDef({ prototype: {} }, nodeData);
+    assert.equal(nodeData.fallbackWidgetsValuesNames.length, 48);
+    assert.equal(nodeData.fallbackWidgetsValuesNames[47], 'preset_info');
 });
