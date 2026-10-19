@@ -1050,7 +1050,7 @@ class RadianceSamplerPro:
             "optional": {
                 "refiner_model": ("MODEL", {"tooltip": (
                     "Optional second model that takes over from refiner_start_step with the same conditioning, "
-                    "so it must accept the same text-encoder width. PAG, guidance rescale and the SDR anchor are "
+                    "so it must accept the same text-encoder width. PAG, guidance rescale, ltx_guidance and the SDR anchor are "
                     "not applied to it. Ignored in tile_mode.")}),
                 "refiner_start_step": (
                     "INT",
@@ -2154,9 +2154,11 @@ class RadianceSamplerPro:
         # ALBABIT-FIX: ComfyUI's own LTXV nodes, registered before guidance
         # rescale so the rescale sees the whole guided result, as in Lightricks'
         # reference guider.
+        ltx_guided = False
         if is_ltx_av:
             _stg, _stg_end, _modality = resolve_ltx_guidance(ltx_guidance, stg_scale, stg_end, modality_scale)
-            if _stg > 0.0 or not math.isclose(_modality, 1.0):
+            ltx_guided = _stg > 0.0 or not math.isclose(_modality, 1.0)
+            if ltx_guided:
                 if LTXVSpatioTemporalGuidance is None:
                     raise ValueError(
                         "Sampler: ltx_guidance needs ComfyUI's LTXV STG and modality nodes "
@@ -2174,7 +2176,9 @@ class RadianceSamplerPro:
             # doing nothing. This node's own cfg default is 1.0.
             model = apply_pag_to_model(model, pag_scale, cfg=cfg)
 
-        if guidance_rescale_phi > 0.0 and cfg <= 1.0:
+        # ALBABIT-FIX: STG and modality guidance move the result at cfg 1 too, so
+        # the rescale applies there as well (Lightricks rescales after all of it).
+        if guidance_rescale_phi > 0.0 and cfg <= 1.0 and not ltx_guided:
             # DEFECT: this branch used to have no else and no warning. Guidance
             # rescale divides by the guided std and is only meaningful when CFG
             # actually pushed the result away from the conditional prediction;
@@ -2191,7 +2195,7 @@ class RadianceSamplerPro:
                 guidance_rescale_phi, cfg,
             )
 
-        if guidance_rescale_phi > 0.0 and cfg > 1.0:
+        if guidance_rescale_phi > 0.0 and (cfg > 1.0 or ltx_guided):
             # ALBABIT-FIX: a post-cfg function, as its math is denoised-space. On
             # LTX-AV, video and audio are rescaled separately (av_video_numel).
             model.set_model_sampler_post_cfg_function(

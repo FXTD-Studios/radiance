@@ -397,7 +397,7 @@ Universal diffusion sampler. Auto-detects model type (Flux, SD3, SDXL, WAN, LTX,
 | `tile_blend` | choice | `feather` | `feather`, `average`, `gaussian` | Seam blending method. feather=cosine fade, gaussian=bell curve, average=uniform. |
 | `terminal_sigma_to_zero` | boolean | off |  | Ensure terminal step reaches zero noise even on truncated image-to-image runs. Vital for Flow Matching models. |
 | `force_exact_steps` | boolean | off |  | Ensure precise step count in image-to-image runs, adjusting calculations rather than purely truncating stages. |
-| `refiner_model` (optional) | MODEL |  |  | Optional second model that takes over from refiner_start_step with the same conditioning, so it must accept the same text-encoder width. PAG, guidance rescale and the SDR anchor are not applied to it. Ignored in tile_mode. |
+| `refiner_model` (optional) | MODEL |  |  | Optional second model that takes over from refiner_start_step with the same conditioning, so it must accept the same text-encoder width. PAG, guidance rescale, ltx_guidance and the SDR anchor are not applied to it. Ignored in tile_mode. |
 | `refiner_start_step` (optional) | int | 20 | 0 to 200, step 1 | Step index (0-based, out of steps) where refiner_model takes over. At or above the last step being run, the refiner never runs. |
 | `noise_override` (optional) | LATENT |  |  | Use this latent's samples as the initial noise instead of generating it from seed and noise_type. Its shape must match latent_image exactly. |
 | `sigmas_override` (optional) | SIGMAS |  |  | Inject a pre-computed sigma schedule. Bypasses all internal sigma computation. |
