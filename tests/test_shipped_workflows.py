@@ -90,7 +90,8 @@ def test_every_radiance_widget_value_fits_its_input(path):
         # frontend gives newer trailing inputs their defaults); a gap in the
         # middle shows up below as a value that does not fit its input.
         for (name, typ, _), value in zip(expected, values):
-            if not _ok(value, typ):
+            # The _js_* placeholders exist to absorb old JS button values (None).
+            if not name.startswith("_js_") and not _ok(value, typ):
                 problems.append(f"{node['type']} #{node['id']}.{name} = {value!r} does not fit {typ if isinstance(typ, str) else 'its options'}")
     assert not problems, "\n".join(problems)
 

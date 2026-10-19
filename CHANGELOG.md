@@ -169,6 +169,20 @@ else is fixes. Read the upgrade notes before moving a production setup.
   input as the table ComfyUI's FLUX 3 Image Layout Prompt writes (bbox
   `[ymin, xmin, ymax, xmax]` on a 0–1000 grid). Cite them as `<obj_1>`... The
   Prompt checks the table and refuses it for any other family.
+- **LTX guidance in the Sampler** (LTX 2.3 / 2.5 only): `ltx_guidance` adds
+  Lightricks' guidance for the Dev model through ComfyUI's LTXV STG and
+  modality nodes. Modality guidance keeps sound and picture coupled
+  (lip-sync, sounds that follow the action); STG on block 28 steadies
+  structure and motion but can harden skin. Recipes: Off, Modality,
+  Modality + STG (early: STG stops halfway), Modality + STG (full), and
+  Custom (`stg_scale`, `stg_end`, `modality_scale`, starting from the recipe
+  it replaces). Each active guidance adds one model pass per step. The LTX
+  2.5 LowRes preset uses Modality + STG (early) with `guidance_rescale_phi`
+  0.45; the other LTX presets and Auto leave it Off. Needs a ComfyUI with
+  LTX 2.5 support.
+- **Guidance rescale per modality on LTX 2.3 / 2.5:** `guidance_rescale_phi`
+  rescales video and audio against their own spread, as Lightricks' guider
+  does. It used one spread for both, which the video decided.
 - **Selectable HDR10 mastering display** for PQ H.265: Write's
   `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
   1000 or 4000 nits). An unknown value is refused with nothing written.
