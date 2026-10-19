@@ -200,6 +200,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   2.5 `temporal_window` / `temporal_overlap` (a packed audio + video latent
   is never windowed) and `noise_type` (only Gaussian noise covers the audio
   stream; it is set back to Gaussian). Custom still shows everything.
+- **Sampler guidance settings together:** `guidance_rescale_phi`,
+  `ltx_guidance` and its Custom settings sit under `audio_cfg`. The node now
+  restores saved values by name, as ComfyUI's frontend allows a node to
+  declare (frontend 1.49.6 or later, mid-August 2026); graphs saved before
+  keep their values.
 - **CFG++ (Perpendicular)** keeps only the part of (cond - uncond)
   orthogonal to the conditional prediction, per batch item (projected
   guidance). It used to be only a cosine cfg schedule per stage, which stays.

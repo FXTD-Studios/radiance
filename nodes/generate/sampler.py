@@ -1234,17 +1234,9 @@ class RadianceSamplerPro:
                         ),
                     },
                 ),
-                # ALBABIT-FIX: graphs saved before the inputs below end with the two
-                # JS button values and the preset_info text; these absorb them, as
-                # _js_export_btn & co. did at 38-40, so they never reach ltx_guidance.
-                "_js_export_btn_2": ("STRING", {"default": "", "multiline": False,
-                    "tooltip": "JS serialization placeholder (not user-editable)."}),
-                "_js_import_btn_2": ("STRING", {"default": "", "multiline": False,
-                    "tooltip": "JS serialization placeholder (not user-editable)."}),
-                "_js_preset_info_2": ("STRING", {"default": "", "multiline": False,
-                    "tooltip": "JS serialization placeholder (not user-editable)."}),
                 # ── LTX-AV guidance (STG + modality) ──────────────────────────
-                # ALBABIT-FIX: appended last, for the same reason as temporal_window.
+                # ALBABIT-FIX: the frontend shows these under audio_cfg and restores
+                # the node by name (radiance_sampler.js, SAMPLER_SAVED_WIDGET_ORDER).
                 "ltx_guidance": (LTX_GUIDANCE_MODES, {"default": "Off", "tooltip": (
                     "LTX 2.3 / 2.5 only: Lightricks' extra guidance for the Dev model, through ComfyUI's "
                     "LTXV STG and modality nodes. Modality guidance keeps sound and picture coupled "
@@ -1771,9 +1763,6 @@ class RadianceSamplerPro:
         noise_alpha_end: float = 1.0,
         temporal_window: int = 0,
         temporal_overlap: int = 4,
-        _js_export_btn_2=None,
-        _js_import_btn_2=None,
-        _js_preset_info_2=None,
         ltx_guidance: str = "Off",
         stg_scale: float = 0.0,
         stg_end: float = 1.0,
