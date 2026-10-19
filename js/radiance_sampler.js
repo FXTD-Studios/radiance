@@ -98,6 +98,7 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 LowRes. Optimal settings for 720p base generation.",
     },
     "▶ LTX 2.3 HighRes (40 steps)": {
@@ -112,11 +113,14 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
     // ALBABIT-FIX: the official 2.5 templates are distilled (8 steps,
     // euler_ancestral). Tested on Dev: euler gives a natural face where
     // euler_ancestral smooths it, and 30 LowRes steps add fine detail.
+    // ALBABIT-FIX: Modality + STG (early) with rescale 0.45 won on 3 seeds of 4
+    // (lip-sync, sounds that follow the action); STG to the end hardened the skin.
     "▶ LTX 2.5 LowRes (30 steps)": {
         steps: 30, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
@@ -124,11 +128,12 @@ const PRESET_CONFIGS = {
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        guidance_rescale_phi: 0.45, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice.",
+        ltx_guidance: "Modality + STG (early)", stg_scale: 1.0, stg_end: 0.5, modality_scale: 3.0,
+        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice; ltx_guidance couples sound and picture (lip-sync).",
     },
     "▶ LTX 2.5 HighRes (40 steps)": {
         steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
@@ -141,6 +146,7 @@ const PRESET_CONFIGS = {
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
     },
     "▶ HunyuanVideo (30 steps)": {
@@ -208,6 +214,51 @@ const LTX_PRESETS = [
     "▶ LTX 2.5 LowRes (30 steps)",
     "▶ LTX 2.5 HighRes (40 steps)"
 ];
+
+// ALBABIT-FIX: mirrors sampler_utils.py's LTX_GUIDANCE_RECIPES (test_sampler_js_mirror.py):
+// [stg_scale, stg_end, modality_scale]. "Custom" shows these three settings.
+const LTX_GUIDANCE_RECIPES = {
+    "Off": [0.0, 1.0, 1.0],
+    "Modality": [0.0, 1.0, 3.0],
+    "Modality + STG (early)": [1.0, 0.5, 3.0],
+    "Modality + STG (full)": [1.0, 1.0, 3.0],
+};
+const LTX_GUIDANCE_SETTINGS = ["stg_scale", "stg_end", "modality_scale"];
+
+// ALBABIT-FIX: the guidance settings sit together under audio_cfg. Graphs
+// saved before 4.0 hold positional widgets_values in this order; declaring it
+// makes the frontend restore this node by name, so its widgets can move.
+const SAMPLER_SAVED_WIDGET_ORDER = [
+    "preset", "steps", "start_step", "end_step", "cfg", "audio_cfg", "sampler", "sampler_mode",
+    "phase_split", "scheduler", "scheduler_mode", "denoise", "flux_shift", "flux_guidance",
+    "flux_guidance_profile", "seed", "fixed", "pag_scale", "model_type", "sigma_blend_steps",
+    "guidance_rescale_phi", "preview_method", "noise_type", "conditioning_clip_target", "add_noise",
+    "return_with_leftover_noise", "ays_schedule", "tile_mode", "tile_size", "tile_overlap",
+    "tile_blend", "terminal_sigma_to_zero", "force_exact_steps", "refiner_start_step",
+    "_js_export_btn", "_js_import_btn", "_js_preset_info", "restart_count", "noise_alpha_start",
+    "noise_alpha_end", "sdr_blend", "sdr_inject_steps", "sdr_decay", "temporal_window",
+    "temporal_overlap", "› Export Preset", "› Import Preset", "preset_info",
+];
+const GUIDANCE_WIDGETS = ["guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
+
+function groupGuidanceWidgets(node) {
+    const widgets = node.widgets;
+    if (!widgets?.some(w => w.name === "audio_cfg")) return;
+    const block = GUIDANCE_WIDGETS.map(name => widgets.find(w => w.name === name)).filter(Boolean);
+    const ordered = widgets.filter(w => !block.includes(w));
+    ordered.splice(ordered.findIndex(w => w.name === "audio_cfg") + 1, 0, ...block);
+    widgets.splice(0, widgets.length, ...ordered);
+}
+
+// ALBABIT-FIX: Custom starts from the recipe it replaces (the last one applyFolding saw).
+function fillLtxGuidanceSettings(node) {
+    const values = LTX_GUIDANCE_RECIPES[node._radLtxRecipe];
+    if (!values) return;
+    LTX_GUIDANCE_SETTINGS.forEach((name, i) => {
+        const w = node.widgets?.find(x => x.name === name);
+        if (w) w.value = values[i];
+    });
+}
 
 // Model taxonomy — mirrors sampler_utils.py so the UI folds the same way the
 // backend resolves models. GUIDANCE_EMBED models use flux_guidance; CFG_GUIDED
@@ -403,6 +454,11 @@ function applyFolding(node) {
     // which interrupted typing; the steady state now changes nothing.
     const hiddenNames = new Set(dummyWidgets);
 
+    // ALBABIT-FIX: ltx_guidance's three settings are its Custom mode's.
+    const ltxGuidance = find("ltx_guidance")?.value;
+    if (ltxGuidance !== undefined && ltxGuidance !== "Custom") node._radLtxRecipe = ltxGuidance;
+    if (ltxGuidance !== "Custom") LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+
     // ── Custom: full manual control → everything visible, only tile sub-options follow tile_mode ──
     if (isCustom) {
         hiddenNames.add("preset_info");
@@ -438,7 +494,6 @@ function applyFolding(node) {
 
     // ── Preset/Auto: compute the smart, model-aware hidden set ──
     const tileModeW = find("tile_mode");
-    const restartCountW = find("restart_count");
     const aysScheduleW = find("ays_schedule");
     const modelTypeW = find("model_type");
     const samplerModeW = find("sampler_mode");
@@ -475,12 +530,15 @@ function applyFolding(node) {
         hiddenNames.add("tile_blend");
     }
 
-    // 3.3. Restart schedules: visible if restart_count > 0
-    const hasRestartCount = restartCountW && parseInt(restartCountW.value, 10) > 0;
-    if (!hasRestartCount) {
-        hiddenNames.add("noise_alpha_start");
-        hiddenNames.add("noise_alpha_end");
-    }
+    // ALBABIT-FIX: the noise alpha ramp weighs a non-Gaussian noise_type at start_step
+    // (its end only past step 0), restart_count needs a connected restart_schedule,
+    // temporal_overlap a window, force_exact_steps a denoise below 1.
+    const gaussian = find("noise_type")?.value === "Gaussian";
+    if (gaussian) hiddenNames.add("noise_alpha_start");
+    if (gaussian || !(parseInt(find("start_step")?.value, 10) > 0)) hiddenNames.add("noise_alpha_end");
+    if (!node.inputs?.some(i => i.name === "restart_schedule" && i.link !== null)) hiddenNames.add("restart_count");
+    if (!(parseInt(find("temporal_window")?.value, 10) > 0)) hiddenNames.add("temporal_overlap");
+    if (Number(find("denoise")?.value) >= 1) hiddenNames.add("force_exact_steps");
 
     // 3.4. Sigma blend steps: visible if Phase-Shift sampler_mode OR ays_schedule
     // is active. phase_split: only meaningful in a Phase-Shift sampler_mode.
@@ -547,6 +605,23 @@ function applyFolding(node) {
     // 3.5f. audio_cfg (LTX-AV dual-CFG) is hidden for every other model. The
     // backend applies it to all LTX-AV models, LTX 2.3 included.
     if (effectiveModel !== "ltxav") hiddenNames.add("audio_cfg");
+    // 3.5f-2. ltx_guidance (STG + modality) is LTX-AV only too.
+    if (effectiveModel !== "ltxav") {
+        hiddenNames.add("ltx_guidance");
+        LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+    }
+    // ALBABIT-FIX: a packed LTX-AV latent (video + audio) is never windowed
+    // (the wrapper only splits 5D tensors) and only takes Gaussian noise: the
+    // other types build a video-only tensor that the audio stream cannot use.
+    if (effectiveModel === "ltxav") {
+        hiddenNames.add("temporal_window");
+        hiddenNames.add("temporal_overlap");
+        hiddenNames.add("noise_type");
+        hiddenNames.add("noise_alpha_start");
+        hiddenNames.add("noise_alpha_end");
+        const noiseTypeW = find("noise_type");
+        if (noiseTypeW && noiseTypeW.value !== "Gaussian") noiseTypeW.value = "Gaussian";
+    }
 
     // ── Apply the final state in one pass (preset_info / control_after_generate
     // are never added to hiddenNames, so they stay visible automatically) ──
@@ -1059,7 +1134,9 @@ async function exportPreset(node) {
     const widgets = node.widgets;
     if (!widgets) return;
 
-    const exportFields = ["steps", "cfg", "sampler", "scheduler", "denoise", "flux_shift", "flux_guidance"];
+    // ALBABIT-FIX: with the LTX settings, so an imported preset renders the same.
+    const exportFields = ["steps", "cfg", "audio_cfg", "sampler", "scheduler", "denoise", "flux_shift",
+        "flux_guidance", "guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
     const settings = {};
     for (const widget of widgets) {
         if (exportFields.includes(widget.name)) {
@@ -1262,6 +1339,7 @@ app.registerExtension({
     name: "FXTD.RadianceSampler",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== "RadianceSamplerPro") return;
+        nodeData.fallbackWidgetsValuesNames = SAMPLER_SAVED_WIDGET_ORDER;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 
@@ -1269,6 +1347,7 @@ app.registerExtension({
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
 
             const self = this;
+            groupGuidanceWidgets(this);
 
             this.addWidget("button", "› Export Preset", null, () => exportPreset(this), { serialize: false });
             this.addWidget("button", "› Import Preset", null, () => importPreset(this), { serialize: false });
@@ -1311,6 +1390,10 @@ app.registerExtension({
                     }
                 }
             };
+
+            // ALBABIT-FIX: onConfigure refreshes it too; the text saved in a graph
+            // is an older preset's description.
+            this._radUpdateDescription = updateDescription;
 
             let lastPresetValue = presetWidget.value;
 
@@ -1355,6 +1438,17 @@ app.registerExtension({
                     };
                 }
             });
+
+            const ltxGuidanceW = self.widgets?.find(x => x.name === "ltx_guidance");
+            if (ltxGuidanceW) {
+                const origLtxCallback = ltxGuidanceW.callback;
+                ltxGuidanceW.callback = function (value, ...rest) {
+                    const res = origLtxCallback ? origLtxCallback.call(this, value, ...rest) : undefined;
+                    if (value === "Custom") fillLtxGuidanceSettings(self);
+                    toggleFields(self);
+                    return res;
+                };
+            }
 
             // Hook connection change events (optional ports linked/unlinked)
             const origConnect = this.onConnectionsChange;
@@ -1425,7 +1519,10 @@ app.registerExtension({
             self._configuredByLoad = true;
             const reapply = () => {
                 const presetW = self.widgets?.find(w => w.name === "preset");
-                if (presetW) updateUILocks(self, presetW.value);
+                if (presetW) {
+                    updateUILocks(self, presetW.value);
+                    self._radUpdateDescription?.(presetW.value);
+                }
                 toggleFields(self);
                 // ALBABIT-FIX: flag widgets already diverging from the preset in
                 // the loaded workflow (e.g. cfg edited before saving).

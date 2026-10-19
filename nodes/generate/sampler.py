@@ -32,6 +32,11 @@ except ImportError:
     _HAS_NESTED_TENSOR = False
 
 try:
+    from comfy_extras.nodes_lt import LTXVModalityGuidance, LTXVSpatioTemporalGuidance
+except ImportError:  # ComfyUI before LTX 2.5 support
+    LTXVModalityGuidance = LTXVSpatioTemporalGuidance = None
+
+try:
     from ...sampler_utils import (
         DYNAMIC_GUIDANCE_EARLY_MULTIPLIER, DYNAMIC_GUIDANCE_LATE_MULTIPLIER, 
         DYNAMIC_GUIDANCE_EARLY_THRESHOLD, DYNAMIC_GUIDANCE_LATE_THRESHOLD, 
@@ -56,7 +61,8 @@ try:
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
         route_conditioning, tile_sample,
         plan_temporal_windows, temporal_window_weights, slice_conds_temporally,
-        MODEL_DEFAULTS,
+        MODEL_DEFAULTS, LTX_GUIDANCE_MODES, LTX_STG_BLOCKS, resolve_ltx_guidance,
+        make_guidance_rescale_patch,
     )
 except (ImportError, ValueError):
     from sampler_utils import (
@@ -83,7 +89,8 @@ except (ImportError, ValueError):
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
         route_conditioning, tile_sample,
         plan_temporal_windows, temporal_window_weights, slice_conds_temporally,
-        MODEL_DEFAULTS,
+        MODEL_DEFAULTS, LTX_GUIDANCE_MODES, LTX_STG_BLOCKS, resolve_ltx_guidance,
+        make_guidance_rescale_patch,
     )
 
 logger = logging.getLogger("radiance.sampler")
@@ -966,7 +973,8 @@ class RadianceSamplerPro:
                         "min": 0.0,
                         "max": 1.0,
                         "step": 0.05,
-                        "tooltip": "Guidance rescale (Imagen). 0=off, 0.7=recommended for SDXL. Prevents oversaturation at high CFG.",
+                        "tooltip": "Guidance rescale (Imagen). 0=off, 0.7=recommended for SDXL. Prevents oversaturation at high CFG. "
+                                   "On LTX 2.3 / 2.5, video and audio are rescaled separately.",
                     },
                 ),
 
@@ -1042,7 +1050,7 @@ class RadianceSamplerPro:
             "optional": {
                 "refiner_model": ("MODEL", {"tooltip": (
                     "Optional second model that takes over from refiner_start_step with the same conditioning, "
-                    "so it must accept the same text-encoder width. PAG, guidance rescale and the SDR anchor are "
+                    "so it must accept the same text-encoder width. PAG, guidance rescale, ltx_guidance and the SDR anchor are "
                     "not applied to it. Ignored in tile_mode.")}),
                 "refiner_start_step": (
                     "INT",
@@ -1226,7 +1234,22 @@ class RadianceSamplerPro:
                         ),
                     },
                 ),
-
+                # ── LTX-AV guidance (STG + modality) ──────────────────────────
+                # ALBABIT-FIX: the frontend shows these under audio_cfg and restores
+                # the node by name (radiance_sampler.js, SAMPLER_SAVED_WIDGET_ORDER).
+                "ltx_guidance": (LTX_GUIDANCE_MODES, {"default": "Off", "tooltip": (
+                    "LTX 2.3 / 2.5 only: Lightricks' extra guidance for the Dev model, through ComfyUI's "
+                    "LTXV STG and modality nodes. Modality guidance keeps sound and picture coupled "
+                    "(lip-sync, sounds that follow the action); STG on block 28 steadies structure and "
+                    "motion but can harden skin, so 'early' stops it halfway. Each adds one model pass "
+                    "per step. Custom starts from the recipe it replaces and uses the three settings below.")}),
+                "stg_scale": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10.0, "step": 0.05,
+                    "tooltip": "ltx_guidance Custom: STG strength (0 = off, 1 = Lightricks' reference)."}),
+                "stg_end": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": ("ltx_guidance Custom: where STG stops, as ComfyUI's end_percent (1 = the "
+                                "whole run; 0.5 = about step 23 of 30 with the LTX 2.5 LowRes preset).")}),
+                "modality_scale": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 0.1,
+                    "tooltip": "ltx_guidance Custom: modality guidance strength (1 = off, 3 = Lightricks' reference)."}),
             },
             "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
@@ -1740,6 +1763,10 @@ class RadianceSamplerPro:
         noise_alpha_end: float = 1.0,
         temporal_window: int = 0,
         temporal_overlap: int = 4,
+        ltx_guidance: str = "Off",
+        stg_scale: float = 0.0,
+        stg_end: float = 1.0,
+        modality_scale: float = 1.0,
         sdr_reference: Optional[torch.Tensor] = None,
         sdr_vae: Optional[Any] = None,
         # Same defaults as the widgets (0.35, 6). They were 0.0 and 0 here, so
@@ -2115,13 +2142,43 @@ class RadianceSamplerPro:
                         )
                     )
 
+        # ALBABIT-FIX: video part of a packed LTX-AV latent (the rest is audio), for the
+        # per-modality guidance below.
+        av_video_numel = None
+        if is_ltx_av and getattr(work_latent, "is_nested", False):
+            parts = work_latent.unbind()
+            if len(parts) >= 2:
+                av_video_numel = math.prod(parts[0].shape[1:])
+
+        # ── LTX-AV guidance (STG + modality) ─────────────────────────────────
+        # ALBABIT-FIX: ComfyUI's own LTXV nodes, registered before guidance
+        # rescale so the rescale sees the whole guided result, as in Lightricks'
+        # reference guider.
+        ltx_guided = False
+        if is_ltx_av:
+            _stg, _stg_end, _modality = resolve_ltx_guidance(ltx_guidance, stg_scale, stg_end, modality_scale)
+            ltx_guided = _stg > 0.0 or not math.isclose(_modality, 1.0)
+            if ltx_guided:
+                if LTXVSpatioTemporalGuidance is None:
+                    raise ValueError(
+                        "Sampler: ltx_guidance needs ComfyUI's LTXV STG and modality nodes "
+                        "(LTX 2.5 support). Update ComfyUI, or set ltx_guidance to Off.")
+                if _stg > 0.0:
+                    model = LTXVSpatioTemporalGuidance.execute(model, _stg, LTX_STG_BLOCKS, 0.0, _stg_end).args[0]
+                if not math.isclose(_modality, 1.0):
+                    model = LTXVModalityGuidance.execute(model, _modality, 0.0, 1.0).args[0]
+                logger.info("[Radiance] LTX guidance '%s': STG %.2f on block %s until %.2f, modality %.2f.",
+                            ltx_guidance, _stg, LTX_STG_BLOCKS, _stg_end, _modality)
+
         if pag_scale > 0:
             # cfg goes in so apply_pag_to_model can say at registration that the
             # patch cannot fire at cfg <= 1.0, instead of logging success and
             # doing nothing. This node's own cfg default is 1.0.
             model = apply_pag_to_model(model, pag_scale, cfg=cfg)
 
-        if guidance_rescale_phi > 0.0 and cfg <= 1.0:
+        # ALBABIT-FIX: STG and modality guidance move the result at cfg 1 too, so
+        # the rescale applies there as well (Lightricks rescales after all of it).
+        if guidance_rescale_phi > 0.0 and cfg <= 1.0 and not ltx_guided:
             # DEFECT: this branch used to have no else and no warning. Guidance
             # rescale divides by the guided std and is only meaningful when CFG
             # actually pushed the result away from the conditional prediction;
@@ -2138,25 +2195,12 @@ class RadianceSamplerPro:
                 guidance_rescale_phi, cfg,
             )
 
-        if guidance_rescale_phi > 0.0 and cfg > 1.0:
-            phi = guidance_rescale_phi
-
-            # ALBABIT-FIX: this math is denoised-space, so it moved from the
-            # noise-space cfg function (it returned x - denoised) to
-            # set_model_sampler_post_cfg_function, reading args["denoised"].
-            def guidance_rescale_patch(args):
-                guided = args["denoised"]
-                cond = args["cond_denoised"]
-
-                dims = list(range(1, guided.ndim))
-                guided_std = guided.std(dim=dims, keepdim=True).clamp(min=1e-6)
-                cond_std = cond.std(dim=dims, keepdim=True).clamp(min=1e-6)
-
-                rescaled = guided * (cond_std / guided_std)
-                return rescaled * phi + guided * (1.0 - phi)
-
-            model.set_model_sampler_post_cfg_function(guidance_rescale_patch)
-            logger.info(f"Guidance Rescale applied (phi={phi:.2f})")
+        if guidance_rescale_phi > 0.0 and (cfg > 1.0 or ltx_guided):
+            # ALBABIT-FIX: a post-cfg function, as its math is denoised-space. On
+            # LTX-AV, video and audio are rescaled separately (av_video_numel).
+            model.set_model_sampler_post_cfg_function(
+                make_guidance_rescale_patch(guidance_rescale_phi, av_video_numel))
+            logger.info(f"Guidance Rescale applied (phi={guidance_rescale_phi:.2f})")
 
         if sdr_latent is not None and sdr_inject_steps > 0:
             _step_counter = [0]
@@ -2232,19 +2276,14 @@ class RadianceSamplerPro:
         # LTX-AV latent. Noise-space slot, so it composes cleanly with the 3
         # post-cfg patches above (a different slot, applied after this one).
         if is_ltx_av and _HAS_NESTED_TENSOR and audio_cfg > 0.0 and not math.isclose(audio_cfg, cfg):
-            _v_numel = None
-            if getattr(work_latent, "is_nested", False):
-                parts = work_latent.unbind()
-                if len(parts) >= 2:
-                    _v_numel = math.prod(parts[0].shape[1:])
-            if _v_numel is None:
+            if av_video_numel is None:
                 logger.warning(
                     "[Radiance] audio_cfg=%.2f set but the latent isn't a nested "
                     "audio+video tensor -- ignoring (using cfg=%.2f for both).",
                     audio_cfg, cfg,
                 )
             else:
-                _video_cfg, _audio_cfg, _v = cfg, audio_cfg, _v_numel
+                _video_cfg, _audio_cfg, _v = cfg, audio_cfg, av_video_numel
 
                 def _ltx_av_dual_cfg_patch(args):
                     cond, uncond = args["cond"], args["uncond"]
