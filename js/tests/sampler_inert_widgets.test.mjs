@@ -45,12 +45,20 @@ test('settings that do nothing on this run fold away', () => {
 
 test('they come back once they apply', () => {
     const context = samplerContext();
-    const node = samplerNode('[F] Flux img2img', { denoise: 0.75, temporal_window: 16, noise_type: 'Perlin' },
+    const node = samplerNode('[F] Flux img2img', { denoise: 0.75, temporal_window: 16, noise_type: 'Perlin', start_step: 4 },
         [{ name: 'restart_schedule', link: 7 }]);
     context.fold(node);
     for (const name of ['restart_count', 'temporal_overlap', 'force_exact_steps', 'noise_alpha_start', 'noise_alpha_end']) {
         assert.equal(hidden(node, name), false, name);
     }
+});
+
+test('noise_alpha_end needs a run that starts past step 0', () => {
+    const context = samplerContext();
+    const node = samplerNode('[F] Flux txt2img', { noise_type: 'Perlin', start_step: 0 });
+    context.fold(node);
+    assert.equal(hidden(node, 'noise_alpha_start'), false);
+    assert.equal(hidden(node, 'noise_alpha_end'), true);
 });
 
 test('LTX 2.3 / 2.5 hide windowing and noise_type, and keep Gaussian noise', () => {

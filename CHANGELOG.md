@@ -198,7 +198,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 - **Sampler hides settings that do nothing on the run:** `restart_count`
   without a connected `restart_schedule`, `noise_alpha_start` / `_end` with
-  Gaussian noise (they followed `restart_count`), `temporal_overlap` while
+  Gaussian noise and `noise_alpha_end` at start_step 0 (they followed
+  `restart_count`), `temporal_overlap` while
   `temporal_window` is 0, `force_exact_steps` at denoise 1, and on LTX 2.3 /
   2.5 `temporal_window` / `temporal_overlap` (a packed audio + video latent
   is never windowed) and `noise_type` (only Gaussian noise covers the audio
