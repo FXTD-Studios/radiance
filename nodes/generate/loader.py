@@ -284,11 +284,9 @@ class RadianceUnifiedLoader:
         # weights ship inside the main UNET checkpoint (see assemble_clip_paths).
         text_projection_list = ["None", "Baked (from UNET)"] + folder_paths.get_filename_list("text_encoders")
         text_projection_slot = lambda tip: (text_projection_list, {"default": "None", "tooltip": tip})
-        # ALBABIT-FIX: AuraFlow has no standalone text encoder file either
-        # (official workflow uses CheckpointLoaderSimple only, its HF repo
-        # only ships a diffusers-format folder). Same "Baked (from UNET)"
-        # mechanism as text_projection, on the t5xxl slot (AuraFlow's real
-        # encoder is T5, not clip_l, see assemble_clip_paths/CLIP_SLOT_ORDER).
+        # ALBABIT-FIX: AuraFlow ships no standalone text encoder either (its HF repo
+        # has only a diffusers folder): "Baked (from UNET)" on t5xxl, its real encoder
+        # (see assemble_clip_paths/CLIP_SLOT_ORDER).
         t5xxl_list = ["None", "Baked (from UNET)"] + folder_paths.get_filename_list("text_encoders")
         t5xxl_slot = lambda tip: (t5xxl_list, {"default": "None", "tooltip": tip})
         # ALBABIT-FIX: optional standalone/baked Audio VAE (LTX 2.3 / 2.5 audio).

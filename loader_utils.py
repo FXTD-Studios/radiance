@@ -404,11 +404,9 @@ def load_unet_and_baked_vae(
 
         try:
             if extract_audio_vae:
-                # ALBABIT-FIX: read the UNET state dict once and reuse it
-                # for both the audio VAE extraction and the model/baked-VAE
-                # load below (load_state_dict_guess_config /
-                # load_diffusion_model_state_dict), instead of reading the
-                # (often multi-GB) UNET file from disk twice.
+                # ALBABIT-FIX: read the UNET state dict once, for both the audio VAE
+                # and the model/baked-VAE load below, instead of reading the
+                # (often multi-GB) file twice.
                 t_av0 = time.time()
                 sd, metadata = comfy.utils.load_torch_file(unet_path, return_metadata=True)
                 audio_vae = construct_audio_vae(sd, metadata, resolved_type)

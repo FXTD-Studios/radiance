@@ -1043,11 +1043,10 @@ def get_model_vae_param(model_hint: str, param: str, default=None):
     return cfg.get(param, default)
 
 
-# ALBABIT-FIX: each preset only carries model_type/weight_dtype/clip_dtype,
-# the only fields _apply_preset_override() (nodes_loader.py) reads; hints
-# and CLIP slot layout live in js/radiance_loader.js instead. "default"
-# dtypes let ComfyUI's own VRAM-aware auto-selection apply. Keys stay
-# alphabetical ("Custom" pinned first) to match the dropdown order.
+# ALBABIT-FIX: each preset only carries model_type/weight_dtype/clip_dtype, the
+# only fields apply_checkpoint_preset() (loader_utils.py) reads; hints and CLIP
+# slots live in js/radiance_loader.js. "default" dtypes let ComfyUI's VRAM-aware
+# auto-selection apply. Keys alphabetical ("Custom" first) to match the dropdown.
 CHECKPOINT_PRESETS: dict = {
     "Custom": {},
     "AuraFlow": {
@@ -1070,11 +1069,9 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    # ALBABIT-FIX: Dev and Schnell merged -- both already shared this exact
-    # model_type/weight_dtype/clip_dtype, and are architecturally identical
-    # (unlike Flux.2 Klein); the Sampler's model_meta mechanism already tells
-    # them apart by filename for guidance/steps, so no reason to make the
-    # user pick manually here either.
+    # ALBABIT-FIX: Dev and Schnell merged: same model_type/dtypes and the same
+    # architecture (unlike Flux.2 Klein); the Sampler's model_meta already tells
+    # them apart by file name for guidance/steps.
     "Flux.1": {
         "model_type": "flux",
         "weight_dtype": "fp8_e4m3fn",
@@ -1236,11 +1233,9 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "fp16",
         "clip_dtype": "fp16",
     },
-    # ALBABIT-FIX: weight_dtype now "default" -- 1.3B is small enough that
-    # forcing fp8 for every user cost quality for no reason; comfy.sd
-    # auto-picks per the real loaded file's param count (same mechanism as
-    # LTX Video/Flux.2 above). See "Wan 2.1 (Low VRAM)" for the old forced-fp8
-    # behavior, still needed by 14B users on tight VRAM.
+    # ALBABIT-FIX: weight_dtype "default": 1.3B is small enough that forcing fp8
+    # cost quality for nothing; comfy.sd picks per the loaded file's size. "Wan
+    # 2.1 (Low VRAM)" keeps the forced fp8 that 14B users on tight VRAM need.
     "Wan 2.1": {
         "model_type": "wan",
         "weight_dtype": "default",
