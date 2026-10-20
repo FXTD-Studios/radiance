@@ -179,7 +179,7 @@ class RadianceProjectManager:
         _create_version_backup(filepath, message=f"Save v{version}", author=artist or "unknown")
 
         # Use v3 container for richer metadata
-        binary = _pack_rad_v3(graph_json, metadata)
+        binary = _pack_rad_v3(graph_json, metadata, *_input_assets(graph_json))
         _atomic_write_bytes(filepath, binary)
 
         count = tech_profile.get("node_count", 0)
@@ -433,6 +433,7 @@ def _pack_rad_v3(
     graph_json: str,
     metadata: dict,
     assets: dict | None = None,
+    inputs: dict | None = None,
 ) -> bytes:
     """
     Pack a workflow + metadata + optional assets into a .rad v3 ZIP container.
@@ -441,13 +442,15 @@ def _pack_rad_v3(
         graph_json: The ComfyUI graph JSON string.
         metadata:   Arbitrary metadata dict (author, description, timestamps).
         assets:     Optional dict of {asset_name: bytes} to embed in assets/.
+        inputs:     Optional {asset_name: path in ComfyUI's input folder} for the
+                    assets that are input files (see _input_assets).
 
     Returns:
         Raw bytes of the ZIP-based .rad v3 container.
 
     Format:
         A standard Python zipfile.ZIP_DEFLATED archive with:
-          manifest.json  — {rad_version:3, metadata:{...}, assets:[name,...]}
+          manifest.json  — {rad_version:3, metadata:{...}, assets:[name,...], inputs:{...}}
           workflow.json  — raw graph JSON
           assets/<name>  — one entry per asset in `assets` dict
     """
@@ -455,6 +458,7 @@ def _pack_rad_v3(
         "rad_version": 3,
         "metadata": metadata,
         "assets": list((assets or {}).keys()),
+        "inputs": inputs or {},
         "packed_at": time.time(),
         "stats": metadata.get("stats", {}),  # Promote stats to top level for fast access
     }
@@ -539,6 +543,7 @@ def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
             metadata = manifest.get("metadata", {})
             metadata["rad_version"] = 3
             metadata["assets"] = manifest.get("assets", [])
+            metadata["inputs"] = manifest.get("inputs", {})
 
         assets = {}
         for n in names:
@@ -576,6 +581,106 @@ def _unpack_any_rad(data: bytes) -> tuple[str, dict]:
         return _unpack_rad_v2(data)
     else:
         return data.decode("utf-8"), {"format": "v1", "secure": False}
+
+
+def _walk_strings(obj, fn):
+    """Return a copy of a parsed graph with every string passed through fn."""
+    if isinstance(obj, dict):
+        return {key: _walk_strings(value, fn) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_walk_strings(value, fn) for value in obj]
+    return fn(obj) if isinstance(obj, str) else obj
+
+
+def _input_assets(graph_json: str, reserved: int = 0) -> tuple[dict, dict]:
+    """
+    The input files a graph reads, to embed in its .rad v3 so it opens on another
+    machine: ({asset_name: bytes}, {asset_name: path in ComfyUI's input folder}).
+
+    Any string in the graph that names a file in the input folder counts (a loader's
+    widget value, "name.png" or "name.png [input]"), so every loader node is covered.
+    A file that would take the container past its limits is left out with a warning;
+    the workflow then keeps only its name, as before. `reserved` is room already
+    taken by other entries (the preview).
+    """
+    try:
+        graph = json.loads(graph_json)
+    except json.JSONDecodeError:
+        return {}, {}
+
+    input_dir = Path(folder_paths.get_input_directory()).resolve()
+    found = {}
+
+    def note(value):
+        if len(value) <= MAX_FILENAME_LENGTH:
+            name, base_dir = folder_paths.annotated_filepath(value)
+            if base_dir is None or Path(base_dir).resolve() == input_dir:
+                # ALBABIT-FIX: a string that is no file name (a NUL, too long in bytes) is not a file.
+                try:
+                    path = (input_dir / name).resolve()
+                    if path.is_relative_to(input_dir) and path.is_file():
+                        found[path] = path.relative_to(input_dir).as_posix()
+                except (OSError, ValueError):
+                    pass
+        return value
+
+    _walk_strings(graph, note)
+
+    budget = MAX_RAD_UNCOMPRESSED_BYTES - len(graph_json.encode("utf-8")) - reserved - 65536
+    assets, inputs = {}, {}
+    for path, rel in sorted(found.items(), key=lambda item: item[1]):
+        size = path.stat().st_size
+        if size > budget or len(assets) >= MAX_RAD_ZIP_ENTRIES - 3:
+            logger.warning("[Radiance] %s is not embedded in the .rad: it would pass the "
+                           "%dMB / %d files limit.", rel, MAX_WORKFLOW_SIZE_MB, MAX_RAD_ZIP_ENTRIES)
+            continue
+        name, n = path.name, 1
+        while name in assets:
+            name, n = f"{path.stem}_{n}{path.suffix}", n + 1
+        assets[name] = path.read_bytes()
+        inputs[name] = rel
+        budget -= size
+    return assets, inputs
+
+
+def _restore_input_assets(graph_json: str, assets: dict, inputs: dict) -> str:
+    """
+    Put a .rad's embedded input files back into ComfyUI's input folder and return
+    the graph to open.
+
+    A file already there with the same bytes is reused. A different file of the
+    same name is never overwritten: the restored one takes a free name
+    ("name_1.png") and the graph's references to it follow.
+    """
+    input_dir = Path(folder_paths.get_input_directory()).resolve()
+    renamed = {}
+    for name, rel in inputs.items():
+        if name not in assets:
+            continue
+        # ALBABIT-FIX: the input folder itself ("", ".") too, its free name would be a sibling.
+        target = (input_dir / rel).resolve()
+        if target == input_dir or not target.is_relative_to(input_dir):
+            raise ValueError(".rad v3: unsafe input path")
+        path, n = target, 1
+        while path.exists() and not (path.is_file() and path.read_bytes() == assets[name]):
+            path, n = target.with_name(f"{target.stem}_{n}{target.suffix}"), n + 1
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_bytes(path, assets[name])
+        if path != target:
+            renamed[rel] = path.relative_to(input_dir).as_posix()
+
+    if not renamed:
+        return graph_json
+
+    def follow(value):
+        if value in renamed:
+            return renamed[value]
+        if value.endswith(" [input]") and value[:-8] in renamed:
+            return renamed[value[:-8]] + " [input]"
+        return value
+
+    return json.dumps(_walk_strings(json.loads(graph_json), follow))
 
 
 def _pack_rad_v2(graph_json: str, metadata: dict) -> bytes:
@@ -1085,14 +1190,16 @@ async def pack_workflow(request):
         if not content:
             return web.json_response({"error": "Missing content"}, status=400)
             
+        # ALBABIT-FIX: v3 when the graph reads input files, the only format that carries them.
+        assets, inputs = _input_assets(content)
         metadata = {
             "description": description,
             "saved_at": time.time(),
-            "format": "v2",
+            "format": "v3" if assets else "v2",
             "author": data.get("author", "Radiance Artist")
         }
         
-        binary_rad = _pack_rad_v2(content, metadata)
+        binary_rad = _pack_rad_v3(content, metadata, assets, inputs) if assets else _pack_rad_v2(content, metadata)
         
         return web.Response(body=binary_rad, content_type='application/octet-stream')
     except Exception as e:
@@ -1118,6 +1225,7 @@ async def unpack_workflow_api(request):
 
         if ver == 3:
             graph_json, metadata, assets = _unpack_rad_v3(body)
+            graph_json = _restore_input_assets(graph_json, assets, metadata.get("inputs", {}))
             return web.json_response({
                 "success":  True,
                 "content":  graph_json,
@@ -1194,8 +1302,11 @@ async def save_workflow(request):
         }
         
         # Use v3 ZIP container if preview or stats are present, else v2 for speed
-        if metadata["preview_image"] or metadata["stats"]:
-            binary_rad = _pack_rad_v3(content, metadata)
+        # ALBABIT-FIX: v3 too when the graph reads input files, the only format that carries them.
+        # ALBABIT-FIX: the preview is stored twice, base64 in manifest.json and decoded in preview.png.
+        assets, inputs = _input_assets(content, reserved=2 * len(metadata["preview_image"]))
+        if metadata["preview_image"] or metadata["stats"] or assets:
+            binary_rad = _pack_rad_v3(content, metadata, assets, inputs)
             filename_final = filename
         else:
             binary_rad = _pack_rad_v2(content, metadata)
@@ -1359,7 +1470,7 @@ async def save_project_version(request):
                 "saved_at": time.time(),
                 "pipeline": _inspect_graph_content(content),
             }
-            _atomic_write_bytes(filepath, _pack_rad_v3(content, metadata))
+            _atomic_write_bytes(filepath, _pack_rad_v3(content, metadata, *_input_assets(content)))
             
             # Clean up legacy sidecar if it exists
             meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1430,7 +1541,12 @@ async def get_workflow(request):
         ver = _detect_rad_version(raw_data)
 
         # Unified v1 / v2 / v3 dispatch
-        graph_json, metadata = _unpack_any_rad(raw_data)
+        # ALBABIT-FIX: opening a v3 also puts its input files back, so it runs on another machine.
+        if ver == 3:
+            graph_json, metadata, assets = _unpack_rad_v3(raw_data)
+            graph_json = _restore_input_assets(graph_json, assets, metadata.get("inputs", {}))
+        else:
+            graph_json, metadata = _unpack_any_rad(raw_data)
         return web.json_response({
             "success":  True,
             "content":  graph_json,
