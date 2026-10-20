@@ -615,9 +615,13 @@ def _input_assets(graph_json: str, reserved: int = 0) -> tuple[dict, dict]:
         if len(value) <= MAX_FILENAME_LENGTH:
             name, base_dir = folder_paths.annotated_filepath(value)
             if base_dir is None or Path(base_dir).resolve() == input_dir:
-                path = (input_dir / name).resolve()
-                if path.is_relative_to(input_dir) and path.is_file():
-                    found[path] = path.relative_to(input_dir).as_posix()
+                # ALBABIT-FIX: a string that is no file name (a NUL, too long in bytes) is not a file.
+                try:
+                    path = (input_dir / name).resolve()
+                    if path.is_relative_to(input_dir) and path.is_file():
+                        found[path] = path.relative_to(input_dir).as_posix()
+                except (OSError, ValueError):
+                    pass
         return value
 
     _walk_strings(graph, note)
@@ -653,8 +657,9 @@ def _restore_input_assets(graph_json: str, assets: dict, inputs: dict) -> str:
     for name, rel in inputs.items():
         if name not in assets:
             continue
+        # ALBABIT-FIX: the input folder itself ("", ".") too, its free name would be a sibling.
         target = (input_dir / rel).resolve()
-        if not target.is_relative_to(input_dir):
+        if target == input_dir or not target.is_relative_to(input_dir):
             raise ValueError(".rad v3: unsafe input path")
         path, n = target, 1
         while path.exists() and not (path.is_file() and path.read_bytes() == assets[name]):
@@ -1298,7 +1303,8 @@ async def save_workflow(request):
         
         # Use v3 ZIP container if preview or stats are present, else v2 for speed
         # ALBABIT-FIX: v3 too when the graph reads input files, the only format that carries them.
-        assets, inputs = _input_assets(content, reserved=len(metadata["preview_image"]))
+        # ALBABIT-FIX: the preview is stored twice, base64 in manifest.json and decoded in preview.png.
+        assets, inputs = _input_assets(content, reserved=2 * len(metadata["preview_image"]))
         if metadata["preview_image"] or metadata["stats"] or assets:
             binary_rad = _pack_rad_v3(content, metadata, assets, inputs)
             filename_final = filename
