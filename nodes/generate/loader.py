@@ -575,9 +575,17 @@ class RadianceUnifiedLoader:
         )
 
         if model_shift > 0:
-            model = nodes_model_advanced.ModelSamplingAuraFlow().patch_aura(model, model_shift)[0]
-            msg = f"Model shift {model_shift:g} (as ModelSamplingAuraFlow)"
-            logger.info(msg)
+            # ALBABIT-FIX: ModelSamplingAuraFlow sets the time scale to 1, right only for models
+            # sampled that way (Qwen-Image, AuraFlow, Lumina2...). Others (Wan and its two
+            # experts, SD3, LTX) keep their own schedule: model_shift is ignored for them.
+            if model.model.model_config.sampling_settings.get("multiplier") == 1.0:
+                model = nodes_model_advanced.ModelSamplingAuraFlow().patch_aura(model, model_shift)[0]
+                msg = f"Model shift {model_shift:g} (as ModelSamplingAuraFlow)"
+                logger.info(msg)
+            else:
+                msg = f"model_shift ignored: {resolved_type} is not sampled like Qwen-Image (ModelSamplingAuraFlow)."
+                logger.warning(msg)
+                model_shift = 0.0
             info_lines.append(msg)
 
         # ════════════════════════════════════════════════════════════════
