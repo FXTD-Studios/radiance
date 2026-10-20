@@ -144,7 +144,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `CogVideoX`, `Cosmos World`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Flux.3 Klein`, and 26 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `CogVideoX`, `Cosmos World`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Flux.3 Klein`, and 29 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
 | `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). For WAN 2.2, select either the high_noise or low_noise file — the companion expert is detected automatically. The 'model' output always carries the high_noise expert and 'model_low_noise' always carries the low_noise expert, regardless of which file is selected. |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
 | `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `hunyuan_video`, `wan`, `ltxv`, `ltxav`, and 23 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
@@ -370,7 +370,7 @@ Universal diffusion sampler. Auto-detects model type (Flux, SD3, SDXL, WAN, LTX,
 | `positive` | CONDITIONING |  |  | Prompt conditioning to steer toward. For guidance-embedded models (Flux, Flux.2, LTXV, LongCat) flux_guidance is written into it. |
 | `negative` | CONDITIONING |  |  | Conditioning to steer away from. Only evaluated when cfg is above 1.0; at 1.0 ComfyUI skips the negative pass. |
 | `latent_image` | LATENT |  |  | Starting latent: empty for text-to-image, VAE-encoded for img2img (lower denoise). A noise_mask on it limits sampling to the masked area. |
-| `preset` | choice | `Auto` | `Auto`, `Custom`, `[F] Flux txt2img`, `[F] Flux img2img`, `[F] Flux Inpaint`, `[F] Flux High-Res Fix`, `[F] Flux Fast (12 steps)`, `[F] Flux Quality (28 steps)`, `[F] Flux Cinematic (30 steps)`, `[F] Flux Schnell (4 steps)`, and 18 more | Auto and Custom let the node replace cfg, flux_guidance, steps and sampler with the detected model's defaults while they sit at their widget defaults. A named preset only fills the widgets in the UI; at run time the widget values are used as-is. |
+| `preset` | choice | `Auto` | `Auto`, `Custom`, `[F] Flux txt2img`, `[F] Flux img2img`, `[F] Flux Inpaint`, `[F] Flux High-Res Fix`, `[F] Flux Fast (12 steps)`, `[F] Flux Quality (28 steps)`, `[F] Flux Cinematic (30 steps)`, `[F] Flux Schnell (4 steps)`, and 22 more | Auto and Custom let the node replace cfg, flux_guidance, steps and sampler with the detected model's defaults while they sit at their widget defaults. A named preset only fills the widgets in the UI; at run time the widget values are used as-is. |
 | `steps` | int | 20 | 1 to 200, step 1 | Total denoising steps. More steps = higher quality but slower. 20–30 is typical for most samplers. |
 | `start_step` | int | 0 | 0 to 200, step 1 | Start step (0 = beginning) |
 | `end_step` | int | 0 | 0 to 200, step 1 | End step (0 = use total steps) |

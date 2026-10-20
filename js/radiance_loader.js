@@ -30,6 +30,15 @@ const LOADER_SAVED_WIDGET_ORDER = [
     "lora_on_error", "auto_download", "model_shift", "upsampler",
 ];
 
+// ALBABIT-FIX: the LTX 2.x presets from before the Dev/Distilled split, renamed
+// on load to [Dev, Distilled] by the saved file, so the graph stays valid.
+const LEGACY_LTX_PRESETS = {
+    "LTX Video 2.3": ["LTX Video 2.3 Dev", "LTX Video 2.3 Distilled"],
+    "LTX Video 2.3 (Low VRAM)": ["LTX Video 2.3 Dev (Low VRAM)", "LTX Video 2.3 Distilled"],
+    "LTX Video 2.5": ["LTX Video 2.5 Dev", "LTX Video 2.5 Distilled"],
+    "LTX Video 2.5 (Low VRAM)": ["LTX Video 2.5 Dev (Low VRAM)", "LTX Video 2.5 Distilled (Low VRAM)"],
+};
+
 // Dynamic visibility rules for CLIP slots per preset.
 // ALBABIT-FIX: keys sorted alphabetically ("Custom" pinned first) to match
 // the preset dropdown order (config/model_map.py's CHECKPOINT_PRESETS).
@@ -54,14 +63,17 @@ const PRESET_SLOTS = {
     // ltxav_te (Gemma, LTX 2.3 only), the wrong encoder for these models.
     "LTX Video": ["llm_encoder"],
     "LTX Video (Low VRAM)": ["llm_encoder"],
-    "LTX Video 2.3": ["llm_encoder", "text_projection"],
-    "LTX Video 2.3 (Low VRAM)": ["llm_encoder", "text_projection"],
+    "LTX Video 2.3 Dev": ["llm_encoder", "text_projection"],
+    "LTX Video 2.3 Dev (Low VRAM)": ["llm_encoder", "text_projection"],
+    "LTX Video 2.3 Distilled": ["llm_encoder", "text_projection"],
     // ALBABIT-FIX: unlike 2.3, the 2.5 text encoder file bakes the projection
     // layer in (confirmed via safetensors header: a text_embedding_projection
     // tensor group lives inside gemma4-12b-with-proj-*.safetensors) -- only
     // one CLIP slot needed, same as pre-2.3 "LTX Video".
-    "LTX Video 2.5": ["llm_encoder"],
-    "LTX Video 2.5 (Low VRAM)": ["llm_encoder"],
+    "LTX Video 2.5 Dev": ["llm_encoder"],
+    "LTX Video 2.5 Dev (Low VRAM)": ["llm_encoder"],
+    "LTX Video 2.5 Distilled": ["llm_encoder"],
+    "LTX Video 2.5 Distilled (Low VRAM)": ["llm_encoder"],
     "Lumina2": ["llm_encoder"],
     // ALBABIT-FIX: MiniMax H3's conditioning encoder is a single Qwen3-VL-32B
     // checkpoint. One llm_encoder slot, same shape as Flux.2/Z-Image.
@@ -319,9 +331,11 @@ const PRESET_CONFIGS = {
             "13b": ["ltxv-spatial-upscaler-0.9.8", "ltxv-spatial-upscaler-0.9.7", "ltxv-13b", "ltx_13b", "ltxv", "ltx_video", "latent_upsampler", "upsampler"],
         },
     },
-    "LTX Video 2.3": {
-        // ALBABIT-FIX: distilled-1.1 added in second position — auto-matches if user has it
-        "unet_hints":    ["ltx-2.3-22b-dev.safetensors", "ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.3-22b-distilled.safetensors", "ltx-2.3-22b-dev", "ltx-2.3", "ltx_2.3"],
+    // ALBABIT-FIX: Dev and Distilled are separate presets, each hinting only its
+    // own files: a Dev preset never falls back to a Distilled file (the recipe
+    // differs), and the other way round; unmatched, the widget stays as it was.
+    "LTX Video 2.3 Dev": {
+        "unet_hints":    ["ltx-2.3-22b-dev.safetensors", "ltx-2.3-22b-dev"],
         "vae_hints":     ["LTX23_video_vae_bf16.safetensors", "LTX23_video_vae", "ltx23_video", "ltx_23_video", "Baked VAE (from UNET)"],
         "audio_vae_hints": ["LTX23_audio_vae_bf16.safetensors", "LTX23_audio_vae", "ltx23_audio", "ltx_23_audio"],
         "clip_hints":    {
@@ -331,69 +345,83 @@ const PRESET_CONFIGS = {
             "text_projection": ["ltx-2.3_text_projection_bf16.safetensors", "ltx-2.3_text_projection", "text_projection", "Baked (from UNET)"],
         },
         "extra_widgets": ["upscale_model_name", "audio_vae_name"],
-        // ALBABIT-FIX: x2-1.0 was removed from the Lightricks repo, replaced
-        // by x2-1.1. Kept here only so a local file from before the removal
-        // still auto-matches. Deliberately not in RADIANCE_MODEL_MAP, its
-        // old download URL 404s now.
+        // ALBABIT-FIX: x2-1.0 was removed from the Lightricks repo for x2-1.1, kept
+        // only so a local file from before still matches (its URL 404s now).
         "upscale_hints": ["ltx-2.3-spatial-upscaler-x2-1.1.safetensors", "ltx-2.3-spatial-upscaler-x2-1.0.safetensors", "ltx-2.3", "ltx_2.3", "latent_upsampler", "upsampler"],
     },
-    "LTX Video 2.3 (Low VRAM)": {
-        // ALBABIT-FIX: distilled-1.1 replaces dev-fp8 as primary Low VRAM model
-        "unet_hints":    ["ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.3-22b-distilled.safetensors", "ltx-2.3-22b-distilled-1.1", "ltx-2.3-22b-distilled", "ltx-2.3-22b-dev-fp8.safetensors", "ltx-2.3-22b-dev-fp8", "ltx-2.3", "ltx_2.3"],
+    "LTX Video 2.3 Dev (Low VRAM)": {
+        "unet_hints":    ["ltx-2.3-22b-dev-fp8.safetensors", "ltx-2.3-22b-dev-fp8"],
         "vae_hints":     ["Baked VAE (from UNET)", "LTX23_video_vae", "ltx23_video", "ltx_23_video"],
-        // ALBABIT-FIX: without this, autoFillPresetFiles() falls back to
-        // audio_vae_name = "None" (no hints), so extract_audio_vae is False
-        // and the AUDIO_VAE output stays None, failing downstream with
-        // "Audio VAE model is required" (nodes_lt_audio.py).
+        // ALBABIT-FIX: without this hint audio_vae_name falls to "None" and the
+        // AUDIO_VAE output stays empty ("Audio VAE model is required").
         "audio_vae_hints": ["Baked Audio VAE (from UNET)"],
         "clip_hints":    {
             "llm_encoder":     ["gemma_3_12B_it_fp4_mixed.safetensors", "gemma_3_12B_it_fp4", "gemma_3_12B_it", "gemma_3", "gemma"],
             "text_projection": ["Baked (from UNET)"],
         },
-        // ALBABIT-FIX: "Low VRAM" presets force offload_mode — expose the
-        // widget so the user can still override it (e.g. on a higher-VRAM
-        // GPU where cpu_offload is unnecessarily slow).
+        // ALBABIT-FIX: "Low VRAM" presets force offload_mode; the widget stays
+        // visible so a bigger GPU can turn it back off.
         "extra_widgets": ["upscale_model_name", "offload_mode"],
         "offload_mode": "cpu_offload",
         "upscale_hints": ["ltx-2.3-spatial-upscaler-x2-1.1.safetensors", "ltx-2.3-spatial-upscaler-x2-1.0.safetensors", "ltx-2.3", "ltx_2.3", "latent_upsampler", "upsampler"],
     },
-    "LTX Video 2.5": {
-        // ALBABIT-FIX: Dev listed first (max quality, flexible CFG per the HF
-        // repo's own README), Distilled as fallback -- same convention as LTX
-        // 2.3's own preset. bf16 preferred over the comfy-int8-convrot
-        // quantization within each tier.
-        "unet_hints":    ["ltx-2.5-22b-dev-transformer-bf16.safetensors", "ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-distilled-transformer-bf16.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-dev", "ltx-2.5-22b-distilled", "ltx-2.5", "ltx_2.5"],
-        // ALBABIT-FIX: the 2.5 transformer has no baked VAE (confirmed via
-        // safetensors header), "Baked VAE" kept as a low-priority fallback
-        // only. "video-vae-conv" deliberately NOT hinted -- different (16x/4x)
-        // compression Resolution can't detect per-file, see project_radiance_ltx25.
+    "LTX Video 2.3 Distilled": {
+        // ALBABIT-FIX: the distilled checkpoint, 1.1 (better audio and look) first.
+        "unet_hints":    ["ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.3-22b-distilled.safetensors", "ltx-2.3-22b-distilled"],
+        "vae_hints":     ["LTX23_video_vae_bf16.safetensors", "LTX23_video_vae", "ltx23_video", "ltx_23_video", "Baked VAE (from UNET)"],
+        "audio_vae_hints": ["LTX23_audio_vae_bf16.safetensors", "LTX23_audio_vae", "ltx23_audio", "ltx_23_audio"],
+        "clip_hints":    {
+            "llm_encoder":     ["gemma_3_12B_it.safetensors", "gemma_3_12B_it_fp4", "gemma_3_12B_it", "gemma_3", "gemma"],
+            "text_projection": ["ltx-2.3_text_projection_bf16.safetensors", "ltx-2.3_text_projection", "text_projection", "Baked (from UNET)"],
+        },
+        "extra_widgets": ["upscale_model_name", "audio_vae_name"],
+        "upscale_hints": ["ltx-2.3-spatial-upscaler-x2-1.1.safetensors", "ltx-2.3-spatial-upscaler-x2-1.0.safetensors", "ltx-2.3", "ltx_2.3", "latent_upsampler", "upsampler"],
+    },
+    "LTX Video 2.5 Dev": {
+        // ALBABIT-FIX: bf16 first, the comfy-int8-convrot quantization as fallback.
+        "unet_hints":    ["ltx-2.5-22b-dev-transformer-bf16.safetensors", "ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-dev"],
+        // ALBABIT-FIX: the 2.5 transformer has no baked VAE, "Baked VAE" is a last
+        // fallback only. "video-vae-conv" is not hinted: its 16x/4x compression is
+        // not the one Resolution assumes.
         "vae_hints":     ["ltx-2.5-video-vae-bf16.safetensors", "ltx-2.5-video-vae", "ltx_2.5_video", "Baked VAE (from UNET)"],
         "audio_vae_hints": ["ltx-2.5-audio-vae-bf16.safetensors", "ltx-2.5-audio-vae", "ltx_2.5_audio"],
         "clip_hints":    {
             "llm_encoder": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors", "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "gemma4-12b-with-proj-ltx-2.5", "gemma4", "gemma_4"],
         },
         "extra_widgets": ["upscale_model_name", "audio_vae_name"],
-        // ALBABIT-FIX: spatial upscaler only -- matches 2.3's convention (the
-        // 2x latent upscale feeding the HighRes stage). The new temporal
-        // upscaler (ltx-2.5-latent-temporal-upscaler-x2) isn't wired into any
-        // Radiance node yet -- not hinted here, see project_radiance_ltx25 memory.
+        // ALBABIT-FIX: the spatial upscaler only, as for 2.3; the temporal one
+        // (latent-temporal-upscaler-x2) feeds no Radiance node yet.
         "upscale_hints": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors", "ltx-2.5-spatial-upscaler", "ltx-2.5", "ltx_2.5", "latent_upsampler", "upsampler"],
     },
-    "LTX Video 2.5 (Low VRAM)": {
-        // ALBABIT-FIX: Distilled int8 first (lightest real option), same
-        // "lightest file first" convention as LTX 2.3's Low VRAM sibling.
-        "unet_hints":    ["ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-distilled-transformer-bf16.safetensors", "ltx-2.5-22b-distilled", "ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors", "ltx-2.5", "ltx_2.5"],
-        // ALBABIT-FIX: "video-vae-conv" was hinted FIRST here (the repo's own
-        // "lighter" recommendation) -- removed, wrong 16x/4x compression
-        // Resolution can't detect per-file. See project_radiance_ltx25 memory.
+    "LTX Video 2.5 Dev (Low VRAM)": {
+        "unet_hints":    ["ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-dev-transformer-comfy-int8"],
         "vae_hints":     ["ltx-2.5-video-vae-bf16.safetensors", "ltx-2.5-video-vae", "ltx_2.5_video", "Baked VAE (from UNET)"],
         "audio_vae_hints": ["ltx-2.5-audio-vae-bf16.safetensors", "ltx-2.5-audio-vae", "ltx_2.5_audio"],
         "clip_hints":    {
             "llm_encoder": ["gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors", "gemma4-12b-with-proj-ltx-2.5", "gemma4", "gemma_4"],
         },
-        // ALBABIT-FIX: "Low VRAM" presets force offload_mode -- expose the
-        // widget so the user can still override it, same convention as every
-        // other "(Low VRAM)" sibling in this file.
+        "extra_widgets": ["upscale_model_name", "audio_vae_name", "offload_mode"],
+        "offload_mode": "cpu_offload",
+        "upscale_hints": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors", "ltx-2.5-spatial-upscaler", "ltx-2.5", "ltx_2.5", "latent_upsampler", "upsampler"],
+    },
+    "LTX Video 2.5 Distilled": {
+        "unet_hints":    ["ltx-2.5-22b-distilled-transformer-bf16.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-distilled"],
+        "vae_hints":     ["ltx-2.5-video-vae-bf16.safetensors", "ltx-2.5-video-vae", "ltx_2.5_video", "Baked VAE (from UNET)"],
+        "audio_vae_hints": ["ltx-2.5-audio-vae-bf16.safetensors", "ltx-2.5-audio-vae", "ltx_2.5_audio"],
+        "clip_hints":    {
+            "llm_encoder": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors", "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "gemma4-12b-with-proj-ltx-2.5", "gemma4", "gemma_4"],
+        },
+        "extra_widgets": ["upscale_model_name", "audio_vae_name"],
+        "upscale_hints": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors", "ltx-2.5-spatial-upscaler", "ltx-2.5", "ltx_2.5", "latent_upsampler", "upsampler"],
+    },
+    "LTX Video 2.5 Distilled (Low VRAM)": {
+        // ALBABIT-FIX: int8 first; nvfp4 (RTX 50 series only) when it is the file at hand.
+        "unet_hints":    ["ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "ltx-2.5-22b-distilled-transformer-nvfp4.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8"],
+        "vae_hints":     ["ltx-2.5-video-vae-bf16.safetensors", "ltx-2.5-video-vae", "ltx_2.5_video", "Baked VAE (from UNET)"],
+        "audio_vae_hints": ["ltx-2.5-audio-vae-bf16.safetensors", "ltx-2.5-audio-vae", "ltx_2.5_audio"],
+        "clip_hints":    {
+            "llm_encoder": ["gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors", "gemma4-12b-with-proj-ltx-2.5", "gemma4", "gemma_4"],
+        },
         "extra_widgets": ["upscale_model_name", "audio_vae_name", "offload_mode"],
         "offload_mode": "cpu_offload",
         "upscale_hints": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors", "ltx-2.5-spatial-upscaler", "ltx-2.5", "ltx_2.5", "latent_upsampler", "upsampler"],
@@ -1178,6 +1206,9 @@ app.registerExtension({
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             this._configuredByLoad = true;
             const node = this;
+            const presetW = getWidget(node, "preset");
+            const renamed = LEGACY_LTX_PRESETS[presetW?.value];
+            if (renamed) presetW.value = renamed[/distilled/i.test(getWidget(node, "unet_name")?.value ?? "") ? 1 : 0];
             // ALBABIT-FIX: one 100ms reapply could run before graph.configure()
             // restored "preset" and fold as "Custom". As radiance_sampler.js:
             // 150ms for Vue's first layout, 600ms for heavier workflows.

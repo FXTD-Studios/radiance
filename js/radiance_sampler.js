@@ -116,6 +116,37 @@ const PRESET_CONFIGS = {
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
+    // ALBABIT-FIX: the Distilled models follow Lightricks' templates: cfg 1, no extra
+    // guidance, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
+    // exactly, and denoise 0.375 keeps its last 3 steps (0.909375, 0.725, 0.421875, 0).
+    "▶ LTX 2.3 Distilled LowRes (8 steps)": {
+        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.3 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
+    },
+    "▶ LTX 2.3 Distilled HighRes (3 steps)": {
+        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.3 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). Lightricks' 2.3 T2V template starts at 0.85 instead, through a ManualSigmas node on sigmas_override.",
+    },
     // ALBABIT-FIX: the official 2.5 templates are distilled (8 steps,
     // euler_ancestral). Tested on Dev: euler gives a natural face where
     // euler_ancestral smooths it, and 30 LowRes steps add fine detail.
@@ -148,6 +179,34 @@ const PRESET_CONFIGS = {
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
+    },
+    "▶ LTX 2.5 Distilled LowRes (8 steps)": {
+        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.5 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
+    },
+    "▶ LTX 2.5 Distilled HighRes (3 steps)": {
+        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0), as Lightricks' templates.",
     },
     "▶ HunyuanVideo (30 steps)": {
         steps: 30, cfg: 6.0, sampler: "euler", scheduler: "simple",
@@ -211,8 +270,12 @@ const LEGACY_LTX25_LOWRES = "[V] LTX 2.5 LowRes (20 steps)";
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
     "▶ LTX 2.3 HighRes (40 steps)",
+    "▶ LTX 2.3 Distilled LowRes (8 steps)",
+    "▶ LTX 2.3 Distilled HighRes (3 steps)",
     "▶ LTX 2.5 LowRes (30 steps)",
-    "▶ LTX 2.5 HighRes (40 steps)"
+    "▶ LTX 2.5 HighRes (40 steps)",
+    "▶ LTX 2.5 Distilled LowRes (8 steps)",
+    "▶ LTX 2.5 Distilled HighRes (3 steps)"
 ];
 
 // ALBABIT-FIX: mirrors sampler_utils.py's LTX_GUIDANCE_RECIPES (test_sampler_js_mirror.py):
@@ -863,8 +926,8 @@ function _modelLoraNames(node, loaderNode) {
 
 // ALBABIT-FIX: some checkpoints need settings their model_type's default lacks;
 // only the file name tells them apart (checked against the model cards). "turbo"
-// also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 Dev/Distilled
-// is left to the LTX 2.3 LowRes/HighRes presets: community values disagree.
+// also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 / 2.5 Distilled
+// is left to _resolveLtxAvStageDefaults: its step count differs per stage.
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
     // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
@@ -916,7 +979,9 @@ function _resolveLtxAvStageDefaults(unetName, isHighRes) {
     const version = f.includes("2.5") ? "2.5" : f.includes("2.3") ? "2.3" : null;
     if (!version) return null;
     // ALBABIT-FIX: matched without the step count, which differs per version.
-    const prefix = `▶ LTX ${version} ${isHighRes ? "HighRes" : "LowRes"} (`;
+    // A Distilled file takes the Distilled stage presets.
+    const kind = f.includes("distilled") ? "Distilled " : "";
+    const prefix = `▶ LTX ${version} ${kind}${isHighRes ? "HighRes" : "LowRes"} (`;
     return PRESET_CONFIGS[LTX_PRESETS.find(k => k.startsWith(prefix))] ?? null;
 }
 
@@ -1044,7 +1109,7 @@ function _markLinkedWidget(widget, linked, inSync) {
 }
 
 // ALBABIT-FIX: under Auto/Custom, syncs model_type, guidance, steps, cfg,
-// sampler, scheduler, denoise and audio_cfg (per LTX-AV stage);
+// sampler, scheduler, denoise, audio_cfg, schedule and guidance (per LTX-AV stage);
 // syncAutoValue() keeps any value the user set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
@@ -1088,6 +1153,14 @@ function updateModelMetaDefaults(node) {
         // unresolved field above.
         [node.widgets.find(w => w.name === "denoise"), ltxavStage?.denoise],
         [node.widgets.find(w => w.name === "audio_cfg"), ltxavStage?.audio_cfg],
+        // ALBABIT-FIX: the stage's schedule and guidance too. Left at the widgets' own
+        // values (shift 1, inexact steps, no STG), an Auto pass ran another recipe
+        // than its preset: on an upscaled pass, another sigma range.
+        [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift],
+        [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
+        [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
+        [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
+        [node.widgets.find(w => w.name === "guidance_rescale_phi"), ltxavStage?.guidance_rescale_phi],
     ];
 
     let changed = false;

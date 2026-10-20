@@ -1131,7 +1131,10 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "fp8_e4m3fn",
         "clip_dtype": "default",
     },
-    "LTX Video 2.3": {
+    # ALBABIT-FIX: Dev and Distilled are separate presets: the Distilled models
+    # take another recipe (cfg 1, 8 + 3 steps). The Sampler's LTX presets and
+    # its Auto mode follow the file the Loader picks.
+    "LTX Video 2.3 Dev": {
         "model_type": "ltxav",
         # ALBABIT-FIX: ltx-2.3-22b-dev.safetensors is bf16-native; "fp16"
         # forced a bf16->fp16 cast with no VRAM benefit and overflow risk
@@ -1139,24 +1142,40 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    "LTX Video 2.3 (Low VRAM)": {
+    "LTX Video 2.3 Dev (Low VRAM)": {
         "model_type": "ltxav",
         "weight_dtype": "fp8_e4m3fn",
         "clip_dtype": "fp8_e4m3fn",
     },
-    # ALBABIT-FIX: LTX 2.5 reuses "ltxav" -- same 128ch latent format, confirmed
-    # from the transformer's patchify_proj.weight shape [4096, 128]. Detection
-    # is capability-based (recombine_audio_and_video_latents), not version-string
-    # based, so no new model_type is needed. See project_radiance_ltx25 memory.
-    "LTX Video 2.5": {
+    "LTX Video 2.3 Distilled": {
         "model_type": "ltxav",
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    "LTX Video 2.5 (Low VRAM)": {
+    # ALBABIT-FIX: LTX 2.5 reuses "ltxav" -- same 128ch latent format, confirmed
+    # from the transformer's patchify_proj.weight shape [4096, 128]. Detection
+    # is capability-based (recombine_audio_and_video_latents), so no new model_type.
+    "LTX Video 2.5 Dev": {
         "model_type": "ltxav",
-        "weight_dtype": "fp8_e4m3fn",
-        "clip_dtype": "fp8_e4m3fn",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    # ALBABIT-FIX: "default" dtypes: the Low VRAM files (int8 convrot, nvfp4)
+    # already carry their quantization, as MiniMax H3's lighter files do.
+    "LTX Video 2.5 Dev (Low VRAM)": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "LTX Video 2.5 Distilled": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "LTX Video 2.5 Distilled (Low VRAM)": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
     },
     # ALBABIT-FIX: both presets keep weight_dtype/clip_dtype at "default".
     # The size difference is a smaller checkpoint (unet_hints in
