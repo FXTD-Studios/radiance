@@ -70,6 +70,20 @@ test('Auto on LTX 2.5 Dev follows the 30-step LowRes preset, audio_cfg included'
     assert.equal(value('audio_cfg'), 1.0);
 });
 
+test('Auto on an LTX Distilled file follows the Distilled presets, 8 steps then 3', () => {
+    const context = samplerContext();
+    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors' }] });`, context);
+    for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
+        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+        const node = ltxNode('Auto', 3.0);
+        node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
+        context.metaDefaults(node);
+        const value = (name) => node.widgets.find(w => w.name === name).value;
+        assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
+            [steps, 1.0, 'euler_ancestral', 'linear_quadratic', denoise]);
+    }
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);
