@@ -1351,9 +1351,10 @@ class RadianceSamplerPro:
             # the time. It is only replaced now when model_meta names the exact
             # checkpoint, so the choice is known to be right; otherwise it is
             # kept and the base value is suggested.
-            # ALBABIT-FIX: not on LTX-AV: cfg 1 is its upscaled stage's and Distilled
-            # model's own value, and the frontend's stage presets set each pass's cfg.
-            if kwargs.get('cfg') == 1.0 and detected_type not in ("flux", "ltxav"):
+            # ALBABIT-FIX: not on an LTX-AV upscaled pass (denoise below 1): cfg 1 is
+            # its stage preset's own value, and 3 added a negative pass on every step.
+            ltx_upscale = detected_type == "ltxav" and kwargs.get('denoise', 1.0) < 1.0
+            if kwargs.get('cfg') == 1.0 and detected_type != "flux" and not ltx_upscale:
                 suggested = (distilled or {}).get("cfg", defaults.get("cfg", 1.0))
                 if (meta_unet_file or flux3_known) and suggested != 1.0:
                     kwargs['cfg'] = suggested
@@ -1817,7 +1818,7 @@ class RadianceSamplerPro:
         # 2. Model Detection & Default Calibration
         detected_type, params, meta_unet_file = self._configure_model_and_defaults(model, model_type, preset,
             model_meta=model_meta, chain_loras=self._model_chain_loras(prompt, unique_id),
-            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
+            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift, denoise=denoise,
             sampler=sampler, scheduler=scheduler, scheduler_mode=scheduler_mode, steps=steps)
 
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
