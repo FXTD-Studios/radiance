@@ -2403,16 +2403,43 @@ def test_open_never_overwrites_a_different_input_file(ws):
     assert content == _loader_graph("ref_2.png", "ref_2.png [input]")
 
 
-def test_open_refuses_an_input_path_outside_the_input_folder(ws):
+# "" and "." name the input folder itself, whose free name ("input_1") is outside it.
+@pytest.mark.parametrize("rel", ["../evil.png", "", ".", "sub/.."])
+def test_open_refuses_an_input_path_outside_the_input_folder(ws, rel):
     blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("x.png")), {},
-                             assets={"x.png": b"EVIL"}, inputs={"x.png": "../evil.png"})
+                             assets={"x.png": b"EVIL"}, inputs={"x.png": rel})
     (ws.root / "evil.rad").write_bytes(blob)
+    before = sorted(ws.inp.parent.iterdir())
 
     resp = run(ws.m.get_workflow(Req(query={"filename": "evil.rad"})))
 
     assert resp.status == 500
     assert "unsafe input path" in body(resp)["error"]
-    assert not (ws.inp.parent / "evil.png").exists()
+    assert sorted(ws.inp.parent.iterdir()) == before
+    assert list(ws.inp.iterdir()) == []
+
+
+def test_a_string_that_is_no_file_name_does_not_stop_the_save(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png", "nul\x00byte.png", "長いファイル名" * 25)
+
+    _, meta, _ = ws.m._unpack_rad_v3(ws.save("sh010.rad", content=json.dumps(graph)).read_bytes())
+
+    assert meta["inputs"] == {"ref.png": "ref.png"}
+
+
+def test_a_rad_with_a_preview_and_input_files_still_opens(ws, monkeypatch):
+    """The preview is stored twice (base64 in the manifest, decoded in preview.png):
+    counted once, input files could fill the room and the .rad would not open."""
+    import base64
+    preview = "data:image/png;base64," + base64.b64encode(b"P" * 150_000).decode()
+    (ws.inp / "big.png").write_bytes(b"B" * 150_000)
+    content = json.dumps(_loader_graph("big.png"))
+    monkeypatch.setattr(ws.m, "MAX_RAD_UNCOMPRESSED_BYTES", 65536 + len(content) + 2 * len(preview) + 1000)
+
+    ws.save("sh010.rad", content=content, preview_image=preview)
+
+    assert run(ws.m.get_workflow(Req(query={"filename": "sh010.rad"}))).status == 200
 
 
 def test_import_puts_input_files_back(ws):
