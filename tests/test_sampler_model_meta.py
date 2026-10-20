@@ -96,11 +96,14 @@ class TestRefineDistillationFromMeta:
         # "turbo" substring absent -- SD3.5 Medium has no Turbo variant.
         assert refine_distillation_from_meta("sd3.5", "sd3.5_medium.safetensors") is None
 
-    def test_ltx_distilled_runs_at_cfg_1(self):
-        for f in ("ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"):
-            assert refine_distillation_from_meta("ltxav", f) == {"cfg": 1.0}
 
-    def test_ltx_dev_not_affected_even_with_the_distilled_lora(self):
-        # The Dev workflows add the distilled LoRA at a low strength and keep the Dev recipe.
-        assert refine_distillation_from_meta("ltxav", "ltx-2.3-22b-dev.safetensors",
-                                             ["ltx-2.3-22b-distilled-lora-384.safetensors"]) is None
+def test_auto_keeps_cfg_1_on_ltx_av():
+    # cfg 1 is the upscaled stage's (and the Distilled model's) own value: Auto used to
+    # raise it to 3, a second forward pass on every step.
+    from radiance.nodes.generate.sampler import RadianceSamplerPro
+    for unet in ("ltx-2.5-22b-dev-transformer-bf16.safetensors", "ltx-2.3-22b-distilled-1.1.safetensors"):
+        meta = json.dumps({"arch": "ltxav", "unet_file": unet, "loras": []})
+        _, kwargs, _ = RadianceSamplerPro()._configure_model_and_defaults(
+            None, "auto", "Auto", model_meta=meta, cfg=1.0, flux_guidance=3.5, steps=3,
+            sampler="euler", scheduler="simple", scheduler_mode="Manual")
+        assert kwargs["cfg"] == 1.0, unet

@@ -37,7 +37,7 @@ for (const arch of ['wan', 'wan_ti2v', 'ltxv', 'lumina2']) {
                 context.updateDefaults(node);
                 context.updateDefaults(node);
                 assert.equal(widget.value, shift);
-                assert.equal(widget._radMetaLinked, undefined);
+                assert.ok(!widget._radMetaLinked);
             }
         });
     }

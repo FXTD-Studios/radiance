@@ -1109,7 +1109,7 @@ function _markLinkedWidget(widget, linked, inSync) {
 }
 
 // ALBABIT-FIX: under Auto/Custom, syncs model_type, guidance, steps, cfg,
-// sampler, scheduler, denoise and audio_cfg (per LTX-AV stage);
+// sampler, scheduler, denoise, audio_cfg, schedule and guidance (per LTX-AV stage);
 // syncAutoValue() keeps any value the user set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
@@ -1153,6 +1153,14 @@ function updateModelMetaDefaults(node) {
         // unresolved field above.
         [node.widgets.find(w => w.name === "denoise"), ltxavStage?.denoise],
         [node.widgets.find(w => w.name === "audio_cfg"), ltxavStage?.audio_cfg],
+        // ALBABIT-FIX: the stage's schedule and guidance too. Left at the widgets' own
+        // values (shift 1, inexact steps, no STG), an Auto pass ran another recipe
+        // than its preset: on an upscaled pass, another sigma range.
+        [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift],
+        [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
+        [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
+        [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
+        [node.widgets.find(w => w.name === "guidance_rescale_phi"), ltxavStage?.guidance_rescale_phi],
     ];
 
     let changed = false;

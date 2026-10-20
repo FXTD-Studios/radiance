@@ -1351,7 +1351,9 @@ class RadianceSamplerPro:
             # the time. It is only replaced now when model_meta names the exact
             # checkpoint, so the choice is known to be right; otherwise it is
             # kept and the base value is suggested.
-            if kwargs.get('cfg') == 1.0 and detected_type != "flux":
+            # ALBABIT-FIX: not on LTX-AV: cfg 1 is its upscaled stage's and Distilled
+            # model's own value, and the frontend's stage presets set each pass's cfg.
+            if kwargs.get('cfg') == 1.0 and detected_type not in ("flux", "ltxav"):
                 suggested = (distilled or {}).get("cfg", defaults.get("cfg", 1.0))
                 if (meta_unet_file or flux3_known) and suggested != 1.0:
                     kwargs['cfg'] = suggested

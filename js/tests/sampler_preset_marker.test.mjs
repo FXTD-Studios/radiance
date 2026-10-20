@@ -84,6 +84,22 @@ test('Auto on an LTX Distilled file follows the Distilled presets, 8 steps then 
     }
 });
 
+test('Auto takes the LTX stage schedule and guidance too', () => {
+    const context = samplerContext();
+    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-dev-transformer-bf16.safetensors' }] });`, context);
+    const names = ['steps', 'flux_shift', 'force_exact_steps', 'terminal_sigma_to_zero', 'ltx_guidance', 'guidance_rescale_phi'];
+    for (const [highRes, expected] of [[false, [30, 3.0, true, true, 'Modality + STG (early)', 0.45]],
+                                       [true, [40, 6.0, true, true, 'Off', 0.0]]]) {
+        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+        const node = ltxNode('Auto', 1.0);
+        node.widgets.push({ name: 'flux_shift', value: 1.0 }, { name: 'force_exact_steps', value: false },
+            { name: 'terminal_sigma_to_zero', value: false }, { name: 'ltx_guidance', value: 'Off' },
+            { name: 'guidance_rescale_phi', value: 0.0 });
+        context.metaDefaults(node);
+        assert.deepEqual(names.map(name => node.widgets.find(w => w.name === name).value), expected);
+    }
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);
