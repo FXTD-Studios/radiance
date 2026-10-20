@@ -17,7 +17,7 @@ import comfy.sd
 import comfy.utils
 import comfy.model_management
 
-from radiance.config.model_map import RADIANCE_MODEL_MAP, CHECKPOINT_PRESETS, VIDEO_PRESET_NAMES, VIDEO_MODEL_TYPES
+from radiance.config.model_map import RADIANCE_MODEL_MAP, CHECKPOINT_PRESETS
 from radiance.model.detect import (
     detect_model_type,
     latent_format,
@@ -136,9 +136,9 @@ def file_fingerprint(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shared load_radiance_stack pipeline steps (used by RadianceUnifiedLoader and
-# RadianceVideoLoader). Each step appends human-readable lines to the caller's
-# info_lines list (mutated in place) for the HUD output.
+# Shared load_radiance_stack pipeline steps (used by RadianceUnifiedLoader).
+# Each step appends human-readable lines to the caller's info_lines list
+# (mutated in place) for the HUD output.
 # ---------------------------------------------------------------------------
 
 
@@ -647,10 +647,9 @@ def load_standalone_vae(
 ):
     """Load a standalone VAE file.
 
-    ``load_sd_metadata_fn`` is the caller's ``_load_vae_sd_metadata`` (per-class
-    polymorphism: the base loader returns ``(sd, None)``, the video loader
-    returns ``(sd, metadata)`` so ``comfy.sd.VAE`` can pick the correct internal
-    config for LTX 2.3).
+    ``load_sd_metadata_fn`` is the caller's ``_load_vae_sd_metadata``: it returns
+    ``(sd, metadata)`` so ``comfy.sd.VAE`` can pick the correct internal config
+    (LTX 2.3's video VAE needs it).
 
     Returns ``(vae, vae_time, vae_cache_hit)``.
     """
