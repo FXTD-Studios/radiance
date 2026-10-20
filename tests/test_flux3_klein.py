@@ -78,11 +78,12 @@ class TestTables:
         assert D.estimate_vram_usage("flux3", "default") == pytest.approx(20.1)
 
     def test_presets(self):
-        from radiance.config.model_map import CHECKPOINT_PRESETS, VIDEO_PRESET_NAMES
-        from radiance.nodes.generate.loader import MODEL_TYPES
+        from radiance.config.model_map import CHECKPOINT_PRESETS
+        from radiance.nodes.generate.loader import MODEL_TYPES, RadianceUnifiedLoader
+        presets = RadianceUnifiedLoader.INPUT_TYPES()["required"]["preset"][0]
         for name in ("Flux.3 Klein", "Flux.3 Klein (Low VRAM)"):
             assert CHECKPOINT_PRESETS[name]["model_type"] == "flux3"
-            assert name not in VIDEO_PRESET_NAMES
+            assert name in presets
         assert "flux3" in MODEL_TYPES
         names = list(CHECKPOINT_PRESETS)
         assert names.index("Flux.3 Klein") == names.index("Flux.2 (Low VRAM)") + 1
