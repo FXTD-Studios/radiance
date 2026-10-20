@@ -138,17 +138,19 @@ Attach an energy mask to conditioning for Energy-Prioritized Sampling.
 
 `RadianceUnifiedLoader`
 
-Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-detects architecture, auto-tunes weights/offload, supports chainable LORA_STACK, and outputs JSON model metadata.
+Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-detects architecture, auto-tunes weights/offload, supports chainable LORA_STACK, and outputs JSON model metadata. For video models (LTX, Wan, HunyuanVideo...) it also loads the audio VAE, the latent upscale model and Wan 2.2's low-noise expert.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Flux.3 Klein`, `Flux.3 Klein (Low VRAM)`, `Lumina2`, and 9 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
-| `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). |
+| `preset` | choice | `Custom` | `Custom`, `AuraFlow`, `Chroma`, `CogVideoX`, `Cosmos World`, `Flux.1`, `Flux.1 (Low VRAM)`, `Flux.2`, `Flux.2 (Low VRAM)`, `Flux.3 Klein`, and 26 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
+| `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). For WAN 2.2, select either the high_noise or low_noise file — the companion expert is detected automatically. The 'model' output always carries the high_noise expert and 'model_low_noise' always carries the low_noise expert, regardless of which file is selected. |
 | `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
-| `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `lumina2`, `z_image`, `pixart`, `aura_flow`, and 12 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
+| `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `flux`, `sd3`, `sd3.5`, `sdxl`, `sd1.5`, `hunyuan_video`, `wan`, `ltxv`, `ltxav`, and 23 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
 | `vae_name` | choice |  | `Baked VAE (from UNET)` | VAE for encoding/decoding latents. 'Baked VAE (from UNET)' extracts it from the checkpoint, for architectures whose standard release bundles the VAE into the main file instead of shipping it separately. |
+| `audio_vae_name` (optional) | choice | `None` | `None`, `Baked Audio VAE (from UNET)` | Audio VAE for LTX 2.3 / 2.5. Choose 'Baked' or a standalone safetensors file. |
+| `upscale_model_name` (optional) | choice | `None` | `None` | Latent Upscale Model (e.g. for LTX 2.3 / 2.5 or HunyuanVideo). |
 | `clip_l` (optional) | choice | `None` | `None` | CLIP-L (text encoder). Used by: SD1.5, SDXL, Flux, SD3. |
 | `clip_g` (optional) | choice | `None` | `None` | CLIP-G (text encoder). Used by: SDXL, SD3, SD3.5. |
 | `t5xxl` (optional) | choice | `None` | `None`, `Baked (from UNET)` | T5-XXL (text encoder). Used by: Flux, SD3, SD3.5, Wan, PixArt, LTX (pre-2.3). 'Baked (from UNET)' loads it from the main checkpoint -- AuraFlow ships no standalone text encoder file. |
@@ -174,6 +176,9 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `lora_stack` | LORA_STACK |
 | `model_meta` | STRING |
 | `upsampler_clip` | CLIP |
+| `model_low_noise` | MODEL |
+| `audio_vae` | VAE |
+| `upscale_model` | LATENT_UPSCALE_MODEL |
 
 ## LoRA Stack
 
