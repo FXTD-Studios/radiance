@@ -765,6 +765,10 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     name = unet_file.lower()
     if detected_type == "flux3":
         return FLUX3_DISTILLED if _flux3_name_is_distilled(name) else None
+    # ALBABIT-FIX: the LTX 2.3 / 2.5 Distilled models run at cfg 1 in both passes; the
+    # frontend's stage presets set their steps (8, then 3), which differ per pass.
+    if detected_type == "ltxav" and "distilled" in name:
+        return {"cfg": 1.0}
     if detected_type == "flux2-klein":
         is_distilled = "base" not in name
         return {"guidance": 1.0, "steps": 4} if is_distilled else {"guidance": 4.0, "steps": 50}
@@ -1070,8 +1074,12 @@ WORKFLOW_PRESETS = [
     "[V] LTX-Video (25 steps)",
     "[V] LTX 2.3 LowRes (20 steps)",
     "[V] LTX 2.3 HighRes (40 steps)",
+    "[V] LTX 2.3 Distilled LowRes (8 steps)",
+    "[V] LTX 2.3 Distilled HighRes (3 steps)",
     "[V] LTX 2.5 LowRes (30 steps)",
     "[V] LTX 2.5 HighRes (40 steps)",
+    "[V] LTX 2.5 Distilled LowRes (8 steps)",
+    "[V] LTX 2.5 Distilled HighRes (3 steps)",
     "[V] HunyuanVideo (30 steps)",
     "[V] MiniMax H3 T2V (20 steps)",
 

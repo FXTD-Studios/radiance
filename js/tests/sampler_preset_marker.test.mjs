@@ -70,6 +70,36 @@ test('Auto on LTX 2.5 Dev follows the 30-step LowRes preset, audio_cfg included'
     assert.equal(value('audio_cfg'), 1.0);
 });
 
+test('Auto on an LTX Distilled file follows the Distilled presets, 8 steps then 3', () => {
+    const context = samplerContext();
+    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors' }] });`, context);
+    for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
+        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+        const node = ltxNode('Auto', 3.0);
+        node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
+        context.metaDefaults(node);
+        const value = (name) => node.widgets.find(w => w.name === name).value;
+        assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
+            [steps, 1.0, 'euler_ancestral', 'linear_quadratic', denoise]);
+    }
+});
+
+test('Auto takes the LTX stage schedule and guidance too', () => {
+    const context = samplerContext();
+    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-dev-transformer-bf16.safetensors' }] });`, context);
+    const names = ['steps', 'flux_shift', 'force_exact_steps', 'terminal_sigma_to_zero', 'ltx_guidance', 'guidance_rescale_phi'];
+    for (const [highRes, expected] of [[false, [30, 3.0, true, true, 'Modality + STG (early)', 0.45]],
+                                       [true, [40, 6.0, true, true, 'Off', 0.0]]]) {
+        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+        const node = ltxNode('Auto', 1.0);
+        node.widgets.push({ name: 'flux_shift', value: 1.0 }, { name: 'force_exact_steps', value: false },
+            { name: 'terminal_sigma_to_zero', value: false }, { name: 'ltx_guidance', value: 'Off' },
+            { name: 'guidance_rescale_phi', value: 0.0 });
+        context.metaDefaults(node);
+        assert.deepEqual(names.map(name => node.widgets.find(w => w.name === name).value), expected);
+    }
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);
