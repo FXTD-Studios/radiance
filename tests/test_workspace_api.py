@@ -2334,3 +2334,130 @@ def test_preview_refuses_an_oversized_preview_entry(ws, monkeypatch):
     resp = run(ws.m.get_workflow_preview(Req(query={"filename": "huge.rad"})))
     assert resp.status == 413
     assert body(resp) == {"error": "Preview image is too large"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  29. Input files travel inside a .rad v3
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _loader_graph(*values):
+    return {"nodes": [{"type": "LoadImage", "widgets_values": [value, "image"]} for value in values]}
+
+
+def _open(ws, filename):
+    return body(run(ws.m.get_workflow(Req(query={"filename": filename}))))
+
+
+def test_save_embeds_the_input_files_the_graph_reads(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    (ws.inp / "sub").mkdir()
+    (ws.inp / "sub" / "ref.png").write_bytes(b"SUB")
+    (ws.out / "render.png").write_bytes(b"OUT")
+    (ws.inp.parent / "escape.png").write_bytes(b"OUTSIDE")
+    graph = _loader_graph("ref.png", "sub/ref.png [input]", "render.png [output]",
+                          "missing.png", "../escape.png")
+
+    data = ws.save("sh010.rad", content=json.dumps(graph)).read_bytes()
+
+    assert data[:4] == ws.m.RAD_MAGIC_V3, "only a v3 container can carry the input files"
+    _, meta, assets = ws.m._unpack_rad_v3(data)
+    assert assets == {"ref.png": PNG_1PX, "ref_1.png": b"SUB"}
+    assert meta["inputs"] == {"ref.png": "ref.png", "ref_1.png": "sub/ref.png"}
+
+
+def test_open_puts_missing_input_files_back(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    (ws.inp / "sub").mkdir()
+    (ws.inp / "sub" / "ref.png").write_bytes(b"SUB")
+    graph = _loader_graph("ref.png", "sub/ref.png")
+    ws.save("sh010.rad", content=json.dumps(graph))
+    (ws.inp / "ref.png").unlink()
+    (ws.inp / "sub" / "ref.png").unlink()
+    (ws.inp / "sub").rmdir()
+
+    assert json.loads(_open(ws, "sh010.rad")["content"]) == graph
+    assert (ws.inp / "ref.png").read_bytes() == PNG_1PX
+    assert (ws.inp / "sub" / "ref.png").read_bytes() == b"SUB"
+
+
+def test_open_reuses_an_identical_input_file(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png")
+    ws.save("sh010.rad", content=json.dumps(graph))
+
+    assert json.loads(_open(ws, "sh010.rad")["content"]) == graph
+    assert [p.name for p in ws.inp.iterdir()] == ["ref.png"]
+
+
+def test_open_never_overwrites_a_different_input_file(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    ws.save("sh010.rad", content=json.dumps(_loader_graph("ref.png", "ref.png [input]")))
+    (ws.inp / "ref.png").write_bytes(b"SOMEONE ELSE'S")
+    (ws.inp / "ref_1.png").write_bytes(b"ANOTHER")
+
+    content = json.loads(_open(ws, "sh010.rad")["content"])
+
+    assert (ws.inp / "ref.png").read_bytes() == b"SOMEONE ELSE'S"
+    assert (ws.inp / "ref_1.png").read_bytes() == b"ANOTHER"
+    assert (ws.inp / "ref_2.png").read_bytes() == PNG_1PX
+    assert content == _loader_graph("ref_2.png", "ref_2.png [input]")
+
+
+def test_open_refuses_an_input_path_outside_the_input_folder(ws):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("x.png")), {},
+                             assets={"x.png": b"EVIL"}, inputs={"x.png": "../evil.png"})
+    (ws.root / "evil.rad").write_bytes(blob)
+
+    resp = run(ws.m.get_workflow(Req(query={"filename": "evil.rad"})))
+
+    assert resp.status == 500
+    assert "unsafe input path" in body(resp)["error"]
+    assert not (ws.inp.parent / "evil.png").exists()
+
+
+def test_import_puts_input_files_back(ws):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("ref.png")), {},
+                             assets={"ref.png": PNG_1PX}, inputs={"ref.png": "ref.png"})
+
+    payload = body(run(ws.m.unpack_workflow_api(Req(raw=blob))))
+
+    assert payload["success"] is True
+    assert (ws.inp / "ref.png").read_bytes() == PNG_1PX
+
+
+def test_a_file_past_the_container_limit_is_left_out(ws, monkeypatch, caplog):
+    (ws.inp / "small.png").write_bytes(b"S" * 10)
+    (ws.inp / "big.mp4").write_bytes(b"B" * 5000)
+    content = json.dumps(_loader_graph("small.png", "big.mp4"))
+    monkeypatch.setattr(ws.m, "MAX_RAD_UNCOMPRESSED_BYTES", 65536 + len(content) + 1000)
+
+    _, meta, assets = ws.m._unpack_rad_v3(ws.save("sh010.rad", content=content).read_bytes())
+
+    assert meta["inputs"] == {"small.png": "small.png"}
+    assert "big.mp4 is not embedded in the .rad" in caplog.text
+
+
+def test_export_packs_input_files_into_a_v3(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    resp = run(ws.m.pack_workflow(Req(json_body={"content": json.dumps(_loader_graph("ref.png"))})))
+
+    blob = raw_body(resp)
+    assert blob[:4] == ws.m.RAD_MAGIC_V3
+    _, meta, assets = ws.m._unpack_rad_v3(blob)
+    assert assets == {"ref.png": PNG_1PX}
+    assert meta["format"] == "v3"
+
+
+def test_node_run_and_save_version_embed_input_files(populated):
+    (populated.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png")
+    populated.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1,
+                                             prompt=API_PROMPT, extra_pnginfo={"workflow": graph})
+    run(populated.m.save_project_version(Req(
+        match_info={"project_id": "show-a"},
+        json_body={"content": json.dumps(graph), "filename": "new.rad"})))
+
+    for written in (populated.root / "sh010_ada_v0001.rad", populated.root / "SHOW A" / "new.rad"):
+        _, meta, assets = populated.m._unpack_rad_v3(written.read_bytes())
+        assert assets == {"ref.png": PNG_1PX}, written.name
+        assert meta["inputs"] == {"ref.png": "ref.png"}
