@@ -737,6 +737,17 @@ def _make_comfy_stubs():
     folder_paths.get_input_directory  = MagicMock(return_value="/tmp")
     folder_paths.get_output_directory = MagicMock(return_value="/tmp/comfy_output")
     folder_paths.filter_files_content_types = MagicMock(return_value=[])
+    folder_paths.get_temp_directory = MagicMock(return_value="/tmp/comfy_temp")
+
+    def _annotated_filepath(name):
+        # ALBABIT-FIX: as ComfyUI, " [output]" / " [input]" / " [temp]" names the folder, else None.
+        for tag, getter in (("[output]", "get_output_directory"), ("[input]", "get_input_directory"),
+                            ("[temp]", "get_temp_directory")):
+            if name.endswith(tag):
+                return name[:-len(tag) - 1], getattr(folder_paths, getter)()
+        return name, None
+
+    folder_paths.annotated_filepath = _annotated_filepath
     folder_paths.get_annotated_filepath = MagicMock(side_effect=lambda name: name)
     folder_paths.exists_annotated_filepath = MagicMock(return_value=True)
     folder_paths.models_dir = "/tmp/comfy_models"
