@@ -21,6 +21,15 @@ function setWidgetVisible(widget, visible, node) {
 // Node definition identifiers
 const LOADER_NODES = ["RadianceUnifiedLoader", "RadianceImageLoader", "RadianceVideoLoader"];
 
+// ALBABIT-FIX: the Video Loader's audio_vae_name/upscale_model_name now sit
+// under vae_name. Loaders saved before 4.0 hold positional widgets_values in
+// this order; declaring it makes the frontend restore them by name.
+const LOADER_SAVED_WIDGET_ORDER = [
+    "preset", "unet_name", "weight_dtype", "model_type", "vae_name", "clip_l", "clip_g", "t5xxl",
+    "llm_encoder", "text_projection", "clip_dtype", "offload_mode", "check_vram", "use_cache",
+    "lora_on_error", "auto_download", "model_shift", "upsampler",
+];
+
 // Dynamic visibility rules for CLIP slots per preset.
 // ALBABIT-FIX: keys sorted alphabetically ("Custom" pinned first) to match
 // the preset dropdown order (config/model_map.py's CHECKPOINT_PRESETS).
@@ -1095,6 +1104,11 @@ app.registerExtension({
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (!LOADER_NODES.includes(nodeData.name)) return;
+        // The deprecated Video Loader keeps its own (positional) order: it already
+        // had these two inputs under vae_name.
+        if (nodeData.name !== "RadianceVideoLoader") {
+            nodeData.fallbackWidgetsValuesNames = LOADER_SAVED_WIDGET_ORDER;
+        }
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {

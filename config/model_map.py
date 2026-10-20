@@ -1280,35 +1280,3 @@ CHECKPOINT_PRESETS: dict = {
         "clip_dtype": "default",
     },
 }
-
-# ALBABIT-FIX: presets for video-generation architectures — used to filter
-# the Loader's "preset" dropdown (RadianceVideoLoader shows these,
-# RadianceUnifiedLoader shows the rest).
-VIDEO_PRESET_NAMES: set = {
-    "CogVideoX",
-    "Cosmos World",
-    "HunyuanVideo",
-    "LTX Video",
-    "LTX Video (Low VRAM)",
-    "LTX Video 2.3",
-    "LTX Video 2.3 (Low VRAM)",
-    "LTX Video 2.5",
-    "LTX Video 2.5 (Low VRAM)",
-    "MiniMax H3",
-    "MiniMax H3 (Low VRAM)",
-    "Mochi",
-    "Wan 2.1",
-    "Wan 2.1 (Low VRAM)",
-    "Wan 2.2",
-    "Wan 2.2 (Low VRAM)",
-    "Wan 2.2 TI2V",
-}
-
-# ALBABIT-FIX: model_type analog of VIDEO_PRESET_NAMES — filters the
-# "model_type" dropdown (Custom/Auto-Detect) the same way "preset" is
-# filtered. "ltx" renamed to "ltxv" to match sampler_utils.py.
-VIDEO_MODEL_TYPES: set = {
-    "hunyuan_video", "wan", "wan_ti2v", "ltxv", "ltxav",
-    "cosmos", "cogvideox", "mochi", "minimax",
-    "hunyuan_video_15", "kandinsky5",
-}

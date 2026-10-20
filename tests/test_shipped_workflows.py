@@ -72,9 +72,17 @@ def _ok(value, typ):
     return True
 
 
-def _sampler_saved_order():
-    js = (Path(__file__).resolve().parents[1] / "js" / "radiance_sampler.js").read_text(encoding="utf-8")
-    body = re.search(r"const SAMPLER_SAVED_WIDGET_ORDER = \[(.*?)\];", js, re.S).group(1)
+# Nodes the frontend restores by name: their JS declares the order their graphs were saved in.
+SAVED_ORDERS = {
+    "RadianceSamplerPro": ("radiance_sampler.js", "SAMPLER_SAVED_WIDGET_ORDER"),
+    "RadianceUnifiedLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
+    "RadianceImageLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
+}
+
+
+def _saved_order(js_file, const):
+    js = (Path(__file__).resolve().parents[1] / "js" / js_file).read_text(encoding="utf-8")
+    body = re.search(rf"const {const} = \[(.*?)\];", js, re.S).group(1)
     return re.findall(r'"([^"]+)"', body)
 
 
@@ -93,14 +101,14 @@ def test_every_radiance_widget_value_fits_its_input(path):
             continue
         values = node.get("widgets_values") or []
         expected = _expected_widgets(cls)
-        # The Sampler is restored by name (radiance_sampler.js declares the order
-        # its graphs were saved in); the others by position. Fewer values than
+        # The Sampler and the Loader are restored by name (their JS declares the
+        # order their graphs were saved in); the others by position. Fewer values than
         # widgets is fine when only the tail is missing (the frontend gives
         # newer trailing inputs their defaults); a gap in the middle shows up
         # below as a value that does not fit its input.
         named = node.get("widgets_values_named")
-        if named is None and node.get("type") == "RadianceSamplerPro":
-            named = dict(zip(_sampler_saved_order(), values))
+        if named is None and node.get("type") in SAVED_ORDERS:
+            named = dict(zip(_saved_order(*SAVED_ORDERS[node["type"]]), values))
         pairs = ([(name, typ, named[name]) for name, typ, _ in expected if name in named] if named is not None
                  else [(name, typ, value) for (name, typ, _), value in zip(expected, values)])
         for name, typ, value in pairs:
@@ -117,8 +125,8 @@ def test_start_graph_is_wired():
     vae_in = next(i for i in decode["inputs"] if i["name"] == "vae")
     assert vae_in.get("link") is not None, "HDR VAE Decode has no VAE connected"
     loader = next(n for n in nodes.values() if n["type"] == "RadianceUnifiedLoader")
-    widgets = [e[0] for e in _expected_widgets(_mappings()["RadianceUnifiedLoader"])]
-    vals = dict(zip(widgets, loader["widgets_values"]))
+    # As the frontend restores it: by the order its graphs were saved in.
+    vals = dict(zip(_saved_order(*SAVED_ORDERS["RadianceUnifiedLoader"]), loader["widgets_values"]))
     assert vals["unet_name"] == "flux-2-klein-4b-fp8.safetensors"
     assert vals["vae_name"] == "flux2-vae.safetensors"
     assert vals["llm_encoder"] == "qwen_3_4b.safetensors"
