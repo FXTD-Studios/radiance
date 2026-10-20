@@ -5,6 +5,7 @@ Qwen-Image Edit 2511 and 2512 are Qwen-Image checkpoints: same DiT keys, same
 16ch VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves them to qwen_image.
 """
 import json
+import types
 
 import pytest
 import torch
@@ -66,6 +67,10 @@ class TestQwenImageEditLoader:
 
     @pytest.fixture
     def load(self, monkeypatch):
+        class _QwenModel(str):
+            # Sampled like Qwen-Image: ComfyUI's time scale (multiplier) 1.0.
+            model = types.SimpleNamespace(model_config=types.SimpleNamespace(sampling_settings={"multiplier": 1.0}))
+
         """Runs the image Loader with every file load stubbed out; returns the
         shifts ModelSamplingAuraFlow received and the outputs."""
         from radiance.nodes.generate import loader
@@ -81,7 +86,7 @@ class TestQwenImageEditLoader:
             "resolve_architecture": lambda *a: ("qwen_image", "qwen_image", "Wan21"),
             "setup_offload_mode": lambda *a: None,
             "estimate_vram_for_load": lambda *a, **k: (0.0, 0.0, 0.0),
-            "load_unet_and_baked_vae": lambda *a: ("model", None, None, 0.0, False, 0.0, False),
+            "load_unet_and_baked_vae": lambda *a: (_QwenModel("model"), None, None, 0.0, False, 0.0, False),
             "load_clip_stack": lambda *a: ("clip", [], 0.0, False),
             "load_standalone_vae": lambda *a: ("vae", 0.0, False),
             "apply_lora_stack": lambda model, clip, *a: (model, clip, [], None),
