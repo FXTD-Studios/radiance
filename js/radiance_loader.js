@@ -21,6 +21,15 @@ function setWidgetVisible(widget, visible, node) {
 // Node definition identifiers
 const LOADER_NODES = ["RadianceUnifiedLoader", "RadianceImageLoader", "RadianceVideoLoader"];
 
+// ALBABIT-FIX: the Video Loader's audio_vae_name/upscale_model_name now sit
+// under vae_name. Loaders saved before 4.0 hold positional widgets_values in
+// this order; declaring it makes the frontend restore them by name.
+const LOADER_SAVED_WIDGET_ORDER = [
+    "preset", "unet_name", "weight_dtype", "model_type", "vae_name", "clip_l", "clip_g", "t5xxl",
+    "llm_encoder", "text_projection", "clip_dtype", "offload_mode", "check_vram", "use_cache",
+    "lora_on_error", "auto_download", "model_shift", "upsampler",
+];
+
 // Dynamic visibility rules for CLIP slots per preset.
 // ALBABIT-FIX: keys sorted alphabetically ("Custom" pinned first) to match
 // the preset dropdown order (config/model_map.py's CHECKPOINT_PRESETS).
@@ -40,11 +49,9 @@ const PRESET_SLOTS = {
     "Flux.3 Klein": ["llm_encoder"],
     "Flux.3 Klein (Low VRAM)": ["llm_encoder"],
     "HunyuanVideo": ["clip_l", "llm_encoder"],
-    // ALBABIT-FIX: text_projection dropped -- pre-2.3 LTX only ever loads 1
-    // CLIP file (comfy/text_encoders/lt.py's ltxv_te, T5-only). Providing a
-    // 2nd file (text_projection) would route comfy.sd's CLIPType.LTXV branch
-    // into ltxav_te (Gemma-based, LTX 2.3 only) instead -- the wrong encoder
-    // for these architectures, not just an unused widget.
+    // ALBABIT-FIX: no text_projection: pre-2.3 LTX loads one CLIP file (lt.py's
+    // T5-only ltxv_te). A 2nd file would route comfy.sd's CLIPType.LTXV branch to
+    // ltxav_te (Gemma, LTX 2.3 only), the wrong encoder for these models.
     "LTX Video": ["llm_encoder"],
     "LTX Video (Low VRAM)": ["llm_encoder"],
     "LTX Video 2.3": ["llm_encoder", "text_projection"],
@@ -90,11 +97,9 @@ const PRESET_CONFIGS = {
         // -- no separate VAELoader node at all. No standalone AuraFlow VAE file
         // found; "Baked VAE (from UNET)" listed first, old guesses kept as fallback.
         "vae_hints":     ["Baked VAE (from UNET)", "aura_vae", "sd_vae"],
-        // ALBABIT-FIX: AuraFlow's real encoder is a T5 variant (comfy.text_encoders.
-        // aura_t5.AuraT5Model, TEModel.T5_XL) -- "clip_l" hints never matched any
-        // real file. No standalone encoder file found either (fal/AuraFlow-v0.2's
-        // HF repo only has a generic diffusers-format text_encoder/ folder, not a
-        // distinct ComfyUI-ready filename) -- "Baked (from UNET)" on t5xxl instead.
+        // ALBABIT-FIX: AuraFlow's encoder is a T5 variant (aura_t5.AuraT5Model), so
+        // "clip_l" hints matched nothing; it ships no standalone encoder file
+        // (fal/AuraFlow-v0.2 has only a diffusers folder): "Baked (from UNET)" on t5xxl.
         "clip_hints":    {
             "t5xxl": ["Baked (from UNET)"],
         },
@@ -151,11 +156,9 @@ const PRESET_CONFIGS = {
         "extra_widgets": ["offload_mode"],
         "offload_mode": "cpu_offload",
     },
-    // ALBABIT-FIX: Dev and Klein merged into one preset, Auto-Detect tells
-    // them apart on its own. Quality-first (full precision, then -fp8),
-    // same philosophy as MiniMax H3's presets below. "Flux.2 (Low VRAM)"
-    // inverts this and never lists a full-precision file, even as a
-    // fallback, leaving the widget unmatched instead.
+    // ALBABIT-FIX: Dev and Klein in one preset, Auto-Detect tells them apart.
+    // Quality-first (full precision, then fp8), as MiniMax H3 below; "Flux.2
+    // (Low VRAM)" inverts it and never lists a full-precision file.
     "Flux.2": {
         "unet_hints": [
             "flux2-dev.safetensors",
@@ -288,11 +291,9 @@ const PRESET_CONFIGS = {
         // are separate files, confirmed on Lightricks' HF repo. 0.9.8 first
         // as the newer generation.
         "upscale_hints": ["ltxv-spatial-upscaler-0.9.8", "ltxv-spatial-upscaler-0.9.7", "ltxv-13b", "ltx_13b", "ltxv", "ltx_video", "latent_upsampler", "upsampler"],
-        // ALBABIT-FIX: 2B's standard workflow is a single Sampler -- no
-        // latent-upscale stage -- so leave upscale_model_name on "None"
-        // instead of pre-filling a file the typical pipeline doesn't use.
-        // 13B keeps the real upscale_hints above (2-stage LowRes+HighRes
-        // pipeline, confirmed via the reference 13B workflow).
+        // ALBABIT-FIX: 2B's standard workflow is one Sampler with no latent upscale,
+        // so upscale_model_name stays "None"; 13B keeps the upscale_hints above
+        // (LowRes + HighRes, as its reference workflow).
         "upscale_size_hints": {
             "2b": [],
             "13b": ["ltxv-spatial-upscaler-0.9.8", "ltxv-spatial-upscaler-0.9.7", "ltxv-13b", "ltx_13b", "ltxv", "ltx_video", "latent_upsampler", "upsampler"],
@@ -310,11 +311,9 @@ const PRESET_CONFIGS = {
         "offload_mode": "cpu_offload",
         // ALBABIT-FIX: same real spatial-upscaler hints as "LTX Video" above.
         "upscale_hints": ["ltxv-spatial-upscaler-0.9.8", "ltxv-spatial-upscaler-0.9.7", "ltxv-13b", "ltx_13b", "ltxv", "ltx_video", "latent_upsampler", "upsampler"],
-        // ALBABIT-FIX: 2B's standard workflow is a single Sampler -- no
-        // latent-upscale stage -- so leave upscale_model_name on "None"
-        // instead of pre-filling a file the typical pipeline doesn't use.
-        // 13B keeps the real upscale_hints above (2-stage LowRes+HighRes
-        // pipeline, confirmed via the reference 13B workflow).
+        // ALBABIT-FIX: 2B's standard workflow is one Sampler with no latent upscale,
+        // so upscale_model_name stays "None"; 13B keeps the upscale_hints above
+        // (LowRes + HighRes, as its reference workflow).
         "upscale_size_hints": {
             "2b": [],
             "13b": ["ltxv-spatial-upscaler-0.9.8", "ltxv-spatial-upscaler-0.9.7", "ltxv-13b", "ltx_13b", "ltxv", "ltx_video", "latent_upsampler", "upsampler"],
@@ -410,11 +409,9 @@ const PRESET_CONFIGS = {
             "llm_encoder": ["gemma_2_2b", "gemma2_2b", "gemma_2"],
         },
     },
-    // ALBABIT-FIX: quality-first for "MiniMax H3", same philosophy as
-    // Flux.2's Dev-first unet_hints above. bf16 exceeds a 32GB card's native
-    // capacity but still runs via ComfyUI's automatic lowvram partial-load,
-    // at a measured real-world cost of about +37% time on a 5090. "MiniMax
-    // H3 (Low VRAM)" never lists bf16, even as a fallback.
+    // ALBABIT-FIX: quality-first, as Flux.2. bf16 exceeds a 32GB card but runs
+    // through ComfyUI's lowvram partial load (about +37% time measured on a
+    // 5090); "MiniMax H3 (Low VRAM)" never lists bf16.
     "MiniMax H3": {
         "unet_hints": [
             "minimax_h3_fl2va_bf16.safetensors", "minimax_h3_fl2va_bf16",
@@ -427,11 +424,8 @@ const PRESET_CONFIGS = {
         "vae_hints":     ["minimax_h3_video_vae_fp16.safetensors", "minimax_h3_video_vae"],
         "audio_vae_hints": ["minimax_h3_audio_vae_fp32.safetensors", "minimax_h3_audio_vae"],
         "clip_hints":    {
-            // ALBABIT-FIX: bf16 first, matching the UNET's quality-first
-            // priority above. Live A/B test (5090): swapping the text
-            // encoder's precision cost near-zero extra time, since it only
-            // runs once (prompt encoding) versus the UNET's cost every
-            // sampling step.
+            // ALBABIT-FIX: bf16 first, as the UNET. The text encoder runs once per
+            // prompt, so its precision costs next to no time (live A/B on a 5090).
             "llm_encoder": [
                 "qwen3vl_32b_minimax_h3_bf16.safetensors", "qwen3vl_32b_minimax_h3_bf16",
                 "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "qwen3vl_32b_minimax_h3_nvfp4_awq",
@@ -579,11 +573,9 @@ const PRESET_CONFIGS = {
             "clip_g": ["clip_g.safetensors", "clip_g"],
         },
     },
-    // ALBABIT-FIX: 1.3B/14B size resolved via unet_size_priority
-    // (_resolveUnetMatch), not bare "14b"/"1.3b" hints (bug caught by
-    // Albabit: those also matched Wan 2.2's own 14B-class files, no
-    // architecture awareness in findMatchingFile). VAE/T5 are shared
-    // across both sizes on HF, no size handling needed there.
+    // ALBABIT-FIX: 1.3B/14B resolved by unet_size_priority (_resolveUnetMatch):
+    // bare "14b"/"1.3b" hints also matched Wan 2.2's 14B files. VAE and T5 are
+    // shared by both sizes.
     "Wan 2.1": {
         "unet_hints":    ["wan2.1", "wan_2.1", "wan-2.1", "Wan2.1"],
         "unet_size_priority": ["14b", "1.3b"],
@@ -886,11 +878,10 @@ function _syncUpsampler(node) {
     }
 }
 
-// ALBABIT-FIX: unet_name/vae_name/CLIP slots/audio_vae_name/upscale_model_name
-// stay visible and editable while a preset is active (unlike model_type/
-// weight_dtype/clip_dtype, hidden by design — loader_utils.py). Flag any that
-// no longer match what autoFillPresetFiles() would pick right now, with a "✎"
-// label marker (same pattern as radiance_sampler.js/radiance_prompt.js).
+// ALBABIT-FIX: unet_name, vae_name, the CLIP slots, audio_vae_name and
+// upscale_model_name stay editable under a preset (model_type and the dtypes
+// are hidden). A "✎" marks any that no longer matches what
+// autoFillPresetFiles() would pick, as in radiance_sampler.js/radiance_prompt.js.
 const PRESET_MARKER = " ✎";
 // ALBABIT-FIX: "🧲" marks unet_name only when its model_meta output actually
 // reaches a live Sampler (_isModelMetaConnected below), not just when the
@@ -1085,16 +1076,20 @@ function updateLoaderUI(node, forceAutoFill = false) {
     updatePresetDivergenceMarkers(node);
 }
 
-// ALBABIT-FIX: app.registerExtension's nodeCreated/loadedGraphNode wraps
-// callbacks AFTER Vue (Nodes 2.0) has already mounted the widgets, so the
-// wrapped callback never fires on user interaction. beforeRegisterNodeDef +
-// prototype.onNodeCreated/onConfigure (same as radiance_sampler.js) hooks
-// before widget construction instead, so Vue captures the wrapped version.
+// ALBABIT-FIX: registerExtension's nodeCreated/loadedGraphNode run after Vue
+// (Nodes 2.0) mounts the widgets, so wrapped callbacks never fired. Hooking
+// prototype.onNodeCreated/onConfigure in beforeRegisterNodeDef, as
+// radiance_sampler.js does, runs before the widgets are built.
 app.registerExtension({
     name: "Radiance.UnifiedLoaderSync",
 
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (!LOADER_NODES.includes(nodeData.name)) return;
+        // The deprecated Video Loader keeps its own (positional) order: it already
+        // had these two inputs under vae_name.
+        if (nodeData.name !== "RadianceVideoLoader") {
+            nodeData.fallbackWidgetsValuesNames = LOADER_SAVED_WIDGET_ORDER;
+        }
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -1183,11 +1178,9 @@ app.registerExtension({
             const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             this._configuredByLoad = true;
             const node = this;
-            // ALBABIT-FIX: a single 100ms reapply can fire before
-            // graph.configure() finishes applying the saved "preset" value,
-            // folding as "Custom" with nothing to correct it after. Mirrors
-            // radiance_sampler.js: 150ms for Vue's first layout pass, 600ms
-            // as a safety net for heavier workflows.
+            // ALBABIT-FIX: one 100ms reapply could run before graph.configure()
+            // restored "preset" and fold as "Custom". As radiance_sampler.js:
+            // 150ms for Vue's first layout, 600ms for heavier workflows.
             setTimeout(() => updateLoaderUI(node, false), 150);
             setTimeout(() => updateLoaderUI(node, false), 600);
             return r;

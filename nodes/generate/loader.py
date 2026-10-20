@@ -12,7 +12,6 @@ import logging
 import os
 import time
 
-import torch
 import folder_paths
 import comfy.sd
 import comfy.utils
@@ -24,8 +23,6 @@ from comfy.cldm.control_types import UNION_CONTROLNET_TYPES
 from ...loader_utils import (
     RADIANCE_MODEL_MAP,
     CHECKPOINT_PRESETS,
-    VIDEO_PRESET_NAMES,
-    VIDEO_MODEL_TYPES,
     LATENT_CHANNELS,
     file_fingerprint as _file_fingerprint,
     ensure_model_exists as _ensure_model_exists,
@@ -47,9 +44,14 @@ from ...loader_utils import (
 from radiance.model.cache import LRUCache
 from radiance.model.detect import get_clip_type_enum
 
-# ALBABIT-FIX: dedicated cache for RadianceVideoLoader's latent upscale model
-# extra (LTX 2.3 / HunyuanVideo SR). Kept separate from the core unet/clip/vae
-# caches so it doesn't compete for eviction with the main pipeline models.
+try:
+    from comfy_extras.nodes_hunyuan import LatentUpscaleModelLoader
+except ImportError:  # ComfyUI before its Load Latent Upscale Model node
+    LatentUpscaleModelLoader = None
+
+# ALBABIT-FIX: dedicated cache for the latent upscale model (LTX / HunyuanVideo
+# SR). Kept separate from the core unet/clip/vae caches so it doesn't compete
+# for eviction with the main pipeline models.
 _upscale_model_cache = LRUCache()
 # ALBABIT-FIX: same for the prompt upsampler, so it never evicts the text encoder.
 _upsampler_cache = LRUCache()
@@ -74,6 +76,69 @@ def _load_upsampler(name, resolved_type, caching, info_lines):
     if caching:
         _upsampler_cache.put(key, upsampler)
     return upsampler
+
+
+def _load_audio_vae(name, resolved_type, caching, divider, info_lines):
+    """A standalone audio VAE (LTX 2.3 / 2.5, MiniMax H3) from checkpoints/ or vae/, or None."""
+    t0 = time.time()
+    path = folder_paths.get_full_path("checkpoints", name) or folder_paths.get_full_path("vae", name)
+    if not path:
+        logger.warning(f"❌ Audio VAE not found: '{name}'")
+        info_lines.append(f"AUDIO VAE: '{name}' not found")
+        return None
+    key = f"audio_vae:{path}:{_file_fingerprint(path)}"
+    if caching and _audio_vae_cache.has(key):
+        logger.info(f"Audio VAE loaded from cache: {name}")
+        info_lines.append(f"AUDIO VAE: {name} (cached)")
+        return _audio_vae_cache.get(key)
+    try:
+        sd, metadata = comfy.utils.load_torch_file(path, return_metadata=True)
+        audio_vae = construct_audio_vae(sd, metadata, resolved_type)
+    except Exception as e:
+        logger.error(f"❌ Failed to load Audio VAE '{name}': {e}")
+        info_lines.append(f"AUDIO VAE: load failed ({e})")
+        return None
+    elapsed = time.time() - t0
+    logger.info(f"Audio VAE loaded {divider} {name} {divider} {elapsed:.1f}s")
+    info_lines.append(f"AUDIO VAE: {name} ({elapsed:.1f}s)")
+    if caching:
+        _audio_vae_cache.put(key, audio_vae)
+    return audio_vae
+
+
+def _load_upscale_model(name, caching, divider, info_lines):
+    """A latent upscale model (LTX, HunyuanVideo 1.5) through ComfyUI's Load Latent Upscale Model, or None."""
+    t0 = time.time()
+    path = folder_paths.get_full_path("latent_upscale_models", name)
+    if not path:
+        logger.warning(f"❌ Latent Upscale Model not found: '{name}'")
+        info_lines.append(f"UPSCALE MODEL: '{name}' not found")
+        return None
+    key = f"upscale_model:{path}:{_file_fingerprint(path)}"
+    if caching and _upscale_model_cache.has(key):
+        logger.info(f"Latent Upscale Model loaded from cache: {name}")
+        info_lines.append(f"UPSCALE MODEL: {name} (cached)")
+        return _upscale_model_cache.get(key)
+    if LatentUpscaleModelLoader is None:
+        logger.warning(f"❌ '{name}' needs a ComfyUI with the Load Latent Upscale Model node; update ComfyUI.")
+        info_lines.append(f"UPSCALE MODEL: '{name}' needs a newer ComfyUI")
+        return None
+    try:
+        upscale_model = LatentUpscaleModelLoader.execute(name).args[0]
+    except Exception as e:
+        logger.error(f"❌ Failed to load Latent Upscale Model '{name}': {e}")
+        info_lines.append(f"UPSCALE MODEL: load failed ({e})")
+        return None
+    if upscale_model is None:
+        logger.warning(f"❌ Unrecognized upscale model architecture for: '{name}'")
+        info_lines.append(f"UPSCALE MODEL: unrecognized architecture ({name})")
+        return None
+    elapsed = time.time() - t0
+    logger.info(f"Latent Upscale Model loaded {divider} {name} {divider} {elapsed:.1f}s")
+    info_lines.append(f"UPSCALE MODEL: {name} ({elapsed:.1f}s)")
+    if caching:
+        _upscale_model_cache.put(key, upscale_model)
+    return upscale_model
 
 
 
@@ -219,21 +284,21 @@ class RadianceUnifiedLoader:
         # weights ship inside the main UNET checkpoint (see assemble_clip_paths).
         text_projection_list = ["None", "Baked (from UNET)"] + folder_paths.get_filename_list("text_encoders")
         text_projection_slot = lambda tip: (text_projection_list, {"default": "None", "tooltip": tip})
-        # ALBABIT-FIX: AuraFlow has no standalone text encoder file either
-        # (official workflow uses CheckpointLoaderSimple only, its HF repo
-        # only ships a diffusers-format folder). Same "Baked (from UNET)"
-        # mechanism as text_projection, on the t5xxl slot (AuraFlow's real
-        # encoder is T5, not clip_l, see assemble_clip_paths/CLIP_SLOT_ORDER).
+        # ALBABIT-FIX: AuraFlow ships no standalone text encoder either (its HF repo
+        # has only a diffusers folder): "Baked (from UNET)" on t5xxl, its real encoder
+        # (see assemble_clip_paths/CLIP_SLOT_ORDER).
         t5xxl_list = ["None", "Baked (from UNET)"] + folder_paths.get_filename_list("text_encoders")
         t5xxl_slot = lambda tip: (t5xxl_list, {"default": "None", "tooltip": tip})
+        # ALBABIT-FIX: optional standalone/baked Audio VAE (LTX 2.3 / 2.5 audio).
+        vae_files = folder_paths.get_filename_list("vae")
+        ckpt_files = folder_paths.get_filename_list("checkpoints")
+        audio_vae_list = ["None", "Baked Audio VAE (from UNET)"] + sorted(set(ckpt_files + vae_files))
 
         return {
             "required": {
                 # ── Preset ──
                 "preset": (
-                    # ALBABIT-FIX: image loader only lists image-model presets
-                    # (video presets are exclusive to RadianceVideoLoader).
-                    [k for k in CHECKPOINT_PRESETS if k not in VIDEO_PRESET_NAMES],
+                    list(CHECKPOINT_PRESETS),
                     {"default": "Custom",
                      "tooltip": "Quick-configure for common architectures. "
                                 "Overrides model_type, dtypes, offload_mode, and hints "
@@ -242,7 +307,12 @@ class RadianceUnifiedLoader:
                 # ── UNET ──
                 "unet_name": (
                     folder_paths.get_filename_list("diffusion_models"),
-                    {"tooltip": "Main diffusion model (UNET / DiT / Transformer)."},
+                    {"tooltip": "Main diffusion model (UNET / DiT / Transformer).\n"
+                                "For WAN 2.2, select either the high_noise or low_noise file — "
+                                "the companion expert is detected automatically. "
+                                "The 'model' output always carries the high_noise expert "
+                                "and 'model_low_noise' always carries the low_noise expert, "
+                                "regardless of which file is selected."},
                 ),
                 "weight_dtype": (
                     WEIGHT_DTYPES,
@@ -251,10 +321,7 @@ class RadianceUnifiedLoader:
                 ),
                 # ── Architecture ──
                 "model_type": (
-                    # ALBABIT-FIX: image loader only lists image-model
-                    # model_types (video model_types are exclusive to
-                    # RadianceVideoLoader).
-                    [m for m in MODEL_TYPES if m not in VIDEO_MODEL_TYPES],
+                    MODEL_TYPES,
                     {"default": "Auto-Detect",
                      "tooltip": "'Auto-Detect' reads the checkpoint's key names to determine "
                                 "architecture. Override manually if detection fails."},
@@ -264,7 +331,7 @@ class RadianceUnifiedLoader:
                 # (SD3.5) skip vae_name, as LTX 2.3 does. Appended, so the combo
                 # default stays a real VAE file.
                 "vae_name": (
-                    folder_paths.get_filename_list("vae") + ["Baked VAE (from UNET)"],
+                    vae_files + ["Baked VAE (from UNET)"],
                     {"tooltip": "VAE for encoding/decoding latents. "
                                 "'Baked VAE (from UNET)' extracts it from the checkpoint, "
                                 "for architectures whose standard release bundles the VAE "
@@ -272,6 +339,18 @@ class RadianceUnifiedLoader:
                 ),
             },
             "optional": {
+                # ALBABIT-FIX: the Video Loader's two inputs, right under vae_name as
+                # there; radiance_loader.js restores this node's saved values by name.
+                "audio_vae_name": (
+                    audio_vae_list,
+                    {"default": "None",
+                     "tooltip": "Audio VAE for LTX 2.3 / 2.5. Choose 'Baked' or a standalone safetensors file."},
+                ),
+                "upscale_model_name": (
+                    ["None"] + (folder_paths.get_filename_list("latent_upscale_models") or []),
+                    {"default": "None",
+                     "tooltip": "Latent Upscale Model (e.g. for LTX 2.3 / 2.5 or HunyuanVideo)."},
+                ),
                 # ── Named CLIP slots ──
                 "clip_l":      clip_slot(
                     "CLIP-L (text encoder). Used by: SD1.5, SDXL, Flux, SD3."),
@@ -336,20 +415,28 @@ class RadianceUnifiedLoader:
             },
         }
 
-    RETURN_TYPES  = ("MODEL", "CLIP", "VAE", "LORA_STACK", "STRING", "CLIP")
-    RETURN_NAMES  = ("model", "clip", "vae", "lora_stack", "model_meta", "upsampler_clip")
+    # ALBABIT-FIX: the Video Loader's outputs come last, after the image ones:
+    # saved graphs keep their outputs in the order they were saved, so their
+    # links still land on the right output.
+    RETURN_TYPES  = ("MODEL", "CLIP", "VAE", "LORA_STACK", "STRING", "CLIP",
+                     "MODEL", "VAE", "LATENT_UPSCALE_MODEL")
+    RETURN_NAMES  = ("model", "clip", "vae", "lora_stack", "model_meta", "upsampler_clip",
+                     "model_low_noise", "audio_vae", "upscale_model")
     FUNCTION      = "load_radiance_stack"
     CATEGORY      = "FXTD STUDIOS/Radiance/◎ Generate"
     DESCRIPTION   = (
         "Universal loader v3.3 — streamlined to be extremely visual and modular. "
         "Auto-detects architecture, auto-tunes weights/offload, supports "
-        "chainable LORA_STACK, and outputs JSON model metadata."
+        "chainable LORA_STACK, and outputs JSON model metadata. For video models "
+        "(LTX, Wan, HunyuanVideo...) it also loads the audio VAE, the latent "
+        "upscale model and Wan 2.2's low-noise expert."
     )
 
     @staticmethod
     def _load_vae_sd_metadata(vae_path):
-        # ALBABIT-FIX: base loader does not need VAE metadata.
-        return comfy.utils.load_torch_file(vae_path), None
+        # ALBABIT-FIX: with its metadata, as ComfyUI's Load VAE reads it, so
+        # comfy.sd.VAE picks the right config (LTX 2.3's video VAE needs it).
+        return comfy.utils.load_torch_file(vae_path, return_metadata=True)
 
     def load_radiance_stack(
         self,
@@ -358,6 +445,8 @@ class RadianceUnifiedLoader:
         weight_dtype,
         model_type,
         vae_name,
+        audio_vae_name="None",
+        upscale_model_name="None",
         clip_l="None",
         clip_g="None",
         t5xxl="None",
@@ -382,278 +471,6 @@ class RadianceUnifiedLoader:
         llm_encoder = _none(llm_encoder)
         text_projection = _none(text_projection)
         upsampler = _none(upsampler)
-
-        load_start  = time.time()
-        info_lines  = []
-        caching     = use_cache == "On"
-
-        # ════════════════════════════════════════════════════════════════
-        # 0. APPLY PRESET
-        # ════════════════════════════════════════════════════════════════
-        model_type, weight_dtype, clip_dtype, overrides = apply_checkpoint_preset(
-            preset, model_type, weight_dtype, clip_dtype, info_lines
-        )
-
-        # ════════════════════════════════════════════════════════════════
-        # 1. RESOLVE ARCHITECTURE
-        # ════════════════════════════════════════════════════════════════
-        unet_path = _ensure_model_exists(unet_name, "diffusion_models", auto_download)
-        if not unet_path:
-            raise FileNotFoundError(
-                f"❌ UNET not found: '{unet_name}'. Enable auto_download or install it manually."
-            )
-
-        divider = resolve_divider()
-
-        resolved_type, detected_type, latent_fmt = resolve_architecture(
-            unet_path, model_type, info_lines
-        )
-
-        # ════════════════════════════════════════════════════════════════
-        # 2. OFFLOAD MODE
-        # ════════════════════════════════════════════════════════════════
-        clip_load_device = setup_offload_mode(offload_mode, info_lines)
-
-        # ════════════════════════════════════════════════════════════════
-        # 3. VRAM ESTIMATION
-        # ════════════════════════════════════════════════════════════════
-        has_loras = bool(lora_stack)
-        est, avail, total = estimate_vram_for_load(
-            resolved_type, weight_dtype, clip_dtype, has_loras, check_vram, divider, info_lines
-        )
-
-        # ════════════════════════════════════════════════════════════════
-        # 4. LOAD UNET  (+ optional baked VAE extraction, mtime + size cache key)
-        # ════════════════════════════════════════════════════════════════
-        # No audio_vae_name slot on the base loader -- always passed "None".
-        model, vae, _audio_vae, unet_time, unet_cache_hit, vae_time, vae_cache_hit = load_unet_and_baked_vae(
-            unet_path, unet_name, weight_dtype, offload_mode, vae_name, "None", resolved_type,
-            caching, divider, info_lines
-        )
-
-        # ════════════════════════════════════════════════════════════════
-        # 5. LOAD CLIP  (named slots → ordered paths → mtime cache key)
-        # ════════════════════════════════════════════════════════════════
-        clip, clip_slot_used, clip_time, clip_cache_hit = load_clip_stack(
-            resolved_type, unet_path, clip_l, clip_g, t5xxl, llm_encoder, text_projection,
-            clip_dtype, offload_mode, clip_load_device, caching, divider, auto_download, info_lines
-        )
-        upsampler_clip = _load_upsampler(upsampler, resolved_type, caching, info_lines) if upsampler else None
-
-        # ════════════════════════════════════════════════════════════════
-        # 6. LOAD STANDALONE VAE  (mtime cache key) — skipped if baked
-        # ════════════════════════════════════════════════════════════════
-        extract_vae = (vae_name == "Baked VAE (from UNET)")
-        if not extract_vae:
-            vae, vae_time, vae_cache_hit = load_standalone_vae(
-                vae_name, auto_download, caching, divider, info_lines, self._load_vae_sd_metadata
-            )
-
-        # ════════════════════════════════════════════════════════════════
-        # 7. APPLY LoRA STACK
-        #    Priority: upstream lora_stack input stack
-        # ════════════════════════════════════════════════════════════════
-        model, clip, applied_loras, out_lora_stack = apply_lora_stack(
-            model, clip, lora_stack, lora_on_error, divider, info_lines
-        )
-
-        if model_shift > 0:
-            model = nodes_model_advanced.ModelSamplingAuraFlow().patch_aura(model, model_shift)[0]
-            msg = f"Model shift {model_shift:g} (as ModelSamplingAuraFlow)"
-            logger.info(msg)
-            info_lines.append(msg)
-
-        # ════════════════════════════════════════════════════════════════
-        # 8. BUILD OUTPUTS
-        # ════════════════════════════════════════════════════════════════
-        total_ms = round((time.time() - load_start) * 1000)
-        cache_info = f" (cache: U{_unet_cache.size} C{_clip_cache.size} V{_vae_cache.size})" if caching else ""
-        summary = f"System load complete in {total_ms / 1000:.1f}s{cache_info}"
-        logger.info(summary)
-        info_lines.append(summary)
-
-        # Draw a beautiful independent console HUD card that represents visual Apple-style dashboard loading
-        print_premium_loader_hud(
-            preset=preset,
-            overrides=overrides if preset in CHECKPOINT_PRESETS else None,
-            resolved_type=resolved_type,
-            latent_fmt=latent_fmt,
-            est_vram=est,
-            avail_vram=avail if check_vram == "On" else 0.0,
-            total_vram=total if check_vram == "On" else 0.0,
-            unet_name=unet_name,
-            unet_dtype=weight_dtype,
-            unet_time=unet_time,
-            unet_cached=unet_cache_hit,
-            clip_slots=clip_slot_used,
-            clip_dtype=clip_dtype,
-            clip_time=clip_time,
-            clip_cached=clip_cache_hit,
-            vae_name=vae_name,
-            vae_time=vae_time,
-            vae_cached=vae_cache_hit,
-            loras=applied_loras,
-            total_time_ms=total_ms,
-            caching=caching
-        )
-
-        load_info = "\n".join(info_lines)
-
-        # model_meta — structured JSON for downstream QC / analytics nodes
-        model_meta = {
-            "arch":          resolved_type,
-            "detected":      detected_type is not None,
-            "unet_file":     unet_name,
-            "weight_dtype":  weight_dtype,
-            "clip_slots":    clip_slot_used,
-            "clip_dtype":    clip_dtype,
-            "offload_mode":  offload_mode,
-            "latent_ch":     LATENT_CHANNELS.get(resolved_type, 4),
-            "latent_format": latent_fmt,
-            "vram_est_gb":   est,
-            "loras":         applied_loras,
-            "model_shift":   model_shift,
-            "load_ms":       total_ms,
-            "cached_unet":   unet_cache_hit,
-        }
-
-        return (
-            model,
-            clip,
-            vae,
-            out_lora_stack,
-            json.dumps(model_meta, sort_keys=True),
-            upsampler_clip,
-        )
-
-
-class RadianceVideoLoader(RadianceUnifiedLoader):
-    """Video-oriented loader (LTX, Wan, HunyuanVideo, ...). Adds:
-    - VAE loading also reads .safetensors metadata so ComfyUI picks the
-      correct internal VAE architecture (e.g. LTX 2.3's video VAE).
-    - "Baked VAE (from UNET)" option: extracts VAE directly from the
-      checkpoint instead of a standalone file.
-    - Optional Audio VAE (baked or standalone) for LTX 2.3 audio.
-    - Optional latent upscale model (e.g. LTX 2.3 / HunyuanVideo SR)."""
-
-    @staticmethod
-    def _load_vae_sd_metadata(vae_path):
-        # ALBABIT-FIX: read metadata so comfy.sd.VAE selects the correct
-        # internal config (e.g. LTX 2.3 video VAE) instead of falling back
-        # to the default config and raising a state_dict size mismatch.
-        return comfy.utils.load_torch_file(vae_path, return_metadata=True)
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        types = super().INPUT_TYPES()
-
-        # ALBABIT-FIX: update unet_name tooltip to document WAN 2.2 dual-expert auto-detect.
-        types["required"]["unet_name"][1]["tooltip"] = (
-            "Main diffusion model (UNET / DiT / Transformer).\n"
-            "For WAN 2.2, select either the high_noise or low_noise file — "
-            "the companion expert is detected automatically. "
-            "The 'model' output always carries the high_noise expert "
-            "and 'model_low_noise' always carries the low_noise expert, "
-            "regardless of which file is selected."
-        )
-
-        # ALBABIT-FIX: video loader only lists video-model presets
-        # (image presets are exclusive to RadianceUnifiedLoader).
-        _, preset_kwargs = types["required"]["preset"]
-        types["required"]["preset"] = (
-            [k for k in CHECKPOINT_PRESETS if k == "Custom" or k in VIDEO_PRESET_NAMES],
-            preset_kwargs,
-        )
-
-        # ALBABIT-FIX: video loader only lists video-model model_types
-        # (image model_types are exclusive to RadianceUnifiedLoader).
-        _, model_type_kwargs = types["required"]["model_type"]
-        types["required"]["model_type"] = (
-            [m for m in MODEL_TYPES if m == "Auto-Detect" or m in VIDEO_MODEL_TYPES],
-            model_type_kwargs,
-        )
-
-        # ALBABIT-FIX: "Baked VAE (from UNET)" lets LTX 2.3 checkpoints that
-        # embed their own VAE skip the standalone vae_name file entirely.
-        vae_files = folder_paths.get_filename_list("vae")
-        types["required"]["vae_name"] = (
-            ["Baked VAE (from UNET)"] + vae_files,
-            {"default": "Baked VAE (from UNET)",
-             "tooltip": "VAE for encoding/decoding latents. "
-                        "'Baked VAE (from UNET)' extracts it from the checkpoint."},
-        )
-
-        # ALBABIT-FIX: optional standalone/baked Audio VAE (LTX 2.3 audio).
-        ckpt_files = folder_paths.get_filename_list("checkpoints")
-        audio_vae_list = ["None", "Baked Audio VAE (from UNET)"] + sorted(set(ckpt_files + vae_files))
-
-        # ALBABIT-FIX: optional latent upscale model (LTX 2.3 / HunyuanVideo SR).
-        upscale_list = ["None"] + (folder_paths.get_filename_list("latent_upscale_models") or [])
-
-        # ALBABIT-FIX: rebuild "optional" so audio_vae_name / upscale_model_name
-        # appear right after vae_name (matching the legacy Radiance layout)
-        # instead of at the bottom of the node.
-        old_optional = types["optional"]
-        types["optional"] = {
-            "audio_vae_name": (
-                audio_vae_list,
-                {"default": "None",
-                 "tooltip": "Audio VAE for LTX 2.3. Choose 'Baked' or a standalone safetensors file."},
-            ),
-            "upscale_model_name": (
-                upscale_list,
-                {"default": "None",
-                 "tooltip": "Latent Upscale Model (e.g. for LTX 2.3 or HunyuanVideo)."},
-            ),
-            **old_optional,
-        }
-        # ALBABIT-FIX: model_shift and upsampler are the image Loader's
-        # (Qwen-Image, FLUX 3 Klein); this loader's load_radiance_stack takes neither.
-        types["optional"].pop("model_shift")
-        types["optional"].pop("upsampler")
-
-        return types
-
-    # ALBABIT-FIX: MODEL_LOW_NOISE slot reserved for WAN 2.2 dual-expert (MoE) support.
-    # Returns None until the loading strategy is confirmed with upstream dev.
-    RETURN_TYPES  = ("MODEL", "MODEL", "CLIP", "VAE", "VAE", "LORA_STACK", "LATENT_UPSCALE_MODEL", "STRING")
-    RETURN_NAMES  = ("model", "model_low_noise", "clip", "vae", "audio_vae", "lora_stack", "upscale_model", "model_meta")
-    DESCRIPTION   = (
-        "Video loader v3.3 — for LTX 2.3, Wan, HunyuanVideo, etc. "
-        "Supports Baked/standalone VAE, optional Audio VAE, and optional "
-        "latent upscale model, on top of the universal loader features."
-    )
-
-    def load_radiance_stack(
-        self,
-        preset,
-        unet_name,
-        weight_dtype,
-        model_type,
-        vae_name,
-        audio_vae_name="None",
-        upscale_model_name="None",
-        clip_l="None",
-        clip_g="None",
-        t5xxl="None",
-        llm_encoder="None",
-        text_projection="None",
-        clip_dtype="default",
-        offload_mode="none",
-        lora_stack=None,
-        check_vram="On",
-        use_cache="On",
-        lora_on_error="raise",
-        auto_download=True,
-    ):
-        def _none(val):
-            return None if val in ("None", "", None) else val
-
-        clip_l = _none(clip_l)
-        clip_g = _none(clip_g)
-        t5xxl = _none(t5xxl)
-        llm_encoder = _none(llm_encoder)
-        text_projection = _none(text_projection)
 
         load_start  = time.time()
         info_lines  = []
@@ -733,141 +550,43 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
             resolved_type, unet_path, clip_l, clip_g, t5xxl, llm_encoder, text_projection,
             clip_dtype, offload_mode, clip_load_device, caching, divider, auto_download, info_lines
         )
+        upsampler_clip = _load_upsampler(upsampler, resolved_type, caching, info_lines) if upsampler else None
 
         # ════════════════════════════════════════════════════════════════
-        # 6. LOAD STANDALONE VAE  (mtime cache key) — skipped if baked
+        # 6. LOAD STANDALONE VAE / AUDIO VAE / LATENT UPSCALE MODEL
+        #    (mtime cache keys) — the VAEs are skipped if baked
         # ════════════════════════════════════════════════════════════════
-        extract_vae       = (vae_name == "Baked VAE (from UNET)")
-        extract_audio_vae = (audio_vae_name == "Baked Audio VAE (from UNET)")
-
-        if not extract_vae:
+        if vae_name != "Baked VAE (from UNET)":
             vae, vae_time, vae_cache_hit = load_standalone_vae(
                 vae_name, auto_download, caching, divider, info_lines, self._load_vae_sd_metadata
             )
-
-        # ════════════════════════════════════════════════════════════════
-        # 6b. LOAD STANDALONE AUDIO VAE — skipped if baked or "None"
-        # ════════════════════════════════════════════════════════════════
-        if not extract_audio_vae and audio_vae_name != "None":
-            t0 = time.time()
-            audio_vae_path = (folder_paths.get_full_path("checkpoints", audio_vae_name)
-                               or folder_paths.get_full_path("vae", audio_vae_name))
-
-            if audio_vae_path:
-                audio_vae_fp  = _file_fingerprint(audio_vae_path)
-                audio_vae_key = f"audio_vae:{audio_vae_path}:{audio_vae_fp}"
-
-                if caching and _audio_vae_cache.has(audio_vae_key):
-                    audio_vae = _audio_vae_cache.get(audio_vae_key)
-                    logger.info(f"Audio VAE loaded from cache: {audio_vae_name}")
-                    info_lines.append(f"AUDIO VAE: {audio_vae_name} (cached)")
-                else:
-                    try:
-                        sd, metadata = comfy.utils.load_torch_file(audio_vae_path, return_metadata=True)
-                        audio_vae = construct_audio_vae(sd, metadata, resolved_type)
-                        av_time = time.time() - t0
-                        logger.info(f"Audio VAE loaded {divider} {audio_vae_name} {divider} {av_time:.1f}s")
-                        info_lines.append(f"AUDIO VAE: {audio_vae_name} ({av_time:.1f}s)")
-                        if caching:
-                            _audio_vae_cache.put(audio_vae_key, audio_vae)
-                    except Exception as e:
-                        logger.error(f"❌ Failed to load Audio VAE '{audio_vae_name}': {e}")
-                        info_lines.append(f"AUDIO VAE: load failed ({e})")
-            else:
-                logger.warning(f"❌ Audio VAE not found: '{audio_vae_name}'")
-                info_lines.append(f"AUDIO VAE: '{audio_vae_name}' not found")
-
-        # ════════════════════════════════════════════════════════════════
-        # 6c. LOAD LATENT UPSCALE MODEL — skipped if "None"
-        # ════════════════════════════════════════════════════════════════
+        if audio_vae_name not in ("None", "Baked Audio VAE (from UNET)"):
+            audio_vae = _load_audio_vae(audio_vae_name, resolved_type, caching, divider, info_lines)
         upscale_model = None
         if upscale_model_name and upscale_model_name != "None":
-            t0 = time.time()
-            upscale_path = folder_paths.get_full_path("latent_upscale_models", upscale_model_name)
-            if not upscale_path:
-                logger.warning(f"❌ Latent Upscale Model not found: '{upscale_model_name}'")
-                info_lines.append(f"UPSCALE MODEL: '{upscale_model_name}' not found")
-            else:
-                upscale_fp  = _file_fingerprint(upscale_path)
-                upscale_key = f"upscale_model:{upscale_path}:{upscale_fp}"
-
-                if caching and _upscale_model_cache.has(upscale_key):
-                    upscale_model = _upscale_model_cache.get(upscale_key)
-                    logger.info(f"Latent Upscale Model loaded from cache: {upscale_model_name}")
-                    info_lines.append(f"UPSCALE MODEL: {upscale_model_name} (cached)")
-                else:
-                    try:
-                        sd, metadata = comfy.utils.load_torch_file(upscale_path, safe_load=True, return_metadata=True)
-
-                        # ALBABIT-FIX: native Hunyuan/LTX upscale model routing.
-                        # Imported locally to avoid hard deps on older ComfyUI.
-                        if "blocks.0.block.0.conv.weight" in sd:
-                            from comfy.ldm.hunyuan_video.upsampler import HunyuanVideo15SRModel
-                            config = {
-                                "in_channels": sd["in_conv.conv.weight"].shape[1],
-                                "out_channels": sd["out_conv.conv.weight"].shape[0],
-                                "hidden_channels": sd["in_conv.conv.weight"].shape[0],
-                                "num_blocks": len([k for k in sd.keys() if k.startswith("blocks.") and k.endswith(".block.0.conv.weight")]),
-                                "global_residual": False,
-                            }
-                            upscale_model = HunyuanVideo15SRModel("720p", config)
-                            upscale_model.load_sd(sd)
-                        elif "up.0.block.0.conv1.conv.weight" in sd:
-                            from comfy.ldm.hunyuan_video.upsampler import HunyuanVideo15SRModel
-                            sd = {key.replace("nin_shortcut", "nin_shortcut.conv", 1): value for key, value in sd.items()}
-                            config = {
-                                "z_channels": sd["conv_in.conv.weight"].shape[1],
-                                "out_channels": sd["conv_out.conv.weight"].shape[0],
-                                "block_out_channels": tuple(
-                                    sd[f"up.{i}.block.0.conv1.conv.weight"].shape[0]
-                                    for i in range(len([k for k in sd.keys() if k.startswith("up.") and k.endswith(".block.0.conv1.conv.weight")]))
-                                ),
-                            }
-                            upscale_model = HunyuanVideo15SRModel("1080p", config)
-                            upscale_model.load_sd(sd)
-                        elif "post_upsample_res_blocks.0.conv2.bias" in sd:
-                            from comfy.ldm.lightricks.latent_upsampler import LatentUpsampler
-                            # ALBABIT-FIX: scoped import -- a bare `import comfy.ops` here
-                            # would shadow the top-level `comfy` name for this whole function
-                            # (Python scoping), breaking the Audio VAE load right above.
-                            from comfy.ops import disable_weight_init
-                            from comfy.model_patcher import CoreModelPatcher
-                            config = json.loads(metadata["config"])
-                            # ALBABIT-FIX: from_config() requires `operations` (upstream API
-                            # change) and the raw nn.Module needs wrapping in a ModelPatcher --
-                            # LTXVLatentUpsampler reads `.load_device` off the returned object.
-                            # Same pattern as comfy_extras/nodes_hunyuan.py for this class.
-                            upscale_model = LatentUpsampler.from_config(config, operations=disable_weight_init).to(
-                                dtype=comfy.model_management.vae_dtype(allowed_dtypes=[torch.bfloat16, torch.float32])
-                            )
-                            comfy.model_management.archive_model_dtypes(upscale_model)
-                            upscale_model_patcher = CoreModelPatcher(
-                                upscale_model,
-                                load_device=comfy.model_management.get_torch_device(),
-                                offload_device=comfy.model_management.unet_offload_device(),
-                            )
-                            upscale_model.load_state_dict(sd, assign=upscale_model_patcher.is_dynamic())
-                            upscale_model = upscale_model_patcher
-                        else:
-                            logger.warning(f"❌ Unrecognized upscale model architecture for: '{upscale_model_name}'")
-                            info_lines.append(f"UPSCALE MODEL: unrecognized architecture ({upscale_model_name})")
-
-                        if upscale_model is not None:
-                            up_time = time.time() - t0
-                            logger.info(f"Latent Upscale Model loaded {divider} {upscale_model_name} {divider} {up_time:.1f}s")
-                            info_lines.append(f"UPSCALE MODEL: {upscale_model_name} ({up_time:.1f}s)")
-                            if caching:
-                                _upscale_model_cache.put(upscale_key, upscale_model)
-                    except Exception as e:
-                        logger.error(f"❌ Failed to load Latent Upscale Model '{upscale_model_name}': {e}")
-                        info_lines.append(f"UPSCALE MODEL: load failed ({e})")
+            upscale_model = _load_upscale_model(upscale_model_name, caching, divider, info_lines)
 
         # ════════════════════════════════════════════════════════════════
         # 7. APPLY LoRA STACK
+        #    Priority: upstream lora_stack input stack
         # ════════════════════════════════════════════════════════════════
         model, clip, applied_loras, out_lora_stack = apply_lora_stack(
             model, clip, lora_stack, lora_on_error, divider, info_lines
         )
+
+        if model_shift > 0:
+            # ALBABIT-FIX: ModelSamplingAuraFlow sets the time scale to 1, right only for models
+            # sampled that way (Qwen-Image, AuraFlow, Lumina2...). Others (Wan and its two
+            # experts, SD3, LTX) keep their own schedule: model_shift is ignored for them.
+            if model.model.model_config.sampling_settings.get("multiplier") == 1.0:
+                model = nodes_model_advanced.ModelSamplingAuraFlow().patch_aura(model, model_shift)[0]
+                msg = f"Model shift {model_shift:g} (as ModelSamplingAuraFlow)"
+                logger.info(msg)
+            else:
+                msg = f"model_shift ignored: {resolved_type} is not sampled like Qwen-Image (ModelSamplingAuraFlow)."
+                logger.warning(msg)
+                model_shift = 0.0
+            info_lines.append(msg)
 
         # ════════════════════════════════════════════════════════════════
         # 8. BUILD OUTPUTS
@@ -878,6 +597,7 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
         logger.info(summary)
         info_lines.append(summary)
 
+        # Draw a beautiful independent console HUD card that represents visual Apple-style dashboard loading
         print_premium_loader_hud(
             preset=preset,
             overrides=overrides if preset in CHECKPOINT_PRESETS else None,
@@ -902,6 +622,7 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
             caching=caching
         )
 
+        # model_meta — structured JSON for downstream QC / analytics nodes
         model_meta = {
             "arch":          resolved_type,
             "detected":      detected_type is not None,
@@ -914,6 +635,7 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
             "latent_format": latent_fmt,
             "vram_est_gb":   est,
             "loras":         applied_loras,
+            "model_shift":   model_shift,
             "audio_vae":     audio_vae_name if audio_vae is not None else None,
             "upscale_model": upscale_model_name if upscale_model is not None else None,
             "wan_moe_companion": companion_name if model_low_noise is not None else None,
@@ -923,14 +645,31 @@ class RadianceVideoLoader(RadianceUnifiedLoader):
 
         return (
             model,
-            model_low_noise,
             clip,
             vae,
-            audio_vae,
             out_lora_stack,
-            upscale_model,
             json.dumps(model_meta, sort_keys=True),
+            upsampler_clip,
+            model_low_noise,
+            audio_vae,
+            upscale_model,
         )
+
+
+# ALBABIT-FIX: the Loader took over the Video Loader (presets, inputs, outputs).
+# This key still opens saved graphs: same widget order as the Loader's head,
+# and its own output order, so their links keep landing on the right output.
+class RadianceVideoLoader(RadianceUnifiedLoader):
+    """Deprecated alias of RadianceUnifiedLoader, with the Video Loader's output order. Loads, does not list."""
+    DEPRECATED = True
+
+    RETURN_TYPES  = ("MODEL", "MODEL", "CLIP", "VAE", "VAE", "LORA_STACK", "LATENT_UPSCALE_MODEL", "STRING")
+    RETURN_NAMES  = ("model", "model_low_noise", "clip", "vae", "audio_vae", "lora_stack", "upscale_model", "model_meta")
+
+    def load_radiance_stack(self, *args, **kwargs):
+        model, clip, vae, lora_stack, model_meta, _, model_low_noise, audio_vae, upscale_model = (
+            super().load_radiance_stack(*args, **kwargs))
+        return (model, model_low_noise, clip, vae, audio_vae, lora_stack, upscale_model, model_meta)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
