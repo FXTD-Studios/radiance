@@ -39,7 +39,7 @@ class TestOneLoader:
         required = RadianceUnifiedLoader.INPUT_TYPES()["required"]
         assert required["preset"][0] == list(CHECKPOINT_PRESETS)
         assert required["model_type"][0] == loader.MODEL_TYPES
-        assert {"LTX Video 2.5", "Wan 2.2", "Flux.2", "SDXL"} <= set(required["preset"][0])
+        assert {"LTX Video 2.5 Dev", "Wan 2.2", "Flux.2", "SDXL"} <= set(required["preset"][0])
 
     def test_the_video_inputs_sit_under_vae_name(self):
         widgets = _widgets(RadianceUnifiedLoader)
@@ -72,7 +72,7 @@ class TestOldVideoLoaderKey:
     def test_it_returns_the_loaders_outputs_in_that_order(self, monkeypatch):
         names = RadianceUnifiedLoader.RETURN_NAMES
         monkeypatch.setattr(RadianceUnifiedLoader, "load_radiance_stack", lambda self, *a, **k: names)
-        assert RadianceVideoLoader().load_radiance_stack("LTX Video 2.5", "u", "default", "Auto-Detect", "v") \
+        assert RadianceVideoLoader().load_radiance_stack("LTX Video 2.5 Dev", "u", "default", "Auto-Detect", "v") \
             == OLD_VIDEO_OUTPUTS
 
 

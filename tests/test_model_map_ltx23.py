@@ -73,3 +73,21 @@ class TestLtx23VaeOnKijaiRepo:
             entry = RADIANCE_MODEL_MAP[fname]
             assert entry["type"] == "vae"
             assert re.match(r"https://huggingface\.co/Kijai/LTX2\.3_comfy/resolve/[0-9a-f]{40}/vae/", entry["url"])
+
+
+class TestLtxDevAndDistilledPresets:
+    def test_dev_and_distilled_are_separate_presets(self):
+        from radiance.config.model_map import CHECKPOINT_PRESETS
+        names = {"LTX Video 2.3 Dev", "LTX Video 2.3 Dev (Low VRAM)", "LTX Video 2.3 Distilled",
+                 "LTX Video 2.5 Dev", "LTX Video 2.5 Dev (Low VRAM)",
+                 "LTX Video 2.5 Distilled", "LTX Video 2.5 Distilled (Low VRAM)"}
+        assert names <= set(CHECKPOINT_PRESETS)
+        assert {"LTX Video 2.3", "LTX Video 2.5", "LTX Video 2.3 (Low VRAM)"}.isdisjoint(CHECKPOINT_PRESETS)
+        assert {CHECKPOINT_PRESETS[n]["model_type"] for n in names} == {"ltxav"}
+
+    def test_only_the_2_3_dev_low_vram_preset_casts_to_fp8(self):
+        # The 2.5 Low VRAM files (int8 convrot, nvfp4) already carry their quantization.
+        from radiance.config.model_map import CHECKPOINT_PRESETS
+        assert CHECKPOINT_PRESETS["LTX Video 2.3 Dev (Low VRAM)"]["weight_dtype"] == "fp8_e4m3fn"
+        for name in ("LTX Video 2.5 Dev (Low VRAM)", "LTX Video 2.5 Distilled (Low VRAM)"):
+            assert CHECKPOINT_PRESETS[name]["weight_dtype"] == "default"
