@@ -84,8 +84,12 @@ class TestLoad:
         and the audio VAE / upscale model files it was asked to load."""
         asked = {}
 
+        class _WanModel(str):
+            # Wan's sampling settings: a shift, ComfyUI's default time scale (multiplier 1000).
+            model = types.SimpleNamespace(model_config=types.SimpleNamespace(sampling_settings={"shift": 8.0}))
+
         def unet(path, name, *a):
-            return (f"unet:{name}", "vae", "baked audio", 0.0, False, 0.0, False)
+            return (_WanModel(f"unet:{name}"), "vae", "baked audio", 0.0, False, 0.0, False)
 
         stubs = {
             "_ensure_model_exists": lambda name, *a: name,
@@ -120,6 +124,23 @@ class TestLoad:
         assert meta["wan_moe_companion"] == "wan2.2_t2v_high_noise_14B.safetensors"
         assert meta["audio_vae"] == "audio.safetensors"
         assert meta["upscale_model"] == "up.safetensors"
+
+    def test_model_shift_is_ignored_for_a_model_not_sampled_like_qwen_image(self, run, monkeypatch):
+        """ModelSamplingAuraFlow sets the time scale to 1: on Wan it would break the
+        schedule, and only the high-noise expert would get it."""
+        patched = []
+
+        class _AuraFlow:
+            def patch_aura(self, model, shift):
+                patched.append(model)
+                return ("shifted",)
+
+        monkeypatch.setattr(loader.nodes_model_advanced, "ModelSamplingAuraFlow", _AuraFlow, raising=False)
+        out, meta, _ = run("wan2.2_t2v_low_noise_14B.safetensors", model_shift=3.0)
+        assert patched == []
+        assert out[0] == "unet:wan2.2_t2v_high_noise_14B.safetensors"
+        assert out[6] == "unet:wan2.2_t2v_low_noise_14B.safetensors"
+        assert meta["model_shift"] == 0.0
 
     def test_a_baked_audio_vae_comes_from_the_checkpoint(self, run):
         out, meta, asked = run("ltx.safetensors", audio_vae_name="Baked Audio VAE (from UNET)")
