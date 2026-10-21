@@ -191,6 +191,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **Selectable HDR10 mastering display** for PQ H.265: Write's
   `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
   1000 or 4000 nits). An unknown value is refused with nothing written.
+- **Write's `version` steps between runs** with the same control as a seed
+  (fixed / increment / decrement / randomize), in the version box; fixed by
+  default. Increment rewrites the output on every run, even when nothing
+  upstream changed. Saved Writes are now restored by name, so the new control
+  does not shift their settings.
 
 ### Removed
 

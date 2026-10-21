@@ -77,6 +77,7 @@ SAVED_ORDERS = {
     "RadianceSamplerPro": ("radiance_sampler.js", "SAMPLER_SAVED_WIDGET_ORDER"),
     "RadianceUnifiedLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
     "RadianceImageLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
+    "RadianceWrite": ("radiance_io.js", "WRITE_SAVED_WIDGET_ORDER"),
 }
 
 
@@ -101,7 +102,7 @@ def test_every_radiance_widget_value_fits_its_input(path):
             continue
         values = node.get("widgets_values") or []
         expected = _expected_widgets(cls)
-        # The Sampler and the Loader are restored by name (their JS declares the
+        # The Sampler, the Loader and the Write are restored by name (their JS declares the
         # order their graphs were saved in); the others by position. Fewer values than
         # widgets is fine when only the tail is missing (the frontend gives
         # newer trailing inputs their defaults); a gap in the middle shows up
@@ -116,6 +117,16 @@ def test_every_radiance_widget_value_fits_its_input(path):
             if not name.startswith("_js_") and not _ok(value, typ):
                 problems.append(f"{node['type']} #{node['id']}.{name} = {value!r} does not fit {typ if isinstance(typ, str) else 'its options'}")
     assert not problems, "\n".join(problems)
+
+
+def test_write_saved_order_is_its_widgets_before_the_version_control():
+    """Old Writes are restored by this order; version's control widget came later, defaulting to fixed."""
+    from radiance.nodes.io.write import RadianceWrite
+    widgets = [name for name, _, _ in _expected_widgets(RadianceWrite)]
+    assert widgets[3:5] == ["version", "control_after_generate"]
+    saved = _saved_order(*SAVED_ORDERS["RadianceWrite"])
+    assert [n for n in widgets if n != "control_after_generate"][:len(saved)] == saved
+    assert RadianceWrite.INPUT_TYPES()["optional"]["version"][1]["control_after_generate"] == "fixed"
 
 
 def test_start_graph_is_wired():
