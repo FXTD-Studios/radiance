@@ -37,4 +37,6 @@ WEB_DIRECTORY = "./js"
 #: 4.0: 156 -> 152. The hidden placeholders RadianceSAMModelLoader,
 #: RadianceSAMGenerator, RadianceHDRLatentEncoder and RadianceHDRTurboEncoder
 #: removed (they only raised since 3.5.0).
-EXPECTED_MIN_NODE_COUNT = 152
+#: 4.0: 152 -> 151. RadianceLoadImageMask (Read Mask) removed; ComfyUI's Load
+#: Image and its mask editor do the same job.
+EXPECTED_MIN_NODE_COUNT = 151

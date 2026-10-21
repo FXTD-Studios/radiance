@@ -4,7 +4,7 @@
 
 Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 
-31 nodes. [All sections](README.md)
+30 nodes. [All sections](README.md)
 
 - [Aberration](#aberration)
 - [Anamorphic Streaks](#anamorphic-streaks)
@@ -26,7 +26,6 @@ Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 - [Multipass Composite](#multipass-composite)
 - [Multipass Estimate](#multipass-estimate)
 - [Multipass Relight](#multipass-relight)
-- [Read Mask](#read-mask)
 - [Relight Engine](#relight-engine)
 - [Rolling Shutter](#rolling-shutter)
 - [SAM Multi-Mask Picker](#sam-multi-mask-picker)
@@ -599,25 +598,6 @@ Relights a CG or estimated plate from its albedo and normal passes with one dire
 | `lighting` | IMAGE |
 | `alpha` | IMAGE |
 | `relight_info` | STRING |
-
-## Read Mask
-
-`RadianceLoadImageMask`
-
-Load an image with optional non-destructive mask override. If a companion '_radmask.png' file exists alongside the source image, its alpha channel is used as the mask instead of the image's own alpha. The Radiance mask editor frontend saves masks in this companion format.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | choice |  | files found in the matching models or input folder | Image file from the ComfyUI input folder, loaded as 8-bit sRGB (0-1). If '<name>_radmask.png' sits beside it, that file's alpha is the mask as-is; otherwise the image's own alpha is inverted, as in Load Image. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `mask` | MASK |
 
 ## Relight Engine
 
