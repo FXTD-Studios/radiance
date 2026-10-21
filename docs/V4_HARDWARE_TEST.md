@@ -10,7 +10,7 @@ anything that fails.
 
 ## 0. Install and load
 
-- [ ] ComfyUI starts; the log ends `Radiance: successfully loaded 152 nodes (v4.0.0)` and no
+- [ ] ComfyUI starts; the log ends `Radiance: successfully loaded 151 nodes (v4.0.0)` and no
       missing-dependency warning (or one that names a package you expect to be missing).
 - [ ] A saved 3.x graph loads. One that used SAM Loader, SAM Mask Generator, HDR Latent
       Encoder or HDR Turbo Encoder shows those nodes missing and nothing else broken.

@@ -604,6 +604,41 @@ def test_sequence_exr_frames_carry_their_timecode(tmp_path):
     assert rate == Fraction(24000, 1001)
 
 
+def test_a_60_fps_exr_sequence_counts_its_timecode_in_frame_pairs(tmp_path):
+    """OpenEXR refuses a timecode frame above 29, so frame 1001 at 60 fps (16 s
+    and 41 frames) failed. Its frame field counts pairs: 00:00:16:20."""
+    OpenEXR = pytest.importorskip("OpenEXR")
+    saved, _ = W.write_frames(image=torch.full((1, 8, 8, 3), 0.5), output_path=str(tmp_path), filename="shot",
+                              format="SEQ │ EXR (16-bit half)", fps=60.0, start_frame=1001)
+    with OpenEXR.File(str(Path(saved) / "shot_v0001_1001.exr")) as f:
+        tc, rate = f.header()["timeCode"], f.header()["framesPerSecond"]
+    assert (tc.hours, tc.minutes, tc.seconds, tc.frame) == (0, 0, 16, 20)
+    assert rate == 60
+
+
+@needs_ffmpeg
+def test_a_failed_sequence_audio_keeps_the_soundtrack_it_was_replacing(tmp_path, monkeypatch):
+    """ffmpeg wrote the final path with -y, so a failed encode truncated the old file."""
+    old = tmp_path / "shot_v0001" / "shot_v0001.wav"
+    old.parent.mkdir()
+    old.write_bytes(b"approved mix")
+    run = subprocess.run
+
+    def failing(cmd, **kw):
+        if "-vn" not in cmd:
+            return run(cmd, **kw)
+        Path(cmd[-1]).write_bytes(b"half")
+        return subprocess.CompletedProcess(cmd, 1, b"", b"disk full")
+
+    monkeypatch.setattr(W.subprocess, "run", failing)
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    with pytest.raises(RuntimeError, match="disk full"):
+        W.write_frames(image=torch.full((2, 16, 16, 3), 0.5), output_path=str(tmp_path), filename="shot",
+                       format="SEQ │ PNG (8-bit)", fps=24.0, audio=audio, write_audio=True, overwrite=True)
+    assert old.read_bytes() == b"approved mix"
+    assert not list(old.parent.glob(".*partial*"))
+
+
 @needs_ffmpeg
 @pytest.mark.parametrize("codec, audio_path, expected, stream", [
     ("FLAC 24-bit", "", "seq/shot_v0001/shot_v0001.flac", "flac"),
