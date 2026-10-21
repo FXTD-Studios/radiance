@@ -1452,11 +1452,14 @@ def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audi
     part = path.with_name(f".{path.stem}.partial-{os.urandom(6).hex()}{ext}")
     cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-n", "-i", source, "-vn",
             "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(part)])
-    done = subprocess.run(cmd, capture_output=True)
-    if done.returncode:
+    try:
+        done = subprocess.run(cmd, capture_output=True)
+        if done.returncode:
+            raise RuntimeError(f"ffmpeg failed to write {path.name}: "
+                               f"{done.stderr.decode(errors='replace').strip()}")
+    except BaseException:
         _discard_partial(part)
-        raise RuntimeError(f"ffmpeg failed to write {path.name}: "
-                           f"{done.stderr.decode(errors='replace').strip()}")
+        raise
     _publish_encode(part, path, overwrite)
     _record(receipt, path, None, f"ffmpeg {codec}")
     return path
