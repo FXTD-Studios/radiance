@@ -5,7 +5,7 @@ All notable changes to FXTD Radiance will be documented in this file.
 ## [4.0.0] - Unreleased (beta, branch version-4-Beta)
 
 A major release because saved graphs and studio scripts can see it: four
-hidden placeholder nodes are gone, delivered file names change, a remote DCC
+hidden placeholder nodes and Read Mask are gone, delivered file names change, a remote DCC
 bridge needs signed requests, and three controls that did nothing now work. Everything
 else is fixes. Read the upgrade notes before moving a production setup.
 
@@ -15,7 +15,10 @@ else is fixes. Read the upgrade notes before moving a production setup.
   HDR Turbo Encoder were hidden placeholders that raised when run. A saved
   graph that still holds one loads with that node missing; delete it. Use
   ComfyUI's SAM nodes and the HDR VAE Encode node instead. ACES 2.0 Output
-  Transform (Legacy) stays, hidden.
+  Transform (Legacy) stays, hidden. Read Mask is removed too: it was an old
+  copy of ComfyUI's Load Image, whose mask editor now does the same job. Its
+  companion masks (`<name>_radmask.png`) are no longer read; replace the node
+  with Load Image.
 - **Delivery file names** carry one version suffix: `Shot_v0002.mov`, where
   3.x wrote `Shot_v02_v0001.mov`. The counter continues from 3.x names in the
   same folder. Smart versioning off writes `Shot_v0001`. The reported version
@@ -188,11 +191,34 @@ else is fixes. Read the upgrade notes before moving a production setup.
 - **Selectable HDR10 mastering display** for PQ H.265: Write's
   `hdr10_mastering_display` and Deliver's HDR10 Display (P3-D65 or Rec.2020,
   1000 or 4000 nits). An unknown value is refused with nothing written.
+- **Write's `version` steps between runs** with the same control as a seed
+  (fixed / increment / decrement / randomize), in the version box; fixed by
+  default. Increment rewrites the output on every run, even when nothing
+  upstream changed. Saved Writes are now restored by name, so the new control
+  does not shift their settings.
+- **Write's `audio_codec`** for a video's sound: Auto (PCM 24-bit in a MOV,
+  AAC in an MP4), PCM 24-bit, PCM 32-bit float, FLAC 24-bit, AAC 256 kb/s or
+  MP3 320 kb/s. ProRes and DNxHR masters used to get lossy AAC. The audio
+  settings sit together at the bottom of the node under an "Audio" rule, and
+  `audio_source` accepts a quoted path ("Copy as path") and a relative one
+  (looked for in ComfyUI's input, then output folder); a path that is not a
+  file is reported instead of silently ignored.
+- **Write's `write_audio`** for sequences, which used to drop the sound without
+  a word: the sound (the `audio` input or `audio_source`) is written as a file
+  in `audio_codec` (.wav, .flac, .m4a or .mp3), as long as the frames. By
+  default it sits beside them, named like them (`shot_v0001.wav` next to
+  `shot_v0001_1001.exr`); `audio_path` takes a folder or a file path.
+- **Sequences carry timecode** from `start_frame` and fps (frame 1001 at
+  24 fps is 00:00:41:17): every EXR frame has a `timeCode` and
+  `framesPerSecond` header, as Nuke and ARRI frames do, and the sequence's
+  .wav is a Broadcast WAV starting at the first frame. Resolve read
+  00:00:00:00 for both; it now lines them up by timecode (Auto Sync Audio).
 
 ### Removed
 
 - SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
-  above). The node count is 152.
+  above).
+- Read Mask and its mask editor (see above). The node count is 151.
 
 ### Changed
 

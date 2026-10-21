@@ -1010,6 +1010,8 @@ def test_a_failing_file_manager_does_not_fail_the_delivery(h, monkeypatch):
         raise OSError("no xdg-open here")
 
     monkeypatch.setattr(subprocess, "Popen", _boom)
+    if hasattr(os, "startfile"):
+        monkeypatch.setattr(os, "startfile", _boom)
     h.put(flat(0.5))
     assert h.run({"reveal_folder": True}).status == 200
 
