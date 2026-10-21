@@ -12623,6 +12623,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         vid.addEventListener('seeked', () => {
             if (this._videoProbing) return;
             this._captureVideoFrame();
+            // ALBABIT-FIX: on a slow decoder (CI runners) 'seeked' can still draw the frame
+            // before the seek; the next presented frame is the one sought.
+            vid.requestVideoFrameCallback?.(() => { if (!this._videoProbing) this._captureVideoFrame(); });
         });
 
         // A codec the browser cannot play, or a file that is gone, used to
