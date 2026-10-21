@@ -727,7 +727,7 @@ class RadianceWrite:
                 "tooltip": ("Version number appended to filename (e.g. shot_001_v0001), when filename is set.\n\n"
                             "Its control steps it after each run:\n"
                             "• fixed: stays as it is.\n"
-                            "• increment: +1 after each run. The output is then rewritten on every run, "
+                            "• increment: +1 after each run, so every run writes a new version, "
                             "even when nothing upstream changed."),
             }),
             "color_space": (OUTPUT_COLOR_SPACES, {
