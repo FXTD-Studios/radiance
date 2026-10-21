@@ -196,6 +196,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
   default. Increment rewrites the output on every run, even when nothing
   upstream changed. Saved Writes are now restored by name, so the new control
   does not shift their settings.
+- **Write's `audio_codec`** for a video's sound: Auto (PCM 24-bit in a MOV,
+  AAC in an MP4), PCM 24-bit, PCM 32-bit float, FLAC 24-bit, AAC 256 kb/s or
+  MP3 320 kb/s. ProRes and DNxHR masters used to get lossy AAC. The audio
+  settings sit together at the bottom of the node under an "Audio" rule, and
+  `audio_source` accepts a quoted path ("Copy as path") and a relative one
+  (looked for in ComfyUI's input, then output folder); a path that is not a
+  file is reported instead of silently ignored.
 
 ### Removed
 

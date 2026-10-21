@@ -37,7 +37,9 @@ function writeWidgetVisibility(v) {
         exr_compression: isExr,
         start_frame: isSeq,
         frame_padding: isSeq,
+        audio_section: isVid,
         audio_source: isVid,
+        audio_codec: isVid,
         broadcast_safe: !isFloatFmt && !isVid,
         color_space: !ocio,
         ocio_config: ocio,
@@ -244,6 +246,7 @@ const WRITE_SAVED_WIDGET_ORDER = [
 	"overwrite", "proxy_scale", "working_space", "ocio_colorspace", "ocio_config",
 	"hdr_reference_nits", "hdr10_mastering_display",
 ];
+const WRITE_AUDIO_WIDGETS = ["audio_source", "audio_codec"];
 
 app.registerExtension({
 	name: "Radiance.IO",
@@ -506,6 +509,18 @@ app.registerExtension({
 			nodeType.prototype.onNodeCreated = function () {
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
 				const node = this;
+
+				// ALBABIT-FIX: an "Audio" rule above the audio settings, at the bottom. A DOM
+				// widget, never saved; its layout sits inside, as hiding resets the element's display.
+				const ruleEl = document.createElement("div");
+				ruleEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;height:20px;padding:0 2px;'
+					+ 'color:#9aa3ad;font:600 10px/1 sans-serif;letter-spacing:.1em;text-transform:uppercase">'
+					+ '<span>Audio</span><span style="flex:1;height:1px;background:#4a4f57"></span></div>';
+				const rule = node.addDOMWidget("audio_section", "radiance_section", ruleEl,
+					{ serialize: false, getMinHeight: () => 20, getMaxHeight: () => 20 });
+				rule.serialize = false;
+				node.widgets.splice(node.widgets.indexOf(rule), 1);
+				node.widgets.splice(node.widgets.findIndex(w => WRITE_AUDIO_WIDGETS.includes(w.name)), 0, rule);
 
 				// Captured once: a hidden widget can leave node.widgets.
 				const writeWidgets       = Object.fromEntries(node.widgets.map(w => [w.name, w]));

@@ -123,9 +123,13 @@ except ImportError:
 # writer did not. Absolute paths still pass through untouched.
 try:
     from ..core.system.path_utils import resolve_output_path as _anchor_output_dir
+    from ..core.system.path_utils import resolve_input_path as _find_input_file
 except ImportError:  # pragma: no cover - only outside the package
     def _anchor_output_dir(path: str) -> str:  # type: ignore[misc]
         return path
+
+    def _find_input_file(path: str) -> str:  # type: ignore[misc]
+        return strip_path_quotes(path)
 
 log = logging.getLogger("radiance.io.writer")
 
@@ -191,6 +195,26 @@ WRITE_FORMATS: List[str] = _FMT_IMAGE + _FMT_SEQ + _FMT_VIDEO
 def _fmt_stem(fmt: str) -> str:
     """Strip group prefix (e.g. 'IMG │ PNG (8-bit)' → 'PNG (8-bit)')."""
     return fmt.split(" │ ", 1)[-1] if " │ " in fmt else fmt
+
+# ── Audio ──────────────────────────────────────────────────────────────────
+AUDIO_CODECS = ["Auto", "PCM 24-bit", "PCM 32-bit float", "FLAC 24-bit", "AAC", "MP3"]
+_AUDIO_ENCODERS = {
+    "PCM 24-bit":       ["-c:a", "pcm_s24le"],
+    "PCM 32-bit float": ["-c:a", "pcm_f32le"],
+    "FLAC 24-bit":      ["-c:a", "flac", "-sample_fmt", "s32"],
+    "AAC":              ["-c:a", "aac", "-b:a", "256k"],
+    "MP3":              ["-c:a", "libmp3lame", "-b:a", "320k"],
+}
+
+
+def _audio_codec_for(codec: str, ext: str) -> str:
+    """The audio codec written into a `ext` container: Auto is lossless PCM except in MP4."""
+    if codec == "Auto":
+        return "AAC" if ext == ".mp4" else "PCM 24-bit"
+    if codec == "FLAC 24-bit" and ext == ".mov":
+        log.warning("RadianceWrite: FLAC cannot go in a MOV; the audio is written as PCM 24-bit.")
+        return "PCM 24-bit"
+    return codec
 
 # ── Output color spaces ────────────────────────────────────────────────────
 OUTPUT_COLOR_SPACES = [
@@ -1049,6 +1073,7 @@ def _save_video_ffmpeg(
     has_alpha: bool = False,
     frame_count: Optional[int] = None,
     light_levels: Optional[Tuple[int, int]] = None,
+    audio_codec: str = "Auto",
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
 
@@ -1167,7 +1192,9 @@ def _save_video_ffmpeg(
         "-i", "pipe:0",
     ]
     if audio_source and os.path.isfile(audio_source):
-        cmd += ["-i", audio_source, "-c:a", "aac"]
+        # ALBABIT-FIX: every video got lossy AAC, ProRes and DNxHR masters too;
+        # a MOV now carries PCM 24-bit unless audio_codec says otherwise.
+        cmd += ["-i", audio_source] + _AUDIO_ENCODERS[_audio_codec_for(audio_codec, ext)]
         if frame_count:
             # ALBABIT-FIX: "-shortest" cut the picture to the audio: a track
             # 30 ms short lost the last frame, a 5 s track on a 10 s shot lost
@@ -1588,11 +1615,16 @@ def write_frames(
     ocio_config:    str   = "",
     hdr_reference_nits: float = 203.0,
     hdr10_mastering_display: str = DEFAULT_MASTERING_DISPLAY,
+    audio_codec:    str   = "Auto",
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
 ):
     output_path = strip_path_quotes(output_path)
+    audio_source = _find_input_file(audio_source)
+    if audio_source and not os.path.isfile(audio_source):
+        log.warning("RadianceWrite: audio_source %r is not a file; it is ignored.", audio_source)
+        audio_source = ""
     # Built before any frame is touched, so a bad colour setting fails before
     # a file is created.
     colour = OutputColour(color_space, working_space, ocio_colorspace, ocio_config,
@@ -1698,6 +1730,7 @@ def write_frames(
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
             on_frame=on_frame, receipt=receipt, light_levels=light_levels,
+            audio_codec=audio_codec,
         )
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
@@ -1783,6 +1816,7 @@ def _dispatch_write(
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
     light_levels:   Optional[Tuple[int, int]] = None,
+    audio_codec:    str = "Auto",
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
 
@@ -1868,6 +1902,7 @@ def _dispatch_write(
             has_alpha=has_alpha,
             frame_count=n,
             light_levels=light_levels,
+            audio_codec=audio_codec,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:
