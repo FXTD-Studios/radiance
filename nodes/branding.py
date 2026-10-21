@@ -157,7 +157,6 @@ NODE_SECTIONS = {
     "RadianceHDRStitch": "VFX",
     "RadianceLensDistortion": "VFX",
     "RadianceLinearMatting": "VFX",
-    "RadianceLoadImageMask": "VFX",
     "RadianceMotionBlur": "VFX",
     "RadianceMultiMaskVisualPicker": "VFX",
     "RadianceMultipassAOVReader": "VFX",
@@ -325,7 +324,6 @@ TERM_OVERRIDES = {
     "RadianceLinearMatting": "Matte",
     # ── Load & Save ───────────────────────────────────────────────────────
     "RadianceImageLoader": "Read Image",
-    "RadianceLoadImageMask": "Read Mask",
     "RadianceDigitalCinemaRead": "DPX Read",
     "RadianceDigitalCinemaWrite": "DPX Write",
     "RadianceEXRMultiPart": "Write EXR",

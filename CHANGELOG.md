@@ -5,7 +5,7 @@ All notable changes to FXTD Radiance will be documented in this file.
 ## [4.0.0] - Unreleased (beta, branch version-4-Beta)
 
 A major release because saved graphs and studio scripts can see it: four
-hidden placeholder nodes are gone, delivered file names change, a remote DCC
+hidden placeholder nodes and Read Mask are gone, delivered file names change, a remote DCC
 bridge needs signed requests, and three controls that did nothing now work. Everything
 else is fixes. Read the upgrade notes before moving a production setup.
 
@@ -15,7 +15,10 @@ else is fixes. Read the upgrade notes before moving a production setup.
   HDR Turbo Encoder were hidden placeholders that raised when run. A saved
   graph that still holds one loads with that node missing; delete it. Use
   ComfyUI's SAM nodes and the HDR VAE Encode node instead. ACES 2.0 Output
-  Transform (Legacy) stays, hidden.
+  Transform (Legacy) stays, hidden. Read Mask is removed too: it was an old
+  copy of ComfyUI's Load Image, whose mask editor now does the same job. Its
+  companion masks (`<name>_radmask.png`) are no longer read; replace the node
+  with Load Image.
 - **Delivery file names** carry one version suffix: `Shot_v0002.mov`, where
   3.x wrote `Shot_v02_v0001.mov`. The counter continues from 3.x names in the
   same folder. Smart versioning off writes `Shot_v0001`. The reported version
@@ -192,7 +195,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
 ### Removed
 
 - SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
-  above). The node count is 152.
+  above).
+- Read Mask and its mask editor (see above). The node count is 151.
 
 ### Changed
 
