@@ -579,6 +579,32 @@ def test_a_sequence_writes_its_audio_beside_the_frames(tmp_path):
 
 
 @needs_ffmpeg
+def test_a_sequence_wav_starts_at_the_first_frames_timecode(tmp_path):
+    """A Broadcast WAV time reference lines the sound up with the frames in an
+    editor: frame 1001 at 24 fps is 1001 / 24 s after midnight."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ PNG (8-bit)", fps=24.0, start_frame=1001,
+                              audio=audio, write_audio=True)
+    data = (Path(saved) / "shot_v0001.wav").read_bytes()
+    bext = data.index(b"bext") + 8          # Description, Originator, ..., then TimeReference
+    assert int.from_bytes(data[bext + 338:bext + 346], "little") == 1001 * 48000 // 24
+
+
+def test_sequence_exr_frames_carry_their_timecode(tmp_path):
+    """Resolve read no timecode from the EXR frames (00:00:00:00): each now
+    carries its own, as Nuke and ARRI frames do. Frame 1002 at 23.976 fps."""
+    from fractions import Fraction
+    OpenEXR = pytest.importorskip("OpenEXR")
+    saved, _ = W.write_frames(image=torch.full((2, 8, 8, 3), 0.5), output_path=str(tmp_path), filename="shot",
+                              format="SEQ │ EXR (16-bit half)", fps=23.976, start_frame=1001)
+    with OpenEXR.File(str(Path(saved) / "shot_v0001_1002.exr")) as f:
+        tc, rate = f.header()["timeCode"], f.header()["framesPerSecond"]
+    assert (tc.hours, tc.minutes, tc.seconds, tc.frame) == (0, 0, 41, 18)
+    assert rate == Fraction(24000, 1001)
+
+
+@needs_ffmpeg
 @pytest.mark.parametrize("codec, audio_path, expected, stream", [
     ("FLAC 24-bit", "", "seq/shot_v0001/shot_v0001.flac", "flac"),
     ("AAC", "{tmp}/sound", "sound/shot_v0001.m4a", "aac"),

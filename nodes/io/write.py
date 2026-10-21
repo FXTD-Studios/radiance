@@ -749,7 +749,8 @@ class RadianceWrite:
             }),
             "start_frame": ("INT", {
                 "default": 1001, "min": 0, "max": 99999,
-                "tooltip": "First frame number for sequences.",
+                "tooltip": "First frame number for sequences. EXR frames and the sequence's .wav carry "
+                           "it as timecode, at fps (frame 1001 at 24 fps = 00:00:41:17).",
             }),
             "frame_padding": ("INT", {
                 "default": 4, "min": 1, "max": 8,
@@ -827,7 +828,8 @@ class RadianceWrite:
             "write_audio": ("BOOLEAN", {
                 "default": False,
                 "tooltip": "Sequences: also write the sound (the 'audio' input or audio_source) "
-                           "as an audio file, as long as the frames.",
+                           "as an audio file, as long as the frames. A .wav starts at the first "
+                           "frame's timecode (Broadcast WAV), so an editor lines it up with them.",
             }),
             "audio_source": ("STRING", {
                 "default": "",

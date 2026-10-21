@@ -208,6 +208,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   in `audio_codec` (.wav, .flac, .m4a or .mp3), as long as the frames. By
   default it sits beside them, named like them (`shot_v0001.wav` next to
   `shot_v0001_1001.exr`); `audio_path` takes a folder or a file path.
+- **Sequences carry timecode** from `start_frame` and fps (frame 1001 at
+  24 fps is 00:00:41:17): every EXR frame has a `timeCode` and
+  `framesPerSecond` header, as Nuke and ARRI frames do, and the sequence's
+  .wav is a Broadcast WAV starting at the first frame. Resolve read
+  00:00:00:00 for both; it now lines them up by timecode (Auto Sync Audio).
 
 ### Removed
 

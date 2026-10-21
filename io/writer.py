@@ -70,6 +70,7 @@ import functools
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -77,6 +78,7 @@ from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -1384,13 +1386,41 @@ def _write_audio_temp_wav(audio: Any) -> Optional[str]:
     return path
 
 
+def _exr_timecode(frame: int, fps: float) -> Dict[str, Any]:
+    """A sequence frame's SMPTE timecode (non-drop, at the nominal rate) and frame rate,
+    for its EXR header: an editor then reads frame 1001 at 24 fps as 00:00:41:17."""
+    try:
+        import OpenEXR
+    except ImportError:  # the OpenCV fallback writes no header
+        return {}
+    rate = max(1, round(fps))
+    tc = OpenEXR.TimeCode()
+    hours, rest = divmod(frame, 3600 * rate)
+    tc.hours = hours % 24
+    tc.minutes, rest = divmod(rest, 60 * rate)
+    tc.seconds, tc.frame = divmod(rest, rate)
+    # 23.976 is 24000/1001, 24 stays 24/1.
+    return {"timeCode": tc, "framesPerSecond": Fraction(round(fps * 1001), 1001)}
+
+
+def _audio_rate(path: str) -> Optional[int]:
+    """An audio file's sample rate, from ffmpeg's description of its stream."""
+    info = subprocess.run([_ffmpeg_bin(), "-hide_banner", "-i", path], capture_output=True,
+                          text=True, errors="replace").stderr
+    found = re.search(r"Audio: .*?(\d+) Hz", info)
+    return int(found.group(1)) if found else None
+
+
 def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audio_path: str,
-                          seconds: float, overwrite: bool) -> Path:
+                          frames: int, fps: float, start_frame: int, overwrite: bool) -> Path:
     """Write a sequence's sound as a file, as long as its frames.
 
     Beside the frames and named like them (shot_v0001_1001.exr -> shot_v0001.wav),
     or at `audio_path`: a folder, or a file whose extension follows the codec.
+    A WAV is a Broadcast WAV starting at the first frame's timecode, so an
+    editor lines it up with the frames (frame 1001 at 24 fps = 00:00:41:17).
     """
+    seconds = frames / fps
     codec = _audio_codec_for(codec, "")
     ext = _AUDIO_FILE_EXT[codec]
     first = Path(receipt["files"][0]["path"])
@@ -1404,6 +1434,10 @@ def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audi
         path = _unique_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     encoder = _AUDIO_ENCODERS[codec]
+    rate = _audio_rate(source) if ext == ".wav" else None
+    if rate:
+        # BWF TimeReference: samples since midnight at the first frame.
+        encoder = encoder + ["-write_bext", "1", "-metadata", f"time_reference={round(start_frame * rate / fps)}"]
     cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-y", "-i", source, "-vn",
             "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(path)])
     done = subprocess.run(cmd, capture_output=True)
@@ -1772,7 +1806,7 @@ def write_frames(
         if sequence_audio and count:
             if effective_audio_source:
                 log.info("RadianceWrite: audio → %s", _write_sequence_audio(
-                    effective_audio_source, receipt, audio_codec, audio_path, count / fps, overwrite))
+                    effective_audio_source, receipt, audio_codec, audio_path, count, fps, start_frame, overwrite))
             else:
                 log.warning("RadianceWrite: write_audio is on but no sound is connected (the 'audio' "
                             "input or audio_source); no audio file was written.")
@@ -1990,7 +2024,7 @@ def _dispatch_write(
         def save(fr: np.ndarray, path: Path, frame: int) -> None:
             writer = stem
             if is_exr:
-                writer = _save_exr(fr, path, half=half_exr, metadata=seq_meta,
+                writer = _save_exr(fr, path, half=half_exr, metadata={**seq_meta, **_exr_timecode(frame, fps)},
                                    compression=exr_compression)
             elif is_dpx:
                 _save_dpx(fr, path, colour.dpx_attributes())
