@@ -37,9 +37,11 @@ function writeWidgetVisibility(v) {
         exr_compression: isExr,
         start_frame: isSeq,
         frame_padding: isSeq,
-        audio_section: isVid,
-        audio_source: isVid,
-        audio_codec: isVid,
+        audio_section: isVid || isSeq,
+        write_audio: isSeq,
+        audio_source: isVid || (isSeq && !!v.write_audio),
+        audio_codec: isVid || (isSeq && !!v.write_audio),
+        audio_path: isSeq && !!v.write_audio,
         broadcast_safe: !isFloatFmt && !isVid,
         color_space: !ocio,
         ocio_config: ocio,
@@ -246,7 +248,7 @@ const WRITE_SAVED_WIDGET_ORDER = [
 	"overwrite", "proxy_scale", "working_space", "ocio_colorspace", "ocio_config",
 	"hdr_reference_nits", "hdr10_mastering_display",
 ];
-const WRITE_AUDIO_WIDGETS = ["audio_source", "audio_codec"];
+const WRITE_AUDIO_WIDGETS = ["write_audio", "audio_source", "audio_codec", "audio_path"];
 
 app.registerExtension({
 	name: "Radiance.IO",

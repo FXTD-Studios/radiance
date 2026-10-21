@@ -203,6 +203,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   `audio_source` accepts a quoted path ("Copy as path") and a relative one
   (looked for in ComfyUI's input, then output folder); a path that is not a
   file is reported instead of silently ignored.
+- **Write's `write_audio`** for sequences, which used to drop the sound without
+  a word: the sound (the `audio` input or `audio_source`) is written as a file
+  in `audio_codec` (.wav, .flac, .m4a or .mp3), as long as the frames. By
+  default it sits beside them, named like them (`shot_v0001.wav` next to
+  `shot_v0001_1001.exr`); `audio_path` takes a folder or a file path.
 
 ### Removed
 

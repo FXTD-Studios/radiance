@@ -824,6 +824,11 @@ class RadianceWrite:
                 ),
             }),
             # ── Audio ───────────────────────────────────────────────────
+            "write_audio": ("BOOLEAN", {
+                "default": False,
+                "tooltip": "Sequences: also write the sound (the 'audio' input or audio_source) "
+                           "as an audio file, as long as the frames.",
+            }),
             "audio_source": ("STRING", {
                 "default": "",
                 "tooltip": "Path to an audio file, used instead of the 'audio' input (optional). "
@@ -834,7 +839,18 @@ class RadianceWrite:
                 "tooltip": (
                     "Audio of a video. Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), "
                     "AAC in an MP4. PCM in an MP4 is read by few players; FLAC cannot go in a "
-                    "MOV, which gets PCM 24-bit instead. AAC is 256 kb/s, MP3 320 kb/s."
+                    "MOV, which gets PCM 24-bit instead. AAC is 256 kb/s, MP3 320 kb/s. "
+                    "A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3."
+                ),
+            }),
+            "audio_path": ("STRING", {
+                "default": "",
+                "placeholder": "empty = beside the frames",
+                "tooltip": (
+                    "Sequences: where the audio file goes. Empty: in the sequence's folder, "
+                    "named like the frames (shot_v0001.wav). Otherwise a folder, or a file path "
+                    "(its extension follows audio_codec). A relative path is under ComfyUI's "
+                    "output folder; quotes from \"Copy as path\" are fine."
                 ),
             }),
         }, "hidden": {
@@ -909,6 +925,8 @@ class RadianceWrite:
         hdr_reference_nits: float = 203.0,
         hdr10_mastering_display: str = "P3-D65 · 1000 nits",
         audio_codec:    str   = "Auto",
+        write_audio:    bool  = False,
+        audio_path:     str   = "",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -951,6 +969,8 @@ class RadianceWrite:
             on_frame=_FrameProgress("Write"),
             receipt=receipt,
             audio_codec=audio_codec,
+            write_audio=write_audio,
+            audio_path=audio_path,
         )
         return _with_history(res, t0, receipt)
 

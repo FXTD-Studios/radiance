@@ -205,6 +205,9 @@ _AUDIO_ENCODERS = {
     "AAC":              ["-c:a", "aac", "-b:a", "256k"],
     "MP3":              ["-c:a", "libmp3lame", "-b:a", "320k"],
 }
+_AUDIO_FILE_EXT = {"PCM 24-bit": ".wav", "PCM 32-bit float": ".wav", "FLAC 24-bit": ".flac",
+                   "AAC": ".m4a", "MP3": ".mp3"}
+_AUDIO_FILE_SUFFIXES = {".wav", ".flac", ".m4a", ".mp3", ".aac", ".aif", ".aiff"}
 
 
 def _audio_codec_for(codec: str, ext: str) -> str:
@@ -1381,6 +1384,36 @@ def _write_audio_temp_wav(audio: Any) -> Optional[str]:
     return path
 
 
+def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audio_path: str,
+                          seconds: float, overwrite: bool) -> Path:
+    """Write a sequence's sound as a file, as long as its frames.
+
+    Beside the frames and named like them (shot_v0001_1001.exr -> shot_v0001.wav),
+    or at `audio_path`: a folder, or a file whose extension follows the codec.
+    """
+    codec = _audio_codec_for(codec, "")
+    ext = _AUDIO_FILE_EXT[codec]
+    first = Path(receipt["files"][0]["path"])
+    stem = first.stem.rsplit("_", 1)[0]
+    path = first.parent / f"{stem}{ext}"
+    if audio_path.strip():
+        target = Path(_anchor_output_dir(audio_path))
+        path = (target.with_name(target.stem + ext) if target.suffix.lower() in _AUDIO_FILE_SUFFIXES
+                else target / f"{stem}{ext}")
+    if not overwrite:
+        path = _unique_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoder = _AUDIO_ENCODERS[codec]
+    cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-y", "-i", source, "-vn",
+            "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(path)])
+    done = subprocess.run(cmd, capture_output=True)
+    if done.returncode:
+        raise RuntimeError(f"ffmpeg failed to write {path.name}: "
+                           f"{done.stderr.decode(errors='replace').strip()}")
+    _record(receipt, path, None, f"ffmpeg {codec}")
+    return path
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # § 3  The writer
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1616,6 +1649,8 @@ def write_frames(
     hdr_reference_nits: float = 203.0,
     hdr10_mastering_display: str = DEFAULT_MASTERING_DISPLAY,
     audio_codec:    str   = "Auto",
+    write_audio:    bool  = False,
+    audio_path:     str   = "",
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
@@ -1710,11 +1745,13 @@ def write_frames(
     # only "audio_source" (a STRING path to an existing file) actually muxed
     # into video output. When no explicit audio_source is given, fall back
     # to writing the connected AUDIO tensor to a temp WAV so it reaches the
-    # same mux path. Only relevant for video output -- image/sequence
-    # formats have no audio track.
+    # same mux path. Video output, and a sequence that writes its audio file.
+    sequence_audio = write_audio and format in _FMT_SEQ
+    if sequence_audio and receipt is None:
+        receipt = {}   # the audio file is named after the frames it records
     effective_audio_source = audio_source
     temp_audio_wav: Optional[str] = None
-    if format in _FMT_VIDEO and not audio_source.strip() and audio is not None:
+    if (format in _FMT_VIDEO or sequence_audio) and not audio_source.strip() and audio is not None:
         temp_audio_wav = _write_audio_temp_wav(audio)
         if temp_audio_wav:
             effective_audio_source = temp_audio_wav
@@ -1732,6 +1769,13 @@ def write_frames(
             on_frame=on_frame, receipt=receipt, light_levels=light_levels,
             audio_codec=audio_codec,
         )
+        if sequence_audio and count:
+            if effective_audio_source:
+                log.info("RadianceWrite: audio → %s", _write_sequence_audio(
+                    effective_audio_source, receipt, audio_codec, audio_path, count / fps, overwrite))
+            else:
+                log.warning("RadianceWrite: write_audio is on but no sound is connected (the 'audio' "
+                            "input or audio_source); no audio file was written.")
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
                             "complete": count == (1 if format in _FMT_IMAGE else n),
