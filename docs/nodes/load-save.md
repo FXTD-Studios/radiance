@@ -117,7 +117,6 @@ Write images or EXR sequences to disk with configurable format options.
 | `exr_compression` (optional) | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression codec (EXR formats only). |
 | `start_frame` (optional) | int | 1001 | 0 to 99999 | First frame number for sequences. |
 | `frame_padding` (optional) | int | 4 | 1 to 8 | Zero-padding width for frame numbers (e.g. 4 → 0001). |
-| `audio_source` (optional) | string |  |  | Path to audio file to mux into video output (optional). Takes priority over the 'audio' input when both are set. |
 | `broadcast_safe` (optional) | boolean | off |  | 8/16-bit stills: clamp to legal range (16–235). Video is always encoded legal-range by the RGB→YUV step; float formats are never clamped. |
 | `overwrite` (optional) | boolean | off |  | Overwrite existing files. When disabled (default), a unique suffix is appended instead of destroying the existing file. |
 | `proxy_scale` (optional) | float | 0 | 0 to 1, step 0.05 | Downscale output by this factor for proxy preview (0 = full resolution). |
@@ -128,6 +127,8 @@ Write images or EXR sequences to disk with configurable format options.
 | `ocio_config` (optional) | string |  |  | Path to a config.ocio or an ocio:// URI. Empty = $OCIO, else OCIO's built-in ACES 2.0 studio config. |
 | `hdr_reference_nits` (optional) | float | 203 | 48 to 1000, step 1 | PQ and HLG only: the luminance scene-linear 1.0 (diffuse white) is written at. 203 is BT.2408 and Radiance's HDR convention; 100 matches OCIO/ACES. PQ clips at 10,000 nits, HLG at about 3.8x diffuse white. |
 | `hdr10_mastering_display` (optional) | choice | `P3-D65 · 1000 nits` | `P3-D65 · 1000 nits`, `P3-D65 · 4000 nits`, `Rec.2020 · 1000 nits`, `Rec.2020 · 4000 nits` | PQ with MP4 (H.265 10-bit) only: the HDR10 mastering display (SMPTE ST 2086) written into the file, the monitor the grade was judged on. P3-D65 · 1000 nits is the usual OLED grading display and the streaming default; 4000 nits for high-end LCD grading monitors. MaxCLL / MaxFALL are always measured from the frames. |
+| `audio_source` (optional) | string |  |  | Path to an audio file, used instead of the 'audio' input (optional). It is converted to audio_codec and fitted to the picture's length. |
+| `audio_codec` (optional) | choice | `Auto` | `Auto`, `PCM 24-bit`, `PCM 32-bit float`, `FLAC 24-bit`, `AAC`, `MP3` | Audio of a video. Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), AAC in an MP4. PCM in an MP4 is read by few players; FLAC cannot go in a MOV, which gets PCM 24-bit instead. AAC is 256 kb/s, MP3 320 kb/s. |
 
 Output node: writes or displays, no graph outputs.
 

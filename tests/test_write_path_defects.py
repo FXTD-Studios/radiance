@@ -535,3 +535,41 @@ def test_a_generator_of_unknown_length_keeps_every_frame_with_short_audio(tmp_pa
     assert len(picture) // (16 * 16 * 3) == n
     sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
     assert abs(len(sound) / 2 / rate - n / fps) < 0.06
+
+
+def _audio_codec_of(path):
+    """The codec of the file's audio stream, as ffmpeg names it."""
+    from radiance.core.ffmpeg import ffmpeg_exe
+    err = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    return err.split("Audio: ", 1)[1].split()[0].rstrip(",") if "Audio: " in err else None
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("format, codec, expected", [
+    ("VID │ MOV (ProRes 422 HQ)", "Auto", "pcm_s24le"),
+    ("VID │ MOV (DNxHR HQ)", "Auto", "pcm_s24le"),
+    ("VID │ MP4 (H.264)", "Auto", "aac"),
+    ("VID │ MOV (ProRes 422 HQ)", "PCM 32-bit float", "pcm_f32le"),
+    ("VID │ MOV (ProRes 422 HQ)", "AAC", "aac"),
+    ("VID │ MP4 (H.264)", "MP3", "mp3"),
+    ("VID │ MP4 (H.264)", "FLAC 24-bit", "flac"),
+    ("VID │ MOV (ProRes 422 HQ)", "FLAC 24-bit", "pcm_s24le"),   # FLAC cannot go in a MOV
+])
+def test_a_video_carries_the_chosen_audio_codec(tmp_path, format, codec, expected):
+    """Every video got lossy AAC, ProRes and DNxHR masters included: a MOV now
+    carries PCM 24-bit by default, and audio_codec picks the track."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 128, 256, 3), 0.5), output_path=str(tmp_path / "shot"),
+                              format=format, fps=24.0, audio=audio, audio_codec=codec)
+    assert _audio_codec_of(saved) == expected
+
+
+def test_a_quoted_audio_source_is_found(tmp_path, monkeypatch):
+    """A path pasted from Windows' "Copy as path" keeps its quotes."""
+    track = tmp_path / "voice.wav"
+    track.write_bytes(b"RIFF")
+    seen = {}
+    monkeypatch.setattr(W, "dispatch_write", lambda *a, **k: seen.update(source=a[8]) or ("x", 1))
+    W.write_frames(image=torch.full((1, 8, 8, 3), 0.5), output_path=str(tmp_path / "shot"),
+                   format="VID │ MP4 (H.264)", audio_source=f'"{track}"')
+    assert seen["source"] == str(track)
