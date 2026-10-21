@@ -25,7 +25,7 @@ ComfyUI imports custom_nodes/radiance/__init__.py
  -> validate_runtime_dependencies(logger)         config/dependencies.py (return value ignored)
  -> _configure_ocio() -> color/ocio_setup.configure_ocio   (sets $OCIO if unset; never fatal)
  -> _load_comfyui_nodes(): load_node_mappings([.nodes required])   (cached module, no re-run)
- -> report_node_load_health()  ERROR if failures or < 152
+ -> report_node_load_health()  ERROR if failures or < 151
  -> register_run_grouping()    PromptServer on_prompt hook
 ```
 
