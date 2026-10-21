@@ -654,7 +654,13 @@ def _restore_input_assets(graph_json: str, assets: dict, inputs: dict) -> str:
     """
     input_dir = Path(folder_paths.get_input_directory()).resolve()
     renamed = {}
+    # CodeRabbit review on PR #76: the manifest comes from the file, so its
+    # "inputs" may be anything. Only {name: relative path} strings are honoured.
+    if not isinstance(inputs, dict):
+        raise ValueError(".rad v3: malformed input list")
     for name, rel in inputs.items():
+        if not isinstance(name, str) or not isinstance(rel, str) or not rel.strip():
+            raise ValueError(".rad v3: unsafe input path")
         if name not in assets:
             continue
         # ALBABIT-FIX: the input folder itself ("", ".") too, its free name would be a sibling.
@@ -664,6 +670,10 @@ def _restore_input_assets(graph_json: str, assets: dict, inputs: dict) -> str:
         path, n = target, 1
         while path.exists() and not (path.is_file() and path.read_bytes() == assets[name]):
             path, n = target.with_name(f"{target.stem}_{n}{target.suffix}"), n + 1
+        # The free name is checked again before writing: a link already in the
+        # folder under that name must not carry the write outside it.
+        if not path.resolve().is_relative_to(input_dir):
+            raise ValueError(".rad v3: unsafe input path")
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write_bytes(path, assets[name])
