@@ -717,7 +717,8 @@ class RadianceWrite:
                 "default": 1,
                 "min": 0,
                 "max": 9999,
-                "tooltip": "Version number appended to filename (e.g. shot_001_v0001).",
+                "control_after_generate": "fixed",
+                "tooltip": "Version number appended to filename (e.g. shot_001_v0001). Its control (fixed / increment) can step it after each run; increment rewrites the output on every run, even when nothing upstream changed.",
             }),
             "color_space": (OUTPUT_COLOR_SPACES, {
                 "default": "Linear (pass-through)",

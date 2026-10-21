@@ -234,6 +234,17 @@ try {
 } catch (e) {
 	console.warn("[Radiance.IO] Failed to patch Element.prototype.setAttribute", e);
 }
+
+// ALBABIT-FIX: version's control widget sits right after it. Writes saved before
+// it hold positional widgets_values in this order; declaring it makes the
+// frontend restore them by name.
+const WRITE_SAVED_WIDGET_ORDER = [
+	"output_path", "format", "filename", "version", "color_space", "fps", "quality",
+	"exr_compression", "start_frame", "frame_padding", "audio_source", "broadcast_safe",
+	"overwrite", "proxy_scale", "working_space", "ocio_colorspace", "ocio_config",
+	"hdr_reference_nits", "hdr10_mastering_display",
+];
+
 app.registerExtension({
 	name: "Radiance.IO",
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
@@ -490,6 +501,7 @@ app.registerExtension({
 		// the pre-v3 RadianceDigitalCinemaWrite and never matched. The group comes
 		// from the format prefix ("IMG │", "SEQ │", "VID │").
 		if (nodeData.name === "RadianceWrite") {
+			nodeData.fallbackWidgetsValuesNames = WRITE_SAVED_WIDGET_ORDER;
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
 			nodeType.prototype.onNodeCreated = function () {
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
