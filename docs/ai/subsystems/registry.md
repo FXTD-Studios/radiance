@@ -28,13 +28,13 @@ the nodes do.
   builds a dict, then calls `fold_in_module_nodes(__name__, ...)`. Implementation packages
   (`radiance.hdr`, `.color`, `.image`, `.film`) are deliberately **not** groups
   (`catalog.py:27-45`), because loading them as groups could silently replace keys.
-- **Per-group key counts (152 total since 4.0, which removed SAM Loader, SAM Mask Generator, HDR Latent Encoder and HDR Turbo Encoder):**
+- **Per-group key counts (151 total since 4.0, which removed SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder and Read Mask):**
 
   | Group | Keys |
   | --- | --- |
   | color | 17 |
   | hdr | 39 |
-  | io | 6 |
+  | io | 5 |
   | vfx | 26 |
   | pipeline | 10 |
   | monitor | 9 |
