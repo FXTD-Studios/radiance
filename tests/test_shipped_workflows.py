@@ -78,6 +78,7 @@ SAVED_ORDERS = {
     "RadianceUnifiedLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
     "RadianceImageLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
     "RadianceWrite": ("radiance_io.js", "WRITE_SAVED_WIDGET_ORDER"),
+    "RadianceCinematicPromptEncoder": ("radiance_prompt.js", "PROMPT_SAVED_WIDGET_ORDER"),
 }
 
 
@@ -102,7 +103,7 @@ def test_every_radiance_widget_value_fits_its_input(path):
             continue
         values = node.get("widgets_values") or []
         expected = _expected_widgets(cls)
-        # The Sampler, the Loader and the Write are restored by name (their JS declares the
+        # The Sampler, the Loader, the Write and the Prompt are restored by name (their JS declares the
         # order their graphs were saved in); the others by position. Fewer values than
         # widgets is fine when only the tail is missing (the frontend gives
         # newer trailing inputs their defaults); a gap in the middle shows up
@@ -194,3 +195,11 @@ def test_no_machine_specific_paths(path):
     text = path.read_text(encoding="utf-8")
     for marker in ("/root/", "/home/", "/tmp/", "/Users/", "C:\\\\Users", "C:/Users"):
         assert marker not in text, f"{path.name} contains a machine path ({marker})"
+
+
+def test_prompt_saved_order_is_its_widgets_without_action():
+    """Old Prompts are restored by this order; action came later, under base_prompt."""
+    from radiance.nodes.generate.prompt import RadianceCinematicPromptEncoder
+    widgets = [name for name, _, _ in _expected_widgets(RadianceCinematicPromptEncoder)]
+    assert widgets[:2] == ["base_prompt", "action"]
+    assert [w for w in widgets if w != "action"] == _saved_order(*SAVED_ORDERS["RadianceCinematicPromptEncoder"])

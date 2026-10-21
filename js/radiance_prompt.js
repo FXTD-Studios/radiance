@@ -160,6 +160,21 @@ function _applyLayoutVisibility(node, source = modelMetaSourceNode(node)) {
     fitNodeSize(node);
 }
 
+// ALBABIT-FIX: action is read by video models only (sampler_utils.py's
+// VIDEO_MODEL_TYPES). Under an image model it is dimmed and marked, its text kept
+// and still editable; with no Loader, or one in Auto-Detect, the last run decides.
+const VIDEO_FAMILIES = ["wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi",
+    "minimax", "hunyuan_video_15", "kandinsky5"];
+const IMAGE_MODEL_MARKER = " ⚠ image model, ignored";
+
+function _applyActionState(node, source = modelMetaSourceNode(node)) {
+    const w = node.widgets?.find(x => x.name === "action");
+    if (!w) return;
+    const arch = loaderModelType(source);
+    w._radIgnored = (arch === null ? node._radVideo : VIDEO_FAMILIES.includes(arch)) === false;
+    _setLabelMarker(w, w._radIgnored ? IMAGE_MODEL_MARKER : null);
+}
+
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
@@ -274,14 +289,17 @@ function _makeTextBar(node) {
     return bar;
 }
 
-// Typing resizes the boxes at once, not at the next poll. Every box but the
-// last has a bar under it, in its host element.
+// Typing resizes the boxes at once, not at the next poll. A box the model
+// ignores is dimmed. Every box but the last has a bar under it, in its host.
 function _attachTextBox(node, entries, i, host, left) {
-    const el = entries[i].el;
+    const { el, widget } = entries[i];
     if (!el._radWatched) {
         el._radWatched = true;
         el.addEventListener("input", () => _layoutTextBoxes(node));
     }
+    if (widget._radIgnored !== undefined) el.style.opacity = widget._radIgnored ? "0.5" : "";
+    // Nodes 2.0 (1.55) leaves out the placeholder the node gives a text box.
+    if (el !== widget.element) el.placeholder ||= node.constructor.nodeData?.input?.optional?.[widget.name]?.[1]?.placeholder ?? "";
     let bar = host.querySelector(":scope > .radiance-text-bar");
     if (i === entries.length - 1) return bar?.remove();
     if (!bar) {
@@ -380,6 +398,7 @@ function _refreshLiveState(node) {
     _applyNegStrengthLock(node, locked);
     const negW = node.widgets?.find(w => w.name === "negative_prompt");
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
+    _applyActionState(node, source);
     _layoutTextBoxes(node);
 }
 
@@ -466,10 +485,20 @@ function updatePresetDivergenceMarkers(node) {
     if (changed) node.setDirtyCanvas(true, true);
 }
 
+// ALBABIT-FIX: action sits under base_prompt. Graphs saved before it hold
+// positional widgets_values in this order; declaring it makes the frontend
+// restore this node by name.
+const PROMPT_SAVED_WIDGET_ORDER = [
+    "base_prompt", "style_preset", "framing", "camera_type", "lens_focal", "aperture_dof", "lighting",
+    "style_aesthetic", "color_grading", "negative_strength", "negative_prompt", "negative_mode",
+    "resolution", "upsample_prompt", "upsampler_seed", "control_after_generate", "layout",
+];
+
 app.registerExtension({
     name: "FXTD.RadianceCinematicPromptEncoder",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== "RadianceCinematicPromptEncoder") return;
+        nodeData.fallbackWidgetsValuesNames = PROMPT_SAVED_WIDGET_ORDER;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -521,12 +550,13 @@ app.registerExtension({
             setTimeout(() => _refreshLiveState(self), 600);
         };
 
-        // ALBABIT-FIX: the last real run's arch verdict, read by
-        // _refreshLiveState for the label marker and the Auto-Detect lock.
+        // ALBABIT-FIX: the last real run's arch verdicts, read by _refreshLiveState
+        // for the negative's marker and Auto-Detect lock, and for action.
         const onExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             if (onExecuted) onExecuted.apply(this, arguments);
             this._radWeakNeg = !!message?.weak_neg_arch?.[0];
+            this._radVideo = message?.video_arch?.[0];
             _refreshLiveState(this);
             this.setDirtyCanvas?.(true, true);
         };
