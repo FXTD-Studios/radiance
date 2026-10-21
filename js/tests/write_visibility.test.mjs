@@ -29,7 +29,7 @@ test('an EXR sequence shows its compression and numbering, no video or display s
 
 test('ProRes takes no CRF and no broadcast clamp; PQ shows the reference white', () => {
     assert.deepEqual(shown({ format: 'VID │ MOV (ProRes 4444)', color_space: 'PQ (HDR10 / ST.2084)' }),
-        ['audio_source', 'color_space', 'fps', 'hdr_reference_nits']);
+        ['audio_codec', 'audio_section', 'audio_source', 'color_space', 'fps', 'hdr_reference_nits']);
 });
 
 test('H.264 and H.265 show their CRF', () => {

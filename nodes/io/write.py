@@ -106,6 +106,7 @@ from ...io.writer import (  # noqa: F401  (re-exported for this module's other u
     OUTPUT_COLOR_SPACES,
     WRITE_WORKING_SPACES,
     EXR_COMPRESSIONS,
+    AUDIO_CODECS,
     _ffmpeg_bin,
     _ffprobe_bin,
     _ffmpeg_ok,
@@ -661,7 +662,7 @@ class RadianceWrite:
     ├──────────────┼─────────────────────────────────────────────────────────┤
     │ Image        │ quality, overwrite                                       │
     │ EXR          │ exr_compression, overwrite                               │
-    │ Video        │ fps, quality (CRF), audio_source, broadcast_safe         │
+    │ Video        │ fps, quality (CRF), audio_source, audio_codec            │
     │ Sequence     │ fps, start_frame, frame_padding, overwrite               │
     └──────────────┴─────────────────────────────────────────────────────────┘
 
@@ -754,11 +755,6 @@ class RadianceWrite:
                 "default": 4, "min": 1, "max": 8,
                 "tooltip": "Zero-padding width for frame numbers (e.g. 4 → 0001).",
             }),
-            "audio_source": ("STRING", {
-                "default": "",
-                "tooltip": "Path to audio file to mux into video output (optional). "
-                           "Takes priority over the 'audio' input when both are set.",
-            }),
             "broadcast_safe": ("BOOLEAN", {
                 "default": False,
                 "tooltip": "8/16-bit stills: clamp to legal range (16–235). Video is always "
@@ -825,6 +821,20 @@ class RadianceWrite:
                     "judged on. P3-D65 · 1000 nits is the usual OLED grading display and "
                     "the streaming default; 4000 nits for high-end LCD grading monitors. "
                     "MaxCLL / MaxFALL are always measured from the frames."
+                ),
+            }),
+            # ── Audio ───────────────────────────────────────────────────
+            "audio_source": ("STRING", {
+                "default": "",
+                "tooltip": "Path to an audio file, used instead of the 'audio' input (optional). "
+                           "It is converted to audio_codec and fitted to the picture's length.",
+            }),
+            "audio_codec": (AUDIO_CODECS, {
+                "default": "Auto",
+                "tooltip": (
+                    "Audio of a video. Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), "
+                    "AAC in an MP4. PCM in an MP4 is read by few players; FLAC cannot go in a "
+                    "MOV, which gets PCM 24-bit instead. AAC is 256 kb/s, MP3 320 kb/s."
                 ),
             }),
         }, "hidden": {
@@ -898,6 +908,7 @@ class RadianceWrite:
         ocio_config:    str   = "",
         hdr_reference_nits: float = 203.0,
         hdr10_mastering_display: str = "P3-D65 · 1000 nits",
+        audio_codec:    str   = "Auto",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -939,6 +950,7 @@ class RadianceWrite:
             # ALBABIT-FIX: node and console progress for sequences and video.
             on_frame=_FrameProgress("Write"),
             receipt=receipt,
+            audio_codec=audio_codec,
         )
         return _with_history(res, t0, receipt)
 

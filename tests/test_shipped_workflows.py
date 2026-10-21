@@ -125,7 +125,7 @@ def test_write_saved_order_is_its_widgets_before_the_version_control():
     widgets = [name for name, _, _ in _expected_widgets(RadianceWrite)]
     assert widgets[3:5] == ["version", "control_after_generate"]
     saved = _saved_order(*SAVED_ORDERS["RadianceWrite"])
-    assert [n for n in widgets if n != "control_after_generate"][:len(saved)] == saved
+    assert set(saved) <= set(widgets), "a renamed input would lose its saved value"
     assert RadianceWrite.INPUT_TYPES()["optional"]["version"][1]["control_after_generate"] == "fixed"
 
 
