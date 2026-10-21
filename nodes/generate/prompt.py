@@ -106,6 +106,7 @@ logger = logging.getLogger("radiance.prompt")
 
 from radiance.config.constants import VERSION as __version__  # noqa: E402
 from radiance.nodes.branding import schema_branding  # noqa: E402
+from radiance.sampler_utils import VIDEO_MODEL_TYPES  # noqa: E402
 
 
 class CinematicDatasets:
@@ -2083,6 +2084,19 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                              "• The camera, lighting and look menus follow it, as short sentences.\n\n"
                              "LTX 2: words in quotes (says \"Hello!\") are spoken."),
                 ),
+                # ALBABIT-FIX: read by video models only, so one text serves image and
+                # video workflows. js/radiance_prompt.js reads saved graphs by name,
+                # which lets it sit under base_prompt.
+                io.String.Input(
+                    "action", multiline=True, default="", optional=True,
+                    placeholder="What happens over time (video models only)",
+                    tooltip=("What happens over time: the moves in order, the words spoken, "
+                             "the camera moves, the sounds.\n"
+                             "• Video models (LTX, Wan, HunyuanVideo, MiniMax H3…) read it "
+                             "right after base_prompt.\n"
+                             "• Image models skip it: a pose or a still moment goes in base_prompt.\n\n"
+                             "Dimmed and marked \"⚠ image model, ignored\" under an image model."),
+                ),
                 # ALBABIT-FIX: "None (Custom)" by default, so a new node starts blank, not
                 # with "→ Classic Hollywood". The 7 style menus default to "None" to match,
                 # as js/radiance_prompt.js's resetToCustomDefaults() sets them.
@@ -2259,6 +2273,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         upsample_prompt=False,
         upsampler_seed=0,
         layout="",
+        action="",
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2308,6 +2323,13 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 raise ValueError("Prompt: a layout table is both at the end of base_prompt and in "
                                  "the layout input. Keep one.")
             flux3_layout = _check_flux3_layout(layout)
+
+        # The action goes on as if typed at the end of base_prompt.
+        is_video = resolved_arch in VIDEO_MODEL_TYPES
+        if is_video and action and action.strip():
+            parts = [base_prompt.rstrip(), action.strip()]
+            _end_subject_sentence(parts)
+            base_prompt = " ".join(parts)
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2435,7 +2457,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # as engine.py's rudra_fallback/log_overexposure_risk.
         return {
             "ui": {"weak_neg_arch": [resolved_arch in _WEAK_NEG_ARCHS],
-                   "negative_skipped": [bool(skip_negative)]},
+                   "negative_skipped": [bool(skip_negative)],
+                   "video_arch": [is_video]},
             "result": (
                 positive_cond,
                 negative_cond,
