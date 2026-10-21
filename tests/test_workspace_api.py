@@ -2419,6 +2419,35 @@ def test_open_refuses_an_input_path_outside_the_input_folder(ws, rel):
     assert list(ws.inp.iterdir()) == []
 
 
+# CodeRabbit review on PR #76: the manifest comes from the file.
+@pytest.mark.parametrize("inputs, error", [
+    (["x.png"], "malformed input list"),
+    ({"x.png": 7}, "unsafe input path"),
+    ({"x.png": None}, "unsafe input path"),
+])
+def test_open_refuses_a_malformed_input_list(ws, inputs, error):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("x.png")), {},
+                             assets={"x.png": b"EVIL"}, inputs=inputs)
+    (ws.root / "bad.rad").write_bytes(blob)
+    resp = run(ws.m.get_workflow(Req(query={"filename": "bad.rad"})))
+    assert resp.status == 500
+    assert error in body(resp)["error"]
+    assert list(ws.inp.iterdir()) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_link_under_the_free_name_cannot_carry_the_write_outside(ws, tmp_path):
+    (ws.inp / "ref.png").write_bytes(b"SOMEONE ELSE'S")
+    outside = tmp_path / "outside_target.png"            # does not exist yet: a dangling link
+    (ws.inp / "ref_1.png").symlink_to(outside)
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("ref.png")), {},
+                             assets={"ref.png": PNG_1PX}, inputs={"ref.png": "ref.png"})
+    (ws.root / "link.rad").write_bytes(blob)
+    resp = run(ws.m.get_workflow(Req(query={"filename": "link.rad"})))
+    assert resp.status == 500 and "unsafe input path" in body(resp)["error"]
+    assert not outside.exists(), "the restore wrote through a link to outside the input folder"
+
+
 def test_a_string_that_is_no_file_name_does_not_stop_the_save(ws):
     (ws.inp / "ref.png").write_bytes(PNG_1PX)
     graph = _loader_graph("ref.png", "nul\x00byte.png", "長いファイル名" * 25)
