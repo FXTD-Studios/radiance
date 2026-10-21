@@ -19,7 +19,7 @@ the nodes do.
 | `nodes/catalog.py:NODE_GROUPS` | Ten groups: color, hdr, io, vfx, pipeline, monitor, upscale, video, ai, generate. None has an env flag | Implemented |
 | `nodes/registry.py:load_node_mappings` | Imports each spec and merges with plain `dict.update`, so a later module overrides an earlier one (logged only at DEBUG) | Implemented |
 | `nodes/aggregate.py:fold_in_module_nodes` | Picks up `NODE_CLASS_MAPPINGS` from leaf modules one level deep. Keys the group already lists win | Implemented |
-| `nodes/branding.py:apply_radiance_branding` | Uses `NODE_SECTIONS` (152 keys) to set the menu section and display name, and **overwrites each class's `CATEGORY`** | Implemented |
+| `nodes/branding.py:apply_radiance_branding` | Uses `NODE_SECTIONS` (151 keys) to set the menu section and display name, and **overwrites each class's `CATEGORY`** | Implemented |
 | `nodes/gizmo.py:load_dynamic_gizmos` | Builds `RadianceGizmo_<name>` classes from `<repo>/gizmos/*.gizmo` JSON. `os.makedirs` runs at import time | Implemented |
 
 ## Contracts
@@ -70,7 +70,7 @@ by filename only and not run.
 
 ## Open questions
 
-- README says "147 visible nodes" but 152 keys register (156 before 4.0). Possible reasons: deprecated aliases
+- README says "147 visible nodes" but 151 keys register (156 before 4.0). Possible reasons: deprecated aliases
   (`ImageLoader`, `ControlApply`), gizmos, or hidden nodes. Not verified.
 - When a gizmo key is missing from `NODE_SECTIONS`, the keyword fallback replaces its own
   category (inferred).

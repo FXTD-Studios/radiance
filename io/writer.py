@@ -1301,15 +1301,20 @@ def _save_video_ffmpeg(
                "\nffmpeg printed nothing on stderr.")
         )
 
+    _publish_encode(part_path, Path(out_path), overwrite)
+    return str(out_path)
+
+
+def _publish_encode(part_path: Path, out_path: Path, overwrite: bool) -> None:
+    """Move a finished encode into place, removing it if that fails."""
     try:
         if overwrite:
             os.replace(part_path, out_path)
         else:
-            _publish_without_replacing(part_path, Path(out_path))
+            _publish_without_replacing(part_path, out_path)
     except BaseException:
         _discard_partial(part_path)
         raise
-    return str(out_path)
 
 
 def _publish_without_replacing(part_path: Path, out_path: Path) -> None:
@@ -1394,11 +1399,15 @@ def _exr_timecode(frame: int, fps: float) -> Dict[str, Any]:
     except ImportError:  # the OpenCV fallback writes no header
         return {}
     rate = max(1, round(fps))
+    # ALBABIT-FIX: OpenEXR refuses a timecode frame above 29, so a 48/50/60 fps sequence failed
+    # on its first frame. Above 30 fps the frame field counts pairs (SMPTE ST 12-1), fours at 120.
+    step = -(-rate // 30)
     tc = OpenEXR.TimeCode()
     hours, rest = divmod(frame, 3600 * rate)
     tc.hours = hours % 24
     tc.minutes, rest = divmod(rest, 60 * rate)
-    tc.seconds, tc.frame = divmod(rest, rate)
+    tc.seconds, rest = divmod(rest, rate)
+    tc.frame = rest // step
     # 23.976 is 24000/1001, 24 stays 24/1.
     return {"timeCode": tc, "framesPerSecond": Fraction(round(fps * 1001), 1001)}
 
@@ -1438,12 +1447,17 @@ def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audi
     if rate:
         # BWF TimeReference: samples since midnight at the first frame.
         encoder = encoder + ["-write_bext", "1", "-metadata", f"time_reference={round(start_frame * rate / fps)}"]
-    cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-y", "-i", source, "-vn",
-            "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(path)])
+    # ALBABIT-FIX: ffmpeg wrote the final path with -y, so a failed encode truncated the
+    # soundtrack it was replacing. It now writes a sibling, moved into place like the videos.
+    part = path.with_name(f".{path.stem}.partial-{os.urandom(6).hex()}{ext}")
+    cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-n", "-i", source, "-vn",
+            "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(part)])
     done = subprocess.run(cmd, capture_output=True)
     if done.returncode:
+        _discard_partial(part)
         raise RuntimeError(f"ffmpeg failed to write {path.name}: "
                            f"{done.stderr.decode(errors='replace').strip()}")
+    _publish_encode(part, path, overwrite)
     _record(receipt, path, None, f"ffmpeg {codec}")
     return path
 
