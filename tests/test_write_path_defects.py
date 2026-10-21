@@ -535,3 +535,106 @@ def test_a_generator_of_unknown_length_keeps_every_frame_with_short_audio(tmp_pa
     assert len(picture) // (16 * 16 * 3) == n
     sound = _decode(saved, "-map", "0:a", "-ac", "1", "-ar", str(rate), "-f", "s16le")
     assert abs(len(sound) / 2 / rate - n / fps) < 0.06
+
+
+def _audio_codec_of(path):
+    """The codec of the file's audio stream, as ffmpeg names it."""
+    from radiance.core.ffmpeg import ffmpeg_exe
+    err = subprocess.run([ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    return err.split("Audio: ", 1)[1].split()[0].rstrip(",") if "Audio: " in err else None
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("format, codec, expected", [
+    ("VID │ MOV (ProRes 422 HQ)", "Auto", "pcm_s24le"),
+    ("VID │ MOV (DNxHR HQ)", "Auto", "pcm_s24le"),
+    ("VID │ MP4 (H.264)", "Auto", "aac"),
+    ("VID │ MOV (ProRes 422 HQ)", "PCM 32-bit float", "pcm_f32le"),
+    ("VID │ MOV (ProRes 422 HQ)", "AAC", "aac"),
+    ("VID │ MP4 (H.264)", "MP3", "mp3"),
+    ("VID │ MP4 (H.264)", "FLAC 24-bit", "flac"),
+    ("VID │ MOV (ProRes 422 HQ)", "FLAC 24-bit", "pcm_s24le"),   # FLAC cannot go in a MOV
+])
+def test_a_video_carries_the_chosen_audio_codec(tmp_path, format, codec, expected):
+    """Every video got lossy AAC, ProRes and DNxHR masters included: a MOV now
+    carries PCM 24-bit by default, and audio_codec picks the track."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 128, 256, 3), 0.5), output_path=str(tmp_path / "shot"),
+                              format=format, fps=24.0, audio=audio, audio_codec=codec)
+    assert _audio_codec_of(saved) == expected
+
+
+@needs_ffmpeg
+def test_a_sequence_writes_its_audio_beside_the_frames(tmp_path):
+    """A sequence dropped the sound without a word. With write_audio it lands
+    beside the frames, named like them, as long as them (0.5 s of sound, 1 s of frames)."""
+    audio = {"waveform": torch.zeros(1, 2, 24000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ EXR (16-bit half)", fps=24.0,
+                              audio=audio, write_audio=True)
+    wav = Path(saved) / "shot_v0001.wav"
+    assert (Path(saved) / "shot_v0001_1001.exr").is_file()
+    assert _audio_codec_of(wav) == "pcm_s24le"
+    assert abs(len(_decode(wav, "-ac", "1", "-f", "s16le")) / 2 / 48000 - 1.0) < 0.01
+
+
+@needs_ffmpeg
+def test_a_sequence_wav_starts_at_the_first_frames_timecode(tmp_path):
+    """A Broadcast WAV time reference lines the sound up with the frames in an
+    editor: frame 1001 at 24 fps is 1001 / 24 s after midnight."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ PNG (8-bit)", fps=24.0, start_frame=1001,
+                              audio=audio, write_audio=True)
+    data = (Path(saved) / "shot_v0001.wav").read_bytes()
+    bext = data.index(b"bext") + 8          # Description, Originator, ..., then TimeReference
+    assert int.from_bytes(data[bext + 338:bext + 346], "little") == 1001 * 48000 // 24
+
+
+def test_sequence_exr_frames_carry_their_timecode(tmp_path):
+    """Resolve read no timecode from the EXR frames (00:00:00:00): each now
+    carries its own, as Nuke and ARRI frames do. Frame 1002 at 23.976 fps."""
+    from fractions import Fraction
+    OpenEXR = pytest.importorskip("OpenEXR")
+    saved, _ = W.write_frames(image=torch.full((2, 8, 8, 3), 0.5), output_path=str(tmp_path), filename="shot",
+                              format="SEQ │ EXR (16-bit half)", fps=23.976, start_frame=1001)
+    with OpenEXR.File(str(Path(saved) / "shot_v0001_1002.exr")) as f:
+        tc, rate = f.header()["timeCode"], f.header()["framesPerSecond"]
+    assert (tc.hours, tc.minutes, tc.seconds, tc.frame) == (0, 0, 41, 18)
+    assert rate == Fraction(24000, 1001)
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("codec, audio_path, expected, stream", [
+    ("FLAC 24-bit", "", "seq/shot_v0001/shot_v0001.flac", "flac"),
+    ("AAC", "{tmp}/sound", "sound/shot_v0001.m4a", "aac"),
+    ("MP3", '"{tmp}/mix/final.wav"', "mix/final.mp3", "mp3"),
+])
+def test_audio_path_and_codec_place_the_sequence_audio(tmp_path, codec, audio_path, expected, stream):
+    """Empty: beside the frames. A folder: named like the frames. A file (quoted
+    from "Copy as path"): its extension follows the codec."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path / "seq"),
+                   filename="shot", format="SEQ │ PNG (8-bit)", fps=24.0, audio=audio,
+                   write_audio=True, audio_codec=codec, audio_path=audio_path.format(tmp=tmp_path))
+    assert _audio_codec_of(tmp_path / expected) == stream
+
+
+def test_write_audio_without_sound_says_so(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(W, "log", MagicMock())
+    saved, _ = W.write_frames(image=torch.full((2, 8, 8, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ PNG (8-bit)", write_audio=True)
+    assert not [p for p in Path(saved).iterdir() if p.suffix != ".png"]
+    assert any("no audio file" in c.args[0] for c in W.log.warning.call_args_list)
+
+
+def test_a_quoted_audio_source_is_found(tmp_path, monkeypatch):
+    """A path pasted from Windows' "Copy as path" keeps its quotes."""
+    track = tmp_path / "voice.wav"
+    track.write_bytes(b"RIFF")
+    seen = {}
+    monkeypatch.setattr(W, "dispatch_write", lambda *a, **k: seen.update(source=a[8]) or ("x", 1))
+    W.write_frames(image=torch.full((1, 8, 8, 3), 0.5), output_path=str(tmp_path / "shot"),
+                   format="VID │ MP4 (H.264)", audio_source=f'"{track}"')
+    assert seen["source"] == str(track)

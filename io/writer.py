@@ -70,6 +70,7 @@ import functools
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -77,6 +78,7 @@ from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from concurrent.futures import ThreadPoolExecutor
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -123,9 +125,13 @@ except ImportError:
 # writer did not. Absolute paths still pass through untouched.
 try:
     from ..core.system.path_utils import resolve_output_path as _anchor_output_dir
+    from ..core.system.path_utils import resolve_input_path as _find_input_file
 except ImportError:  # pragma: no cover - only outside the package
     def _anchor_output_dir(path: str) -> str:  # type: ignore[misc]
         return path
+
+    def _find_input_file(path: str) -> str:  # type: ignore[misc]
+        return strip_path_quotes(path)
 
 log = logging.getLogger("radiance.io.writer")
 
@@ -191,6 +197,29 @@ WRITE_FORMATS: List[str] = _FMT_IMAGE + _FMT_SEQ + _FMT_VIDEO
 def _fmt_stem(fmt: str) -> str:
     """Strip group prefix (e.g. 'IMG │ PNG (8-bit)' → 'PNG (8-bit)')."""
     return fmt.split(" │ ", 1)[-1] if " │ " in fmt else fmt
+
+# ── Audio ──────────────────────────────────────────────────────────────────
+AUDIO_CODECS = ["Auto", "PCM 24-bit", "PCM 32-bit float", "FLAC 24-bit", "AAC", "MP3"]
+_AUDIO_ENCODERS = {
+    "PCM 24-bit":       ["-c:a", "pcm_s24le"],
+    "PCM 32-bit float": ["-c:a", "pcm_f32le"],
+    "FLAC 24-bit":      ["-c:a", "flac", "-sample_fmt", "s32"],
+    "AAC":              ["-c:a", "aac", "-b:a", "256k"],
+    "MP3":              ["-c:a", "libmp3lame", "-b:a", "320k"],
+}
+_AUDIO_FILE_EXT = {"PCM 24-bit": ".wav", "PCM 32-bit float": ".wav", "FLAC 24-bit": ".flac",
+                   "AAC": ".m4a", "MP3": ".mp3"}
+_AUDIO_FILE_SUFFIXES = {".wav", ".flac", ".m4a", ".mp3", ".aac", ".aif", ".aiff"}
+
+
+def _audio_codec_for(codec: str, ext: str) -> str:
+    """The audio codec written into a `ext` container: Auto is lossless PCM except in MP4."""
+    if codec == "Auto":
+        return "AAC" if ext == ".mp4" else "PCM 24-bit"
+    if codec == "FLAC 24-bit" and ext == ".mov":
+        log.warning("RadianceWrite: FLAC cannot go in a MOV; the audio is written as PCM 24-bit.")
+        return "PCM 24-bit"
+    return codec
 
 # ── Output color spaces ────────────────────────────────────────────────────
 OUTPUT_COLOR_SPACES = [
@@ -1049,6 +1078,7 @@ def _save_video_ffmpeg(
     has_alpha: bool = False,
     frame_count: Optional[int] = None,
     light_levels: Optional[Tuple[int, int]] = None,
+    audio_codec: str = "Auto",
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
 
@@ -1167,7 +1197,9 @@ def _save_video_ffmpeg(
         "-i", "pipe:0",
     ]
     if audio_source and os.path.isfile(audio_source):
-        cmd += ["-i", audio_source, "-c:a", "aac"]
+        # ALBABIT-FIX: every video got lossy AAC, ProRes and DNxHR masters too;
+        # a MOV now carries PCM 24-bit unless audio_codec says otherwise.
+        cmd += ["-i", audio_source] + _AUDIO_ENCODERS[_audio_codec_for(audio_codec, ext)]
         if frame_count:
             # ALBABIT-FIX: "-shortest" cut the picture to the audio: a track
             # 30 ms short lost the last frame, a 5 s track on a 10 s shot lost
@@ -1351,6 +1383,68 @@ def _write_audio_temp_wav(audio: Any) -> Optional[str]:
                 sr * block_align, block_align, 32) +
             b"data" + struct.pack("<I", len(raw)) + raw
         )
+    return path
+
+
+def _exr_timecode(frame: int, fps: float) -> Dict[str, Any]:
+    """A sequence frame's SMPTE timecode (non-drop, at the nominal rate) and frame rate,
+    for its EXR header: an editor then reads frame 1001 at 24 fps as 00:00:41:17."""
+    try:
+        import OpenEXR
+    except ImportError:  # the OpenCV fallback writes no header
+        return {}
+    rate = max(1, round(fps))
+    tc = OpenEXR.TimeCode()
+    hours, rest = divmod(frame, 3600 * rate)
+    tc.hours = hours % 24
+    tc.minutes, rest = divmod(rest, 60 * rate)
+    tc.seconds, tc.frame = divmod(rest, rate)
+    # 23.976 is 24000/1001, 24 stays 24/1.
+    return {"timeCode": tc, "framesPerSecond": Fraction(round(fps * 1001), 1001)}
+
+
+def _audio_rate(path: str) -> Optional[int]:
+    """An audio file's sample rate, from ffmpeg's description of its stream."""
+    info = subprocess.run([_ffmpeg_bin(), "-hide_banner", "-i", path], capture_output=True,
+                          text=True, errors="replace").stderr
+    found = re.search(r"Audio: .*?(\d+) Hz", info)
+    return int(found.group(1)) if found else None
+
+
+def _write_sequence_audio(source: str, receipt: Dict[str, Any], codec: str, audio_path: str,
+                          frames: int, fps: float, start_frame: int, overwrite: bool) -> Path:
+    """Write a sequence's sound as a file, as long as its frames.
+
+    Beside the frames and named like them (shot_v0001_1001.exr -> shot_v0001.wav),
+    or at `audio_path`: a folder, or a file whose extension follows the codec.
+    A WAV is a Broadcast WAV starting at the first frame's timecode, so an
+    editor lines it up with the frames (frame 1001 at 24 fps = 00:00:41:17).
+    """
+    seconds = frames / fps
+    codec = _audio_codec_for(codec, "")
+    ext = _AUDIO_FILE_EXT[codec]
+    first = Path(receipt["files"][0]["path"])
+    stem = first.stem.rsplit("_", 1)[0]
+    path = first.parent / f"{stem}{ext}"
+    if audio_path.strip():
+        target = Path(_anchor_output_dir(audio_path))
+        path = (target.with_name(target.stem + ext) if target.suffix.lower() in _AUDIO_FILE_SUFFIXES
+                else target / f"{stem}{ext}")
+    if not overwrite:
+        path = _unique_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoder = _AUDIO_ENCODERS[codec]
+    rate = _audio_rate(source) if ext == ".wav" else None
+    if rate:
+        # BWF TimeReference: samples since midnight at the first frame.
+        encoder = encoder + ["-write_bext", "1", "-metadata", f"time_reference={round(start_frame * rate / fps)}"]
+    cmd = ([_ffmpeg_for(encoder[1]), "-v", "error", "-y", "-i", source, "-vn",
+            "-af", f"apad=whole_dur={seconds},atrim=end={seconds}"] + encoder + [str(path)])
+    done = subprocess.run(cmd, capture_output=True)
+    if done.returncode:
+        raise RuntimeError(f"ffmpeg failed to write {path.name}: "
+                           f"{done.stderr.decode(errors='replace').strip()}")
+    _record(receipt, path, None, f"ffmpeg {codec}")
     return path
 
 
@@ -1588,11 +1682,18 @@ def write_frames(
     ocio_config:    str   = "",
     hdr_reference_nits: float = 203.0,
     hdr10_mastering_display: str = DEFAULT_MASTERING_DISPLAY,
+    audio_codec:    str   = "Auto",
+    write_audio:    bool  = False,
+    audio_path:     str   = "",
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
 ):
     output_path = strip_path_quotes(output_path)
+    audio_source = _find_input_file(audio_source)
+    if audio_source and not os.path.isfile(audio_source):
+        log.warning("RadianceWrite: audio_source %r is not a file; it is ignored.", audio_source)
+        audio_source = ""
     # Built before any frame is touched, so a bad colour setting fails before
     # a file is created.
     colour = OutputColour(color_space, working_space, ocio_colorspace, ocio_config,
@@ -1678,11 +1779,13 @@ def write_frames(
     # only "audio_source" (a STRING path to an existing file) actually muxed
     # into video output. When no explicit audio_source is given, fall back
     # to writing the connected AUDIO tensor to a temp WAV so it reaches the
-    # same mux path. Only relevant for video output -- image/sequence
-    # formats have no audio track.
+    # same mux path. Video output, and a sequence that writes its audio file.
+    sequence_audio = write_audio and format in _FMT_SEQ
+    if sequence_audio and receipt is None:
+        receipt = {}   # the audio file is named after the frames it records
     effective_audio_source = audio_source
     temp_audio_wav: Optional[str] = None
-    if format in _FMT_VIDEO and not audio_source.strip() and audio is not None:
+    if (format in _FMT_VIDEO or sequence_audio) and not audio_source.strip() and audio is not None:
         temp_audio_wav = _write_audio_temp_wav(audio)
         if temp_audio_wav:
             effective_audio_source = temp_audio_wav
@@ -1698,7 +1801,15 @@ def write_frames(
             prompt, extra_pnginfo,
             frame_count=n, colour=colour, has_alpha=alpha is not None or c == 4,
             on_frame=on_frame, receipt=receipt, light_levels=light_levels,
+            audio_codec=audio_codec,
         )
+        if sequence_audio and count:
+            if effective_audio_source:
+                log.info("RadianceWrite: audio → %s", _write_sequence_audio(
+                    effective_audio_source, receipt, audio_codec, audio_path, count, fps, start_frame, overwrite))
+            else:
+                log.warning("RadianceWrite: write_audio is on but no sound is connected (the 'audio' "
+                            "input or audio_source); no audio file was written.")
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
                             "complete": count == (1 if format in _FMT_IMAGE else n),
@@ -1783,6 +1894,7 @@ def _dispatch_write(
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
     light_levels:   Optional[Tuple[int, int]] = None,
+    audio_codec:    str = "Auto",
 ) -> Tuple[str, int]:
     """Write `frames` in `format` and return (path, frames written).
 
@@ -1868,6 +1980,7 @@ def _dispatch_write(
             has_alpha=has_alpha,
             frame_count=n,
             light_levels=light_levels,
+            audio_codec=audio_codec,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:
@@ -1911,7 +2024,7 @@ def _dispatch_write(
         def save(fr: np.ndarray, path: Path, frame: int) -> None:
             writer = stem
             if is_exr:
-                writer = _save_exr(fr, path, half=half_exr, metadata=seq_meta,
+                writer = _save_exr(fr, path, half=half_exr, metadata={**seq_meta, **_exr_timecode(frame, fps)},
                                    compression=exr_compression)
             elif is_dpx:
                 _save_dpx(fr, path, colour.dpx_attributes())
