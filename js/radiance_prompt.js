@@ -187,6 +187,182 @@ function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     fitNodeSize(node);
 }
 
+// ALBABIT-FIX: the text boxes shared the node's height equally, so a two-line
+// negative took as much room as a long prompt. Each box now fits its text, long
+// ones split what is left, and the first box not sized by hand takes the rest.
+// The bar under a box sizes it by hand (blue); a double-click undoes it (grey).
+const TEXT_MIN = 64;                            // the frontend's textarea minimum
+const TEXT_HEIGHTS = "radiance_text_heights";   // node.properties: {widget name: px}
+const TEXT_BAR_TIP = "Height of the box above.\n• Drag: set it by hand (blue bar).\n• Double-click: back to automatic (grey bar).";
+
+// Each box's height set by hand, or null. The first box left automatic fills
+// the free space; the last box does when all of them were set by hand.
+function _textPlan(names, heights) {
+    const manual = names.map(n => heights?.[n] ?? null);
+    const fill = manual.includes(null) ? manual.indexOf(null) : names.length - 1;
+    return manual.map((height, i) => ({ height: i === fill ? null : height, fill: i === fill }));
+}
+
+// The boxes set by hand keep their height; the others get up to their text,
+// sharing equally what is left when it runs short; the fill box also takes
+// whatever remains after that.
+function _textShares(plans, needs, total) {
+    const shares = plans.map(p => p.height);
+    let left = total - shares.reduce((sum, h) => sum + (h ?? 0), 0);
+    const open = plans.map((p, i) => i).filter(i => shares[i] == null).sort((a, b) => needs[a] - needs[b]);
+    open.forEach((i, k) => {
+        shares[i] = Math.max(TEXT_MIN, Math.min(needs[i], Math.floor(left / (open.length - k))));
+        left -= shares[i];
+    });
+    shares[plans.findIndex(p => p.fill)] += Math.max(0, left);
+    return shares;
+}
+
+function _textHeight(el) {
+    if (el._radText !== el.value || el._radWidth !== el.clientWidth) {
+        const height = el.style.height;
+        el.style.height = "0px";
+        el._radNeed = Math.max(TEXT_MIN, el.scrollHeight);
+        el.style.height = height;
+        el._radText = el.value;
+        el._radWidth = el.clientWidth;
+    }
+    return el._radNeed;
+}
+
+function _makeTextBar(node) {
+    if (!document.getElementById("radiance-text-bar-style")) {
+        const style = document.createElement("style");
+        style.id = "radiance-text-bar-style";
+        style.textContent = `
+            .radiance-text-bar { position: absolute; right: 0; bottom: -7px; height: 10px; z-index: 20; cursor: ns-resize;
+                display: flex; align-items: center; justify-content: center; }
+            .radiance-text-bar > span { width: 44px; height: 4px; border-radius: 2px; background: #8a8a94;
+                box-shadow: 0 0 0 2px rgba(20, 20, 25, 0.9); }
+            .radiance-text-bar:hover > span, .radiance-text-bar.radiance-manual > span { background: #39aaff; }`;
+        document.head.append(style);
+    }
+    const bar = document.createElement("div");
+    bar.className = "radiance-text-bar";
+    bar.title = TEXT_BAR_TIP;
+    bar.append(document.createElement("span"));
+    const setHeight = (height) => {
+        const heights = (node.properties[TEXT_HEIGHTS] ??= {});
+        const name = bar._radEntries[bar._radIndex].widget.name;
+        if (height == null) delete heights[name];
+        else heights[name] = height;
+        if (!Object.keys(heights).length) delete node.properties[TEXT_HEIGHTS];
+        _layoutTextBoxes(node);
+        node.setDirtyCanvas(true, true);
+    };
+    // The window's mouseup, after these, records the change for undo and saving.
+    bar.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
+    bar.addEventListener("mouseup", e => { if (e.detail === 2) setHeight(null); });
+    bar.addEventListener("pointerdown", e => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        bar.setPointerCapture(e.pointerId);
+        const entries = bar._radEntries, i = bar._radIndex;
+        const start = entries[i].el.offsetHeight, y = e.clientY, scale = app.canvas.ds.scale;
+        // What the other automatic boxes can give up.
+        const room = entries.reduce((sum, b, j) => j === i || b.plan.height != null ? sum
+            : sum + Math.max(0, b.el.offsetHeight - TEXT_MIN), 0);
+        const move = ev => setHeight(Math.round(Math.min(Math.max(start + (ev.clientY - y) / scale, TEXT_MIN), start + room)));
+        bar.addEventListener("pointermove", move);
+        bar.addEventListener("lostpointercapture", () => bar.removeEventListener("pointermove", move), { once: true });
+    });
+    return bar;
+}
+
+// Typing resizes the boxes at once, not at the next poll. Every box but the
+// last has a bar under it, in its host element.
+function _attachTextBox(node, entries, i, host, left) {
+    const el = entries[i].el;
+    if (!el._radWatched) {
+        el._radWatched = true;
+        el.addEventListener("input", () => _layoutTextBoxes(node));
+    }
+    let bar = host.querySelector(":scope > .radiance-text-bar");
+    if (i === entries.length - 1) return bar?.remove();
+    if (!bar) {
+        bar = _makeTextBar(node);
+        host.append(bar);
+    }
+    bar._radEntries = entries;
+    bar._radIndex = i;
+    bar.style.left = `${left}px`;
+    bar.classList.toggle("radiance-manual", entries[i].plan.height != null);
+}
+
+// Nodes 2.0 gives each text box an "auto" grid row, shared equally. Each box
+// that is not the fill one gets its share as the row's maximum, the fill one
+// "1fr": the rest, and the boxes still shrink when the node does.
+function _layoutVueBoxes(node, grid, widgets, plans) {
+    const rows = [...grid.children];
+    const areas = [...grid.querySelectorAll("textarea")];
+    const base = grid.style.gridTemplateRows === grid._radRows ? grid._radBase : grid.style.gridTemplateRows;
+    const tracks = base.split(" ");
+    // A frontend that lays the node out another way keeps its own layout.
+    if (areas.length !== widgets.length || tracks.length !== rows.length) return;
+    const entries = areas.map((el, i) => ({ widget: widgets[i], plan: plans[i], el, row: rows.find(r => r.contains(el)) }));
+    const textRows = new Set(entries.map(b => b.row));
+    const gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+    const total = rows.reduce((sum, r) => textRows.has(r) ? sum : sum - r.offsetHeight, grid.clientHeight)
+        - gap * (rows.length - 1);
+    const shares = _textShares(plans, entries.map(b => _textHeight(b.el)), total);
+    entries.forEach((b, i) => {
+        b.row.style.position = "relative";
+        tracks[rows.indexOf(b.row)] = b.plan.fill ? `minmax(${TEXT_MIN}px, 1fr)` : `minmax(${TEXT_MIN}px, ${shares[i]}px)`;
+        _attachTextBox(node, entries, i, b.row, b.el.parentElement.offsetLeft);
+    });
+    const value = tracks.join(" ");
+    grid._radBase = base;
+    if (grid._radValue !== value || grid.style.gridTemplateRows !== grid._radRows) {
+        grid.style.gridTemplateRows = value;
+        grid._radValue = value;
+        grid._radRows = grid.style.gridTemplateRows;
+    }
+    // Each re-render of the node writes the frontend's rows back (a wheel in a
+    // box does it): put ours back before the frame is painted.
+    if (!grid._radObserver) {
+        grid._radObserver = new MutationObserver(() => {
+            if (grid.style.gridTemplateRows !== grid._radRows) _layoutTextBoxes(node);
+        });
+        grid._radObserver.observe(grid, { attributes: true, attributeFilter: ["style"] });
+    }
+}
+
+// The canvas shares its free space equally between the text boxes, each up to
+// its getMaxHeight: every box gets its share as that maximum, so the shares
+// still shrink with the node. A slot is its textarea plus a margin each side.
+function _layoutCanvasBoxes(node, widgets, plans) {
+    const entries = widgets.map((widget, i) => ({ widget, plan: plans[i], el: widget.element }))
+        .filter(b => b.el?.parentElement);
+    if (node.freeWidgetSpace == null || entries.length !== widgets.length) return;
+    const margins = entries.map(b => 2 * (b.widget.margin ?? 0));
+    const total = margins.reduce((sum, m) => sum - m, node.freeWidgetSpace);
+    const shares = _textShares(plans, entries.map(b => _textHeight(b.el)), total);
+    let changed = false;
+    entries.forEach((b, i) => {
+        const max = shares[i] + margins[i];
+        changed ||= b.widget._radMax !== max;
+        b.widget._radMax = max;
+        b.widget.options.getMaxHeight = () => max;
+        _attachTextBox(node, entries, i, b.el.parentElement, 0);
+    });
+    if (changed) node.setDirtyCanvas(true, true);
+}
+
+function _layoutTextBoxes(node) {
+    const linked = new Set((node.inputs ?? []).filter(i => i.widget && i.link != null).map(i => i.widget.name));
+    const widgets = (node.widgets ?? []).filter(w => w.type === "customtext" && !w.hidden && !linked.has(w.name));
+    if (!widgets.length) return;
+    const plans = _textPlan(widgets.map(w => w.name), node.properties?.[TEXT_HEIGHTS]);
+    if (!LiteGraph.vueNodesMode) return _layoutCanvasBoxes(node, widgets, plans);
+    const grid = node.graph === app.canvas?.graph && document.querySelector(`[data-node-id="${node.id}"] .lg-node-widgets`);
+    if (grid) _layoutVueBoxes(node, grid, widgets, plans);
+}
+
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
 // Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
 // The model_meta source is resolved once per call and shared by the helpers.
@@ -204,6 +380,7 @@ function _refreshLiveState(node) {
     _applyNegStrengthLock(node, locked);
     const negW = node.widgets?.find(w => w.name === "negative_prompt");
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
+    _layoutTextBoxes(node);
 }
 
 // ALBABIT-FIX: apply_style_preset() overwrote these 7 widgets on every run. They
