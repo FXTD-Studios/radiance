@@ -106,6 +106,7 @@ from ...io.writer import (  # noqa: F401  (re-exported for this module's other u
     OUTPUT_COLOR_SPACES,
     WRITE_WORKING_SPACES,
     EXR_COMPRESSIONS,
+    AUDIO_CODECS,
     _ffmpeg_bin,
     _ffprobe_bin,
     _ffmpeg_ok,
@@ -661,7 +662,7 @@ class RadianceWrite:
     ├──────────────┼─────────────────────────────────────────────────────────┤
     │ Image        │ quality, overwrite                                       │
     │ EXR          │ exr_compression, overwrite                               │
-    │ Video        │ fps, quality (CRF), audio_source, broadcast_safe         │
+    │ Video        │ fps, quality (CRF), audio_source, audio_codec            │
     │ Sequence     │ fps, start_frame, frame_padding, overwrite               │
     └──────────────┴─────────────────────────────────────────────────────────┘
 
@@ -717,7 +718,8 @@ class RadianceWrite:
                 "default": 1,
                 "min": 0,
                 "max": 9999,
-                "tooltip": "Version number appended to filename (e.g. shot_001_v0001).",
+                "control_after_generate": "fixed",
+                "tooltip": "Version number appended to filename (e.g. shot_001_v0001). Its control (fixed / increment) can step it after each run; increment rewrites the output on every run, even when nothing upstream changed.",
             }),
             "color_space": (OUTPUT_COLOR_SPACES, {
                 "default": "Linear (pass-through)",
@@ -747,16 +749,12 @@ class RadianceWrite:
             }),
             "start_frame": ("INT", {
                 "default": 1001, "min": 0, "max": 99999,
-                "tooltip": "First frame number for sequences.",
+                "tooltip": "First frame number for sequences. EXR frames and the sequence's .wav carry "
+                           "it as timecode, at fps (frame 1001 at 24 fps = 00:00:41:17).",
             }),
             "frame_padding": ("INT", {
                 "default": 4, "min": 1, "max": 8,
                 "tooltip": "Zero-padding width for frame numbers (e.g. 4 → 0001).",
-            }),
-            "audio_source": ("STRING", {
-                "default": "",
-                "tooltip": "Path to audio file to mux into video output (optional). "
-                           "Takes priority over the 'audio' input when both are set.",
             }),
             "broadcast_safe": ("BOOLEAN", {
                 "default": False,
@@ -824,6 +822,37 @@ class RadianceWrite:
                     "judged on. P3-D65 · 1000 nits is the usual OLED grading display and "
                     "the streaming default; 4000 nits for high-end LCD grading monitors. "
                     "MaxCLL / MaxFALL are always measured from the frames."
+                ),
+            }),
+            # ── Audio ───────────────────────────────────────────────────
+            "write_audio": ("BOOLEAN", {
+                "default": False,
+                "tooltip": "Sequences: also write the sound (the 'audio' input or audio_source) "
+                           "as an audio file, as long as the frames. A .wav starts at the first "
+                           "frame's timecode (Broadcast WAV), so an editor lines it up with them.",
+            }),
+            "audio_source": ("STRING", {
+                "default": "",
+                "tooltip": "Path to an audio file, used instead of the 'audio' input (optional). "
+                           "It is converted to audio_codec and fitted to the picture's length.",
+            }),
+            "audio_codec": (AUDIO_CODECS, {
+                "default": "Auto",
+                "tooltip": (
+                    "Audio of a video. Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), "
+                    "AAC in an MP4. PCM in an MP4 is read by few players; FLAC cannot go in a "
+                    "MOV, which gets PCM 24-bit instead. AAC is 256 kb/s, MP3 320 kb/s. "
+                    "A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3."
+                ),
+            }),
+            "audio_path": ("STRING", {
+                "default": "",
+                "placeholder": "empty = beside the frames",
+                "tooltip": (
+                    "Sequences: where the audio file goes. Empty: in the sequence's folder, "
+                    "named like the frames (shot_v0001.wav). Otherwise a folder, or a file path "
+                    "(its extension follows audio_codec). A relative path is under ComfyUI's "
+                    "output folder; quotes from \"Copy as path\" are fine."
                 ),
             }),
         }, "hidden": {
@@ -897,6 +926,9 @@ class RadianceWrite:
         ocio_config:    str   = "",
         hdr_reference_nits: float = 203.0,
         hdr10_mastering_display: str = "P3-D65 · 1000 nits",
+        audio_codec:    str   = "Auto",
+        write_audio:    bool  = False,
+        audio_path:     str   = "",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -938,6 +970,9 @@ class RadianceWrite:
             # ALBABIT-FIX: node and console progress for sequences and video.
             on_frame=_FrameProgress("Write"),
             receipt=receipt,
+            audio_codec=audio_codec,
+            write_audio=write_audio,
+            audio_path=audio_path,
         )
         return _with_history(res, t0, receipt)
 
