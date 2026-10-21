@@ -564,6 +564,45 @@ def test_a_video_carries_the_chosen_audio_codec(tmp_path, format, codec, expecte
     assert _audio_codec_of(saved) == expected
 
 
+@needs_ffmpeg
+def test_a_sequence_writes_its_audio_beside_the_frames(tmp_path):
+    """A sequence dropped the sound without a word. With write_audio it lands
+    beside the frames, named like them, as long as them (0.5 s of sound, 1 s of frames)."""
+    audio = {"waveform": torch.zeros(1, 2, 24000), "sample_rate": 48000}
+    saved, _ = W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ EXR (16-bit half)", fps=24.0,
+                              audio=audio, write_audio=True)
+    wav = Path(saved) / "shot_v0001.wav"
+    assert (Path(saved) / "shot_v0001_1001.exr").is_file()
+    assert _audio_codec_of(wav) == "pcm_s24le"
+    assert abs(len(_decode(wav, "-ac", "1", "-f", "s16le")) / 2 / 48000 - 1.0) < 0.01
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("codec, audio_path, expected, stream", [
+    ("FLAC 24-bit", "", "seq/shot_v0001/shot_v0001.flac", "flac"),
+    ("AAC", "{tmp}/sound", "sound/shot_v0001.m4a", "aac"),
+    ("MP3", '"{tmp}/mix/final.wav"', "mix/final.mp3", "mp3"),
+])
+def test_audio_path_and_codec_place_the_sequence_audio(tmp_path, codec, audio_path, expected, stream):
+    """Empty: beside the frames. A folder: named like the frames. A file (quoted
+    from "Copy as path"): its extension follows the codec."""
+    audio = {"waveform": torch.zeros(1, 2, 48000), "sample_rate": 48000}
+    W.write_frames(image=torch.full((24, 16, 16, 3), 0.5), output_path=str(tmp_path / "seq"),
+                   filename="shot", format="SEQ │ PNG (8-bit)", fps=24.0, audio=audio,
+                   write_audio=True, audio_codec=codec, audio_path=audio_path.format(tmp=tmp_path))
+    assert _audio_codec_of(tmp_path / expected) == stream
+
+
+def test_write_audio_without_sound_says_so(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    monkeypatch.setattr(W, "log", MagicMock())
+    saved, _ = W.write_frames(image=torch.full((2, 8, 8, 3), 0.5), output_path=str(tmp_path),
+                              filename="shot", format="SEQ │ PNG (8-bit)", write_audio=True)
+    assert not [p for p in Path(saved).iterdir() if p.suffix != ".png"]
+    assert any("no audio file" in c.args[0] for c in W.log.warning.call_args_list)
+
+
 def test_a_quoted_audio_source_is_found(tmp_path, monkeypatch):
     """A path pasted from Windows' "Copy as path" keeps its quotes."""
     track = tmp_path / "voice.wav"
