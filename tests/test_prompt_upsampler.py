@@ -192,7 +192,8 @@ def test_the_loader_loads_the_upsampler_once_as_load_clip_does(monkeypatch):
     monkeypatch.setattr(loader, "_file_fingerprint", lambda path: "fp")
     monkeypatch.setattr(loader, "get_clip_type_enum", lambda arch: f"CLIPType for {arch}")
     monkeypatch.setattr(loader.comfy.sd, "load_clip",
-                        lambda ckpt_paths, clip_type, embedding_directory: loads.append((ckpt_paths, clip_type)) or "llm",
+                        lambda ckpt_paths, clip_type, embedding_directory, model_options=None:
+                        loads.append((ckpt_paths, clip_type)) or "llm",
                         raising=False)
     monkeypatch.setattr(loader, "_upsampler_cache", loader.LRUCache())
     info = []
@@ -200,3 +201,25 @@ def test_the_loader_loads_the_upsampler_once_as_load_clip_does(monkeypatch):
         assert loader._load_upsampler("pup.safetensors", "flux3", True, info) == "llm"
     assert loads == [(["text_encoders/pup.safetensors"], "CLIPType for flux3")]
     assert info[-1] == "UPSAMPLER: pup.safetensors (cached)"
+
+
+def test_the_upsampler_follows_the_offload_device(monkeypatch):
+    """CPU offload put the text encoder on the CPU and the 9B upsampler on the GPU
+    (CodeRabbit review on PR #71); the device is part of the cache key."""
+    from radiance.nodes.generate import loader
+    opts = []
+    monkeypatch.setattr(loader.folder_paths, "get_full_path_or_raise", lambda kind, name: f"{kind}/{name}",
+                        raising=False)
+    monkeypatch.setattr(loader.folder_paths, "get_folder_paths", lambda kind: [], raising=False)
+    monkeypatch.setattr(loader, "_file_fingerprint", lambda path: "fp")
+    monkeypatch.setattr(loader, "get_clip_type_enum", lambda arch: arch)
+    monkeypatch.setattr(loader.comfy.sd, "load_clip",
+                        lambda ckpt_paths, clip_type, embedding_directory, model_options=None:
+                        opts.append(model_options) or object(), raising=False)
+    monkeypatch.setattr(loader, "_upsampler_cache", loader.LRUCache())
+    import torch
+    cpu = torch.device("cpu")
+    loader._load_upsampler("pup.safetensors", "flux3", True, [], cpu)
+    loader._load_upsampler("pup.safetensors", "flux3", True, [])          # another device: a new load
+    loader._load_upsampler("pup.safetensors", "flux3", True, [], cpu)     # cached
+    assert opts == [{"load_device": cpu}, {}]

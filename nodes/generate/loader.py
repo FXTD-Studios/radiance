@@ -60,16 +60,23 @@ logger = logging.getLogger("radiance.loader")
 from radiance.core.logging import print_premium_loader_hud
 
 
-def _load_upsampler(name, resolved_type, caching, info_lines):
-    """The Prompt's upsampler LLM (FLUX 3 Klein, Qwen-Image 2.1), loaded as Load CLIP does."""
+def _load_upsampler(name, resolved_type, caching, info_lines, load_device=None):
+    """The Prompt's upsampler LLM (FLUX 3 Klein, Qwen-Image 2.1), loaded as Load CLIP does.
+
+    ``load_device`` is the offload mode's text-encoder device, as for the text
+    encoder: a 9B upsampler on the GPU under CPU offload cost several GB on
+    the cards that chose offload to avoid it (CodeRabbit review on PR #71).
+    It is part of the cache key, so changing the offload mode reloads it.
+    """
     path = folder_paths.get_full_path_or_raise("text_encoders", name)
-    key = f"upsampler:{path}:{_file_fingerprint(path)}"
+    key = f"upsampler:{path}:{_file_fingerprint(path)}:{load_device or 'default'}"
     if caching and _upsampler_cache.has(key):
         info_lines.append(f"UPSAMPLER: {name} (cached)")
         return _upsampler_cache.get(key)
     t0 = time.time()
     upsampler = comfy.sd.load_clip(ckpt_paths=[path], clip_type=get_clip_type_enum(resolved_type),
-                                   embedding_directory=folder_paths.get_folder_paths("embeddings"))
+                                   embedding_directory=folder_paths.get_folder_paths("embeddings"),
+                                   model_options={"load_device": load_device} if load_device else {})
     loaded = f"{name} ({time.time() - t0:.1f}s)"
     logger.info(f"Upsampler loaded: {loaded}")
     info_lines.append(f"UPSAMPLER: {loaded}")
@@ -550,7 +557,8 @@ class RadianceUnifiedLoader:
             resolved_type, unet_path, clip_l, clip_g, t5xxl, llm_encoder, text_projection,
             clip_dtype, offload_mode, clip_load_device, caching, divider, auto_download, info_lines
         )
-        upsampler_clip = _load_upsampler(upsampler, resolved_type, caching, info_lines) if upsampler else None
+        upsampler_clip = (_load_upsampler(upsampler, resolved_type, caching, info_lines, clip_load_device)
+                          if upsampler else None)
 
         # ════════════════════════════════════════════════════════════════
         # 6. LOAD STANDALONE VAE / AUDIO VAE / LATENT UPSCALE MODEL
