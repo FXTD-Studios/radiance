@@ -134,3 +134,14 @@ test('"Run all tabs" runs each tab that has a prompt, then shows the first one a
     assert.equal(tabs.read(node).active, 0);
     assert.deepEqual(shown(node), { ...DEFAULTS, ...A });
 });
+
+test('a run that fails to build still brings the first tab back and frees "next tab"', async () => {
+    const node = makeNode(A);
+    tabs.add(node);
+    node.widgets.find(w => w.name === 'base_prompt').value = 'a snowy forest';
+    tabs.select(node, 0);
+    context.app.queuePrompt = async () => { throw new Error('graphToPrompt failed'); };
+    await assert.rejects(tabs.runAll(node), /graphToPrompt failed/);
+    assert.equal(tabs.read(node).active, 0);
+    assert.equal(node._radRunningTabs, false);
+});
