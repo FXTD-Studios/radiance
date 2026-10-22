@@ -140,7 +140,11 @@ test('a run that fails to build still brings the first tab back and frees "next 
     tabs.add(node);
     node.widgets.find(w => w.name === 'base_prompt').value = 'a snowy forest';
     tabs.select(node, 0);
-    context.app.queuePrompt = async () => { throw new Error('graphToPrompt failed'); };
+    let calls = 0;
+    context.app.queuePrompt = async () => {
+        if (calls++ === 1) throw new Error('graphToPrompt failed');
+        return true;
+    };
     await assert.rejects(tabs.runAll(node), /graphToPrompt failed/);
     assert.equal(tabs.read(node).active, 0);
     assert.equal(node._radRunningTabs, false);
