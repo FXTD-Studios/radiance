@@ -388,7 +388,7 @@ function _layoutTextBoxes(node) {
 // value: the shown tab's are in the widgets, the others' in node.properties. A new
 // tab starts from the node's defaults; "next tab" moves on after each queued run.
 const TABS = "radiance_prompt_tabs";    // node.properties: {active, chain, tabs: [{name, values}]}
-const TAB_TIP = "A prompt tab: its own text, action, negative and settings.\n• Click: show it.\n• Double-click: rename it.\n• Right-click: rename, duplicate or delete it.";
+const TAB_TIP = "A prompt tab: its own text, action, negative and settings.\n• Click: show it.\n• Drag: move it.\n• Double-click: rename it.\n• Right-click: rename, duplicate or delete it.";
 const TAB_ADD_TIP = "New tab, from the node's defaults.";
 const TAB_CHAIN_TIP = "After each run:\n• fixed: stay on this tab.\n• next tab: show the next tab that has a prompt. A batch count of 3 runs three tabs.";
 
@@ -481,15 +481,84 @@ function _chainTab(node) {
     }
 }
 
+function _moveTab(node, from, to) {
+    const state = _editTabs(node), shown = state.tabs[state.active];
+    state.tabs.splice(to, 0, ...state.tabs.splice(from, 1));
+    state.active = state.tabs.indexOf(shown);
+}
+
+// A dragged tab follows the pointer; a neighbour it passes the middle of steps
+// aside. The new order is saved on release. Near an edge, the row scrolls.
+function _dragTab(node, el, down) {
+    const list = el.parentElement, from = [...list.children].indexOf(el);
+    const grab = down.clientX - el.getBoundingClientRect().left;
+    const middle = t => { const r = t.getBoundingClientRect(); return r.left + r.width / 2; };
+    let dragging = false;
+    const move = e => {
+        if (!dragging && Math.abs(e.clientX - down.clientX) < 4) return;
+        dragging = true;
+        el.classList.add("radiance-dragging");
+        const box = list.getBoundingClientRect();
+        if (e.clientX < box.left + 16) list.scrollLeft -= 8;
+        else if (e.clientX > box.right - 16) list.scrollLeft += 8;
+        el.style.transform = "";
+        const width = el.getBoundingClientRect().width, center = e.clientX - grab + width / 2;
+        // Move the neighbour, not the tab: moving it would release the pointer.
+        if (el.nextSibling && center > middle(el.nextSibling)) list.insertBefore(el.nextSibling, el);
+        else if (el.previousSibling && center < middle(el.previousSibling)) el.after(el.previousSibling);
+        const scale = width / el.offsetWidth;
+        el.style.transform = `translateX(${(e.clientX - grab - el.getBoundingClientRect().left) / scale}px)`;
+    };
+    el.setPointerCapture(down.pointerId);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", () => {
+        el.removeEventListener("pointermove", move);
+        if (!dragging) return;
+        el.classList.remove("radiance-dragging");
+        el.style.transform = "";
+        _moveTab(node, from, [...list.children].indexOf(el));
+        list._radNames = null;
+        _renderTabs(node);
+    }, { once: true });
+}
+
+const TAB_PEEK = 32;    // px of the next tab left in view, so the hidden tabs show
+
+function _revealTab(list, el) {
+    list.scrollLeft = Math.min(Math.max(list.scrollLeft, el.offsetLeft + el.offsetWidth + TAB_PEEK - list.clientWidth),
+        el.offsetLeft - TAB_PEEK);
+}
+
+// An arrow brings in the next tab cut off on its side.
+function _scrollTabs(list, dir) {
+    const tabs = [...list.children], start = list.scrollLeft, end = start + list.clientWidth;
+    const next = dir > 0 ? tabs.find(t => t.offsetLeft + t.offsetWidth > end + 1) : tabs.findLast(t => t.offsetLeft < start - 1);
+    if (next) _revealTab(list, next);
+}
+
+// The arrows show when the tabs do not fit (counting the room they take) and dim
+// at either end; a side with hidden tabs fades out.
+function _updateTabScroll(strip) {
+    const [left, list, right] = strip.children;
+    const arrows = strip.classList.contains("radiance-overflow") ? left.offsetWidth + right.offsetWidth + 6 : 0;
+    const over = list.scrollWidth > list.clientWidth + arrows;
+    strip.classList.toggle("radiance-overflow", over);
+    const before = over && list.scrollLeft > 0, after = over && list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+    left.classList.toggle("radiance-off", !before);
+    right.classList.toggle("radiance-off", !after);
+    list.style.maskImage = before || after
+        ? `linear-gradient(to right, ${before ? "transparent" : "#000"}, #000 16px, #000 calc(100% - 16px), ${after ? "transparent" : "#000"})` : "";
+}
+
 function _tabButton(className, text, tip, onPress) {
     const el = document.createElement("div");
-    el.className = className;
+    el.className = `radiance-tab-button ${className}`;
     el.textContent = text;
     el.title = tip;
     el.addEventListener("mousedown", e => e.stopPropagation());
     el.addEventListener("pointerdown", e => {
         e.stopPropagation();
-        if (e.button === 0) onPress();
+        if (e.button === 0) onPress(e);
     });
     return el;
 }
@@ -497,13 +566,18 @@ function _tabButton(className, text, tip, onPress) {
 // Rebuilt when the names change, so a double-click lands on the tab it started on.
 function _renderTabs(node) {
     const strip = node.widgets?.find(w => w.name === "prompt_tabs")?.element.firstChild;
-    if (!strip || strip.querySelector("input")) return;
+    if (!strip || strip.querySelector("input, .radiance-dragging")) return;
+    const list = strip.children[1];
     const state = _readTabs(node);
     const names = JSON.stringify(state.tabs.map(t => t.name));
-    if (strip._radNames !== names) {
-        strip._radNames = names;
-        strip.replaceChildren(...state.tabs.map((tab, i) => {
-            const el = _tabButton("", tab.name, `${tab.name}\n${TAB_TIP}`, () => _selectTab(node, i));
+    if (list._radNames !== names) {
+        list._radNames = names;
+        list._radShown = null;
+        list.replaceChildren(...state.tabs.map((tab, i) => {
+            const el = _tabButton("", tab.name, `${tab.name}\n${TAB_TIP}`, e => {
+                _selectTab(node, i);
+                _dragTab(node, el, e);
+            });
             el.addEventListener("dblclick", e => {
                 e.stopPropagation();
                 _renameTab(node, el, i);
@@ -518,19 +592,20 @@ function _renderTabs(node) {
                 ], { event: e });
             });
             return el;
-        }), _tabButton("radiance-tab-add", "+", TAB_ADD_TIP, () => _newTab(node)),
-        _tabButton("radiance-tab-chain", "", TAB_CHAIN_TIP, () => {
-            const edited = _editTabs(node);
-            edited.chain = !edited.chain;
-            _renderTabs(node);
         }));
     }
     state.tabs.forEach((tab, i) => {
-        strip.children[i].classList.toggle("radiance-active", i === state.active);
-        strip.children[i].classList.toggle("radiance-empty", i !== state.active && !_tabHasPrompt(tab));
+        list.children[i].classList.toggle("radiance-active", i === state.active);
+        list.children[i].classList.toggle("radiance-empty", i !== state.active && !_tabHasPrompt(tab));
     });
     strip.classList.toggle("radiance-chain", !!state.chain);
     strip.lastChild.textContent = state.chain ? "⟳ next tab" : "⟳ fixed";
+    _updateTabScroll(strip);
+    // Once laid out, the shown tab is scrolled into view each time it changes.
+    if (list._radShown !== state.active && list.clientWidth) {
+        list._radShown = state.active;
+        _revealTab(list, list.children[state.active]);
+    }
 }
 
 // The tab row, above the text boxes. Never saved: the tabs are in node.properties.
@@ -538,23 +613,40 @@ function _renderTabs(node) {
 function _addTabsWidget(node) {
     _addStyle("radiance-prompt-tabs-style", `
         .radiance-prompt-tabs { display: flex; align-items: center; gap: 3px; height: 28px; overflow: hidden; font-size: 12px; }
-        .radiance-prompt-tabs > div { flex: 0 1 auto; min-width: 2.5em; height: 22px; line-height: 22px; padding: 0 10px;
-            box-sizing: border-box; border-radius: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-            cursor: pointer; user-select: none; color: var(--node-component-slot-text, #a0a0a0); }
-        .radiance-prompt-tabs > .radiance-active { flex-shrink: 0; max-width: 45%; background: var(--component-node-widget-background, #313235);
+        .radiance-tab-list { position: relative; display: flex; align-items: center; gap: 3px; height: 100%; min-width: 0; overflow: hidden; }
+        .radiance-tab-button { flex: none; height: 22px; line-height: 22px; padding: 0 10px; box-sizing: border-box; border-radius: 6px;
+            white-space: nowrap; cursor: pointer; user-select: none; color: var(--node-component-slot-text, #a0a0a0); }
+        .radiance-tab-list > .radiance-tab-button { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+        .radiance-tab-list > .radiance-active { background: var(--component-node-widget-background, #313235);
             color: var(--component-node-foreground, #fff); box-shadow: inset 0 -2px 0 #39aaff; }
-        .radiance-prompt-tabs > div:has(input) { outline: 1px solid #39aaff; }
-        .radiance-prompt-tabs.radiance-chain > .radiance-empty { opacity: 0.45; }
-        .radiance-prompt-tabs > .radiance-tab-add { flex: none; min-width: 0; width: 22px; padding: 0; text-align: center;
-            line-height: 20px; font-size: 15px; border: 1px dashed var(--border-color, #4e4e4e); }
-        .radiance-prompt-tabs > .radiance-tab-chain { flex: none; margin-left: auto; padding: 0 8px; line-height: 20px;
-            font-size: 11px; border: 1px solid var(--border-color, #4e4e4e); }
-        .radiance-prompt-tabs.radiance-chain > .radiance-tab-chain { color: #39aaff; background: #39aaff26; border-color: #39aaff88; }
+        .radiance-tab-list > .radiance-dragging { position: relative; z-index: 1; cursor: grabbing; outline: 1px solid #39aaff;
+            box-shadow: inset 0 -2px 0 #39aaff, 0 3px 10px #000a; }
+        .radiance-tab-button:has(input) { outline: 1px solid #39aaff; }
+        .radiance-chain .radiance-empty { color: color-mix(in srgb, var(--node-component-slot-text, #a0a0a0) 45%, transparent); }
+        .radiance-tab-arrow { width: 18px; padding: 0; text-align: center; font-size: 16px; }
+        .radiance-prompt-tabs:not(.radiance-overflow) > .radiance-tab-arrow { display: none; }
+        .radiance-tab-arrow.radiance-off { opacity: 0.3; cursor: default; }
+        .radiance-tab-add { width: 22px; padding: 0; text-align: center; line-height: 20px; font-size: 15px;
+            border: 1px dashed var(--border-color, #4e4e4e); }
+        .radiance-tab-chain { margin-left: auto; padding: 0 8px; line-height: 20px; font-size: 11px; border: 1px solid var(--border-color, #4e4e4e); }
+        .radiance-chain > .radiance-tab-chain { color: #39aaff; background: #39aaff26; border-color: #39aaff88; }
         .radiance-prompt-tabs input { width: 10em; padding: 0; font: inherit; color: inherit; background: none; border: none; outline: none; }`);
     node._radFreshTab = _tabValues(node);
+    const strip = document.createElement("div");
+    strip.className = "radiance-prompt-tabs";
+    const list = document.createElement("div");
+    list.className = "radiance-tab-list";
+    list.addEventListener("scroll", () => _updateTabScroll(strip));
+    strip.append(_tabButton("radiance-tab-arrow", "‹", "", () => _scrollTabs(list, -1)), list,
+        _tabButton("radiance-tab-arrow", "›", "", () => _scrollTabs(list, 1)),
+        _tabButton("radiance-tab-add", "+", TAB_ADD_TIP, () => _newTab(node)),
+        _tabButton("radiance-tab-chain", "", TAB_CHAIN_TIP, () => {
+            const edited = _editTabs(node);
+            edited.chain = !edited.chain;
+            _renderTabs(node);
+        }));
     const el = document.createElement("div");
-    el.append(document.createElement("div"));
-    el.firstChild.className = "radiance-prompt-tabs";
+    el.append(strip);
     const widget = node.addDOMWidget("prompt_tabs", "radiance_tabs", el,
         { serialize: false, getMinHeight: () => 28, getMaxHeight: () => 28 });
     widget.serialize = false;
