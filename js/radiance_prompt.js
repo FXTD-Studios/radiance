@@ -410,6 +410,7 @@ const _tabHasPrompt = tab => !!tab.values?.base_prompt?.trim();
 function _showTab(node, state, i) {
     const values = { ...node._radFreshTab, ...state.tabs[i].values };
     for (const w of node.widgets) if (w.name in values) w.value = values[w.name];
+    node._radPreset = values.style_preset;
     delete state.tabs[i].values;
     state.active = i;
     _refreshLiveState(node);
@@ -788,20 +789,22 @@ app.registerExtension({
             const presetWidget = this.widgets?.find(w => w.name === "style_preset");
             if (!presetWidget) return;
 
-            let lastPresetValue = presetWidget.value;
+            // ALBABIT-FIX: _radPreset is also set when a graph or a tab shows a preset:
+            // picking the preset last picked elsewhere did nothing after either.
+            this._radPreset = presetWidget.value;
 
             const originalCallback = presetWidget.callback;
             presetWidget.callback = (value) => {
                 if (originalCallback) originalCallback.call(presetWidget, value);
                 if (window.app && window.app.configuringGraph) return;
-                if (value !== lastPresetValue) {
+                if (value !== this._radPreset) {
                     if (value === "None (Custom)") {
                         resetToCustomDefaults(this);
                     } else {
                         applyPreset(this, value);
                     }
                 }
-                lastPresetValue = value;
+                this._radPreset = value;
             };
 
             // Poll for manual widget edits, undo/redo — same state-based
@@ -824,6 +827,7 @@ app.registerExtension({
         const onConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function (info) {
             if (onConfigure) onConfigure.apply(this, arguments);
+            this._radPreset = this.widgets?.find(w => w.name === "style_preset")?.value;
             const self = this;
             setTimeout(() => _refreshLiveState(self), 150);
             setTimeout(() => _refreshLiveState(self), 600);
