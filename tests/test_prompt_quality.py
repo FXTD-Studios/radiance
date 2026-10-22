@@ -204,9 +204,10 @@ def test_action_sits_right_under_base_prompt():
 
 
 @pytest.mark.real_torch
-def test_video_models_read_the_action_after_the_text():
+@pytest.mark.parametrize("base_prompt", ["a woman on a dock", "a woman on a dock, ", "a woman on a dock;"])
+def test_video_models_read_the_action_after_the_text(base_prompt):
     out = RadianceCinematicPromptEncoder().execute(
-        FakeClip(("gemma3_12b",)), base_prompt="a woman on a dock", action="She waves at the camera.",
+        FakeClip(("gemma3_12b",)), base_prompt=base_prompt, action="She waves at the camera.",
         camera_type="ARRI Alexa 35", model_meta=json.dumps({"arch": "ltxav"}))
     text = out["result"][2]
     assert text.startswith("a woman on a dock. She waves at the camera. ") and "ARRI Alexa 35" in text
