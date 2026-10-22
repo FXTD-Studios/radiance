@@ -85,10 +85,10 @@ const PRESET_CONFIGS = {
     },
     // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
     // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
-    // ALBABIT-FIX: audio_cfg 1 on the LowRes stages: the audio at cfg 3 lost its
-    // ambience (silent background behind the voice) and clipped above 0 dBFS.
+    // ALBABIT-FIX: audio_cfg 3 on LTX 2.3 LowRes, which sets its diction. On 2.5 the
+    // audio at cfg 3 lost its ambience (silent background behind the voice): 1 there.
     "▶ LTX 2.3 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
+        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 3.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
