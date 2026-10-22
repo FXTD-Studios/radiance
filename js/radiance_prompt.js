@@ -853,7 +853,12 @@ app.registerExtension({
             this._radPreset = this.widgets?.find(w => w.name === "style_preset")?.value;
             const self = this;
             setTimeout(() => _refreshLiveState(self), 150);
-            setTimeout(() => _refreshLiveState(self), 600);
+            setTimeout(() => {
+                _refreshLiveState(self);
+                // ALBABIT-FIX: a graph saved before the tab row keeps a height without it,
+                // and Nodes 2.0 grew the node to fit the row: the text boxes give the room.
+                if (info.size && self.size[1] > info.size[1]) self.setSize([self.size[0], info.size[1]]);
+            }, 600);
         };
 
         // ALBABIT-FIX: the last real run's arch verdicts, read by _refreshLiveState
