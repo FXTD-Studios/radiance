@@ -13,7 +13,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source + `_refreshLiveState = () => {};
     globalThis.tabs = { read: _readTabs, edit: _editTabs, values: _tabValues, select: _selectTab, add: _newTab,
-        duplicate: _duplicateTab, remove: _deleteTab, chain: _chainTab };`, context);
+        duplicate: _duplicateTab, remove: _deleteTab, move: _moveTab, chain: _chainTab };`, context);
 const { tabs } = context;
 
 const DEFAULTS = { base_prompt: '', action: '', framing: 'None', negative_prompt: '' };
@@ -102,4 +102,17 @@ test('"next tab" moves to the next tab with a prompt, and "fixed" stays', () => 
     tabs.remove(node, 2);
     tabs.chain(node);
     assert.equal(tabs.read(node).active, 0, 'no other tab has a prompt');
+});
+
+test('moving a tab keeps the shown one shown, with its values', () => {
+    const node = makeNode(A);
+    tabs.add(node);
+    tabs.select(node, 0);
+    tabs.move(node, 0, 2);
+    assert.deepEqual(names(node), ['Prompt B', 'Prompt C', 'Prompt A']);
+    assert.equal(tabs.read(node).active, 2);
+    tabs.move(node, 1, 0);
+    assert.deepEqual(names(node), ['Prompt C', 'Prompt B', 'Prompt A']);
+    assert.equal(tabs.read(node).active, 2);
+    assert.deepEqual(shown(node), { ...DEFAULTS, ...A });
 });
