@@ -154,7 +154,7 @@ Detect, download, and manage ACES OCIO configurations.
 | :--- | :--- | :--- | :--- | :--- |
 | `action` | choice | `Detect Config` | `Detect Config`, `Download ACES 2.0`, `List Colorspaces`, `Get Config Info` | Action to perform. |
 | `custom_config_path` (optional) | string |  |  | Custom path to .ocio config. Leave empty for auto-detection. |
-| `install_path` (optional) | string |  |  | Where to install downloaded ACES config. Defaults to <radiance>/ACES/. |
+| `install_path` (optional) | string |  |  | Where to install downloaded ACES config. Defaults to &lt;radiance>/ACES/. |
 
 **Outputs**
 
