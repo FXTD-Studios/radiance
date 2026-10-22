@@ -193,3 +193,31 @@ def test_preset_route_payload_is_the_widget_half():
         assert set(cfg) <= P._WIDGET_BACKED_PRESET_FIELDS
         for k, v in cfg.items():
             assert v in P._FIELD_TO_DATASET[k]
+
+
+# ── 10. action: read by video models only ──────────────────────────────────
+
+def test_action_sits_right_under_base_prompt():
+    # js/radiance_prompt.js restores saved graphs by name, so it can.
+    names = list(RadianceCinematicPromptEncoder.INPUT_TYPES()["optional"])
+    assert names.index("action") == names.index("base_prompt") + 1
+
+
+@pytest.mark.real_torch
+@pytest.mark.parametrize("base_prompt", ["a woman on a dock", "a woman on a dock, ", "a woman on a dock;"])
+def test_video_models_read_the_action_after_the_text(base_prompt):
+    out = RadianceCinematicPromptEncoder().execute(
+        FakeClip(("gemma3_12b",)), base_prompt=base_prompt, action="She waves at the camera.",
+        camera_type="ARRI Alexa 35", model_meta=json.dumps({"arch": "ltxav"}))
+    text = out["result"][2]
+    assert text.startswith("a woman on a dock. She waves at the camera. ") and "ARRI Alexa 35" in text
+    assert out["ui"]["video_arch"] == [True]
+
+
+@pytest.mark.real_torch
+def test_image_models_skip_the_action():
+    out = RadianceCinematicPromptEncoder().execute(
+        FakeClip(("t5xxl",)), base_prompt="a woman on a dock", action="She waves at the camera.",
+        model_meta=json.dumps({"arch": "flux"}))
+    assert "waves" not in out["result"][2]
+    assert out["ui"]["video_arch"] == [False]
