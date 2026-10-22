@@ -35,7 +35,7 @@ End-to-end image-to-video generation pipeline with motion control.
 | `clip` | CLIP |  |  | Text encoder matching the model, used for both prompts. |
 | `vae` | VAE |  |  | VAE matching the model. Encodes the reference image, sets the latent shape and decodes preview_frames. |
 | `reference_image` | IMAGE |  |  | Start frame (display-referred sRGB, one image). Its width and height set the video size, rounded down to the VAE's spatial compression. |
-| `positive_prompt` | string | `smooth camera motion, cinematic HDR, 4K` | multi-line text | What should happen in the shot. ', <n> nits HDR, <gamut>' is appended when peak_nits is above 100. |
+| `positive_prompt` | string | `smooth camera motion, cinematic HDR, 4K` | multi-line text | What should happen in the shot. ', &lt;n> nits HDR, &lt;gamut>' is appended when peak_nits is above 100. |
 | `negative_prompt` | string | `watermark, blurry, flickering, sdr` | multi-line text | What to steer away from, encoded with the same text encoder. |
 | `frames` | int | 25 | 1 to 512 | Requested frames. The latent holds ceil(frames / temporal compression) frames; use a multiple of the compression plus 1 (e.g. 25, 49, 81) to get exactly this count back. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the initial noise and the sampler. |
@@ -88,7 +88,7 @@ End-to-end text-to-video generation pipeline with HDR support.
 | `cfg` (optional) | float | 0 | 0 to 30, step 0.1 | Guidance scale. 0 uses the model default (the LTX-Video preset's 3.5 when no dit_config is connected). cfg_schedule_json overrides it. |
 | `sampler_name` (optional) | choice | `euler` | ComfyUI's samplers | ComfyUI sampler. Ignored when dit_config carries a model_name. |
 | `scheduler` (optional) | choice | `normal` | ComfyUI's schedulers | ComfyUI sigma scheduler. Ignored when dit_config carries a model_name. |
-| `peak_nits` (optional) | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Adds '<n> nits HDR' to the prompt. Prompt text only, no pixel change; 100 requests an SDR look. |
+| `peak_nits` (optional) | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Adds '&lt;n> nits HDR' to the prompt. Prompt text only, no pixel change; 100 requests an SDR look. |
 | `target_gamut` (optional) | choice | `BT.2020` | `BT.2020`, `P3-D65`, `P3-DCI`, `BT.709`, `ACEScg` | Adds the selected gamut descriptor to the prompt. Prompt text only, no pixel conversion. |
 | `hdr_eotf` (optional) | choice | `PQ (ST.2084)` | `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear`, `sRGB / BT.1886` | Adds a transfer-function descriptor to the prompt. Prompt text only, no pixel encoding. |
 | `hdr_strength` (optional) | float | 0.5 | 0 to 1, step 0.05 | Prompt weight of the appended HDR descriptors (gamut, EOTF, peak nits), as (text:weight) with weight = 2 x strength: 0.5 is neutral, 1.0 doubles their emphasis, 0 leaves them out. |
@@ -190,7 +190,7 @@ Pass decoded video frames through, HDR-encode them, or write them as a 32-bit fl
 | `mode` | choice | `passthrough` | `passthrough`, `hdr_decode`, `exr_sequence`, `preview_gif` | passthrough: return frames. hdr_decode: run Video HDR Decode (Reinhard, PQ out) and return the HDR signal. exr_sequence / preview_gif: also write files. Only the last two write to disk. |
 | `hdr_metadata_json` (optional) | string | `{"peak_nits":1000,"eotf":"PQ (ST.2084)"}` |  | hdr_decode only. Its peak_nits and gamut (BT.2020 if absent) are used; the eotf key is ignored, output is always PQ. |
 | `output_folder` (optional) | string |  |  | Empty: ComfyUI's output folder. |
-| `filename_prefix` (optional) | string | `radiance_video` |  | File name start: <prefix>_<6-digit frame>.exr, or <prefix>_preview.gif (overwritten on each run). |
+| `filename_prefix` (optional) | string | `radiance_video` |  | File name start: &lt;prefix>_&lt;6-digit frame>.exr, or &lt;prefix>_preview.gif (overwritten on each run). |
 | `fps` (optional) | float | 24 | 1 to 120 | GIF playback rate (frame duration 1000 / fps ms). preview_gif only. |
 | `frame_offset` (optional) | int | 0 |  | Added to the frame number in EXR file names. exr_sequence only. |
 

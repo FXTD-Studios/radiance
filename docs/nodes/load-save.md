@@ -50,7 +50,7 @@ Simplified writer kept for older pipelines: passes images, output_path, format a
 | `images` | IMAGE |  |  | Frames to write, passed to the Write node with its defaults (color_space Linear (pass-through), so values are written unchanged). |
 | `output_path` | string | `~/radiance_output` |  | Output path, as in the Write node. With filename empty it is the full stem (single images and video get the extension appended; sequences use it as a folder). |
 | `format` (optional) | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. IMG writes only the first frame of a batch; SEQ and VID write every frame. |
-| `filename` (optional) | string |  |  | Optional stem. When set, output_path is treated as a folder and the file is named <filename>_v0001. |
+| `filename` (optional) | string |  |  | Optional stem. When set, output_path is treated as a folder and the file is named &lt;filename>_v0001. |
 
 **Outputs**
 
@@ -107,7 +107,7 @@ Write images or EXR sequences to disk with configurable format options.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | * |  |  | Accepts any ComfyUI output: • IMAGE tensor. • Batched video frames. • VHS video output. • Any dict/list carrying a video path. |
-| `output_path` | string | `~/radiance_output` |  | Output directory + filename stem (only the directory when filename is set). Extension is appended automatically based on format. For sequences: output_path becomes a folder and frames are named <folder>_<frame>.<ext> (e.g. /out/shot -> /out/shot/shot_1001.exr). A relative path is under ComfyUI's output folder. Network paths are fully supported. Use the path as mounted on this machine: • Linux / Mac: /mnt/nas/renders/shot_001 • Windows UNC: \\server\share\renders\shot_001 • Windows drive: Z:\renders\shot_001 The directory is created automatically (mkdir -p) if it does not exist. Write permissions on the share are required. |
+| `output_path` | string | `~/radiance_output` |  | Output directory + filename stem (only the directory when filename is set). Extension is appended automatically based on format. For sequences: output_path becomes a folder and frames are named &lt;folder>_&lt;frame>.&lt;ext> (e.g. /out/shot -> /out/shot/shot_1001.exr). A relative path is under ComfyUI's output folder. Network paths are fully supported. Use the path as mounted on this machine: • Linux / Mac: /mnt/nas/renders/shot_001 • Windows UNC: \\server\share\renders\shot_001 • Windows drive: Z:\renders\shot_001 The directory is created automatically (mkdir -p) if it does not exist. Write permissions on the share are required. |
 | `format` | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. Extension is appended automatically. |
 | `filename` (optional) | string |  |  | Output filename stem (version appended automatically). Leave empty to use output_path as the full stem, with no version. |
 | `version` (optional) | int | 1 | 0 to 9999 | Version number appended to filename (e.g. shot_001_v0001), when filename is set. Its control steps it after each run: • fixed: stays as it is. • increment: +1 after each run, so every run writes a new version, even when nothing upstream changed. |
@@ -144,16 +144,16 @@ Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, 
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `filename_prefix` | string | `radiance_multipart` |  | File name stem. The file is written as <prefix>.<frame_index, 4-digit padded>.exr. |
+| `filename_prefix` | string | `radiance_multipart` |  | File name stem. The file is written as &lt;prefix>.&lt;frame_index, 4-digit padded>.exr. |
 | `beauty` | IMAGE |  |  | Main image, written as the 'beauty' part (R, G, B, plus A if it has 4 channels). Values are written unchanged, so feed scene-linear data. Each frame of a batch is written to its own file. |
 | `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float. |
 | `compression` | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression for every part. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; PXR24 is lossy on 32-bit float; B44, B44A, DWAA and DWAB are lossy. |
 | `depth` (optional) | IMAGE |  |  | Depth AOV written as a single Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised. |
 | `normal` (optional) | IMAGE |  |  | Normals AOV written as NX, NY, NZ in a 'normal' part, values unchanged (no 0-1 to -1..1 remap). |
 | `albedo` (optional) | IMAGE |  |  | Albedo AOV written as albedo.R/G/B in an 'albedo' part, values unchanged. |
-| `custom_1` (optional) | IMAGE |  |  | Extra AOV written as <custom_1_name>.R/G/B in a part of that name. |
+| `custom_1` (optional) | IMAGE |  |  | Extra AOV written as &lt;custom_1_name>.R/G/B in a part of that name. |
 | `custom_1_name` (optional) | string | `emission` |  | Part and channel-prefix name for custom_1. Letters, digits, underscore, hyphen or dot only; anything else stops the node. |
-| `custom_2` (optional) | IMAGE |  |  | Extra AOV written as <custom_2_name>.R/G/B in a part of that name. |
+| `custom_2` (optional) | IMAGE |  |  | Extra AOV written as &lt;custom_2_name>.R/G/B in a part of that name. |
 | `custom_2_name` (optional) | string | `specular` |  | Part and channel-prefix name for custom_2. Letters, digits, underscore, hyphen or dot only. |
 | `output_path` (optional) | string |  |  | Output folder. Empty writes to the ComfyUI output folder; a relative path is inside it; an absolute path is used as-is. Created if missing. |
 | `remote_path` (optional) | string |  |  | Optional second folder (for example a NAS or UNC share) the finished file is copied to. A failed copy only logs a warning. |
