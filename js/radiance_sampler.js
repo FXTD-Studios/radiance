@@ -206,7 +206,7 @@ const PRESET_CONFIGS = {
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
-        description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0), as Lightricks' templates.",
+        description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). The ComfyUI 2.5 T2V and I2V templates start at 0.85 instead, through a ManualSigmas node on sigmas_override.",
     },
     "▶ HunyuanVideo (30 steps)": {
         steps: 30, cfg: 6.0, sampler: "euler", scheduler: "simple",
