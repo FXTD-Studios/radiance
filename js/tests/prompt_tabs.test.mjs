@@ -13,7 +13,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source + `_refreshLiveState = () => {};
     globalThis.tabs = { read: _readTabs, edit: _editTabs, values: _tabValues, select: _selectTab, add: _newTab,
-        duplicate: _duplicateTab, remove: _deleteTab, move: _moveTab, chain: _chainTab };`, context);
+        duplicate: _duplicateTab, remove: _deleteTab, move: _moveTab, chain: _chainTab, runAll: _runAllTabs };`, context);
 const { tabs } = context;
 
 const DEFAULTS = { base_prompt: '', action: '', framing: 'None', negative_prompt: '' };
@@ -114,5 +114,23 @@ test('moving a tab keeps the shown one shown, with its values', () => {
     tabs.move(node, 1, 0);
     assert.deepEqual(names(node), ['Prompt C', 'Prompt B', 'Prompt A']);
     assert.equal(tabs.read(node).active, 2);
+    assert.deepEqual(shown(node), { ...DEFAULTS, ...A });
+});
+
+test('"Run all tabs" runs each tab that has a prompt, then shows the first one again', async () => {
+    const node = makeNode(A);
+    tabs.add(node);
+    node.widgets.find(w => w.name === 'base_prompt').value = 'a snowy forest';
+    tabs.select(node, 0);
+    tabs.edit(node).chain = true;
+    const sent = [];
+    context.app.queuePrompt = async () => {
+        sent.push(node.widgets.find(w => w.name === 'base_prompt').value);
+        for (const w of node.widgets) w.afterQueued?.();
+        return true;
+    };
+    await tabs.runAll(node);
+    assert.deepEqual(sent, [A.base_prompt, 'a snowy forest'], 'Prompt B has no prompt');
+    assert.equal(tabs.read(node).active, 0);
     assert.deepEqual(shown(node), { ...DEFAULTS, ...A });
 });
