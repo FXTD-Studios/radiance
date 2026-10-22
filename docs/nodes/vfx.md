@@ -340,7 +340,7 @@ Apply or remove lens distortion using Brown-Conrady coefficients.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Image or sequence to distort or undistort. Pixels are only resampled (no colour change), so any encoding works. |
-| `k1` | float | 0 | -1 to 1, step 0.005 | Primary radial distortion. k1<0 = barrel, k1>0 = pincushion. |
+| `k1` | float | 0 | -1 to 1, step 0.005 | Primary radial distortion. k1&lt;0 = barrel, k1>0 = pincushion. |
 | `k2` | float | 0 | -1 to 1, step 0.005 | Secondary radial distortion. Affects extreme corners. Use sparingly. |
 | `scale` | float | 1 | 0.1 to 2, step 0.01 | Uniform scale applied after distortion. Use to crop black borders. |
 | `center_x` | float | 0.5 | 0 to 1, step 0.01 | Optical center X (0.5 = image center). |
@@ -821,7 +821,7 @@ Write all passes inside the RADIANCE_PASSES bundle into a single-part multilayer
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `passes` | RADIANCE_PASSES |  |  | Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Pixel values are written as is, with no colour conversion. |
-| `filename_prefix` | string | `radiance_vfx_passes` |  | File name stem, not a path. Files are named <prefix>.<frame>.exr with a 4-digit padded frame number. |
+| `filename_prefix` | string | `radiance_vfx_passes` |  | File name stem, not a path. Files are named &lt;prefix>.&lt;frame>.exr with a 4-digit padded frame number. |
 | `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | EXR pixel type. Files containing depth, world_position, motion_vector or object_id passes are always written as 32-bit float. |
 | `compression` | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; lossy B44/B44A/DWAA/DWAB raise an error when data passes (depth, position, motion, object ID) are present. |
 | `output_path` (optional) | string |  |  | Output folder. Empty = ComfyUI output folder; a relative path is a subfolder of it; an absolute path is used as is. Created if missing. |
