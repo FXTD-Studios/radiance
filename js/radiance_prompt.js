@@ -391,7 +391,7 @@ function _layoutTextBoxes(node) {
 // value: the shown tab's are in the widgets, the others' in node.properties. A new
 // tab starts from the node's defaults; "next tab" moves on after each queued run.
 const TABS = "radiance_prompt_tabs";    // node.properties: {active, chain, tabs: [{name, values}]}
-const TAB_TIP = "A prompt tab: its own text, action, negative and settings.\n• Click: show it.\n• Drag: move it.\n• Double-click: rename it.\n• Right-click: rename, duplicate or delete it.";
+const TAB_TIP = "A prompt tab: its own text, action, negative and settings.\n• Click: show it.\n• Drag: move it.\n• Double-click: rename it.\n• Right-click: rename, duplicate or delete it, or run every tab that has a prompt.";
 const TAB_ADD_TIP = "New tab, from the node's defaults.";
 const TAB_CHAIN_TIP = "After each run:\n• fixed: stay on this tab.\n• next tab: show the next tab that has a prompt. A batch count of 3 runs three tabs.";
 
@@ -478,11 +478,30 @@ function _renameTab(node, el, i) {
 // "next tab": after a run is queued, the next tab that has a prompt.
 function _chainTab(node) {
     const state = _readTabs(node);
-    if (!state.chain) return;
+    if (!state.chain || node._radRunningTabs) return;
     for (let k = 1; k < state.tabs.length; k++) {
         const i = (state.active + k) % state.tabs.length;
         if (_tabHasPrompt(state.tabs[i])) return _selectTab(node, i);
     }
+}
+
+function _promptedTabs(node) {
+    const state = _readTabs(node);
+    const shown = !!node.widgets.find(w => w.name === "base_prompt")?.value?.trim();
+    return state.tabs.map((tab, i) => i).filter(i => i === state.active ? shown : _tabHasPrompt(state.tabs[i]));
+}
+
+// One run per tab that has a prompt, in order, then back to the tab shown
+// before; "next tab" sits it out. A run the server refuses stops the rest.
+async function _runAllTabs(node) {
+    const start = _readTabs(node).active;
+    node._radRunningTabs = true;
+    for (const i of _promptedTabs(node)) {
+        _selectTab(node, i);
+        if (!await app.queuePrompt(0)) break;
+    }
+    node._radRunningTabs = false;
+    _selectTab(node, start);
 }
 
 function _moveTab(node, from, to) {
@@ -589,10 +608,13 @@ function _renderTabs(node) {
             el.addEventListener("contextmenu", e => {
                 e.preventDefault();
                 e.stopPropagation();
+                const runs = _promptedTabs(node).length;
                 new LiteGraph.ContextMenu([
                     { content: "Rename", callback: () => _renameTab(node, el, i) },
                     { content: "Duplicate", callback: () => _duplicateTab(node, i) },
                     { content: "Delete", disabled: _readTabs(node).tabs.length < 2, callback: () => _deleteTab(node, i) },
+                    null,
+                    { content: `Run all tabs (${runs})`, disabled: !runs, callback: () => _runAllTabs(node) },
                 ], { event: e });
             });
             return el;
