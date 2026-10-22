@@ -245,18 +245,21 @@ function _textHeight(el) {
     return el._radNeed;
 }
 
+function _addStyle(id, css) {
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = css;
+    document.head.append(style);
+}
+
 function _makeTextBar(node) {
-    if (!document.getElementById("radiance-text-bar-style")) {
-        const style = document.createElement("style");
-        style.id = "radiance-text-bar-style";
-        style.textContent = `
-            .radiance-text-bar { position: absolute; right: 0; bottom: -7px; height: 10px; z-index: 20; cursor: ns-resize;
-                display: flex; align-items: center; justify-content: center; }
-            .radiance-text-bar > span { width: 44px; height: 4px; border-radius: 2px; background: #8a8a94;
-                box-shadow: 0 0 0 2px rgba(20, 20, 25, 0.9); }
-            .radiance-text-bar:hover > span, .radiance-text-bar.radiance-manual > span { background: #39aaff; }`;
-        document.head.append(style);
-    }
+    _addStyle("radiance-text-bar-style", `
+        .radiance-text-bar { position: absolute; right: 0; bottom: -7px; height: 10px; z-index: 20; cursor: ns-resize;
+            display: flex; align-items: center; justify-content: center; }
+        .radiance-text-bar > span { width: 44px; height: 4px; border-radius: 2px; background: #8a8a94;
+            box-shadow: 0 0 0 2px rgba(20, 20, 25, 0.9); }
+        .radiance-text-bar:hover > span, .radiance-text-bar.radiance-manual > span { background: #39aaff; }`);
     const bar = document.createElement("div");
     bar.className = "radiance-text-bar";
     bar.title = TEXT_BAR_TIP;
@@ -381,6 +384,188 @@ function _layoutTextBoxes(node) {
     if (grid) _layoutVueBoxes(node, grid, widgets, plans);
 }
 
+// ALBABIT-FIX: tabs keep several prompts in one node. A tab holds every widget
+// value: the shown tab's are in the widgets, the others' in node.properties. A new
+// tab starts from the node's defaults; "next tab" moves on after each queued run.
+const TABS = "radiance_prompt_tabs";    // node.properties: {active, chain, tabs: [{name, values}]}
+const TAB_TIP = "A prompt tab: its own text, action, negative and settings.\n• Click: show it.\n• Double-click: rename it.\n• Right-click: rename, duplicate or delete it.";
+const TAB_ADD_TIP = "New tab, from the node's defaults.";
+const TAB_CHAIN_TIP = "After each run:\n• fixed: stay on this tab.\n• next tab: show the next tab that has a prompt. A batch count of 3 runs three tabs.";
+
+function _readTabs(node) {
+    return node.properties[TABS] ?? { active: 0, chain: false, tabs: [{ name: "Prompt A" }, { name: "Prompt B" }] };
+}
+
+function _editTabs(node) {
+    return (node.properties[TABS] = _readTabs(node));
+}
+
+function _tabValues(node) {
+    return Object.fromEntries(node.widgets.filter(w => w.serialize !== false).map(w => [w.name, w.value]));
+}
+
+const _tabHasPrompt = tab => !!tab.values?.base_prompt?.trim();
+
+// Shows tab i over the widgets' values: save those first to keep them.
+function _showTab(node, state, i) {
+    const values = { ...node._radFreshTab, ...state.tabs[i].values };
+    for (const w of node.widgets) if (w.name in values) w.value = values[w.name];
+    delete state.tabs[i].values;
+    state.active = i;
+    _refreshLiveState(node);
+    node.setDirtyCanvas(true, true);
+}
+
+function _selectTab(node, i) {
+    const state = _editTabs(node);
+    if (i === state.active) return;
+    state.tabs[state.active].values = _tabValues(node);
+    _showTab(node, state, i);
+}
+
+function _insertTab(node, at, tab) {
+    const state = _editTabs(node);
+    state.tabs.splice(at, 0, tab);
+    if (state.active >= at) state.active++;
+    _selectTab(node, at);
+}
+
+function _newTab(node) {
+    const state = _readTabs(node);
+    const names = new Set(state.tabs.map(t => t.name));
+    const name = n => `Prompt ${n < 26 ? String.fromCharCode(65 + n) : n + 1}`;
+    let n = state.tabs.length;
+    while (names.has(name(n))) n++;
+    _insertTab(node, state.tabs.length, { name: name(n) });
+}
+
+function _duplicateTab(node, i) {
+    const state = _readTabs(node);
+    const values = i === state.active ? _tabValues(node) : { ...state.tabs[i].values };
+    _insertTab(node, i + 1, { name: `${state.tabs[i].name} copy`, values });
+}
+
+function _deleteTab(node, i) {
+    const state = _editTabs(node);
+    if (state.tabs.length < 2) return;
+    if (i === state.active) _showTab(node, state, i ? i - 1 : 1);
+    state.tabs.splice(i, 1);
+    if (state.active > i) state.active--;
+    _renderTabs(node);
+}
+
+function _renameTab(node, el, i) {
+    const input = document.createElement("input");
+    input.value = _readTabs(node).tabs[i].name;
+    el.replaceChildren(input);
+    input.focus();
+    input.select();
+    const finish = save => {
+        if (!input.isConnected) return;
+        const name = input.value.trim();
+        if (save && name) _editTabs(node).tabs[i].name = name;
+        el.textContent = _readTabs(node).tabs[i].name;
+        _renderTabs(node);
+    };
+    input.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === "Escape") finish(e.key === "Enter"); });
+    input.addEventListener("blur", () => finish(true));
+}
+
+// "next tab": after a run is queued, the next tab that has a prompt.
+function _chainTab(node) {
+    const state = _readTabs(node);
+    if (!state.chain) return;
+    for (let k = 1; k < state.tabs.length; k++) {
+        const i = (state.active + k) % state.tabs.length;
+        if (_tabHasPrompt(state.tabs[i])) return _selectTab(node, i);
+    }
+}
+
+function _tabButton(className, text, tip, onPress) {
+    const el = document.createElement("div");
+    el.className = className;
+    el.textContent = text;
+    el.title = tip;
+    el.addEventListener("mousedown", e => e.stopPropagation());
+    el.addEventListener("pointerdown", e => {
+        e.stopPropagation();
+        if (e.button === 0) onPress();
+    });
+    return el;
+}
+
+// Rebuilt when the names change, so a double-click lands on the tab it started on.
+function _renderTabs(node) {
+    const strip = node.widgets?.find(w => w.name === "prompt_tabs")?.element.firstChild;
+    if (!strip || strip.querySelector("input")) return;
+    const state = _readTabs(node);
+    const names = JSON.stringify(state.tabs.map(t => t.name));
+    if (strip._radNames !== names) {
+        strip._radNames = names;
+        strip.replaceChildren(...state.tabs.map((tab, i) => {
+            const el = _tabButton("", tab.name, `${tab.name}\n${TAB_TIP}`, () => _selectTab(node, i));
+            el.addEventListener("dblclick", e => {
+                e.stopPropagation();
+                _renameTab(node, el, i);
+            });
+            el.addEventListener("contextmenu", e => {
+                e.preventDefault();
+                e.stopPropagation();
+                new LiteGraph.ContextMenu([
+                    { content: "Rename", callback: () => _renameTab(node, el, i) },
+                    { content: "Duplicate", callback: () => _duplicateTab(node, i) },
+                    { content: "Delete", disabled: _readTabs(node).tabs.length < 2, callback: () => _deleteTab(node, i) },
+                ], { event: e });
+            });
+            return el;
+        }), _tabButton("radiance-tab-add", "+", TAB_ADD_TIP, () => _newTab(node)),
+        _tabButton("radiance-tab-chain", "", TAB_CHAIN_TIP, () => {
+            const edited = _editTabs(node);
+            edited.chain = !edited.chain;
+            _renderTabs(node);
+        }));
+    }
+    state.tabs.forEach((tab, i) => {
+        strip.children[i].classList.toggle("radiance-active", i === state.active);
+        strip.children[i].classList.toggle("radiance-empty", i !== state.active && !_tabHasPrompt(tab));
+    });
+    strip.classList.toggle("radiance-chain", !!state.chain);
+    strip.lastChild.textContent = state.chain ? "⟳ next tab" : "⟳ fixed";
+}
+
+// The tab row, above the text boxes. Never saved: the tabs are in node.properties.
+// It reads the node's defaults before a graph sets any value.
+function _addTabsWidget(node) {
+    _addStyle("radiance-prompt-tabs-style", `
+        .radiance-prompt-tabs { display: flex; align-items: center; gap: 3px; height: 28px; overflow: hidden; font-size: 12px; }
+        .radiance-prompt-tabs > div { flex: 0 1 auto; min-width: 2.5em; height: 22px; line-height: 22px; padding: 0 10px;
+            box-sizing: border-box; border-radius: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+            cursor: pointer; user-select: none; color: var(--node-component-slot-text, #a0a0a0); }
+        .radiance-prompt-tabs > .radiance-active { flex-shrink: 0; max-width: 45%; background: var(--component-node-widget-background, #313235);
+            color: var(--component-node-foreground, #fff); box-shadow: inset 0 -2px 0 #39aaff; }
+        .radiance-prompt-tabs > div:has(input) { outline: 1px solid #39aaff; }
+        .radiance-prompt-tabs.radiance-chain > .radiance-empty { opacity: 0.45; }
+        .radiance-prompt-tabs > .radiance-tab-add { flex: none; min-width: 0; width: 22px; padding: 0; text-align: center;
+            line-height: 20px; font-size: 15px; border: 1px dashed var(--border-color, #4e4e4e); }
+        .radiance-prompt-tabs > .radiance-tab-chain { flex: none; margin-left: auto; padding: 0 8px; line-height: 20px;
+            font-size: 11px; border: 1px solid var(--border-color, #4e4e4e); }
+        .radiance-prompt-tabs.radiance-chain > .radiance-tab-chain { color: #39aaff; background: #39aaff26; border-color: #39aaff88; }
+        .radiance-prompt-tabs input { width: 10em; padding: 0; font: inherit; color: inherit; background: none; border: none; outline: none; }`);
+    node._radFreshTab = _tabValues(node);
+    const el = document.createElement("div");
+    el.append(document.createElement("div"));
+    el.firstChild.className = "radiance-prompt-tabs";
+    const widget = node.addDOMWidget("prompt_tabs", "radiance_tabs", el,
+        { serialize: false, getMinHeight: () => 28, getMaxHeight: () => 28 });
+    widget.serialize = false;
+    // The frontend runs each widget's afterQueued in turn, this one first: wait for
+    // the others, so a seed control steps the tab that ran, not the next one.
+    widget.afterQueued = () => queueMicrotask(() => _chainTab(node));
+    node.widgets.splice(node.widgets.indexOf(widget), 1);
+    node.widgets.unshift(widget);
+    _renderTabs(node);
+}
+
 // ALBABIT-FIX: shared by the poll loop, onConfigure and onExecuted below. A
 // Loader in Auto-Detect (liveState null) falls back to the last run's verdict.
 // The model_meta source is resolved once per call and shared by the helpers.
@@ -400,6 +585,7 @@ function _refreshLiveState(node) {
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
     _applyActionState(node, source);
     _layoutTextBoxes(node);
+    _renderTabs(node);
 }
 
 // ALBABIT-FIX: apply_style_preset() overwrote these 7 widgets on every run. They
@@ -504,6 +690,7 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
             _holdHiddenSeed(this);
+            _addTabsWidget(this);
 
             const self = this;
             const presetWidget = this.widgets?.find(w => w.name === "style_preset");
