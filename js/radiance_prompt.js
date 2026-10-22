@@ -7,12 +7,15 @@ import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidg
 // overexposure markers (engine.py's "ui" channel via onExecuted).
 const WEAK_NEG_MARKER = " ⚠ no CFG, ignored";
 
+// Returns whether the label changed.
 function _setLabelMarker(widget, marker) {
-    if (!widget) return;
-    if (widget._radOrigLabel === undefined && !marker) return;
+    if (!widget) return false;
+    if (widget._radOrigLabel === undefined && !marker) return false;
     if (widget._radOrigLabel === undefined) widget._radOrigLabel = widget.label ?? widget.name;
     const wanted = marker ? widget._radOrigLabel + marker : widget._radOrigLabel;
-    if (widget.label !== wanted) widget.label = wanted;
+    if (widget.label === wanted) return false;
+    widget.label = wanted;
+    return true;
 }
 
 // ALBABIT-FIX: live read of the connected Loader's preset/model_type. No
@@ -753,13 +756,7 @@ function updatePresetDivergenceMarkers(node) {
         if (config && config[w.name] !== undefined) {
             marked = String(w.value) !== String(config[w.name]);
         }
-        if (w._radOrigLabel === undefined && !marked) continue;
-        if (w._radOrigLabel === undefined) w._radOrigLabel = w.label ?? w.name;
-        const wanted = marked ? w._radOrigLabel + PRESET_MARKER : w._radOrigLabel;
-        if (w.label !== wanted) {
-            w.label = wanted;
-            changed = true;
-        }
+        changed = _setLabelMarker(w, marked ? PRESET_MARKER : null) || changed;
     }
     if (changed) node.setDirtyCanvas(true, true);
 }
