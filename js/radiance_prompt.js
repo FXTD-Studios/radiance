@@ -492,16 +492,20 @@ function _promptedTabs(node) {
 }
 
 // One run per tab that has a prompt, in order, then back to the tab shown
-// before; "next tab" sits it out. A run the server refuses stops the rest.
+// before; "next tab" sits it out. A run that fails to build, or that the server
+// refuses, stops the rest.
 async function _runAllTabs(node) {
     const start = _readTabs(node).active;
     node._radRunningTabs = true;
-    for (const i of _promptedTabs(node)) {
-        _selectTab(node, i);
-        if (!await app.queuePrompt(0)) break;
+    try {
+        for (const i of _promptedTabs(node)) {
+            _selectTab(node, i);
+            if (!await app.queuePrompt(0)) break;
+        }
+    } finally {
+        node._radRunningTabs = false;
+        _selectTab(node, start);
     }
-    node._radRunningTabs = false;
-    _selectTab(node, start);
 }
 
 function _moveTab(node, from, to) {
