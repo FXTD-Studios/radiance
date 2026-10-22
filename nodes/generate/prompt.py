@@ -2324,10 +2324,11 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                                  "the layout input. Keep one.")
             flux3_layout = _check_flux3_layout(layout)
 
-        # The action goes on as if typed at the end of base_prompt.
+        # The action goes on as if typed at the end of base_prompt; a clause left
+        # open by a comma, semicolon or colon ends with a full stop instead.
         is_video = resolved_arch in VIDEO_MODEL_TYPES
         if is_video and action and action.strip():
-            parts = [base_prompt.rstrip(), action.strip()]
+            parts = [base_prompt.rstrip().rstrip(",;:").rstrip(), action.strip()]
             _end_subject_sentence(parts)
             base_prompt = " ".join(parts)
 
