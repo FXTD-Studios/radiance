@@ -212,7 +212,7 @@ Run a local HTTP preview server for browser-based image review.
 | :--- | :--- | :--- | :--- | :--- |
 | `images` | IMAGE |  |  | Frames to publish, returned unchanged on passthrough. Only the last frame is served, clamped to [0, 1] as an 8-bit JPEG. Alpha is not shown (the passthrough keeps it). |
 | `port` | int | 8765 | 1024 to 65535 | TCP port for the preview HTTP server. |
-| `stream_name` | string | `radiance` |  | Stream identifier. Access at /frame/<stream_name>. |
+| `stream_name` | string | `radiance` |  | Stream identifier. Access at /frame/&lt;stream_name>. |
 | `jpeg_quality` (optional) | int | 85 | 20 to 99 | JPEG compression quality (20=small, 99=lossless-ish). |
 | `resize_width` (optional) | int | 0 | 0 to 3840 | Resize frame before serving (0 = original size). Smaller = faster over network. |
 | `enabled` (optional) | boolean | on |  | Off: skip publishing this frame. A server already started keeps running and serves the previous frame. |
