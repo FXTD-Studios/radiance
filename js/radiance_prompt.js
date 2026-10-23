@@ -680,6 +680,14 @@ function _addTabsWidget(node) {
     const widget = node.addDOMWidget("prompt_tabs", "radiance_tabs", el,
         { serialize: false, getMinHeight: () => 28, getMaxHeight: () => 28 });
     widget.serialize = false;
+    // ALBABIT-FIX: Nodes 2.0 stretches a row with a layout size like a text box: each time
+    // it drew its own rows, the tab row grew to ~160px and the sockets below were measured
+    // there, so a link to a widget ended rows below it. computeSize keeps its 28px.
+    const { computeLayoutSize, computeSize } = widget;
+    Object.defineProperties(widget, {
+        computeLayoutSize: { get: () => (LiteGraph.vueNodesMode ? undefined : computeLayoutSize) },
+        computeSize: { get: () => (LiteGraph.vueNodesMode ? (width) => [width, 28] : computeSize) },
+    });
     // The frontend runs each widget's afterQueued in turn, this one first: wait for
     // the others, so a seed control steps the tab that ran, not the next one.
     widget.afterQueued = () => queueMicrotask(() => _chainTab(node));
