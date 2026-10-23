@@ -180,8 +180,8 @@ function _applyActionState(node, source = modelMetaSourceNode(node)) {
 
 // ALBABIT-FIX: text_to_video off (image-to-video) leaves base_prompt and the menus out:
 // base_prompt is dimmed and marked, its text kept, the menus hide as negative_strength does.
-// Wired, only a Boolean node that runs is read, and the frontend draws the switch's row;
-// unwired, the switch hides under an image model (action's verdict, set before) unless off.
+// Wired, a Boolean node that runs is read, else the last run's value, and the frontend draws
+// the switch's row; unwired, it hides under an image model (action's verdict) unless off.
 const IMAGE_TO_VIDEO_MARKER = " ⚠ image-to-video, ignored";
 
 function _applyBasePromptState(node) {
@@ -190,8 +190,8 @@ function _applyBasePromptState(node) {
     if (!w || !onW) return;
     const input = node.inputs?.find(i => i.name === "text_to_video");
     const wired = input?.link != null;
-    const value = wired ? liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value : onW.value;
-    const off = value === false;
+    const read = wired ? liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value : onW.value;
+    const off = (read ?? node._radTextToVideo) === false;
     w._radIgnored = off;
     _setLabelMarker(w, off ? IMAGE_TO_VIDEO_MARKER : null);
     const targets = ["style_preset", ...TRACKED_FIELDS].map(name => [node.widgets.find(x => x.name === name), "combo", !off]);
@@ -898,12 +898,13 @@ app.registerExtension({
         };
 
         // ALBABIT-FIX: the last real run's arch verdicts, read by _refreshLiveState
-        // for the negative's marker and Auto-Detect lock, and for action.
+        // for the negative's marker and Auto-Detect lock, and for action and text_to_video.
         const onExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             if (onExecuted) onExecuted.apply(this, arguments);
             this._radWeakNeg = !!message?.weak_neg_arch?.[0];
             this._radVideo = message?.video_arch?.[0];
+            this._radTextToVideo = message?.text_to_video?.[0];
             _refreshLiveState(this);
             this.setDirtyCanvas?.(true, true);
         };
