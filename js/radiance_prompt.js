@@ -180,19 +180,25 @@ function _applyActionState(node, source = modelMetaSourceNode(node)) {
 
 // ALBABIT-FIX: text_to_video off (image-to-video) leaves base_prompt and the menus out:
 // base_prompt is dimmed and marked, its text kept, the menus hide as negative_strength does.
-// Wired, a Boolean node that runs is read, else the last run's value, and the frontend draws
-// the switch's row. An image model ignores the switch (action's verdict): it hides, unwired.
+// Wired, the frontend draws the switch's row. An image model ignores the switch (action's
+// verdict): it hides, unwired.
 const IMAGE_TO_VIDEO_MARKER = " ⚠ image-to-video, ignored";
+
+// The switch as the run reads it: unwired, the value given (the shown tab's or another's);
+// wired, a Boolean node that runs, else the last run's value.
+function _textToVideo(node, own) {
+    const input = node.inputs?.find(i => i.name === "text_to_video");
+    if (input?.link == null) return own;
+    return liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value ?? node._radTextToVideo;
+}
 
 function _applyBasePromptState(node) {
     const w = node.widgets?.find(x => x.name === "base_prompt");
     const onW = node.widgets?.find(x => x.name === "text_to_video");
     if (!w || !onW) return;
-    const input = node.inputs?.find(i => i.name === "text_to_video");
-    const wired = input?.link != null;
+    const wired = node.inputs?.find(i => i.name === "text_to_video")?.link != null;
     const imageModel = node.widgets.find(x => x.name === "action")?._radIgnored === true;
-    const read = wired ? liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value : onW.value;
-    const off = !imageModel && (read ?? node._radTextToVideo) === false;
+    const off = !imageModel && _textToVideo(node, onW.value) === false;
     w._radIgnored = off;
     _setLabelMarker(w, off ? IMAGE_TO_VIDEO_MARKER : null);
     const targets = ["style_preset", ...TRACKED_FIELDS].map(name => [node.widgets.find(x => x.name === name), "combo", !off]);
@@ -435,10 +441,13 @@ function _tabValues(node) {
     return Object.fromEntries(node.widgets.filter(w => w.serialize !== false).map(w => [w.name, w.value]));
 }
 
-// ALBABIT-FIX: a video model also runs on the action alone; an image model reads
-// base_prompt only (action's verdict).
-const _hasPrompt = (node, values) => !!(values?.base_prompt?.trim()
-    || (values?.action?.trim() && node.widgets.find(w => w.name === "action")?._radIgnored !== true));
+// ALBABIT-FIX: what the encoder reads. A video model also runs on the action alone, and on
+// it alone with text_to_video off; an image model reads base_prompt only (action's verdict).
+function _hasPrompt(node, values) {
+    const video = node.widgets.find(w => w.name === "action")?._radIgnored !== true;
+    const base = !(video && _textToVideo(node, values?.text_to_video) === false) && values?.base_prompt?.trim();
+    return !!(base || (video && values?.action?.trim()));
+}
 
 // Shows tab i over the widgets' values: save those first to keep them.
 function _showTab(node, state, i) {
