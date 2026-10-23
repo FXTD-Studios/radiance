@@ -2484,7 +2484,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         return {
             "ui": {"weak_neg_arch": [resolved_arch in _WEAK_NEG_ARCHS],
                    "negative_skipped": [bool(skip_negative)],
-                   "video_arch": [is_video]},
+                   "video_arch": [is_video],
+                   "text_to_video": [bool(text_to_video)]},
             "result": (
                 positive_cond,
                 negative_cond,

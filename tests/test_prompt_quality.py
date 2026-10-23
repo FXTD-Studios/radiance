@@ -237,19 +237,21 @@ def _video_prompt(**kw):
     out = RadianceCinematicPromptEncoder().execute(
         FakeClip(("gemma3_12b",)), action="She waves at the camera.", framing="Close-Up (CU)",
         camera_type="ARRI Alexa 35", style_preset="→ Film Noir", model_meta=LTXAV, **kw)
-    return out["result"][2]
+    return out["result"][2], out["ui"]
 
 
 @pytest.mark.real_torch
 def test_image_to_video_reads_the_action_alone():
-    text = _video_prompt(base_prompt="a woman on a dock", text_to_video=False)
+    text, ui = _video_prompt(base_prompt="a woman on a dock", text_to_video=False)
     assert text.startswith("She waves at the camera.")
     assert "dock" not in text and "ARRI" not in text and "close-up" not in text.lower()
+    # For a wired switch the frontend cannot read.
+    assert ui["text_to_video"] == [False]
 
 
 @pytest.mark.real_torch
 def test_an_empty_base_prompt_keeps_the_menus_but_not_framing():
-    text = _video_prompt(base_prompt=" ")
+    text, _ = _video_prompt(base_prompt=" ")
     assert text.startswith("She waves at the camera. ") and "ARRI Alexa 35" in text
     assert "close-up" not in text.lower()
 
