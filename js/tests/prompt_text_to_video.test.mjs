@@ -21,11 +21,12 @@ context.setWidgetVisible = (widget, visible) => { widget.hidden = !visible; };
 const MENUS = ['style_preset', 'framing', 'camera_type', 'lens_focal', 'aperture_dof', 'lighting',
     'style_aesthetic', 'color_grading'];
 
-// A Prompt with text_to_video set to `own`, wired to `source` ({cls, mode, value}) when given.
-function prompt({ own = true, source, imageModel = false } = {}) {
+// A Prompt with text_to_video set to `own`, wired to `source` ({cls, mode, value}) when given;
+// `lastRun` is the value its last run reported.
+function prompt({ own = true, source, imageModel = false, lastRun } = {}) {
     const nodes = {};
     const graph = { links: {}, getNodeById: id => nodes[id] };
-    const node = { id: 1, graph, inputs: [{ name: 'text_to_video', type: 'BOOLEAN', link: source ? 3 : null }],
+    const node = { id: 1, graph, _radTextToVideo: lastRun, inputs: [{ name: 'text_to_video', type: 'BOOLEAN', link: source ? 3 : null }],
         widgets: [{ name: 'text_to_video', value: own }, { name: 'base_prompt', value: 'a woman on a dock' },
                   { name: 'action', value: '', _radIgnored: imageModel },
                   ...MENUS.map(name => ({ name, value: 'None' }))] };
@@ -60,6 +61,12 @@ test('a wire wins over the switch, and an unreadable or muted one leaves the nod
         assert.equal(widget(node, 'base_prompt').label ?? 'base_prompt', 'base_prompt');
         assert.deepEqual(menusHidden(node), all(false));
     }
+});
+
+test('an unreadable wire follows the last run, a readable one does not', () => {
+    assert.equal(widget(prompt({ source: { cls: 'SomeLogicNode' }, lastRun: false }), 'base_prompt')._radIgnored, true);
+    assert.equal(widget(prompt({ source: { cls: 'SomeLogicNode' }, lastRun: true }), 'base_prompt')._radIgnored, false);
+    assert.equal(widget(prompt({ source: { cls: 'PrimitiveBoolean', value: true }, lastRun: false }), 'base_prompt')._radIgnored, false);
 });
 
 test('turning it back on clears the marker and shows the menus', () => {
