@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -176,6 +176,33 @@ function _applyActionState(node, source = modelMetaSourceNode(node)) {
     const arch = loaderModelType(source);
     w._radIgnored = (arch === null ? node._radVideo : VIDEO_FAMILIES.includes(arch)) === false;
     _setLabelMarker(w, w._radIgnored ? IMAGE_MODEL_MARKER : null);
+}
+
+// ALBABIT-FIX: text_to_video off (image-to-video) leaves base_prompt and the menus out:
+// base_prompt is dimmed and marked, its text kept, the menus hide as negative_strength does.
+// Wired, only a Boolean node that runs is read, and the frontend draws the switch's row;
+// unwired, the switch hides under an image model (action's verdict, set before) unless off.
+const IMAGE_TO_VIDEO_MARKER = " ⚠ image-to-video, ignored";
+
+function _applyBasePromptState(node) {
+    const w = node.widgets?.find(x => x.name === "base_prompt");
+    const onW = node.widgets?.find(x => x.name === "text_to_video");
+    if (!w || !onW) return;
+    const input = node.inputs?.find(i => i.name === "text_to_video");
+    const wired = input?.link != null;
+    const value = wired ? liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value : onW.value;
+    const off = value === false;
+    w._radIgnored = off;
+    _setLabelMarker(w, off ? IMAGE_TO_VIDEO_MARKER : null);
+    const targets = ["style_preset", ...TRACKED_FIELDS].map(name => [node.widgets.find(x => x.name === name), "combo", !off]);
+    if (!wired) targets.push([onW, "toggle", off || node.widgets.find(x => x.name === "action")?._radIgnored !== true]);
+    let changed = false;
+    for (const [target, type, show] of targets) {
+        if (!target || !target.hidden === show) continue;
+        setWidgetVisible(target, show, node, { fallbackType: type });
+        changed = true;
+    }
+    if (changed) fitNodeSize(node);
 }
 
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
@@ -714,6 +741,7 @@ function _refreshLiveState(node) {
     const negW = node.widgets?.find(w => w.name === "negative_prompt");
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
     _applyActionState(node, source);
+    _applyBasePromptState(node);
     _layoutTextBoxes(node);
     _renderTabs(node);
 }
