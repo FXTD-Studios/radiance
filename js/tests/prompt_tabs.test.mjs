@@ -104,6 +104,20 @@ test('"next tab" moves to the next tab with a prompt, and "fixed" stays', () => 
     assert.equal(tabs.read(node).active, 0, 'no other tab has a prompt');
 });
 
+test('a tab with only an action has a prompt under a video model, not an image model', () => {
+    const node = makeNode(A);
+    tabs.add(node);
+    node.widgets.find(w => w.name === 'action').value = 'She waves at the camera.';
+    tabs.select(node, 0);
+    tabs.edit(node).chain = true;
+    tabs.chain(node);
+    assert.equal(tabs.read(node).active, 2);
+    tabs.select(node, 0);
+    node.widgets.find(w => w.name === 'action')._radIgnored = true;
+    tabs.chain(node);
+    assert.equal(tabs.read(node).active, 0, 'an image model reads no action');
+});
+
 test('moving a tab keeps the shown one shown, with its values', () => {
     const node = makeNode(A);
     tabs.add(node);

@@ -435,7 +435,10 @@ function _tabValues(node) {
     return Object.fromEntries(node.widgets.filter(w => w.serialize !== false).map(w => [w.name, w.value]));
 }
 
-const _tabHasPrompt = tab => !!tab.values?.base_prompt?.trim();
+// ALBABIT-FIX: a video model also runs on the action alone; an image model reads
+// base_prompt only (action's verdict).
+const _hasPrompt = (node, values) => !!(values?.base_prompt?.trim()
+    || (values?.action?.trim() && node.widgets.find(w => w.name === "action")?._radIgnored !== true));
 
 // Shows tab i over the widgets' values: save those first to keep them.
 function _showTab(node, state, i) {
@@ -509,14 +512,14 @@ function _chainTab(node) {
     if (!state.chain || node._radRunningTabs) return;
     for (let k = 1; k < state.tabs.length; k++) {
         const i = (state.active + k) % state.tabs.length;
-        if (_tabHasPrompt(state.tabs[i])) return _selectTab(node, i);
+        if (_hasPrompt(node, state.tabs[i].values)) return _selectTab(node, i);
     }
 }
 
 function _promptedTabs(node) {
     const state = _readTabs(node);
-    const shown = !!node.widgets.find(w => w.name === "base_prompt")?.value?.trim();
-    return state.tabs.map((tab, i) => i).filter(i => i === state.active ? shown : _tabHasPrompt(state.tabs[i]));
+    const shown = _hasPrompt(node, _tabValues(node));
+    return state.tabs.map((tab, i) => i).filter(i => i === state.active ? shown : _hasPrompt(node, state.tabs[i].values));
 }
 
 // One run per tab that has a prompt, in order, then back to the tab shown
@@ -654,7 +657,7 @@ function _renderTabs(node) {
     }
     state.tabs.forEach((tab, i) => {
         list.children[i].classList.toggle("radiance-active", i === state.active);
-        list.children[i].classList.toggle("radiance-empty", i !== state.active && !_tabHasPrompt(tab));
+        list.children[i].classList.toggle("radiance-empty", i !== state.active && !_hasPrompt(node, tab.values));
     });
     strip.classList.toggle("radiance-chain", !!state.chain);
     strip.lastChild.textContent = state.chain ? "⟳ next tab" : "⟳ fixed";
