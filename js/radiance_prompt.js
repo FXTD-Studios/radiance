@@ -181,7 +181,7 @@ function _applyActionState(node, source = modelMetaSourceNode(node)) {
 // ALBABIT-FIX: text_to_video off (image-to-video) leaves base_prompt and the menus out:
 // base_prompt is dimmed and marked, its text kept, the menus hide as negative_strength does.
 // Wired, a Boolean node that runs is read, else the last run's value, and the frontend draws
-// the switch's row; unwired, it hides under an image model (action's verdict) unless off.
+// the switch's row. An image model ignores the switch (action's verdict): it hides, unwired.
 const IMAGE_TO_VIDEO_MARKER = " ⚠ image-to-video, ignored";
 
 function _applyBasePromptState(node) {
@@ -190,12 +190,13 @@ function _applyBasePromptState(node) {
     if (!w || !onW) return;
     const input = node.inputs?.find(i => i.name === "text_to_video");
     const wired = input?.link != null;
+    const imageModel = node.widgets.find(x => x.name === "action")?._radIgnored === true;
     const read = wired ? liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value : onW.value;
-    const off = (read ?? node._radTextToVideo) === false;
+    const off = !imageModel && (read ?? node._radTextToVideo) === false;
     w._radIgnored = off;
     _setLabelMarker(w, off ? IMAGE_TO_VIDEO_MARKER : null);
     const targets = ["style_preset", ...TRACKED_FIELDS].map(name => [node.widgets.find(x => x.name === name), "combo", !off]);
-    if (!wired) targets.push([onW, "toggle", off || node.widgets.find(x => x.name === "action")?._radIgnored !== true]);
+    if (!wired) targets.push([onW, "toggle", !imageModel]);
     let changed = false;
     for (const [target, type, show] of targets) {
         if (!target || !target.hidden === show) continue;

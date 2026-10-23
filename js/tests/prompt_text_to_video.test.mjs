@@ -77,9 +77,13 @@ test('turning it back on clears the marker and shows the menus', () => {
     assert.deepEqual(menusHidden(node), all(false));
 });
 
-test('the switch hides under an image model, unless it is off', () => {
-    assert.equal(!!widget(prompt({ imageModel: true }), 'text_to_video').hidden, true);
-    assert.equal(!!widget(prompt({ imageModel: true, own: false }), 'text_to_video').hidden, false);
+test('an image model ignores the switch: it hides, and dims and hides nothing else', () => {
+    for (const node of [prompt({ imageModel: true }), prompt({ imageModel: true, own: false }),
+                        prompt({ imageModel: true, source: { cls: 'PrimitiveBoolean', value: false } })]) {
+        assert.equal(widget(node, 'base_prompt')._radIgnored, false);
+        assert.deepEqual(menusHidden(node), all(false));
+    }
+    assert.equal(!!widget(prompt({ imageModel: true, own: false }), 'text_to_video').hidden, true);
     assert.equal(!!widget(prompt(), 'text_to_video').hidden, false);
 });
 

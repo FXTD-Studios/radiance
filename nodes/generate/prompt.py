@@ -2083,7 +2083,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                              "the look (image-to-video): action alone. Describe only what changes.\n\n"
                              "Wire it to the boolean that turns text-to-video on, or set it here.\n"
                              "• Off: base_prompt is dimmed and the menus are hidden.\n"
-                             "• Hidden under an image model."),
+                             "• Hidden and ignored under an image model."),
                 ),
                 # 3.5.0: empty with a placeholder. The old default text was a
                 # real value, so an untouched node encoded "A cinematic scene...".
@@ -2297,9 +2297,11 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
         # ALBABIT-FIX: image-to-video turns text_to_video off: the image shows the
-        # subject and the scene, so a video model reads the action alone.
+        # subject and the scene, so a video model reads the action alone. An image
+        # model reads no action and keeps base_prompt.
         is_video = resolved_arch in VIDEO_MODEL_TYPES
-        if not text_to_video:
+        image_to_video = is_video and not text_to_video
+        if image_to_video:
             base_prompt = ""
         has_base = bool(base_prompt.strip())
         if not has_base and not (is_video and action.strip()):
@@ -2363,7 +2365,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             settings = apply_style_preset(style_preset, settings)
         # ALBABIT-FIX: the image also shows the look, so image-to-video drops the menus
         # too. With no base_prompt, framing, which opens it, would open the action.
-        if not text_to_video:
+        if image_to_video:
             settings = dict.fromkeys(settings, "None")
         elif not has_base:
             settings["framing"] = "None"
