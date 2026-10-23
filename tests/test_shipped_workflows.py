@@ -198,8 +198,9 @@ def test_no_machine_specific_paths(path):
 
 
 def test_prompt_saved_order_is_its_widgets_without_action():
-    """Old Prompts are restored by this order; action came later, under base_prompt."""
+    """Old Prompts are restored by this order; text_to_video and action came later, around base_prompt."""
     from radiance.nodes.generate.prompt import RadianceCinematicPromptEncoder
     widgets = [name for name, _, _ in _expected_widgets(RadianceCinematicPromptEncoder)]
-    assert widgets[:2] == ["base_prompt", "action"]
-    assert [w for w in widgets if w != "action"] == _saved_order(*SAVED_ORDERS["RadianceCinematicPromptEncoder"])
+    assert widgets[:3] == ["text_to_video", "base_prompt", "action"]
+    later = ("text_to_video", "action")
+    assert [w for w in widgets if w not in later] == _saved_order(*SAVED_ORDERS["RadianceCinematicPromptEncoder"])
