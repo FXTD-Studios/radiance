@@ -119,7 +119,7 @@ Models        = "https://huggingface.co/fxtdstudios/RUDRA"
 PublisherId      = "fxtdstudios"
 DisplayName      = "Radiance"
 Icon             = "https://raw.githubusercontent.com/fxtd-studios/radiance/main/r_icon.png"
-requires-comfyui = ">=0.2.2"
+requires-comfyui = ">=0.40.0"
 
 [tool.setuptools]
 package-dir = { "radiance" = "." }

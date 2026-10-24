@@ -534,13 +534,23 @@ function _promptedTabs(node) {
 // One run per tab that has a prompt, in order, then back to the tab shown
 // before; "next tab" sits it out. A run that fails to build, or that the server
 // refuses, stops the rest.
+// While the frontend is queueing another run, queuePrompt adds this one behind it and
+// returns at once: the run is built later, from the tab shown then. Wait for the queue.
+async function _queueIdle() {
+    while (app.processingQueue) await new Promise(resolve => setTimeout(resolve, 50));
+}
+
 async function _runAllTabs(node) {
+    await _queueIdle();
     const start = _readTabs(node).active;
     node._radRunningTabs = true;
     try {
         for (const i of _promptedTabs(node)) {
             _selectTab(node, i);
-            if (!await app.queuePrompt(0)) break;
+            if (!await app.queuePrompt(0)) {
+                await _queueIdle();
+                break;
+            }
         }
     } finally {
         node._radRunningTabs = false;

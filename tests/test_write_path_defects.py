@@ -673,3 +673,18 @@ def test_a_quoted_audio_source_is_found(tmp_path, monkeypatch):
     W.write_frames(image=torch.full((1, 8, 8, 3), 0.5), output_path=str(tmp_path / "shot"),
                    format="VID │ MP4 (H.264)", audio_source=f'"{track}"')
     assert seen["source"] == str(track)
+
+
+def test_a_failed_sequence_audio_says_the_frames_were_written(tmp_path, monkeypatch):
+    """The audio is written after the frames: its failure names the frames on disk."""
+    def boom(*a, **k):
+        raise RuntimeError("ffmpeg failed to write shot_v0001.wav: no encoder")
+    monkeypatch.setattr(W, "_write_sequence_audio", boom)
+    monkeypatch.setattr(W, "_write_audio_temp_wav", lambda audio: str(tmp_path / "sound.wav"))
+    receipt = {}
+    with pytest.raises(RuntimeError, match=r"2 frame\(s\) were written to .*no encoder"):
+        W.write_frames(image=torch.full((2, 8, 8, 3), 0.5), output_path=str(tmp_path), filename="shot",
+                       format="SEQ │ PNG (8-bit)", fps=24.0, write_audio=True, receipt=receipt,
+                       audio={"waveform": torch.zeros(1, 2, 4800), "sample_rate": 48000})
+    assert sorted(p.name for p in tmp_path.rglob("*.png")) == ["shot_v0001_1001.png", "shot_v0001_1002.png"]
+    assert "no encoder" in receipt["audio_error"]
