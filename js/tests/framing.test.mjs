@@ -153,9 +153,15 @@ test('the matte handles both wider and taller targets', () => {
 
 // ── magnification filter ────────────────────────────────────────────────────
 
-test('the magnification filter is bound to N, as RV binds it', () => {
-    assert.match(viewer, /case 'n': this\.togglePixelFilter\(\)/,
+test('the magnification filter is bound to N, as RV binds it', async () => {
+    // The keys live in one table now (radiance_keymap.js); N names the
+    // action, and the viewer's action runs the toggle.
+    const { matchKey } = await import('../radiance_keymap.js');
+    const hit = matchKey({ code: 'KeyN', key: 'n', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false });
+    assert.equal(hit?.entry.id, 'view.pixelFilter',
         'nearest-neighbour should be on N — that is where people reach for it');
+    assert.match(viewer, /case 'view\.pixelFilter': this\.togglePixelFilter\(\)/,
+        'the N action does not toggle the magnification filter');
 });
 
 test('the filter choice survives a new frame', () => {

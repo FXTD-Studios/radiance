@@ -173,6 +173,37 @@ def _hlg_encode(x, ref_nits=None):
     return out.astype(np.float32)
 
 
+def hdr_clipping(lin_rec2020, transfer, ref_nits=None):
+    """Where the PQ or HLG encode above clips, for display-linear Rec.2020.
+
+    ``lin_rec2020`` is (..., 3+) with 1.0 at the reference white, as the
+    encoders take it; ``transfer`` is "PQ" or "HLG". Returns
+    (clipped, negative, peak_nits): the fraction of pixels with a channel the
+    encoder clips at the top (PQ: 10,000 nits; HLG: scene light above 1 after
+    the inverse OOTF of the 1000-nit reference display, so a saturated colour
+    clips below 1000 nits), the fraction outside Rec.2020 (a channel below
+    zero, clipped to black), and the brightest channel in nits. NaN pixels are
+    not handled here: the caller refuses them first.
+    """
+    ref = float(ref_nits or DEFAULT_REFERENCE_WHITE_NITS)
+    x = np.asarray(lin_rec2020, np.float32)[..., :3].reshape(-1, 3)
+    if x.shape[0] == 0:
+        return 0.0, 0.0, 0.0
+    neg = np.any(x < -1e-4, axis=1)
+    fd = np.maximum(x, 0.0)
+    peak = float(fd.max()) * ref
+    if transfer == "PQ":
+        over = np.any(fd * (ref / 10000.0) > 1.0 + 1e-6, axis=1)
+    elif transfer == "HLG":
+        fd = fd * (ref / HLG_DISPLAY_NITS)
+        ys = np.power(np.maximum(fd @ _LUMA_2020.astype(np.float32), 1e-9), 1.0 / HLG_GAMMA)[:, None]
+        over = np.any(fd * np.power(ys, 1.0 - HLG_GAMMA) > 1.0 + 1e-6, axis=1)
+    else:
+        raise ValueError(f"transfer must be 'PQ' or 'HLG', not {transfer!r}")
+    n = float(x.shape[0])
+    return float(over.sum()) / n, float(neg.sum()) / n, peak
+
+
 def _hlg_decode(v, ref_nits=None):
     ref = float(ref_nits or DEFAULT_REFERENCE_WHITE_NITS)
     V = np.clip(np.asarray(v, np.float64), 0.0, 1.0)
@@ -300,24 +331,47 @@ def resolve(name: str) -> Encoding:
 
 # ── OCIO ────────────────────────────────────────────────────────────────────
 
-@lru_cache(maxsize=8)
-def ocio_config(path: str = ""):
-    """The config to use: explicit path, else $OCIO, else OCIO's built-in
-    ACES studio config. None when OpenColorIO is not installed."""
-    if not HAS_OCIO:
-        return None
-    import os
+def _resolve_ocio_path(path: str = "") -> str:
+    """An explicit path or URI as given, else the session's active config
+    (color/ocio_setup.active_config_path)."""
     p = (path or "").strip().strip('"').strip("'")
     if p:
-        if p.startswith("ocio://"):
-            return _OCIO.Config.CreateFromFile(p)
-        if not os.path.isfile(p):
-            raise FileNotFoundError(f"OCIO config not found: {p}")
-        return _OCIO.Config.CreateFromFile(p)
-    env = os.environ.get("OCIO", "").strip()
-    if env and (env.startswith("ocio://") or os.path.isfile(env)):
-        return _OCIO.Config.CreateFromFile(env)
-    return _OCIO.Config.CreateFromBuiltinConfig("studio-config-latest")
+        return p
+    from radiance.color.ocio_setup import active_config_path
+    return active_config_path() or "ocio://studio-config-latest"
+
+
+def _config_mtime(p: str) -> float:
+    import os
+    try:
+        return os.path.getmtime(p)
+    except OSError:
+        return 0.0      # an ocio:// URI, or gone: the load decides
+
+
+@lru_cache(maxsize=8)
+def _ocio_config_loaded(p: str, mtime: float):
+    import os
+    if not p.startswith("ocio://") and not os.path.isfile(p):
+        raise FileNotFoundError(f"OCIO config not found: {p}")
+    return _OCIO.Config.CreateFromFile(p)
+
+
+def _ocio_config_at(p: str):
+    """The config at `p`, cached per path and modification time (as
+    ocio_setup does), so an edited config is read again."""
+    return _ocio_config_loaded(p, _config_mtime(p))
+
+
+def ocio_config(path: str = ""):
+    """The config to use: an explicit path, else the session's active config
+    (color/ocio_setup). None when OpenColorIO is not installed.
+
+    The default is resolved on every call; it used to be cached under the
+    empty path, so a config chosen later never reached the writer."""
+    if not HAS_OCIO:
+        return None
+    return _ocio_config_at(_resolve_ocio_path(path))
 
 
 def ocio_config_name(path: str = "") -> str:
@@ -326,22 +380,27 @@ def ocio_config_name(path: str = "") -> str:
 
 
 @lru_cache(maxsize=128)
-def _ocio_processor(src: str, dst: str, path: str):
-    cfg = ocio_config(path)
+def _ocio_processor_for(src: str, dst: str, path: str, mtime: float):
+    cfg = _ocio_config_loaded(path, mtime)
     return cfg.getProcessor(src, dst).getDefaultCPUProcessor()
+
+
+def _ocio_processor(src: str, dst: str, path: str):
+    return _ocio_processor_for(src, dst, path, _config_mtime(path))
 
 
 def ocio_apply(arr: np.ndarray, src: str, dst: str, config_path: str = "") -> np.ndarray:
     """Convert RGB (…, 3) float32 between two colorspaces of a config."""
     if not HAS_OCIO:
         raise RuntimeError("OpenColorIO is not installed (pip install opencolorio)")
-    cfg = ocio_config(config_path)
+    resolved = _resolve_ocio_path(config_path)
+    cfg = _ocio_config_at(resolved)
     for n in (src, dst):
         if cfg.getColorSpace(n) is None:
             raise ValueError(f"OCIO colorspace {n!r} is not in config {cfg.getName()!r}")
     out = np.ascontiguousarray(arr[..., :3], dtype=np.float32).copy()
     flat = out.reshape(-1, 3)
-    _ocio_processor(src, dst, config_path).applyRGB(flat)
+    _ocio_processor(src, dst, resolved).applyRGB(flat)
     return flat.reshape(out.shape)
 
 

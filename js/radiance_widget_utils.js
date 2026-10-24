@@ -96,14 +96,16 @@ const LOADER_PRESET_MODEL_TYPE = {
     "Wan 2.1": "wan", "Wan 2.1 (Low VRAM)": "wan",
     "Wan 2.2": "wan", "Wan 2.2 (Low VRAM)": "wan", "Wan 2.2 TI2V": "wan_ti2v",
     "LTX Video": "ltxv", "LTX Video (Low VRAM)": "ltxv",
-    "LTX Video 2.3": "ltxav", "LTX Video 2.3 (Low VRAM)": "ltxav",
-    "LTX Video 2.5": "ltxav", "LTX Video 2.5 (Low VRAM)": "ltxav",
+    "LTX Video 2.3 Dev": "ltxav", "LTX Video 2.3 Dev (Low VRAM)": "ltxav", "LTX Video 2.3 Distilled": "ltxav",
+    "LTX Video 2.5 Dev": "ltxav", "LTX Video 2.5 Dev (Low VRAM)": "ltxav",
+    "LTX Video 2.5 Distilled": "ltxav", "LTX Video 2.5 Distilled (Low VRAM)": "ltxav",
     "Cosmos World": "cosmos", "CogVideoX": "cogvideox", "Mochi": "mochi",
     "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
     "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
+    "Flux.3 Klein": "flux3", "Flux.3 Klein (Low VRAM)": "flux3",
 };
 
 // ALBABIT-FIX: the architecture the Loader 'loaderNode' loads, as its
@@ -116,7 +118,10 @@ export function loaderModelType(loaderNode) {
     // unet_name tells them apart, as Auto-Detect does at execution.
     if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
         const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
-        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
+        const n = unetName.toLowerCase();
+        // A FLUX 3 Klein file in a Flux.2 preset still loads as FLUX 3 (Auto-Detect).
+        if (/flux[-_.]?3/.test(n)) return "flux3";
+        return n.includes("klein") ? "flux2-klein" : "flux2";
     }
     if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
         return LOADER_PRESET_MODEL_TYPE[presetVal];

@@ -399,7 +399,7 @@ def test_a_delivery_returns_200_with_the_path_it_wrote(h):
     assert os.path.exists(body["path"]), body["path"]
     assert body["path"].startswith(str(h.root))
     assert len(h.exrs()) == 2, [p.name for p in h.exrs()]
-    assert "v01" in body["message"]
+    assert "(v0001)" in body["message"]
     assert os.path.basename(body["path"]) in body["message"]
 
 
@@ -507,17 +507,27 @@ def test_symbols_are_dropped_from_the_file_name(h):
 def test_smart_versioning_advances_on_the_second_delivery(h):
     h.put(flat(0.5))
     first = h.body(h.run())
-    assert "(v01)" in first["message"], first["message"]
+    assert "(v0001)" in first["message"], first["message"]
     second = h.body(h.run())
-    assert "(v02)" in second["message"], second["message"]
-    assert first["path"] != second["path"], "v02 overwrote v01"
+    assert "(v0002)" in second["message"], second["message"]
+    assert first["path"] != second["path"], "v0002 overwrote v0001"
 
 
-def test_smart_versioning_off_does_not_stamp_a_version_into_the_name(h):
+def test_the_delivered_name_carries_one_version_suffix(h):
+    """3.x stamped two: Shot_v02_v0001. 4.0 writes Shot_v0002."""
     h.put(flat(0.5))
-    body = h.body(h.run({"smart_versioning": False, "filename": "Shot"}))
-    assert "Shot_v01" not in _delivered_dir_name(h, body), body["path"]
-    assert "(v01)" in body["message"]
+    h.body(h.run({"filename": "Shot"}))
+    body = h.body(h.run({"filename": "Shot"}))
+    name = _delivered_dir_name(h, body)
+    assert os.path.splitext(name)[0] == "Shot_v0002", body["path"]
+    assert "(v0002)" in body["message"], body["message"]
+
+
+def test_smart_versioning_off_always_writes_v0001(h):
+    h.put(flat(0.5))
+    first = h.body(h.run({"smart_versioning": False, "filename": "Shot"}))
+    assert os.path.splitext(_delivered_dir_name(h, first))[0] == "Shot_v0001", first["path"]
+    assert "(v0001)" in first["message"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -531,18 +541,23 @@ def test_exposure_is_applied_in_stops(h):
         "+1 stop must double a linear value")
 
 
-def test_temperature_and_tint_are_the_viewers_additive_sliders(h):
+def test_temperature_and_tint_are_the_viewers_white_balance_gains(h):
     """The shipped bug fabricated Kelvin from the slider and dropped tint.
 
-    The viewer's shader is `shift.r += temp; shift.b -= temp; shift.g -= tint`,
-    so temp=+1 tint=+1 on a flat 0.25 plate is R 1.25, G 0 (clamped), B 0.
+    The viewer's Temperature and Tint are gains in stops that keep a neutral's
+    luminance (js/radiance_grade.js whiteBalanceGains): temp=+1 is one stop of
+    red against blue, tint=+1 one stop of magenta against green. This test
+    used to pin the additive shift `shift.r += temp; shift.g -= tint`, which
+    clamped G to 0 here; that was the viewer's bug, and the master copied it.
     """
+    import math
+
     h.put(flat(0.25))
     assert h.run(grading={"temperature": 1.0, "tint": 1.0}).status == 200
     r, g, b = h.pixel(h.exrs()[0])[:3]
-    assert r == pytest.approx(1.25, abs=1e-4), f"temperature did not lift R: {r}"
-    assert g == pytest.approx(0.0, abs=1e-4), f"tint did not touch G: {g}"
-    assert b == pytest.approx(0.0, abs=1e-4), f"temperature did not drop B: {b}"
+    assert math.log2(r / b) == pytest.approx(1.0, abs=1e-4), f"temperature: R/B {r / b}"
+    assert math.log2(math.sqrt(r * b) / g) == pytest.approx(1.0, abs=1e-4), f"tint: G {g}"
+    assert 0.2126 * r + 0.7152 * g + 0.0722 * b == pytest.approx(0.25, abs=1e-4)
 
 
 def test_a_temperature_of_zero_leaves_the_channels_alone(h):
@@ -575,13 +590,17 @@ def test_a_nonsense_grade_value_falls_back_to_the_default_instead_of_500(h):
 
 
 def test_the_colour_science_switch_changes_the_result(h):
-    """`colorScience` 'ACEScct' selects a different saturation math path."""
+    """`colorScience` 'ACEScct' grades the wheels in ACEScct.
+
+    Saturation is applied in linear in both modes, so the switch only shows on
+    the wheels; at neutral ACEScct is the identity (viewer review H4).
+    """
     plate = torch.zeros((1, 4, 4, 3))
     plate[..., 0], plate[..., 1], plate[..., 2] = 0.6, 0.3, 0.1
     h.put(plate)
-    h.run(grading={"saturation": 1.5, "colorScience": "0"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "0"},
           settings={"filename": "SDR"})
-    h.run(grading={"saturation": 1.5, "colorScience": "ACEScct"},
+    h.run(grading={"offset": [0.05, 0.05, 0.05], "colorScience": "ACEScct"},
           settings={"filename": "ACES"})
     sdr = h.pixel([p for p in h.exrs() if "SDR" in str(p)][0])
     aces = h.pixel([p for p in h.exrs() if "ACES" in str(p)][0])
@@ -855,7 +874,7 @@ def test_a_metadata_sidecar_lands_next_to_the_master(h):
     body = h.body(h.run())
     meta_path = os.path.splitext(body["path"])[0] + "_meta.json"
     meta = json.loads(open(meta_path, encoding="utf-8").read())
-    assert meta["version"] == "v01"
+    assert meta["version"] == "v0001"
     assert meta["continuity"] == "PASS"
     assert meta["bake_grade_exr"] is False
     assert "QC PASS" in meta["qc"]
@@ -991,6 +1010,8 @@ def test_a_failing_file_manager_does_not_fail_the_delivery(h, monkeypatch):
         raise OSError("no xdg-open here")
 
     monkeypatch.setattr(subprocess, "Popen", _boom)
+    if hasattr(os, "startfile"):
+        monkeypatch.setattr(os, "startfile", _boom)
     h.put(flat(0.5))
     assert h.run({"reveal_folder": True}).status == 200
 
@@ -1140,7 +1161,7 @@ def test_a_delivery_is_appended_to_the_session_log(h):
     h.put(flat(0.5, n=2, h=6, w=10))
     body = h.body(h.run(grading={"exposure": 0.5, "saturation": 1.25}))
     entry = _sessions(h)[-1]
-    assert entry["version"] == "v01"
+    assert entry["version"] == "v0001"
     assert entry["shot"] == os.path.basename(body["path"])
     assert entry["frames"] == 2
     assert entry["resolution"] == "10×6"
@@ -1173,7 +1194,7 @@ def test_the_session_log_is_capped_at_500_entries(h):
     sessions = _sessions(h)
     assert len(sessions) == 500
     assert sessions[0]["shot"] == "old_6", sessions[0]
-    assert sessions[-1]["version"] == "v01"
+    assert sessions[-1]["version"] == "v0001"
 
 
 def test_a_flicker_event_is_recorded_in_the_session_log(h):
@@ -1186,12 +1207,12 @@ def test_a_flicker_event_is_recorded_in_the_session_log(h):
 #  § 15  Small module-level paths the endpoint depends on
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_an_unreadable_directory_yields_v01_rather_than_raising(tmp_path, caplog):
+def test_an_unreadable_directory_yields_v0001_rather_than_raising(tmp_path, caplog):
     """get_next_version's guard: a file where a directory was expected."""
     victim = tmp_path / "not_a_dir"
     victim.write_text("", encoding="utf-8")
     with caplog.at_level(logging.WARNING, logger="radiance.delivery.handler"):
-        assert handler.get_next_version(str(victim), "shot") == "v01"
+        assert handler.get_next_version(str(victim), "shot") == "v0001"
     assert any("get_next_version" in r.getMessage() for r in caplog.records)
 
 
@@ -1274,6 +1295,23 @@ def test_a_failed_upscale_is_reported_rather_than_delivered_as_success(h, monkey
     assert "WITHOUT" in body["message"]
 
 
+def test_a_silent_bicubic_fallback_is_reported_too(h, monkeypatch):
+    """RadianceAIUpscale does not raise when its model is missing, a download
+    fails or inference fails: it returns a bicubic resize. The master was 2x by
+    resampling and the receipt said nothing (code review P1-2)."""
+    from radiance.image.upscale import RadianceAIUpscale
+
+    monkeypatch.setattr(RadianceAIUpscale, "_load_model",
+                        lambda self, *a, **k: (None, "RealESRGAN_x2plus.pth missing"))
+
+    h.put(flat(0.5, n=1, h=8, w=8))
+    body = h.body(h.run({"upscale_2x": True}))
+
+    assert body["status"] == "partial", body
+    note = " ".join(body["warnings"]).lower()
+    assert "upscale" in note and "bicubic" in note, body["warnings"]
+
+
 def test_a_failed_aspect_blank_is_reported(h):
     """An unparseable ratio silently delivered an unblanked master."""
     h.put(flat(0.5))
@@ -1346,3 +1384,219 @@ def test_the_export_never_stacks_the_whole_sequence(h, monkeypatch):
     assert max(seen, default=0) < n, (
         f"something stacked {max(seen)} items during a {n}-frame delivery; "
         "the sequence is being materialised again")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HDR (PQ / HLG) delivery, and every offered colour space mapped (4.0)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+@pytest.mark.parametrize("fmt", ["Video — MP4 (H.264)", "Image Sequence — PNG (8-bit)"])
+def test_hdr_into_an_8_bit_format_is_refused_before_the_grade_runs(h, monkeypatch, cs, fmt):
+    called = []
+    monkeypatch.setattr(handler, "apply_grading", lambda **kw: called.append(1) or kw["img"])
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": cs, "format": fmt})
+    assert resp.status == 400
+    err = h.body(resp)["error"]
+    assert "10-bit" in err and "H.265" in err, err
+    assert not called, "the batch was graded before the HDR format check"
+
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+def test_hdr_png16_delivery_reaches_the_writer_as_bt2100(h, spy_write, cs):
+    h.put(flat(0.5))
+    body = h.body(h.run({"colorSpace": cs, "format": "Image Sequence — PNG (16-bit)"}))
+    assert spy_write and spy_write[-1]["color_space"] == cs
+    assert h.pngs(), "no PNG was written"
+    assert "QC PASS — HDR" in body["qc"] and "≈ 102 nits" in body["qc"], body["qc"]
+
+
+def test_pq_above_10000_nits_is_flagged(h, spy_write):
+    h.put(flat(60.0))                      # 60 × 203 ≈ 12,180 nits
+    body = h.body(h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "10,000-nit" in body["qc"], body["qc"]
+
+
+def test_hdr_master_is_not_called_an_illegal_level(h, spy_write):
+    h.put(flat(4.0))
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "Illegal levels" not in body["qc"], body["qc"]
+
+
+@pytest.mark.parametrize("cs", ["ACES2065-1 (AP0)", "ACEScct", "Panasonic V-Log", "Canon Log 3",
+                                "RED Log3G10", "DaVinci Intermediate"])
+def test_colour_spaces_the_panel_offered_but_the_server_refused_now_deliver(h, spy_write, cs):
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": cs})
+    assert resp.status == 200, h.body(resp)
+    assert spy_write[-1]["color_space"] == handler._UI_TO_WRITE_COLORSPACE[cs]
+
+
+def test_amf_is_not_written_for_an_hdr_master(h, spy_write):
+    h.put(flat(0.5))
+    body = h.body(h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)",
+                         "export_amf": True}))
+    assert any("AMF sidecar was not written" in w for w in body.get("warnings", [])), body
+    assert not list(h.root.rglob("*.amf"))
+
+
+def test_a_pq_h265_delivery_carries_hdr10_metadata_end_to_end(h):
+    """Viewer Deliver → writer → ffmpeg: the master is BT.2100 PQ with HDR10 SEI."""
+    import shutil
+    import subprocess
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        pytest.skip("ffmpeg/ffprobe not installed")
+    h.put(flat(0.5, n=2, h=64, w=64))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)"})
+    assert resp.status == 200, h.body(resp)
+    (mp4,) = list(h.root.rglob("*.mp4"))
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
+         "-show_entries", "stream=pix_fmt,color_transfer,color_primaries,color_space:frame=side_data_list",
+         "-of", "json", str(mp4)], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    info = json.loads(r.stdout)
+    s = info["streams"][0]
+    assert s["pix_fmt"] == "yuv420p10le"
+    assert (s["color_primaries"], s["color_transfer"], s["color_space"]) == ("bt2020", "smpte2084", "bt2020nc")
+    side = {d["side_data_type"]: d for d in info["frames"][0].get("side_data_list", [])}
+    assert "Mastering display metadata" in side, side
+    cll = side["Content light level metadata"]
+    assert (cll["max_content"], cll["max_average"]) == (102, 102), cll   # 0.5 × 203 nits, rounded up
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Audit 2026-10-16: nonfinite pixels, legal range on HDR, HLG clipping
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_pixels_refuse_the_delivery_and_write_nothing(h, bad):
+    frames = flat(0.5, n=3, h=8, w=8)
+    frames[1, 2, 3, 0] = bad                 # one pixel, middle frame
+    h.put(frames)
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Image Sequence — PNG (16-bit)"})
+    assert resp.status == 422
+    err = h.body(resp)["error"]
+    assert "1 pixel(s) in 1 frame(s)" in err and "first: frame 2" in err and "Nothing was written" in err, err
+    assert not h.pngs() and not h.exrs()
+
+
+def test_an_all_nan_frame_is_not_a_qc_pass(h):
+    h.put(torch.full((1, 8, 8, 3), float("nan")))
+    resp = h.run({"colorSpace": "sRGB (Standard)", "format": "Image Sequence — PNG (8-bit)"})
+    assert resp.status == 422
+    assert "NaN" in h.body(resp)["error"]
+
+
+def test_legal_range_is_off_unless_the_client_asks(h, spy_write):
+    h.put(flat(0.5))
+    payload = {"instance_id": h.key, "grading": dict(IDENTITY_GRADE),
+               "settings": {k: v for k, v in BASE_SETTINGS.items() if k != "soft_clip"}}
+    h.run(payload=payload)
+    assert spy_write[-1]["broadcast_safe"] is False
+
+
+@pytest.mark.parametrize("cs", ["PQ (HDR10 / ST.2084)", "HLG (Hybrid Log-Gamma)"])
+def test_legal_range_never_touches_an_hdr_png(h, cs):
+    cv2 = pytest.importorskip("cv2")
+    f = torch.zeros((1, 4, 4, 3))
+    f[0, 0, 0, :] = 4.9                       # ~1000 nits
+    h.put(f)
+    resp = h.run({"colorSpace": cs, "format": "Image Sequence — PNG (16-bit)", "soft_clip": True})
+    assert resp.status == 200, h.body(resp)
+    a = cv2.imread(str(h.pngs()[-1]), cv2.IMREAD_UNCHANGED)
+    assert int(a[1, 1].max()) == 0, f"black lifted to {a[1, 1]}"
+    from radiance.color.encodings import _hlg_encode, _pq_encode
+    want = float((_pq_encode(np.full(3, 4.9), 203.0) if cs.startswith("PQ") else _hlg_encode(np.full(3, 4.9)))[0])
+    assert abs(int(a[0, 0, 0]) / 65535 - want) < 2e-3, f"bright patch {a[0, 0]} != {want * 65535:.0f}"
+    assert want > 235 / 255 or cs.startswith("PQ")   # HLG ~1000 nits sits above the old 235 cut
+
+
+def test_hlg_above_its_1000_nit_display_is_flagged(h, spy_write):
+    h.put(flat(10.0))                         # 2,030 nits: HLG clips at 1000
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "100.00% of pixels clip" in body["qc"] and "1000-nit" in body["qc"], body["qc"]
+
+
+def test_a_saturated_colour_clips_in_hlg_below_1000_nits(h, spy_write):
+    # Pure Rec.2020 red at ~900 nits: under 1000 nits, but HLG's inverse OOTF
+    # scales a dark-luma colour up, so the red channel clips in the encode.
+    f = torch.zeros((1, 4, 4, 3))
+    f[..., 0] = 900 / 203
+    h.put(f, source=("linear", "Linear Rec.2020"))
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC WARNING" in body["qc"] and "clip" in body["qc"], body["qc"]
+
+
+def test_hlg_within_range_passes(h, spy_write):
+    h.put(flat(4.0))                          # 812 nits neutral
+    body = h.body(h.run({"colorSpace": "HLG (Hybrid Log-Gamma)", "format": "Image Sequence — PNG (16-bit)"}))
+    assert "QC PASS — HDR" in body["qc"] and "≈ 812 nits" in body["qc"], body["qc"]
+
+
+def test_the_chosen_mastering_display_reaches_the_hdr10_file(h):
+    import shutil
+    import subprocess
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        pytest.skip("ffmpeg/ffprobe not installed")
+    h.put(flat(0.5, n=2, h=64, w=64))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)",
+                  "mastering_display": "Rec.2020 · 4000 nits"})
+    assert resp.status == 200, h.body(resp)
+    (mp4,) = list(h.root.rglob("*.mp4"))
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
+                        "-show_entries", "frame=side_data_list", "-of", "json", str(mp4)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    side = {d["side_data_type"]: d for d in json.loads(r.stdout)["frames"][0]["side_data_list"]}
+    md = side["Mastering display metadata"]
+    assert md["red_x"] == "35400/50000" and md["max_luminance"] == "40000000/10000", md
+
+
+def test_an_unknown_mastering_display_is_400(h):
+    h.put(flat(0.5))
+    resp = h.run({"colorSpace": "PQ (HDR10 / ST.2084)", "format": "Video — MP4 (H.265 10-bit)",
+                  "mastering_display": "Dolby 9000"})
+    assert resp.status == 400 and "mastering display" in h.body(resp)["error"]
+
+
+# ── Package audit R2: a queued job is tied to the frames it was queued for ──
+
+def _payload(h, generation):
+    return {"instance_id": h.key, "grading": dict(IDENTITY_GRADE), "settings": dict(BASE_SETTINGS),
+            "source_generation": generation}
+
+
+def test_a_job_queued_for_plate_a_is_refused_once_the_viewer_holds_plate_b(h):
+    h.put(flat(0.1))
+    queued_for = cache._viewer_cache_generation(h.key)
+    h.put(flat(0.8))                                  # the workflow ran again
+    resp = h.run(payload=_payload(h, queued_for))
+    assert resp.status == 409, h.body(resp)
+    assert "changed after this job was queued" in h.body(resp)["error"]
+    assert h.exrs() == [], "plate B was written under plate A's job"
+    assert h.progress()["status"] == "error"
+
+
+def test_a_job_for_the_frames_the_viewer_holds_is_delivered(h):
+    h.put(flat(0.375))
+    resp = h.run(payload=_payload(h, cache._viewer_cache_generation(h.key)))
+    assert resp.status == 200, h.body(resp)
+    assert h.pixel(h.exrs()[0])[0] == pytest.approx(0.375, abs=1e-5)
+
+
+def test_a_client_that_sends_no_generation_is_unchanged(h):
+    h.put(flat(0.375))
+    assert h.run().status == 200
+
+
+def test_every_cache_insert_is_a_new_generation_and_eviction_forgets_it():
+    cache._viewer_cache_set("gen-a", flat(0.1))
+    g1 = cache._viewer_cache_generation("gen-a")
+    cache._viewer_cache_set("gen-a", flat(0.1))
+    g2 = cache._viewer_cache_generation("gen-a")
+    assert g1 is not None and g2 is not None and g2 != g1
+    frames, g = cache._viewer_cache_get_with_generation("gen-a")
+    assert g == g2 and frames is not None
+    with cache._VIEWER_CACHE_LOCK:
+        cache._VIEWER_CACHE.pop("gen-a", None)
+    assert cache._viewer_cache_generation("gen-a") is None

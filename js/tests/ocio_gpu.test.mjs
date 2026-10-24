@@ -59,7 +59,7 @@ async function loadPlaywright() {
     // Playwright is CommonJS and is not a dependency of this package; resolve it
     // from wherever the environment has it, and give up quietly if it does not.
     const require = createRequire(import.meta.url);
-    for (const spec of ['playwright', '/home/claude/.npm-global/lib/node_modules/playwright/index.js']) {
+    for (const spec of ['playwright', process.env.PLAYWRIGHT_MODULE || 'playwright']) {
         try { return require(spec); } catch { /* keep looking */ }
     }
     return null;

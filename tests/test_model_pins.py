@@ -79,13 +79,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         rng = self.headers.get("Range")
+        # Recorded before the body goes out: appended after it, the client
+        # could finish and the test read the list first.
+        self.server.ranges.append(rng)
         start = int(rng.split("=")[1].rstrip("-")) if rng else 0
         body = PAYLOAD[start:]
         self.send_response(206 if rng else 200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-        self.server.ranges.append(rng)
 
 
 @pytest.fixture

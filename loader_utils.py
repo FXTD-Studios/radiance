@@ -17,7 +17,7 @@ import comfy.sd
 import comfy.utils
 import comfy.model_management
 
-from radiance.config.model_map import RADIANCE_MODEL_MAP, CHECKPOINT_PRESETS, VIDEO_PRESET_NAMES, VIDEO_MODEL_TYPES
+from radiance.config.model_map import RADIANCE_MODEL_MAP, CHECKPOINT_PRESETS
 from radiance.model.detect import (
     detect_model_type,
     latent_format,
@@ -136,9 +136,9 @@ def file_fingerprint(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shared load_radiance_stack pipeline steps (used by RadianceUnifiedLoader and
-# RadianceVideoLoader). Each step appends human-readable lines to the caller's
-# info_lines list (mutated in place) for the HUD output.
+# Shared load_radiance_stack pipeline steps (used by RadianceUnifiedLoader).
+# Each step appends human-readable lines to the caller's info_lines list
+# (mutated in place) for the HUD output.
 # ---------------------------------------------------------------------------
 
 
@@ -239,7 +239,12 @@ def setup_offload_mode(offload_mode: str, info_lines: list[str]) -> torch.device
             mm = comfy.model_management
             if mm.vram_state not in (mm.VRAMState.LOW_VRAM, mm.VRAMState.NO_VRAM):
                 mm.vram_state = mm.VRAMState.LOW_VRAM
-            logger.info("Sequential CPU offload enabled (ComfyUI LOW_VRAM state)")
+            # vram_state is a process global read while sampling, after the
+            # Loader returns, so it is not put back: it stays LOW_VRAM (or the
+            # NO_VRAM ComfyUI was launched with) for every later load until
+            # ComfyUI restarts (code review P2-4, open).
+            logger.info("Sequential CPU offload enabled: ComfyUI is on %s for the rest "
+                        "of this session, for every workflow", mm.vram_state.name)
             info_lines.append("Offload: sequential")
         except Exception as e:
             logger.warning(f"Could not enable sequential offload: {e}")
@@ -399,11 +404,9 @@ def load_unet_and_baked_vae(
 
         try:
             if extract_audio_vae:
-                # ALBABIT-FIX: read the UNET state dict once and reuse it
-                # for both the audio VAE extraction and the model/baked-VAE
-                # load below (load_state_dict_guess_config /
-                # load_diffusion_model_state_dict), instead of reading the
-                # (often multi-GB) UNET file from disk twice.
+                # ALBABIT-FIX: read the UNET state dict once, for both the audio VAE
+                # and the model/baked-VAE load below, instead of reading the
+                # (often multi-GB) file twice.
                 t_av0 = time.time()
                 sd, metadata = comfy.utils.load_torch_file(unet_path, return_metadata=True)
                 audio_vae = construct_audio_vae(sd, metadata, resolved_type)
@@ -548,6 +551,26 @@ def load_clip_stack(
 
     clip_paths = assemble_clip_paths(resolved_type, unet_path=unet_path, clip_l=clip_l, clip_g=clip_g, t5xxl=t5xxl, llm_encoder=llm_encoder, text_projection=text_projection)
 
+    # assemble_clip_paths drops a selected file it cannot find (downloads off, a
+    # failed download, a renamed file) with only a log line, and ComfyUI then
+    # loads whatever encoder the remaining files imply. A file the user chose
+    # that is not on disk is an error, not a smaller stack.
+    _chosen = {"clip_l": clip_l, "clip_g": clip_g, "t5xxl": t5xxl,
+               "llm_encoder": llm_encoder, "text_projection": text_projection}
+    _not_found = [
+        f"{slot}: {val}"
+        for slot in CLIP_SLOT_ORDER.get(resolved_type, list(_chosen))
+        for val in [_chosen.get(slot)]
+        if val not in (None, "", "None", "Baked (from UNET)")
+        and not folder_paths.get_full_path("text_encoders", val)
+    ]
+    if _not_found:
+        raise ValueError(
+            f"❌ {resolved_type} text encoder file(s) not found on disk: {'; '.join(_not_found)}. "
+            f"Loading with the remaining files would make ComfyUI pick a different encoder and "
+            f"encode the prompt wrongly. Download the file(s) (or allow downloads) and try again."
+        )
+
     if not clip_paths:
         raise ValueError(
             f"❌ No CLIP encoders provided for architecture '{resolved_type}'. "
@@ -622,10 +645,9 @@ def load_standalone_vae(
 ):
     """Load a standalone VAE file.
 
-    ``load_sd_metadata_fn`` is the caller's ``_load_vae_sd_metadata`` (per-class
-    polymorphism: the base loader returns ``(sd, None)``, the video loader
-    returns ``(sd, metadata)`` so ``comfy.sd.VAE`` can pick the correct internal
-    config for LTX 2.3).
+    ``load_sd_metadata_fn`` is the caller's ``_load_vae_sd_metadata``: it returns
+    ``(sd, metadata)`` so ``comfy.sd.VAE`` can pick the correct internal config
+    (LTX 2.3's video VAE needs it).
 
     Returns ``(vae, vae_time, vae_cache_hit)``.
     """
