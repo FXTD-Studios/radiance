@@ -2293,6 +2293,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         if clip is None:
             raise RuntimeError("CLIP input is None. Connect a valid CLIP model.")
         negative_prompt_in = negative_prompt
+        # A wired STRING can arrive as None.
+        base_prompt, action = base_prompt or "", action or ""
 
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)

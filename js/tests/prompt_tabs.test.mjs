@@ -10,6 +10,7 @@ const context = vm.createContext({
     app: { registerExtension() {} },
     api: { fetchApi: () => new Promise(() => {}) },
     console: { log() {}, warn() {} },
+    setTimeout,
 });
 vm.runInContext(source + `_refreshLiveState = () => {};
     globalThis.tabs = { read: _readTabs, edit: _editTabs, values: _tabValues, select: _selectTab, add: _newTab,
@@ -180,4 +181,22 @@ test('a run that fails to build still brings the first tab back and frees "next 
     await assert.rejects(tabs.runAll(node), /graphToPrompt failed/);
     assert.equal(tabs.read(node).active, 0);
     assert.equal(node._radRunningTabs, false);
+});
+
+test('"Run all tabs" waits for a queue already running, so each run is built from its own tab', async () => {
+    const node = makeNode(A);
+    tabs.add(node);
+    node.widgets.find(w => w.name === 'base_prompt').value = 'a snowy forest';
+    tabs.select(node, 0);
+    const sent = [];
+    context.app.processingQueue = true;
+    setTimeout(() => { context.app.processingQueue = false; }, 120);
+    context.app.queuePrompt = async () => {
+        assert.equal(context.app.processingQueue, false, 'queued while another queue was running');
+        sent.push(node.widgets.find(w => w.name === 'base_prompt').value);
+        return true;
+    };
+    await tabs.runAll(node);
+    assert.deepEqual(sent, [A.base_prompt, 'a snowy forest']);
+    assert.equal(tabs.read(node).active, 0);
 });
