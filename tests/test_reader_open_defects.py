@@ -1,4 +1,4 @@
-"""Read-path defects B5, B9, B10 and B11 (docs/ai/OPEN_QUESTIONS.md).
+"""Read-path defects B5, B9, B10 and B11.
 
 B5   An image sequence always reported 24 fps, whatever its headers said.
 B9   Without ffprobe every video read failed, although ffmpeg was there.
