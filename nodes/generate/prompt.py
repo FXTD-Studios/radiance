@@ -2073,6 +2073,18 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             ),
             inputs=[
                 io.Clip.Input("clip", tooltip="Text encoder (CLIP, T5 or LLM), from the Loader."),
+                # ALBABIT-FIX: above base_prompt, wired to the workflow's text-to-video switch
+                # or set by hand. js/radiance_prompt.js restores saved graphs by name.
+                io.Boolean.Input(
+                    "text_to_video", default=True, optional=True,
+                    tooltip=("Whether the text describes the whole shot.\n"
+                             "• On: base_prompt, action, then the menus' words.\n"
+                             "• Off, when an image or a video already shows the subject, the scene and "
+                             "the look (image-to-video): action alone. Describe only what changes.\n\n"
+                             "Wire it to the boolean that turns text-to-video on, or set it here.\n"
+                             "• Off: base_prompt is dimmed and the menus are hidden.\n"
+                             "• Hidden and ignored under an image model."),
+                ),
                 # 3.5.0: empty with a placeholder. The old default text was a
                 # real value, so an untouched node encoded "A cinematic scene...".
                 io.String.Input(
@@ -2082,7 +2094,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                              "The menus below add their words around it:\n"
                              "• framing opens it, e.g. \"A close-up of <your text>.\"\n"
                              "• The camera, lighting and look menus follow it, as short sentences.\n\n"
-                             "LTX 2: words in quotes (says \"Hello!\") are spoken."),
+                             "LTX 2: words in quotes (says \"Hello!\") are spoken.\n\n"
+                             "Dimmed and marked \"⚠ image-to-video, ignored\" while text_to_video is off."),
                 ),
                 # ALBABIT-FIX: read by video models only, so one text serves image and
                 # video workflows. js/radiance_prompt.js reads saved graphs by name,
@@ -2274,17 +2287,26 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         upsampler_seed=0,
         layout="",
         action="",
+        text_to_video=True,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
             raise RuntimeError("CLIP input is None. Connect a valid CLIP model.")
-        if not base_prompt or not base_prompt.strip():
-            raise ValueError("Prompt: the prompt is empty. Describe the "
-                             "subject and the scene in base_prompt.")
         negative_prompt_in = negative_prompt
 
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
+        # ALBABIT-FIX: image-to-video turns text_to_video off: the image shows the
+        # subject and the scene, so a video model reads the action alone. An image
+        # model reads no action and keeps base_prompt.
+        is_video = resolved_arch in VIDEO_MODEL_TYPES
+        image_to_video = is_video and not text_to_video
+        if image_to_video:
+            base_prompt = ""
+        has_base = bool(base_prompt.strip())
+        if not has_base and not (is_video and action.strip()):
+            raise ValueError("Prompt: the prompt is empty. Describe the subject and the scene "
+                             "in base_prompt, or for image-to-video what happens in action.")
 
         # ALBABIT-FIX: only Qwen-Image 2.1, Qwen-Image Edit and Flux.2 read reference
         # images here; any other encoder would drop them without a word.
@@ -2326,9 +2348,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
 
         # The action goes on as if typed at the end of base_prompt; a clause left
         # open by a comma, semicolon or colon ends with a full stop instead.
-        is_video = resolved_arch in VIDEO_MODEL_TYPES
         if is_video and action and action.strip():
-            parts = [base_prompt.rstrip().rstrip(",;:").rstrip(), action.strip()]
+            parts = [p for p in (base_prompt.rstrip().rstrip(",;:").rstrip(), action.strip()) if p]
             _end_subject_sentence(parts)
             base_prompt = " ".join(parts)
 
@@ -2342,6 +2363,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         }
         if style_preset != "None (Custom)":
             settings = apply_style_preset(style_preset, settings)
+        # ALBABIT-FIX: the image also shows the look, so image-to-video drops the menus
+        # too. With no base_prompt, framing, which opens it, would open the action.
+        if image_to_video:
+            settings = dict.fromkeys(settings, "None")
+        elif not has_base:
+            settings["framing"] = "None"
 
         # ── Build prompt ────────────────────────────────────────────────────
         # ALBABIT-FIX: ltxav takes the same prose path as Flux/WAN; camera terms
@@ -2459,7 +2486,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         return {
             "ui": {"weak_neg_arch": [resolved_arch in _WEAK_NEG_ARCHS],
                    "negative_skipped": [bool(skip_negative)],
-                   "video_arch": [is_video]},
+                   "video_arch": [is_video],
+                   "text_to_video": [bool(text_to_video)]},
             "result": (
                 positive_cond,
                 negative_cond,

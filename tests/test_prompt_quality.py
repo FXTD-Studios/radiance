@@ -221,3 +221,57 @@ def test_image_models_skip_the_action():
         model_meta=json.dumps({"arch": "flux"}))
     assert "waves" not in out["result"][2]
     assert out["ui"]["video_arch"] == [False]
+
+
+# ── 11. text_to_video off: image-to-video reads the action alone ───────────
+
+LTXAV = json.dumps({"arch": "ltxav"})
+
+
+def test_text_to_video_sits_right_above_base_prompt():
+    names = list(RadianceCinematicPromptEncoder.INPUT_TYPES()["optional"])
+    assert names.index("text_to_video") == names.index("base_prompt") - 1
+
+
+def _video_prompt(**kw):
+    out = RadianceCinematicPromptEncoder().execute(
+        FakeClip(("gemma3_12b",)), action="She waves at the camera.", framing="Close-Up (CU)",
+        camera_type="ARRI Alexa 35", style_preset="→ Film Noir", model_meta=LTXAV, **kw)
+    return out["result"][2], out["ui"]
+
+
+@pytest.mark.real_torch
+def test_image_to_video_reads_the_action_alone():
+    text, ui = _video_prompt(base_prompt="a woman on a dock", text_to_video=False)
+    assert text.startswith("She waves at the camera.")
+    assert "dock" not in text and "ARRI" not in text and "close-up" not in text.lower()
+    # For a wired switch the frontend cannot read.
+    assert ui["text_to_video"] == [False]
+
+
+@pytest.mark.real_torch
+def test_an_empty_base_prompt_keeps_the_menus_but_not_framing():
+    text, _ = _video_prompt(base_prompt=" ")
+    assert text.startswith("She waves at the camera. ") and "ARRI Alexa 35" in text
+    assert "close-up" not in text.lower()
+
+
+def test_without_base_prompt_an_empty_action_is_refused():
+    with pytest.raises(ValueError, match="prompt is empty"):
+        RadianceCinematicPromptEncoder().execute(
+            FakeClip(("gemma3_12b",)), base_prompt="a woman on a dock", text_to_video=False,
+            model_meta=LTXAV)
+
+
+def test_image_models_still_need_base_prompt():
+    with pytest.raises(ValueError, match="prompt is empty"):
+        RadianceCinematicPromptEncoder().execute(
+            FakeClip(("t5xxl",)), action="She waves at the camera.", model_meta=json.dumps({"arch": "flux"}))
+
+
+@pytest.mark.real_torch
+def test_image_models_ignore_text_to_video():
+    out = RadianceCinematicPromptEncoder().execute(
+        FakeClip(("t5xxl",)), base_prompt="a woman on a dock", text_to_video=False,
+        camera_type="ARRI Alexa 35", model_meta=json.dumps({"arch": "flux"}))
+    assert "a woman on a dock" in out["result"][2] and "ARRI Alexa 35" in out["result"][2]

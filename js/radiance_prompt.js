@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -176,6 +176,40 @@ function _applyActionState(node, source = modelMetaSourceNode(node)) {
     const arch = loaderModelType(source);
     w._radIgnored = (arch === null ? node._radVideo : VIDEO_FAMILIES.includes(arch)) === false;
     _setLabelMarker(w, w._radIgnored ? IMAGE_MODEL_MARKER : null);
+}
+
+// ALBABIT-FIX: text_to_video off (image-to-video) leaves base_prompt and the menus out:
+// base_prompt is dimmed and marked, its text kept, the menus hide as negative_strength does.
+// Wired, the frontend draws the switch's row. An image model ignores the switch (action's
+// verdict): it hides, unwired.
+const IMAGE_TO_VIDEO_MARKER = " ⚠ image-to-video, ignored";
+
+// The switch as the run reads it: unwired, the value given (the shown tab's or another's);
+// wired, a Boolean node that runs, else the last run's value.
+function _textToVideo(node, own) {
+    const input = node.inputs?.find(i => i.name === "text_to_video");
+    if (input?.link == null) return own;
+    return liveSourceNode(node, input)?.widgets?.find(x => x.name === "value")?.value ?? node._radTextToVideo;
+}
+
+function _applyBasePromptState(node) {
+    const w = node.widgets?.find(x => x.name === "base_prompt");
+    const onW = node.widgets?.find(x => x.name === "text_to_video");
+    if (!w || !onW) return;
+    const wired = node.inputs?.find(i => i.name === "text_to_video")?.link != null;
+    const imageModel = node.widgets.find(x => x.name === "action")?._radIgnored === true;
+    const off = !imageModel && _textToVideo(node, onW.value) === false;
+    w._radIgnored = off;
+    _setLabelMarker(w, off ? IMAGE_TO_VIDEO_MARKER : null);
+    const targets = ["style_preset", ...TRACKED_FIELDS].map(name => [node.widgets.find(x => x.name === name), "combo", !off]);
+    if (!wired) targets.push([onW, "toggle", !imageModel]);
+    let changed = false;
+    for (const [target, type, show] of targets) {
+        if (!target || !target.hidden === show) continue;
+        setWidgetVisible(target, show, node, { fallbackType: type });
+        changed = true;
+    }
+    if (changed) fitNodeSize(node);
 }
 
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
@@ -407,7 +441,13 @@ function _tabValues(node) {
     return Object.fromEntries(node.widgets.filter(w => w.serialize !== false).map(w => [w.name, w.value]));
 }
 
-const _tabHasPrompt = tab => !!tab.values?.base_prompt?.trim();
+// ALBABIT-FIX: what the encoder reads. A video model also runs on the action alone, and on
+// it alone with text_to_video off; an image model reads base_prompt only (action's verdict).
+function _hasPrompt(node, values) {
+    const video = node.widgets.find(w => w.name === "action")?._radIgnored !== true;
+    const base = !(video && _textToVideo(node, values?.text_to_video) === false) && values?.base_prompt?.trim();
+    return !!(base || (video && values?.action?.trim()));
+}
 
 // Shows tab i over the widgets' values: save those first to keep them.
 function _showTab(node, state, i) {
@@ -481,14 +521,14 @@ function _chainTab(node) {
     if (!state.chain || node._radRunningTabs) return;
     for (let k = 1; k < state.tabs.length; k++) {
         const i = (state.active + k) % state.tabs.length;
-        if (_tabHasPrompt(state.tabs[i])) return _selectTab(node, i);
+        if (_hasPrompt(node, state.tabs[i].values)) return _selectTab(node, i);
     }
 }
 
 function _promptedTabs(node) {
     const state = _readTabs(node);
-    const shown = !!node.widgets.find(w => w.name === "base_prompt")?.value?.trim();
-    return state.tabs.map((tab, i) => i).filter(i => i === state.active ? shown : _tabHasPrompt(state.tabs[i]));
+    const shown = _hasPrompt(node, _tabValues(node));
+    return state.tabs.map((tab, i) => i).filter(i => i === state.active ? shown : _hasPrompt(node, state.tabs[i].values));
 }
 
 // One run per tab that has a prompt, in order, then back to the tab shown
@@ -626,7 +666,7 @@ function _renderTabs(node) {
     }
     state.tabs.forEach((tab, i) => {
         list.children[i].classList.toggle("radiance-active", i === state.active);
-        list.children[i].classList.toggle("radiance-empty", i !== state.active && !_tabHasPrompt(tab));
+        list.children[i].classList.toggle("radiance-empty", i !== state.active && !_hasPrompt(node, tab.values));
     });
     strip.classList.toggle("radiance-chain", !!state.chain);
     strip.lastChild.textContent = state.chain ? "⟳ next tab" : "⟳ fixed";
@@ -680,6 +720,14 @@ function _addTabsWidget(node) {
     const widget = node.addDOMWidget("prompt_tabs", "radiance_tabs", el,
         { serialize: false, getMinHeight: () => 28, getMaxHeight: () => 28 });
     widget.serialize = false;
+    // ALBABIT-FIX: Nodes 2.0 stretches a row with a layout size like a text box: each time
+    // it drew its own rows, the tab row grew to ~160px and the sockets below were measured
+    // there, so a link to a widget ended rows below it. computeSize keeps its 28px.
+    const { computeLayoutSize, computeSize } = widget;
+    Object.defineProperties(widget, {
+        computeLayoutSize: { get: () => (LiteGraph.vueNodesMode ? undefined : computeLayoutSize) },
+        computeSize: { get: () => (LiteGraph.vueNodesMode ? (width) => [width, 28] : computeSize) },
+    });
     // The frontend runs each widget's afterQueued in turn, this one first: wait for
     // the others, so a seed control steps the tab that ran, not the next one.
     widget.afterQueued = () => queueMicrotask(() => _chainTab(node));
@@ -706,6 +754,7 @@ function _refreshLiveState(node) {
     const negW = node.widgets?.find(w => w.name === "negative_prompt");
     _setLabelMarker(negW, cfgOne || node._radWeakNeg ? WEAK_NEG_MARKER : null);
     _applyActionState(node, source);
+    _applyBasePromptState(node);
     _layoutTextBoxes(node);
     _renderTabs(node);
 }
@@ -862,12 +911,13 @@ app.registerExtension({
         };
 
         // ALBABIT-FIX: the last real run's arch verdicts, read by _refreshLiveState
-        // for the negative's marker and Auto-Detect lock, and for action.
+        // for the negative's marker and Auto-Detect lock, and for action and text_to_video.
         const onExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             if (onExecuted) onExecuted.apply(this, arguments);
             this._radWeakNeg = !!message?.weak_neg_arch?.[0];
             this._radVideo = message?.video_arch?.[0];
+            this._radTextToVideo = message?.text_to_video?.[0];
             _refreshLiveState(this);
             this.setDirtyCanvas?.(true, true);
         };
