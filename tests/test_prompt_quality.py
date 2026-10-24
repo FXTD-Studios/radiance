@@ -275,3 +275,10 @@ def test_image_models_ignore_text_to_video():
         FakeClip(("t5xxl",)), base_prompt="a woman on a dock", text_to_video=False,
         camera_type="ARRI Alexa 35", model_meta=json.dumps({"arch": "flux"}))
     assert "a woman on a dock" in out["result"][2] and "ARRI Alexa 35" in out["result"][2]
+
+
+def test_a_none_prompt_is_refused_as_empty_not_a_crash():
+    """A wired STRING can arrive as None: the empty-prompt message, not AttributeError."""
+    with pytest.raises(ValueError, match="prompt is empty"):
+        RadianceCinematicPromptEncoder().execute(
+            FakeClip(("t5xxl",)), base_prompt=None, action=None, model_meta=json.dumps({"arch": "flux"}))

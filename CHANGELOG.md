@@ -11,6 +11,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Upgrade notes
 
+- **ComfyUI 0.40.0 or newer** (`requires-comfyui = ">=0.40.0"`). The Prompt,
+  Write, Loader and Sampler gained inputs in the middle of their widget lists,
+  and a graph saved by 3.x is restored by widget name, which ComfyUI's
+  frontend does from 0.40.0 (frontend 1.54.2). An older ComfyUI restores by
+  position, so those nodes would load with values in the wrong menus.
 - **Removed nodes.** SAM Loader, SAM Mask Generator, HDR Latent Encoder and
   HDR Turbo Encoder were hidden placeholders that raised when run. A saved
   graph that still holds one loads with that node missing; delete it. Use
@@ -375,6 +380,14 @@ are the results.
 
 ### Fixed
 
+- **Prompt "Run all tabs" while another run is being queued** waits for it.
+  The frontend queued the tab's run behind the other one and built it later,
+  from the tab shown by then, so one tab ran twice and the others not at all.
+- **Write: a sequence's audio file that fails** now says the frames were
+  written (and where), and the receipt records the error, rather than reading
+  as a failed write.
+- **Prompt: a wired base_prompt or action that arrives empty (None)** gives
+  the "prompt is empty" message instead of an AttributeError.
 - **Viewer (issue #74).**
   - Turning B off drops the frame B pinned for itself when nothing else was
     connected. That hidden pin stayed, was shown only in Review, and switched

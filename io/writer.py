@@ -1822,8 +1822,16 @@ def write_frames(
         )
         if sequence_audio and count:
             if effective_audio_source:
-                log.info("RadianceWrite: audio → %s", _write_sequence_audio(
-                    effective_audio_source, receipt, audio_codec, audio_path, count, fps, start_frame, overwrite))
+                # The frames are on disk by now: say so, rather than read as a failed write.
+                try:
+                    log.info("RadianceWrite: audio → %s", _write_sequence_audio(
+                        effective_audio_source, receipt, audio_codec, audio_path, count, fps, start_frame,
+                        overwrite))
+                except Exception as exc:
+                    receipt["audio_error"] = str(exc)
+                    raise RuntimeError(
+                        f"RadianceWrite: the {count} frame(s) were written to {saved}, but the "
+                        f"sequence's audio file was not: {exc}") from exc
             else:
                 log.warning("RadianceWrite: write_audio is on but no sound is connected (the 'audio' "
                             "input or audio_source); no audio file was written.")
