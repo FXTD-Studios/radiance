@@ -218,6 +218,21 @@ else is fixes. Read the upgrade notes before moving a production setup.
   `framesPerSecond` header, as Nuke and ARRI frames do, and the sequence's
   .wav is a Broadcast WAV starting at the first frame. Resolve read
   00:00:00:00 for both; it now lines them up by timecode (Auto Sync Audio).
+- **Prompt tabs:** one Prompt node holds several prompts, each tab with its
+  own text, action, negative and settings. Click to show a tab, drag to
+  reorder it, double-click to rename it; right-click to duplicate or delete
+  it, or "Run all tabs" (one run per tab that has a prompt). "next tab" moves
+  on after each run, so a batch count of 3 runs three tabs.
+- **Prompt `action`:** what happens over time (moves, dialogue, camera moves,
+  sounds), read by video models right after `base_prompt` and skipped by
+  image models, so one Prompt serves image and video workflows. It is dimmed
+  and marked under an image model.
+- **Prompt `text_to_video`** (on by default): off for image-to-video, where
+  the image already shows the subject and the look, so a video model reads
+  the action alone and the style menus are left out. A video model also runs
+  on the action alone when `base_prompt` is empty.
+- **Prompt text boxes** size to their text, with drag bars, and every Prompt
+  input has a tooltip that says where its words go in the prompt.
 
 ### Removed
 
