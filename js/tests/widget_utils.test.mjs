@@ -158,6 +158,32 @@ test("a no-op call does not reinsert the widget", () => {
     assert.equal(spliced, 0, "a no-op call reinserted the widget anyway");
 });
 
+test("a linked widget the frontend keeps hidden is left alone", () => {
+    // Frontend 1.57 reports a linked widget as hidden whatever is written to it:
+    // showing it on every poll reinserted it and wiped a number being typed.
+    const w = makeWidget("fps");
+    w.hidden = true;
+    const node = makeNode(w);
+    node.inputs = [{ name: "fps", widget: { name: "fps" }, link: 7 }];
+
+    let spliced = 0;
+    const realSplice = node.widgets.splice.bind(node.widgets);
+    node.widgets.splice = (...args) => { spliced++; return realSplice(...args); };
+
+    assert.equal(setWidgetVisible(w, true, node), false);
+    assert.equal(spliced, 0, "a linked widget was reinserted");
+});
+
+test("a widget hidden here and linked afterwards can still be shown", () => {
+    const w = makeWidget("cfg");
+    const node = makeNode(w);
+    setWidgetVisible(w, false, node);
+    node.inputs = [{ name: "cfg", widget: { name: "cfg" }, link: 7 }];
+
+    assert.equal(setWidgetVisible(w, true, node), true);
+    assert.equal(w.type, "number");
+});
+
 test("DOM elements are hidden and restored when present", () => {
     const w = makeWidget("x");
     w.inputEl = { style: { display: "" } };

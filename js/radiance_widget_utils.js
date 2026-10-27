@@ -197,7 +197,8 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     if (!widget) return false;
     // ALBABIT-FIX: frontend 1.57 keeps a linked widget hidden whatever is written here, so
     // each poll saw a change, reinserted it and wiped a number being typed in the node.
-    if (node?.inputs?.find(i => i.widget?.name === widget.name)?.link != null) return false;
+    // One this helper hid itself (type "hidden") can still be shown again.
+    if (widget.type !== "hidden" && node?.inputs?.find(i => i.widget?.name === widget.name)?.link != null) return false;
 
     // MERGE-PORT (beta/main 9a5ac88): remember the prior state so the Vue
     // remount below only happens on a real transition, and so callers can
