@@ -19,7 +19,9 @@
 <body>
 <canvas id="c" width="4" height="4"></canvas>
 <script type="module">
-import { GLSL, gradePixel } from '../radiance_grade.js';
+import {
+    GLSL, gradePixel, applyWhiteBalance, applyLumaMix, linToACEScct, acescctToLin, toAP1, fromAP1,
+} from '../radiance_grade.js';
 
 const VERT = `#version 300 es
 in vec2 a_position;
@@ -134,6 +136,99 @@ window.__run = () => {
                 ? Math.max(...gpu.map((v, i) => Math.abs(v - cpu[i]) / Math.max(1, Math.abs(cpu[i]))))
                 : null;
             out.cases.push({ grade: g, in: px, gpu, cpu, delta, representable });
+        }
+    }
+    out.ok = true;
+    return out;
+};
+
+// The helpers the composite shader uses one at a time: white balance, luma mix,
+// the ACEScct curve and the gamut matrices. Each is compared to its JS twin.
+const FRAG_OPS = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec3 u_in, u_p;
+uniform int u_op, u_gamut;
+${GLSL}
+void main() {
+    vec3 c = u_in;
+    if (u_op == 0) c = radWhiteBalance(u_in, u_p.x, u_p.y);
+    if (u_op == 1) c = radLumaMix(u_in, u_p.x, u_p.y);
+    if (u_op == 2) c = radLinToACEScct(u_in);
+    if (u_op == 3) c = radACEScctToLin(u_in);
+    if (u_op == 4) c = radToAP1(u_in, u_gamut);
+    if (u_op == 5) c = radFromAP1(u_in, u_gamut);
+    if (u_op == 6) c = radFromAP1(radACEScctToLin(radLinToACEScct(radToAP1(u_in, u_gamut))), u_gamut);
+    fragColor = vec4(c, 1.0);
+}`;
+
+window.__runOps = () => {
+    const out = { ok: false, cases: [] };
+    // The basic (fallback) shader splices the same block, and it is built as
+    // GLSL ES 1.00 when the context is WebGL1, so the block has to compile there.
+    {
+        const gl1 = document.createElement('canvas').getContext('webgl');
+        if (gl1) {
+            const sh = gl1.createShader(gl1.FRAGMENT_SHADER);
+            gl1.shaderSource(sh, `precision highp float;\n${GLSL}\nvoid main() { gl_FragColor = vec4(radContrast(vec3(0.5), 2.0, 0.18) + radLinToACEScct(vec3(0.2)) + radToAP1(vec3(0.1), 0), 1.0); }`);
+            gl1.compileShader(sh);
+            out.es100 = gl1.getShaderParameter(sh, gl1.COMPILE_STATUS) ? true : gl1.getShaderInfoLog(sh);
+        } else out.es100 = 'no webgl1 context';
+    }
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl || !gl.getExtension('EXT_color_buffer_float')) { out.error = 'no float webgl2'; return out; }
+    const mk = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+    };
+    let prog;
+    try {
+        prog = gl.createProgram();
+        gl.attachShader(prog, mk(gl.VERTEX_SHADER, VERT));
+        gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FRAG_OPS));
+        gl.linkProgram(prog);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    } catch (e) { out.error = String(e.message).slice(0, 600); return out; }
+    const rt = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, rt);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, null);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rt, 0);
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    gl.useProgram(prog);
+    const loc = gl.getAttribLocation(prog, 'a_position');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const u = (n) => gl.getUniformLocation(prog, n);
+    const buf = new Float32Array(4);
+    const run = (op, input, p = [0, 0, 0], gamut = 0) => {
+        gl.uniform1i(u('u_op'), op); gl.uniform1i(u('u_gamut'), gamut);
+        gl.uniform3fv(u('u_in'), input); gl.uniform3fv(u('u_p'), p);
+        gl.viewport(0, 0, 1, 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, buf);
+        return [buf[0], buf[1], buf[2]];
+    };
+    const pixels = [[0, 0, 0], [0.18, 0.18, 0.18], [0.6, 0.5, 0.4], [4, 2, 0.5], [-0.05, 0.2, 0.2], [0.002, 0.007, 0.01]];
+    for (const px of pixels) {
+        for (const [t, n] of [[0, 0], [0.5, 0], [-1, 0.3], [2, -2]]) {
+            out.cases.push({ op: 'wb', in: px, p: [t, n], gpu: run(0, px, [t, n, 0]), cpu: applyWhiteBalance(px, t, n) });
+        }
+        for (const [ref, m] of [[0.3, 0], [0.3, 0.5], [0.0, 0], [2, 1]]) {
+            out.cases.push({ op: 'lumaMix', in: px, p: [ref, m], gpu: run(1, px, [ref, m, 0]), cpu: applyLumaMix(px, ref, m) });
+        }
+        out.cases.push({ op: 'toCct', in: px, gpu: run(2, px), cpu: px.map(linToACEScct) });
+        const cct = px.map((v) => v * 0.6);
+        out.cases.push({ op: 'fromCct', in: cct, gpu: run(3, cct), cpu: cct.map(acescctToLin) });
+        for (const g of [0, 1, 2, 3, 4]) {
+            out.cases.push({ op: 'toAP1', in: px, gamut: g, gpu: run(4, px, [0, 0, 0], g), cpu: toAP1(px, g) });
+            out.cases.push({ op: 'fromAP1', in: px, gamut: g, gpu: run(5, px, [0, 0, 0], g), cpu: fromAP1(px, g) });
+            out.cases.push({ op: 'roundTrip', in: px, gamut: g, gpu: run(6, px, [0, 0, 0], g), cpu: px });
         }
     }
     out.ok = true;

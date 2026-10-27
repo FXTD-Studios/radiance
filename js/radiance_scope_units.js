@@ -262,6 +262,26 @@ export function logAssistInv(p) {
     return (Math.pow(1 + LOG_ASSIST_C, q) - 1) / LOG_ASSIST_C;
 }
 
+/**
+ * The plot axis every scope draws on, as a pair.
+ *
+ * Code value 0-1 fills all but a sixteenth of the axis at each end. The
+ * margins are footroom and headroom: a float signal can go below black or
+ * above white, and a scope that clamps to its edges shows a super-white
+ * specular as a clean 1023. With the margins it plots above the 100 % line,
+ * where it reads as over. Symmetric, so code 0.5 stays at half height.
+ * Values beyond the margins are pinned to the edge, never dropped.
+ */
+export const SCOPE_PLOT_MARGIN = 1 / 16;
+
+export function plotPos(norm) {
+    return (norm + SCOPE_PLOT_MARGIN) / (1 + 2 * SCOPE_PLOT_MARGIN);
+}
+
+export function plotInv(pos) {
+    return pos * (1 + 2 * SCOPE_PLOT_MARGIN) - SCOPE_PLOT_MARGIN;
+}
+
 export function getScale(id) {
     return SCOPE_SCALES.find((s) => s.id === id) || SCOPE_SCALES[0];
 }

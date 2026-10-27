@@ -1,0 +1,120 @@
+/**
+ * Viewer workspaces: Review, Color, Inspect, Compare, QC.
+ *
+ * Pure data and functions, no DOM, so the rules are testable in Node.
+ * radiance_viewer.js holds the DOM and calls in here.
+ *
+ * Compatibility contract:
+ *  - `radiance_viewer_mode` on the node stays 'simple' | 'advanced', exactly as
+ *    before, so saved graphs load and older Radiance versions still read it.
+ *  - `radiance_viewer_workspace` (new) records which workspace the person was in.
+ *    It is only read when it agrees with the layout; a missing or unknown value
+ *    falls back to the layout's default workspace.
+ *  - Review is the old Simple layout. Color, Inspect and Compare use the old
+ *    Advanced layout and each shows the right-panel tabs it needs (`tabs`).
+ *    Hiding a tab hides only its button: no state is reset, and a shortcut to a
+ *    hidden tab moves to the workspace that has it instead of doing nothing.
+ */
+
+export const LAYOUT_SIMPLE = 'simple';
+export const LAYOUT_ADVANCED = 'advanced';
+
+/**
+ * `available: false` workspaces are defined but never offered: a button that
+ * opens nothing would be a phantom feature. QC is offered since 4.0.0 (its own
+ * panel tab runs radiance_qc.js over every frame).
+ */
+export const WORKSPACES = Object.freeze([
+    { id: 'review', label: 'Review', layout: LAYOUT_SIMPLE, available: true,
+      tip: 'Picture, compare and playback only' },
+    { id: 'color', label: 'Color', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'],
+      tip: 'Grade, masks, effects and scopes' },
+    { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis'],
+      tip: 'Frame inspector, channels, scopes and analysis' },
+    { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis'],
+      tip: 'A/B, wipe, difference and blink against a reference' },
+    { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'qc', tabs: ['qc', 'scopes', 'analysis'],
+      tip: 'Measured checks over every frame: NaN/Inf, range, alpha and flicker' },
+]);
+
+/** Every right-panel tab of the Advanced layout, in Alt+1..7 order. */
+export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis', 'qc']);
+
+const BY_ID = new Map(WORKSPACES.map((w) => [w.id, w]));
+
+export function workspaceById(id) {
+    return BY_ID.get(id) || null;
+}
+
+/** The workspaces the switcher shows. */
+export function availableWorkspaces() {
+    return WORKSPACES.filter((w) => w.available);
+}
+
+/** Old two-value layout name from anything a saved graph might hold. */
+export function normalizeLayout(value) {
+    return value === LAYOUT_ADVANCED ? LAYOUT_ADVANCED : LAYOUT_SIMPLE;
+}
+
+/** The workspace a layout opens in when none was recorded. */
+export function defaultWorkspaceFor(layout) {
+    return normalizeLayout(layout) === LAYOUT_ADVANCED ? 'color' : 'review';
+}
+
+/**
+ * Resolve what a node opens in from its saved properties.
+ * Returns { layout, workspace }. A recorded workspace is honoured only if it is
+ * available and belongs to the saved layout; otherwise the layout's default is
+ * used, so a hand-edited or stale value can never open a mismatched UI.
+ */
+export function resolveSaved(props) {
+    const p = props || {};
+    const layout = normalizeLayout(p.radiance_viewer_mode);
+    const ws = workspaceById(p.radiance_viewer_workspace);
+    if (ws && ws.available && ws.layout === layout) return { layout, workspace: ws.id };
+    return { layout, workspace: defaultWorkspaceFor(layout) };
+}
+
+/** Properties to store for a workspace. The layout key keeps its old meaning. */
+export function propsFor(workspaceId) {
+    const ws = workspaceById(workspaceId);
+    if (!ws || !ws.available) return null;
+    return { radiance_viewer_mode: ws.layout, radiance_viewer_workspace: ws.id };
+}
+
+/**
+ * A suggestion for what the person may want, from facts about the loaded media.
+ * Never applied automatically: the viewer shows it as a hint. Returns null when
+ * there is nothing worth saying.
+ *   facts: { frames, hasB, isHDR }
+ */
+export function suggestWorkspace(facts, current) {
+    const f = facts || {};
+    if (f.hasB && current !== 'compare') {
+        return { workspace: 'compare', reason: 'A reference (B) is connected.' };
+    }
+    return null;
+}
+
+/** The right-panel tabs a workspace shows, in panel order. All of them for a workspace that names none. */
+export function tabsFor(workspaceId) {
+    const ws = workspaceById(workspaceId);
+    if (!ws || !Array.isArray(ws.tabs)) return PANEL_TABS.slice();
+    return PANEL_TABS.filter((t) => ws.tabs.includes(t));
+}
+
+/**
+ * Where a request for a panel tab should land. The current workspace if it
+ * shows the tab; otherwise the first available Advanced workspace that does
+ * (Alt+2 for Grade from Inspect goes to Color). null for an unknown tab.
+ */
+export function workspaceForTab(tabId, current) {
+    if (!PANEL_TABS.includes(tabId)) return null;
+    if (tabsFor(current).includes(tabId) && workspaceById(current)?.layout === LAYOUT_ADVANCED) return current;
+    const ws = WORKSPACES.find((w) => w.available && w.layout === LAYOUT_ADVANCED && tabsFor(w.id).includes(tabId));
+    return ws ? ws.id : null;
+}

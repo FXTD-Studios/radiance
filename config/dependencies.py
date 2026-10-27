@@ -174,8 +174,8 @@ def validate_runtime_dependencies(
     # Log explicit critical failures if required dependencies are missing
     for spec in missing_core:
         active_logger.error(
-            "CRITICAL: Missing required dependency %s. Radiance functionality will be disabled! "
-            "Please run: %s",
+            "CRITICAL: Missing required dependency %s. Radiance still loads, but nodes that "
+            "need it fail when they run. Please run: %s",
             spec.display_name,
             spec.install_hint,
         )

@@ -30,7 +30,11 @@ from .config.constants import (
     VERSION,
     WEB_DIRECTORY,
 )
-from .config.dependencies import validate_runtime_dependencies
+from .config.dependencies import (
+    CORE_DEPENDENCIES,
+    missing_dependencies,
+    validate_runtime_dependencies,
+)
 from .config.env import configure_runtime_environment
 from .core.logging import register_run_grouping, setup_radiance_logging
 from .nodes.registry import NodeLoadResult, NodeModuleSpec, load_node_mappings
@@ -126,8 +130,39 @@ def report_node_load_health(
     return healthy
 
 
+def check_runtime_dependencies(log: "logging.Logger | None" = None) -> tuple:
+    """Run the dependency check and act on its result; never raises.
+
+    Returns the display names of missing required dependencies (empty when
+    all are present or the check itself failed). Until 4.0 the result was
+    discarded, and an exception inside the check stopped Radiance loading.
+    ComfyUI still starts either way: nodes that need a missing package fail
+    on their own import or use, and the node load report says which.
+    """
+    active = log or logger
+    try:
+        if validate_runtime_dependencies(active):
+            return ()
+        missing = missing_dependencies(CORE_DEPENDENCIES)
+    except Exception as exc:  # noqa: BLE001 - a broken check must not block node registration
+        active.warning(
+            "Radiance: the runtime dependency check failed (%s: %s); loading nodes anyway.",
+            type(exc).__name__, exc,
+        )
+        return ()
+    names = tuple(spec.display_name for spec in missing)
+    if names:
+        active.warning(
+            "Radiance: required dependencies missing: %s. Nodes that need them will fail to "
+            "load or run. Install them (%s) and restart ComfyUI.",
+            ", ".join(names),
+            "; ".join(spec.install_hint for spec in missing),
+        )
+    return names
+
+
 configure_runtime_environment()
-validate_runtime_dependencies(logger)
+_MISSING_REQUIRED_DEPENDENCIES = check_runtime_dependencies(logger)
 
 
 def _configure_ocio() -> None:
@@ -156,6 +191,13 @@ __all__ = [
 ]
 
 report_node_load_health(_LOAD_RESULT)
+if _MISSING_REQUIRED_DEPENDENCIES:
+    # Repeated after the load banner: the dependency table is printed
+    # hundreds of lines earlier, where it is easy to miss.
+    logger.warning(
+        "Radiance: started without required dependencies: %s (see the dependency table above).",
+        ", ".join(_MISSING_REQUIRED_DEPENDENCIES),
+    )
 logger.debug("Radiance Viewer JavaScript extension enabled")
 
 # Mark each prompt run with a console separator (no-op if the hook is absent).

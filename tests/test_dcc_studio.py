@@ -37,6 +37,16 @@ else:
     if not hasattr(fp, "get_annotated_filepath"): fp.get_annotated_filepath = lambda name: name
     if not hasattr(fp, "exists_annotated_filepath"): fp.exists_annotated_filepath = lambda name: True
 
+def _fake_writer(*args, **kwargs):
+    """Stands in for _save_exr / _save_pil_image: the real ones write the file they are given.
+
+    The nodes now write to a hidden temporary sibling and replace the final
+    name only if the file exists, so a mock that writes nothing no longer
+    passes for a writer.
+    """
+    Path(args[1]).write_bytes(b"x")
+
+
 from radiance.tools.nuke_connector import NukeConnector, validate_nuke_identifier, _sanitize_nuke_string
 from radiance.nodes.pipeline.dcc import RadianceMCP, _push_to_nuke
 from radiance.nodes.pipeline.studio_integrations import RadianceNukeSend, RadianceDaVinciSend
@@ -120,10 +130,10 @@ def test_nuke_connector_load_exr(mock_socket_cls):
     args, kwargs = mock_sock.sendall.call_args
     sent_bytes = args[0]
     assert sent_bytes.startswith(b"RCMD")  # Magic
-    assert struct.unpack("<B", sent_bytes[4:5])[0] == 2  # signed with the shared token
+    assert struct.unpack("<B", sent_bytes[4:5])[0] == 3  # protocol 3, signed with the shared token
 
     # Verify the structured command carries the parameters
-    payload = sent_bytes[41:].decode("utf-8")
+    payload = sent_bytes[65:].decode("utf-8")
     assert "MyReadNode" in payload
     assert "D:/renders/frame_####.exr" in payload
     assert "1001" in payload
@@ -133,7 +143,7 @@ def test_nuke_connector_load_exr(mock_socket_cls):
 #  2. RadianceNukeSend Node Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-@patch("radiance.nodes.pipeline.studio_integrations._save_exr")
+@patch("radiance.nodes.pipeline.studio_integrations._save_exr", side_effect=_fake_writer)
 @patch("radiance.tools.nuke_connector.NukeConnector.load_exr")
 @pytest.mark.real_torch
 def test_nuke_send_single_frame(mock_load_exr, mock_save_exr, tmp_path):
@@ -172,8 +182,8 @@ def test_nuke_send_single_frame(mock_load_exr, mock_save_exr, tmp_path):
 #  3. RadianceDaVinciSend Node Tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-@patch("radiance.nodes.pipeline.studio_integrations._save_exr")
-@patch("radiance.nodes.pipeline.studio_integrations._save_pil_image")
+@patch("radiance.nodes.pipeline.studio_integrations._save_exr", side_effect=_fake_writer)
+@patch("radiance.nodes.pipeline.studio_integrations._save_pil_image", side_effect=_fake_writer)
 @pytest.mark.real_torch
 def test_davinci_send_formats(mock_save_pil, mock_save_exr, tmp_path):
     """Verify RadianceDaVinciSend successfully exports 8-bit PNG, 16-bit TIFF, and EXR."""
@@ -183,15 +193,21 @@ def test_davinci_send_formats(mock_save_pil, mock_save_exr, tmp_path):
     
     # 1. Test 8-bit PNG
     node.run(fake_image, folder, "test_png", "8bit", 1001)
-    mock_save_pil.assert_called_with(ANY, Path(folder) / "test_png.png", "8-bit PNG")
+    assert mock_save_pil.call_args.args[1].suffix == ".png"
+    assert mock_save_pil.call_args.args[2] == "8-bit PNG"
+    assert (Path(folder) / "test_png.png").is_file()
     
     # 2. Test 16-bit TIFF
     node.run(fake_image, folder, "test_tif", "16bit", 1001)
-    mock_save_pil.assert_called_with(ANY, Path(folder) / "test_tif.tif", "16-bit TIFF")
+    assert mock_save_pil.call_args.args[1].suffix == ".tif"
+    assert mock_save_pil.call_args.args[2] == "16-bit TIFF"
+    assert (Path(folder) / "test_tif.tif").is_file()
     
     # 3. Test EXR
     node.run(fake_image, folder, "test_exr", "EXR", 1001)
-    mock_save_exr.assert_called_with(ANY, Path(folder) / "test_exr.exr", half=True)
+    assert mock_save_exr.call_args.args[1].suffix == ".exr"
+    assert mock_save_exr.call_args.kwargs == {"half": True}
+    assert (Path(folder) / "test_exr.exr").is_file()
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  4. DCC Bridge (RadianceMCP) & Sequence Path Pattern Regex Fix Tests
@@ -217,7 +233,7 @@ def test_mcp_push_to_nuke_sequence_regex_fix():
         args, kwargs = mock_load.call_args
         assert kwargs["filepath"] == "C:/renders/frame.####.exr"
 
-@patch("radiance.nodes.pipeline.dcc._save_exr")
+@patch("radiance.nodes.pipeline.dcc._save_exr", side_effect=_fake_writer)
 @patch("radiance.tools.nuke_connector.NukeConnector.load_exr")
 @pytest.mark.real_torch
 def test_mcp_export_frames_flow(mock_load_exr, mock_save_exr, tmp_path):
@@ -246,8 +262,8 @@ def test_mcp_export_frames_flow(mock_load_exr, mock_save_exr, tmp_path):
 
 
 @patch("socket.socket")
-def test_nuke_connector_v2_signature(mock_socket_cls, monkeypatch):
-    """Verify NukeConnector builds correct version 2 headers with signatures when token is set."""
+def test_nuke_connector_v3_signature(mock_socket_cls, monkeypatch):
+    """NukeConnector sends protocol 3: HMAC over timestamp, nonce and payload (E-11)."""
     monkeypatch.setenv("RADIANCE_DCC_AUTH_TOKEN", "super-secret-key-123")
 
     mock_sock = MagicMock()
@@ -262,33 +278,22 @@ def test_nuke_connector_v2_signature(mock_socket_cls, monkeypatch):
     success, reply = conn.send_command(cmd)
 
     assert success is True
-    args, kwargs = mock_sock.sendall.call_args
-    sent_bytes = args[0]
+    sent_bytes = mock_sock.sendall.call_args[0][0]
 
-    # Assert header magic is RCMD
-    assert sent_bytes.startswith(b"RCMD")
-    # Assert version is 2
-    assert sent_bytes[4] == 2
-
-    # Assert signature field is computed correctly.
-    # HMAC, not SHA256(token || command): the bare-hash construction was
-    # length-extendable and carried no nonce, so any observed (command,
-    # signature) pair replayed indefinitely.
+    assert sent_bytes[:5] == b"RCMD\x03"
+    sig, ts_bytes, nonce = sent_bytes[5:37], sent_bytes[37:45], sent_bytes[45:61]
     import hmac
     import hashlib
-    expected_sig = hmac.new(
-        b"super-secret-key-123", cmd.encode("utf-8"), hashlib.sha256
-    ).digest()
-    assert sent_bytes[5:37] == expected_sig
-
-    # And the old construction must NOT match, so a regression is caught.
-    legacy_sig = hashlib.sha256(("super-secret-key-123" + cmd).encode("utf-8")).digest()
-    assert sent_bytes[5:37] != legacy_sig
-
-    # Assert correct length and command payload
-    cmd_len = struct.unpack("<I", sent_bytes[37:41])[0]
+    import time
+    expected_sig = hmac.new(b"super-secret-key-123", b"RCMD3" + ts_bytes + nonce + cmd.encode(), hashlib.sha256).digest()
+    assert sig == expected_sig
+    # The protocol-2 construction (command only, replayable) must not match.
+    assert sig != hmac.new(b"super-secret-key-123", cmd.encode("utf-8"), hashlib.sha256).digest()
+    assert abs(struct.unpack("<Q", ts_bytes)[0] / 1000 - time.time()) < 30
+    assert len(set(nonce)) > 1
+    cmd_len = struct.unpack("<I", sent_bytes[61:65])[0]
     assert cmd_len == len(cmd)
-    assert sent_bytes[41:].decode("utf-8") == cmd
+    assert sent_bytes[65:].decode("utf-8") == cmd
 
 
 @patch("socket.socket")
@@ -312,6 +317,26 @@ def test_nuke_connector_signs_with_the_shared_token_file(mock_socket_cls, monkey
     token = (tmp_path / ".radiance" / "dcc_token").read_text().strip()
     assert len(token) == 64
     sent_bytes = mock_sock.sendall.call_args[0][0]
-    assert sent_bytes[:5] == b"RCMD\x02"
-    assert sent_bytes[5:37] == hmac.new(token.encode(), cmd.encode(), hashlib.sha256).digest()
-    assert struct.unpack("<I", sent_bytes[37:41])[0] == len(cmd)
+    assert sent_bytes[:5] == b"RCMD\x03"
+    ts_bytes, nonce = sent_bytes[37:45], sent_bytes[45:61]
+    assert sent_bytes[5:37] == hmac.new(token.encode(), b"RCMD3" + ts_bytes + nonce + cmd.encode(), hashlib.sha256).digest()
+    assert struct.unpack("<I", sent_bytes[61:65])[0] == len(cmd)
+
+
+@pytest.mark.real_torch
+def test_dcc_bridge_exports_an_image_sequence(tmp_path):
+    # The sequence source passed the colour space "Linear (none)", which the
+    # reader does not know, so source=Sequence always ended in
+    # "Error: failed to read sequence". It now reads the files untransformed.
+    import numpy as np
+    from PIL import Image
+    from radiance.nodes.pipeline.dcc import RadianceMCP
+    src = tmp_path / "src"
+    src.mkdir()
+    for f in (1001, 1002, 1003):
+        Image.fromarray(np.full((8, 8, 3), 60 * (f - 1000), np.uint8)).save(src / f"plate.{f}.png")
+    out = tmp_path / "out"
+    status, _ = RadianceMCP().run(mode="Export Frames", source="Sequence", output_path=str(out),
+                                  sequence_path=str(src / "plate.%04d.png"), frame_start=1001)
+    assert not status.startswith("Error"), status
+    assert len(list(out.glob("*.exr"))) == 3
