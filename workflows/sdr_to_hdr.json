@@ -2,7 +2,7 @@
   "id": "00000000-0000-0000-0000-000000000000",
   "revision": 0,
   "last_node_id": 5,
-  "last_link_id": 3,
+  "last_link_id": 4,
   "nodes": [
     {
       "id": 1,
@@ -377,7 +377,8 @@
           "pos": null,
           "slot_index": null,
           "links": [
-            1
+            1,
+            4
           ]
         },
         {
@@ -830,6 +831,57 @@
             "name": "pixel_strength"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "aces2_strength",
+          "locked": null,
+          "name": "aces2_strength",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_strength"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "aces2_saturation",
+          "locked": null,
+          "name": "aces2_saturation",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_saturation"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "aces2_package",
+          "locked": null,
+          "name": "aces2_package",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "aces2_package"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -931,6 +983,22 @@
           "pos": null,
           "slot_index": null,
           "links": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "reconstructed_mask",
+          "locked": null,
+          "name": "reconstructed_mask",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "MASK",
+          "pos": null,
+          "slot_index": null,
+          "links": null
         }
       ],
       "properties": {
@@ -957,7 +1025,10 @@
         512,
         64,
         "highlights",
-        1
+        1,
+        1.0,
+        1.0,
+        ""
       ],
       "color": "#3c2020",
       "bgcolor": "#141419"
@@ -1006,7 +1077,7 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
-          "link": null
+          "link": 4
         },
         {
           "color_off": null,
@@ -1497,7 +1568,7 @@
       },
       "widgets_values": [
         "radiance_examples/sdr_to_hdr",
-        "IMG \u2502 EXR (32-bit float)",
+        "IMG │ EXR (32-bit float)",
         "sdr_to_hdr",
         1,
         "Linear (pass-through)",
@@ -1538,7 +1609,7 @@
       "title": "SDR to HDR",
       "properties": {},
       "widgets_values": [
-        "1. Pick an 8-bit image or video in Read.\n2. SDR to HDR Universal turns it into scene-linear HDR (1.0 = 203 nits). Its learned mode uses the RUDRA model, downloaded on first run (about 5 MB; weights are licensed for non-commercial use, see the README).\n3. The Viewer shows the result through ACES 2.0; a normal preview shows values above 1.0 as white.\n4. Write saves a 32-bit float EXR. Set output_path and filename to taste.\n\nThe report output says whether the learned recovery ran."
+        "1. Pick an 8-bit image or video in Read.\n2. SDR to HDR Universal runs RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0, about 3 MB, downloaded on first run). The result is a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source codes; reconstructed_mask shows where light was estimated.\n3. The Viewer shows the master through ACES 2.0 with the SDR source as compare_image: use the wipe to see what changed.\n4. Write saves a 32-bit float EXR. Set output_path and filename to taste.\n\nFor large blown highlights, add SDR to HDR AI Fill (RUDRA v3) after Universal (needs Wan2.1-VACE-1.3B and a 16 GB GPU). The report output says which model ran."
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -1567,6 +1638,14 @@
       0,
       4,
       0,
+      "IMAGE"
+    ],
+    [
+      4,
+      1,
+      0,
+      3,
+      1,
       "IMAGE"
     ]
   ],

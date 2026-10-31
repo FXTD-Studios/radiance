@@ -4,7 +4,7 @@
 
 HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 
-36 nodes. [All sections](README.md)
+37 nodes. [All sections](README.md)
 
 - [ACES 2.0 Gamut Compress](#aces-20-gamut-compress)
 - [ACES 2.0 Output Check](#aces-20-output-check)
@@ -37,6 +37,7 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 - [Luminance Guidance](#luminance-guidance)
 - [OCIO List Colorspaces](#ocio-list-colorspaces)
 - [OCIO Transform](#ocio-transform)
+- [SDR → HDR AI Fill (RUDRA v3)](#sdr--hdr-ai-fill-rudra-v3)
 - [SDR → HDR Expand](#sdr--hdr-expand)
 - [SDR → HDR Prepare](#sdr--hdr-prepare)
 - [SDR → HDR Recover](#sdr--hdr-recover)
@@ -782,6 +783,48 @@ Apply an OCIO colorspace transform to an image. Supports any source/target pair 
 | `image` | IMAGE |
 | `metadata` | STRING |
 
+## SDR → HDR AI Fill (RUDRA v3)
+
+`RadianceSDRToHDRAIFill`
+
+RUDRA AI fill v3: draws the shape inside fully clipped highlights of an HDR master (Wan2.1-VACE-1.3B + the FXTD LoRA) and sets their brightness with RUDRA's estimator. Region prompts, ±3 stop brightness offset. No 8-bit code of the master's ACES 2.0 SDR view changes; untouched pixels are bit-identical. Plausible, not recovered.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The HDR master from SDR → HDR Universal or Recover running RUDRA ACES 2 (scene-linear, 1.0 = diffuse white). A batch is read as ordered frames of one shot. |
+| `image_encoding` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear ACES2065-1 (AP0)`, `ACEScg` | How the master is encoded: the Universal/Recover Linear output, their AP0 output, or ACEScg. The result leaves in the same encoding. |
+| `prompt_highlight` | string |  | multi-line text | What to draw inside clipped highlights (e.g. 'soft clouds in a bright blue sky'). Empty uses RUDRA's base prompt. A new prompt loads the 11 GB umT5 text encoder on the CPU once; its embedding is cached. |
+| `brightness_offset` | float | 0 | -3 to 3, step 0.05 | Stops added to every clipped area's estimated brightness (RUDRA's Highlight brightness). Still capped at max_gain_stops over the master. |
+| `reconstructed_mask` (optional) | MASK |  |  | The reconstructed_mask from Universal/Recover; the reconstructed_mask output becomes max(it, generated). |
+| `fill_shadows` (optional) | boolean | off |  | Also fill fully crushed shadows (code 0). Off by default, as in RUDRA 1.0: the registered gates covered highlights. |
+| `prompt_shadow` (optional) | string |  | multi-line text | What to draw inside crushed shadows, when fill_shadows is on. |
+| `highlight_context_code` (optional) | int | 250 | 200 to 255, step 1 | 8-bit code from which the model sees a highlight as context (tau_high). The fill is still blended only at code 255. |
+| `max_gain_stops` (optional) | float | 3 | 0 to 6, step 0.25 | The fill is never more than this many stops brighter than the master (0 = no cap). |
+| `shape_gain` (optional) | float | 1 | 0 to 2, step 0.05 | How strongly the generated shape varies the brightness inside a clipped area (0 = flat at the estimate). |
+| `use_brightness_estimator` (optional) | boolean | on |  | v3: brightness from the estimator plus the offset. Off: the model's own brightness (RUDRA v1-v2 behaviour). |
+| `steps` (optional) | int | 30 | 4 to 80, step 1 | Denoising steps per window (flow matching, UniPC). RUDRA uses 30. |
+| `seed` (optional) | int | 0 | 0 to 4294967295 | Noise seed. The same seed and settings give the same fill. |
+| `guidance` (optional) | float | 1 | 1 to 8, step 0.1 | Above 1: classifier-free guidance against negative_prompt (twice the compute). RUDRA's gates were run at 1. |
+| `negative_prompt` (optional) | string |  |  | What to steer away from; used only when guidance is above 1. |
+| `window` (optional) | choice | `33` | `33`, `17`, `9`, `49` | Frames per generation window (4k+1). RUDRA uses 33. |
+| `overlap` (optional) | int | 8 | 0 to 16, step 1 | Frames the next window re-reads from the previous one, so windows join without a seam. Must be below window. |
+| `max_area` (optional) | int | 399360 | 65536 to 921600, step 1024 | Working size in pixels (aspect kept); the fill is brought back to full size. RUDRA uses 832 x 480. |
+| `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
+| `fill_package` (optional) | string |  |  | RUDRA AI fill v3 folder (rudra_genfill.safetensors, brightness.json, prompt_cache). Empty searches models/radiance/rudra_genfill_v3 and RADIANCE_RUDRA_GENFILL. |
+| `allow_download` (optional) | boolean | off |  | Download what is missing: the AI fill v3 package (271 MB, pinned, SHA-256 checked) and the Wan base model from Hugging Face. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `image` | IMAGE |
+| `generated_mask` | MASK |
+| `reconstructed_mask` | MASK |
+| `report` | STRING |
+
 ## SDR → HDR Expand
 
 `RadianceSDRtoHDRExpand`
@@ -836,7 +879,7 @@ Prepare an SDR image for AI HDR reconstruction. Applies inverse EOTF, highlight 
 
 `RadianceSDRToHDRRecover`
 
-Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUDRA pixel model, temporal residual model for video). No VAE needed; raises instead of falling back when no checkpoint is installed. Pixels outside the recovery masks are preserved exactly.
+Learned SDR→HDR reconstruction. Default: RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0) — an ACEScg master whose ACES 2.0 SDR view keeps the source's 8-bit codes. Falls back to the RUDRA pixel / temporal models; raises instead of falling back to expansion when no learned model can run.
 
 **Inputs**
 
@@ -857,6 +900,10 @@ Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUD
 | `temporal_window` (optional) | choice | `5` | `5`, `7`, `9` | Adjacent frames used by the temporal residual model. |
 | `temporal_checkpoint` (optional) | string |  |  | Optional temporal checkpoint path. Empty uses RADIANCE_TEMPORAL_RUDRA or models/radiance. |
 | `reference_white_nits` (optional) | float | 203 | 100 to 1000, step 1 | Output convention: linear 1.0 = this many nits (BT.2408 reference white, 203). The same value HDR Encode and Write use, so Linear output re-encodes to the same PQ/HLG this node writes. Recover keeps unclipped pixels at their SDR display level (SDR 1.0 = 100 nits); only the recovered highlights and shadows change. |
+| `learned_backend` (optional) | choice | `Auto` | `Auto`, `RUDRA ACES 2`, `Pixel / Temporal` | Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, downloads ~3 MB on first use) when it can run, else the pixel/temporal models. RUDRA ACES 2: that model only. Pixel / Temporal: the RUDRA 3.x models (non-commercial weights). |
+| `aces2_strength` (optional) | float | 1 | 0 to 1.5, step 0.01 | RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) or past it (up to 1.5). The RUDRA app's Strength trim. |
+| `aces2_saturation` (optional) | float | 1 | 0 to 2, step 0.01 | RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance (1 = as the model made it). Nothing outside the reconstructed mask changes. |
+| `aces2_package` (optional) | string |  |  | RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
 
 **Outputs**
 
@@ -867,12 +914,13 @@ Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUD
 | `shadow_mask` | MASK |
 | `highlight_confidence` | MASK |
 | `shadow_confidence` | MASK |
+| `reconstructed_mask` | MASK |
 
 ## SDR → HDR Universal
 
 `RadianceSDRToHDRUniversal`
 
-SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recover and Hybrid run the RUDRA pixel model (or the temporal model on ordered video); with no checkpoint installed they fall back to Expand, and the report output says so. Professional output transforms and separate highlight/shadow masks. No VAE needed.
+SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recover and Hybrid run RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0), or the RUDRA pixel / temporal models; with no learned checkpoint available they fall back to Expand, and the report output says so. Professional output transforms and separate highlight/shadow masks. No VAE needed.
 
 **Inputs**
 
@@ -894,12 +942,15 @@ SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recove
 | `highlight_threshold` (optional) | float | 0.98 | 0.8 to 0.999, step 0.001 | Clipping threshold for Recover/Hybrid. Appended for saved-workflow compatibility. |
 | `temporal_window` (optional) | choice | `5` | `5`, `7`, `9` | Adjacent video frames used by temporal RUDRA. |
 | `temporal_checkpoint` (optional) | string |  |  | Optional Phase 3 checkpoint path. Empty uses the configured default. |
-| `learned_backend` (optional) | choice | `Auto` | `Auto`, `Direct Pixel`, `Temporal` | Auto: temporal model on ordered video when installed, else the direct-pixel model. Direct Pixel: pixel model per frame. Temporal: temporal model only (video, 5+ frames). |
+| `learned_backend` (optional) | choice | `Auto` | `Auto`, `RUDRA ACES 2`, `Direct Pixel`, `Temporal` | Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use) when it can run, else the temporal model on ordered video when installed, else the direct-pixel model. RUDRA ACES 2: that model only; it makes the whole image, so knee settings do not apply. Direct Pixel / Temporal: the RUDRA 3.x models (non-commercial weights). |
 | `pixel_checkpoint` (optional) | string |  |  | Direct-pixel .pt checkpoint. Empty searches models/radiance and RADIANCE_SDR2HDR_PIXEL, and downloads the default RUDRA model (~5 MB) on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
 | `pixel_tile_size` (optional) | int | 512 | 128 to 2048, step 64 | Tile size used only when the whole frame does not fit in memory. The model normalises over its input, so whole-frame inference is more accurate and is always tried first. |
 | `pixel_tile_overlap` (optional) | int | 64 | 0 to 512, step 16 | Overlap in pixels between tiles, feathered to hide seams. Used only when tiling kicks in; must be smaller than pixel_tile_size. |
 | `pixel_recovery_mode` (optional) | choice | `highlights` | `highlights`, `all`, `shadows`, `off` | Highlights is safest and avoids hallucinating chroma in deep shadows. |
 | `pixel_strength` (optional) | float | 1 | 0 to 2, step 0.05 | Multiplier on the pixel model's learned residual over its own inverse tone curve (0 = curve only, 1 = as trained, 2 = doubled). Direct Pixel backend only. |
+| `aces2_strength` (optional) | float | 1 | 0 to 1.5, step 0.01 | RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) or past it (up to 1.5), times rudra_blend. The RUDRA app's Strength trim. |
+| `aces2_saturation` (optional) | float | 1 | 0 to 2, step 0.01 | RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance (1 = as the model made it). |
+| `aces2_package` (optional) | string |  |  | RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
 
 **Outputs**
 
@@ -911,6 +962,7 @@ SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recove
 | `highlight_confidence` | MASK |
 | `shadow_confidence` | MASK |
 | `report` | STRING |
+| `reconstructed_mask` | MASK |
 
 ## Tonemap
 
