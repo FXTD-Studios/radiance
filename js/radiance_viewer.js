@@ -9756,10 +9756,30 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     /** Draw the wipe split-line, A/B labels and drag handle on top of the rendered canvas. */
+    /**
+     * FIX: the wipe line in canvas pixels. The renderers split A and B in the
+     * picture's texture coordinates (v_texcoord.x < wipe), but the line, its
+     * handle and the drag used the canvas width, so whenever the picture did not
+     * fill the canvas exactly (fit with margins, zoom, pan) the drawn line sat
+     * away from the real split. Both now go through the picture's rectangle.
+     */
+    _wipeCanvasX() {
+        const pos = Math.min(1, Math.max(0, this.wipePosition ?? 0.5));
+        const rect = this._imageRect();
+        return rect ? rect.x + pos * rect.w : this.canvas.width * pos;
+    }
+
+    /** The wipe position (0-1 across the picture) under canvas x. */
+    _wipePositionAt(mx) {
+        const rect = this._imageRect();
+        const pos = rect ? (mx - rect.x) / rect.w : mx / this.canvas.width;
+        return Math.max(0, Math.min(1, pos));
+    }
+
     _drawWipeSplitOverlay(ctx, w, h) {
         if (this.compareMode !== 'wipe') return;
 
-        const wipeX = Math.round(w * this.wipePosition);
+        const wipeX = Math.round(this._wipeCanvasX());
 
         // Crisp anti-alias-off line
         ctx.save();
@@ -11118,7 +11138,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             const x = (mx - this.panX) / this.zoom;
             const y = (my - this.panY) / this.zoom;
 
-            if (this.compareMode === 'wipe' && e.button === 0 && Math.abs(mx - this.canvas.width * this.wipePosition) < 20) {
+            if (this.compareMode === 'wipe' && e.button === 0 && Math.abs(mx - this._wipeCanvasX()) < 20) {
                 this.isDraggingWipe = true;
                 this.canvas.style.cursor = 'col-resize';
                 return;
@@ -11183,7 +11203,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                     this.updateCursor(e);
                     return;
                 }
-                this.wipePosition = Math.max(0.02, Math.min(0.98, mx / this.canvas.width));
+                this.wipePosition = this._wipePositionAt(mx);
                 if (this.renderer) this.renderer.setWipe(this.wipePosition, true);
                 this.render();
                 return;
@@ -11191,7 +11211,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
             // Cursor feedback: show col-resize only when hovering near the split line
             if (this.compareMode === 'wipe') {
-                const wipeX = this.canvas.width * this.wipePosition;
+                const wipeX = this._wipeCanvasX();
                 this.canvas.style.cursor = Math.abs(mx - wipeX) < 20 ? 'col-resize' : 'crosshair';
             }
 
@@ -11283,7 +11303,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this.isDraggingWipe = false;
                 // Restore cursor based on current hover position
                 if (this.compareMode === 'wipe') {
-                    const wipeX = this.canvas.width * this.wipePosition;
+                    const wipeX = this._wipeCanvasX();
                     this.canvas.style.cursor = Math.abs((this._lastMouseX || -999) - wipeX) < 20 ? 'col-resize' : 'crosshair';
                 } else {
                     this.canvas.style.cursor = 'crosshair';

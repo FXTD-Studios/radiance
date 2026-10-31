@@ -1357,6 +1357,14 @@ class RadianceResolution:
             latent = torch.zeros(actual_batch, latent_c, lat_h, lat_w, dtype=torch.float32)
 
         latent_dict = {"samples": latent}
+        # Pixel size behind this latent, so SamplerPro can rebuild an empty
+        # latent at the right size if model_type doesn't match the model.
+        latent_dict["radiance_pixel_size"] = (int(w), int(h))
+        if model_type == "Manual" and latent_channels <= 0 and not parse_model_meta(model_meta)[0]:
+            logger.warning(
+                "[Radiance] RadianceResolution: model_type is 'Manual' with no model_meta "
+                "connected, so this is a 16ch, pixel-sized (1x) latent. Connect the "
+                "Loader's model_meta or pick the model_type for your model.")
 
         # ── Build info string ────────────────────────────────────────────────────
         megapixels = (w * h) / 1_000_000

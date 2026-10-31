@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, setWidgetVisible } from "./radiance_widget_utils.js";
+import { compactWidgetValues, fitNodeSize, isInputLive, liveSourceNode, loaderModelType, modelMetaSourceNode, nameCurrentWidgetValues, restoreHoledWidgetValues, setWidgetVisible } from "./radiance_widget_utils.js";
 
 // ALBABIT-FIX: only known post-execution (resolved_arch depends on the real
 // CLIP/model_meta), same convention as radiance_vae_widgets.js's
@@ -902,6 +902,19 @@ app.registerExtension({
                 }
                 if (origOnRemoved) origOnRemoved.apply(this, arguments);
             };
+        };
+
+        // The tab row is unsaved and sits first: see compactWidgetValues.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            restoreHoledWidgetValues(this, info);
+            nameCurrentWidgetValues(this, info, PROMPT_SAVED_WIDGET_ORDER);
+            return configure.apply(this, arguments);
+        };
+        const onSerialize = nodeType.prototype.onSerialize;
+        nodeType.prototype.onSerialize = function (o) {
+            if (onSerialize) onSerialize.apply(this, arguments);
+            compactWidgetValues(this, o);
         };
 
         // Flag pre-existing divergence in a loaded workflow (e.g. a widget

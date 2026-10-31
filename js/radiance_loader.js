@@ -10,6 +10,7 @@ import {
     forceWidgetReinsert as _forceWidgetReinsert,
     setWidgetVisible as _setWidgetVisible,
     getWidget,
+    nameCurrentWidgetValues,
 } from "./radiance_widget_utils.js";
 
 // Widget helpers now live in radiance_widget_utils.js; this module's only
@@ -1117,6 +1118,12 @@ app.registerExtension({
         // had these two inputs under vae_name.
         if (nodeData.name !== "RadianceVideoLoader") {
             nodeData.fallbackWidgetsValuesNames = LOADER_SAVED_WIDGET_ORDER;
+            // A graph saved in the current order: see nameCurrentWidgetValues.
+            const configure = nodeType.prototype.configure;
+            nodeType.prototype.configure = function (info) {
+                nameCurrentWidgetValues(this, info, LOADER_SAVED_WIDGET_ORDER);
+                return configure.apply(this, arguments);
+            };
         }
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
