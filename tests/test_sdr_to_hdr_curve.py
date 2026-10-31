@@ -223,10 +223,10 @@ class TestTheNodeStillHonoursItsContract:
     def test_the_outputs_and_the_alpha_passthrough(self):
         rgba = torch.cat([_patch_strip([0.5, 1.0]),
                           torch.full((1, 1, 2, 1), 0.25)], dim=-1)
-        out, hi, sh, hc, sc, report = _convert(rgba)
+        out, hi, sh, hc, sc, report, recon = _convert(rgba)
         assert out.shape[-1] == 4
         assert float(out[0, 0, 0, 3]) == pytest.approx(0.25)
-        for m in (hi, sh, hc, sc):
+        for m in (hi, sh, hc, sc, recon):
             assert m.shape == (1, 1, 2)
         assert isinstance(report, str) and report
 
@@ -308,7 +308,7 @@ class TestTheReportSaysWhatActuallyRan:
         assert "deterministic Expand output" not in caplog.text
 
     def test_the_report_survives_an_empty_batch(self):
-        out, _, _, _, _, report = _convert(torch.zeros((0, 4, 4, 3)))
+        out, _, _, _, _, report, _ = _convert(torch.zeros((0, 4, 4, 3)))
         assert out.shape[0] == 0
         assert isinstance(report, str) and report
 

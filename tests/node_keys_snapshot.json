@@ -113,6 +113,7 @@
   "RadianceRelightEngine",
   "RadianceResolution",
   "RadianceRollingShutter",
+  "RadianceSDRToHDRAIFill",
   "RadianceSDRToHDRPrepare",
   "RadianceSDRToHDRRecover",
   "RadianceSDRToHDRUniversal",
