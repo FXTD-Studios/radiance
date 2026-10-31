@@ -1,0 +1,2830 @@
+{
+  "id": "b5959a16-0d36-4170-a379-91925257b5bf",
+  "revision": 0,
+  "last_node_id": 12,
+  "last_link_id": 12,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "RadianceRead",
+      "pos": [
+        -1400,
+        0
+      ],
+      "size": [
+        270,
+        632
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "browse",
+          "name": "browse",
+          "type": "COMBO",
+          "widget": {
+            "name": "browse"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "media_type",
+          "name": "media_type",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "media_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "path",
+          "name": "path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_frame",
+          "name": "end_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "end_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_step",
+          "name": "frame_step",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_video_frames",
+          "name": "max_video_frames",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_video_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "missing_frames",
+          "name": "missing_frames",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "missing_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "layer"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "on_error",
+          "name": "on_error",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "on_error"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "raw",
+          "name": "raw",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "raw"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "premultiplied",
+          "name": "premultiplied",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "premultiplied"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reload",
+          "name": "reload",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "reload"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upload",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            10
+          ]
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "info",
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRead"
+      },
+      "widgets_values": [
+        "",
+        "Auto",
+        "",
+        "Auto / Linear (pass-through)",
+        1001,
+        0,
+        1,
+        0,
+        0,
+        "Skip",
+        "auto",
+        "Error",
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "image",
+        "reload",
+        ""
+      ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 2,
+      "type": "RadianceSDRToHDRUniversal",
+      "pos": [
+        -1000,
+        0
+      ],
+      "size": [
+        283.37890625,
+        730
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "localized_name": "inverse_oetf",
+          "name": "inverse_oetf",
+          "type": "COMBO",
+          "widget": {
+            "name": "inverse_oetf"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "peak_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "reference_white_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee_mode",
+          "name": "knee_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "knee_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee",
+          "name": "knee",
+          "type": "FLOAT",
+          "widget": {
+            "name": "knee"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shoulder_gamma",
+          "name": "shoulder_gamma",
+          "type": "FLOAT",
+          "widget": {
+            "name": "shoulder_gamma"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_smoothing",
+          "name": "temporal_smoothing",
+          "type": "FLOAT",
+          "widget": {
+            "name": "temporal_smoothing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_encoding",
+          "name": "output_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "output_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "rudra_blend",
+          "name": "rudra_blend",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "rudra_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "batch_mode",
+          "name": "batch_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "batch_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shadow_threshold",
+          "name": "shadow_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shadow_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "processing_mode",
+          "name": "processing_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "processing_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_threshold",
+          "name": "highlight_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "highlight_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_window",
+          "name": "temporal_window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "temporal_window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_checkpoint",
+          "name": "temporal_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "temporal_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "learned_backend",
+          "name": "learned_backend",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "learned_backend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_checkpoint",
+          "name": "pixel_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "pixel_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_size",
+          "name": "pixel_tile_size",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_overlap",
+          "name": "pixel_tile_overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_recovery_mode",
+          "name": "pixel_recovery_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "pixel_recovery_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_strength",
+          "name": "pixel_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "pixel_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_strength",
+          "name": "aces2_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_saturation",
+          "name": "aces2_saturation",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_saturation"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_package",
+          "name": "aces2_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "aces2_package"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "highlight_mask",
+          "name": "highlight_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "shadow_mask",
+          "name": "shadow_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "highlight_confidence",
+          "name": "highlight_confidence",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "shadow_confidence",
+          "name": "shadow_confidence",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRUniversal"
+      },
+      "widgets_values": [
+        "sRGB",
+        1000,
+        203,
+        "adaptive",
+        0.75,
+        2,
+        0.85,
+        "Linear",
+        1,
+        "Video Frames",
+        0.05,
+        "Hybrid",
+        0.98,
+        5,
+        "",
+        "Auto",
+        "",
+        512,
+        64,
+        "highlights",
+        1,
+        1,
+        1,
+        ""
+      ],
+      "widgets_values_named": {
+        "inverse_oetf": "sRGB",
+        "peak_nits": 1000,
+        "reference_white_nits": 203,
+        "knee_mode": "adaptive",
+        "knee": 0.75,
+        "shoulder_gamma": 2,
+        "temporal_smoothing": 0.85,
+        "output_encoding": "Linear",
+        "rudra_blend": 1,
+        "batch_mode": "Video Frames",
+        "shadow_threshold": 0.05,
+        "processing_mode": "Hybrid",
+        "highlight_threshold": 0.98,
+        "temporal_window": 5,
+        "temporal_checkpoint": "",
+        "learned_backend": "Auto",
+        "pixel_checkpoint": "",
+        "pixel_tile_size": 512,
+        "pixel_tile_overlap": 64,
+        "pixel_recovery_mode": "highlights",
+        "pixel_strength": 1,
+        "aces2_strength": 1,
+        "aces2_saturation": 1,
+        "aces2_package": ""
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 3,
+      "type": "RadianceSDRToHDRAIFill",
+      "pos": [
+        -600,
+        0
+      ],
+      "size": [
+        400,
+        658
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 3
+        },
+        {
+          "localized_name": "image_encoding",
+          "name": "image_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "image_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_highlight"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "brightness_offset",
+          "name": "brightness_offset",
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness_offset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_shadows",
+          "name": "fill_shadows",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "fill_shadows"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_shadow",
+          "name": "prompt_shadow",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_shadow"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_context_code",
+          "name": "highlight_context_code",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "highlight_context_code"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_gain_stops",
+          "name": "max_gain_stops",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "max_gain_stops"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shape_gain",
+          "name": "shape_gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shape_gain"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_brightness_estimator",
+          "name": "use_brightness_estimator",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "use_brightness_estimator"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance",
+          "name": "guidance",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "window",
+          "name": "window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlap",
+          "name": "overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_area",
+          "name": "max_area",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_area"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "base_model",
+          "name": "base_model",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "base_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_package",
+          "name": "fill_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "fill_package"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "allow_download",
+          "name": "allow_download",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "allow_download"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "keep_loaded",
+          "name": "keep_loaded",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "keep_loaded"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "links": [
+            11
+          ]
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAIFill"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "bright sky, sun, light sources, specular highlights",
+        0,
+        false,
+        "",
+        250,
+        3,
+        1,
+        true,
+        30,
+        0,
+        "randomize",
+        1,
+        "",
+        33,
+        8,
+        399360,
+        "",
+        "",
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "image_encoding": "Linear (Rec.709)",
+        "prompt_highlight": "bright sky, sun, light sources, specular highlights",
+        "brightness_offset": 0,
+        "fill_shadows": false,
+        "prompt_shadow": "",
+        "highlight_context_code": 250,
+        "max_gain_stops": 3,
+        "shape_gain": 1,
+        "use_brightness_estimator": true,
+        "steps": 30,
+        "seed": 0,
+        "control_after_generate": "randomize",
+        "guidance": 1,
+        "negative_prompt": "",
+        "window": 33,
+        "overlap": 8,
+        "max_area": 399360,
+        "base_model": "",
+        "fill_package": "",
+        "allow_download": true,
+        "keep_loaded": true
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 4,
+      "type": "RadianceCDLTransform",
+      "pos": [
+        -200,
+        0
+      ],
+      "size": [
+        270,
+        294
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "localized_name": "cdl_data",
+          "name": "cdl_data",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "localized_name": "slope_r",
+          "name": "slope_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "slope_g",
+          "name": "slope_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "slope_b",
+          "name": "slope_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_r",
+          "name": "offset_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_g",
+          "name": "offset_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_b",
+          "name": "offset_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_r",
+          "name": "power_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_g",
+          "name": "power_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_b",
+          "name": "power_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "saturation",
+          "name": "saturation",
+          "type": "FLOAT",
+          "widget": {
+            "name": "saturation"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            5,
+            6,
+            7,
+            9
+          ]
+        },
+        {
+          "localized_name": "cdl_info",
+          "name": "cdl_info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceCDLTransform"
+      },
+      "widgets_values": [
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "widgets_values_named": {
+        "slope_r": 1,
+        "slope_g": 1,
+        "slope_b": 1,
+        "offset_r": 0,
+        "offset_g": 0,
+        "offset_b": 0,
+        "power_r": 1,
+        "power_g": 1,
+        "power_b": 1,
+        "saturation": 1
+      },
+      "color": "#2e3a3a",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 5,
+      "type": "RadianceWrite",
+      "pos": [
+        200,
+        0
+      ],
+      "size": [
+        302.744140625,
+        458
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 5
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/remaster",
+        "SEQ │ EXR (16-bit half)",
+        "remaster_master",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/remaster",
+        "format": "SEQ │ EXR (16-bit half)",
+        "filename": "remaster_master",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 6,
+      "type": "RadianceWrite",
+      "pos": [
+        200,
+        600
+      ],
+      "size": [
+        302.744140625,
+        482
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 6
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/remaster",
+        "VID │ MP4 (H.265 10-bit)",
+        "remaster_hdr10",
+        1,
+        "fixed",
+        "PQ (HDR10 / ST.2084)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/remaster",
+        "format": "VID │ MP4 (H.265 10-bit)",
+        "filename": "remaster_hdr10",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "PQ (HDR10 / ST.2084)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 7,
+      "type": "RadianceACES2OutputTransformFull",
+      "pos": [
+        200,
+        1200
+      ],
+      "size": [
+        313.513671875,
+        246
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "localized_name": "input_colorspace",
+          "name": "input_colorspace",
+          "type": "COMBO",
+          "widget": {
+            "name": "input_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_transform",
+          "name": "output_transform",
+          "type": "COMBO",
+          "widget": {
+            "name": "output_transform"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "peak_luminance",
+          "name": "peak_luminance",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "peak_luminance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "surround",
+          "name": "surround",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "surround"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exposure_adjust",
+          "name": "exposure_adjust",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "exposure_adjust"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "creative_white_scale",
+          "name": "creative_white_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "creative_white_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "gamut_compress_strength",
+          "name": "gamut_compress_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "gamut_compress_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "engine",
+          "name": "engine",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "engine"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "localized_name": "transform_info",
+          "name": "transform_info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceACES2OutputTransformFull"
+      },
+      "widgets_values": [
+        "Linear_sRGB",
+        "ACES 2.0 SDR (sRGB/Rec.709)",
+        100,
+        "Dim",
+        0,
+        1,
+        1,
+        "Auto"
+      ],
+      "widgets_values_named": {
+        "input_colorspace": "Linear_sRGB",
+        "output_transform": "ACES 2.0 SDR (sRGB/Rec.709)",
+        "peak_luminance": 100,
+        "surround": "Dim",
+        "exposure_adjust": 0,
+        "creative_white_scale": 1,
+        "gamut_compress_strength": 1,
+        "engine": "Auto"
+      },
+      "color": "#2e3a3a",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 8,
+      "type": "RadianceWrite",
+      "pos": [
+        600,
+        1200
+      ],
+      "size": [
+        302.744140625,
+        458
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 8
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/remaster",
+        "VID │ MP4 (H.264)",
+        "remaster_sdr",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/remaster",
+        "format": "VID │ MP4 (H.264)",
+        "filename": "remaster_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 9,
+      "type": "RadianceViewer",
+      "pos": [
+        600,
+        0
+      ],
+      "size": [
+        960,
+        640
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 9
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": 10
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        },
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 10,
+      "type": "RadianceViewer",
+      "pos": [
+        -200,
+        -700
+      ],
+      "size": [
+        640,
+        614
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 12
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        },
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 11,
+      "type": "MaskToImage",
+      "pos": [
+        -520,
+        -700
+      ],
+      "size": [
+        193.2779296875,
+        26
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MaskToImage"
+      },
+      "color": "#122c1e",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 12,
+      "type": "Note",
+      "pos": [
+        -1400,
+        -760
+      ],
+      "size": [
+        560,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. For a single still set batch_mode to Independent Images so RUDRA ACES 2 runs; video uses the temporal math path.\n3. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run). Edit prompt_highlight per shot.\n4. CDL: trim the remaster.\n5. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG; set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
+      ],
+      "widgets_values_named": {
+        "text": "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. For a single still set batch_mode to Independent Images so RUDRA ACES 2 runs; video uses the temporal math path.\n3. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run). Edit prompt_highlight per shot.\n4. CDL: trim the remaster.\n5. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG; set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      6,
+      3,
+      1,
+      "MASK"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      6,
+      4,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      4,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      4,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      1,
+      0,
+      9,
+      1,
+      "IMAGE"
+    ],
+    [
+      11,
+      3,
+      1,
+      11,
+      0,
+      "MASK"
+    ],
+    [
+      12,
+      11,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.30728376327769347,
+      "offset": [
+        2871.5555555555557,
+        1286
+      ]
+    }
+  },
+  "version": 0.4
+}

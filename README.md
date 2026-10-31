@@ -283,6 +283,13 @@ Drag a file onto the ComfyUI canvas to open it.
 | [HDR VAE](workflows/hdr_vae_encode_decode.json) | Encode, decode and compare an HDR image |
 | [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight |
 | [HDR delivery](workflows/hdr_delivery.json) | Make EXR, HDR10 and SDR outputs |
+| [Flux.3 Klein to HDR](workflows/flux3_klein_hdr.json) | Generate with Flux.3 Klein, build the HDR master with RUDRA ACES 2 and save EXR |
+| [Flux.3 Klein HDR delivery](workflows/flux3_klein_hdr_delivery.json) | Prompt to EXR master, HDR10 TIFF and ACES 2.0 SDR PNG, with QC and false colour |
+| [Flux.3 Klein reference edit](workflows/flux3_klein_reference_edit_hdr.json) | Edit from reference images (product + look) into an HDR master |
+| [Flux.3 Klein plate and passes](workflows/flux3_klein_plate_passes.json) | HDR plate plus depth, normals, albedo and the other render passes as EXR, with a relight preview |
+| [WAN 2.2 HDR shot plates](workflows/wan22_hdr_shot_plates.json) | Text to video into an EXR plate sequence, HDR10 and SDR MP4s and a contact sheet |
+| [SDR remaster with AI fill](workflows/sdr_remaster_ai_fill.json) | SDR footage to an HDR remaster with RUDRA AI fill, CDL trim, EXR, HDR10 and SDR outputs (16 GB GPU) |
+| [Shot look match](workflows/shot_look_match.json) | Split a sequence at its cuts and match each shot to a reference look |
 
 ## Using the Viewer
 

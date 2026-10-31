@@ -82,6 +82,22 @@ SAVED_ORDERS = {
 }
 
 
+# The order the ComfyUI frontend saves these nodes in (read from frontend 1.48.7):
+# its own widget order, not INPUT_TYPES', as the JS moves and adds widgets.
+FRONTEND_ORDERS = {
+    k: v for k, v in json.loads((Path(__file__).resolve().parent / "frontend_widget_orders.json")
+                                .read_text(encoding="utf-8")).items() if not k.startswith("_")
+}
+
+
+def _restored(node):
+    """The node's widget values by name, as the frontend restores them."""
+    values = node.get("widgets_values") or []
+    current = FRONTEND_ORDERS.get(node["type"])
+    order = current if current and len(values) == len(current) else _saved_order(*SAVED_ORDERS[node["type"]])
+    return dict(zip(order, values))
+
+
 def _saved_order(js_file, const):
     js = (Path(__file__).resolve().parents[1] / "js" / js_file).read_text(encoding="utf-8")
     body = re.search(rf"const {const} = \[(.*?)\];", js, re.S).group(1)
@@ -110,7 +126,11 @@ def test_every_radiance_widget_value_fits_its_input(path):
         # below as a value that does not fit its input.
         named = node.get("widgets_values_named")
         if named is None and node.get("type") in SAVED_ORDERS:
-            named = dict(zip(_saved_order(*SAVED_ORDERS[node["type"]]), values))
+            # A graph saved by the current frontend holds its own widget order;
+            # one saved before 4.0 holds the JS's *_SAVED_WIDGET_ORDER.
+            current = FRONTEND_ORDERS.get(node["type"])
+            order = current if current and len(values) == len(current) else _saved_order(*SAVED_ORDERS[node["type"]])
+            named = dict(zip(order, values))
         pairs = ([(name, typ, named[name]) for name, typ, _ in expected if name in named] if named is not None
                  else [(name, typ, value) for (name, typ, _), value in zip(expected, values)])
         for name, typ, value in pairs:
@@ -137,14 +157,13 @@ def test_start_graph_is_wired():
     vae_in = next(i for i in decode["inputs"] if i["name"] == "vae")
     assert vae_in.get("link") is not None, "HDR VAE Decode has no VAE connected"
     loader = next(n for n in nodes.values() if n["type"] == "RadianceUnifiedLoader")
-    # As the frontend restores it: by the order its graphs were saved in.
-    vals = dict(zip(_saved_order(*SAVED_ORDERS["RadianceUnifiedLoader"]), loader["widgets_values"]))
+    vals = _restored(loader)
     assert vals["unet_name"] == "flux-2-klein-4b-fp8.safetensors"
     assert vals["vae_name"] == "flux2-vae.safetensors"
     assert vals["llm_encoder"] == "qwen_3_4b.safetensors"
     assert vals["clip_l"] == vals["t5xxl"] == "None"
     sampler = next(n for n in nodes.values() if n["type"] == "RadianceSamplerPro")
-    values = dict(zip([e[0] for e in _expected_widgets(_mappings()[sampler["type"]])], sampler["widgets_values"]))
+    values = _restored(sampler)
     assert values["steps"] == 4 and values["flux_guidance"] == 1
     meta_link = next(i["link"] for i in sampler["inputs"] if i["name"] == "model_meta")
     assert any(link[0] == meta_link and link[1] == loader["id"] and link[2] == 4 for link in wf["links"])
