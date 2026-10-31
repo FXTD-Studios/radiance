@@ -318,8 +318,80 @@ def _encode_output(hdr: torch.Tensor, output_encoding: str,
 #  Shared learned-recovery core
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _aces2_available(package_path: str = "") -> bool:
+    """RUDRA ACES 2 is installed, or may be fetched on first use (3 MB, Apache 2.0)."""
+    try:
+        from radiance.model.rudra_aces2 import resolve_aces2_package
+        if resolve_aces2_package(str(package_path)) is not None:
+            return True
+        from radiance.core.consent import downloads_allowed
+        from radiance.model.rudra_download import ACES2, _failed
+        return downloads_allowed(default=ACES2.default_allowed) and not _failed.get(ACES2.name)
+    except Exception as exc:  # noqa: BLE001 - optional dependency chain (OCIO, torch.jit)
+        logger.debug("RUDRA ACES 2 unavailable: %s", exc)
+        return False
+
+
+def _encode_acescg(master: torch.Tensor, output_encoding: str, peak_scale: float,
+                   white_scale: float) -> torch.Tensor:
+    """Deliver a RUDRA ACES 2 master (ACEScg, 1.0 = diffuse white).
+
+    Diffuse white lands on reference white, so Linear and AP0 carry the master
+    with no scale (Radiance's convention, linear 1.0 = reference_white_nits) and
+    unclamped: a grading master that takes exposure pushes. PQ and HLG go to
+    Rec.2020 straight from AP1, so colours outside Rec.709 are not clipped on
+    the way, and only then are limited to the mastering peak.
+    """
+    from radiance.model.rudra_aces2 import M_AP1_TO_AP0, M_AP1_TO_REC709
+    m = torch.as_tensor
+    if output_encoding == "Linear ACES2065-1 (AP0)":
+        return apply_matrix_3x3(master, m(M_AP1_TO_AP0, dtype=master.dtype, device=master.device))
+    rec709 = apply_matrix_3x3(master, m(M_AP1_TO_REC709, dtype=master.dtype, device=master.device))
+    if output_encoding not in ("HLG",) and not output_encoding.startswith("PQ"):
+        return rec709
+    ws = max(float(white_scale), _EPS)
+    ref_nits = ws * 100.0
+    delivery = apply_matrix_3x3(rec709, M_REC709_TO_BT2020).clamp(min=0.0)
+    delivery = _soft_peak_limit(delivery, float(peak_scale) / ws)
+    if output_encoding == "HLG":
+        return linear_to_hlg_bt2100(delivery, reference_white_nits=ref_nits)
+    return linear_to_pq_bt2408(delivery, peak_nits=float(peak_scale) * 100.0,
+                               reference_white_nits=ref_nits)
+
+
 class _RudraRecoveryCore:
     """Shared learned-recovery execution used by Recover and Universal."""
+
+    @staticmethod
+    def _aces2_reconstruct(rgb: torch.Tensor, inverse_oetf: str, package_path: str = "",
+                           strength: float = 1.0, saturation: float = 1.0,
+                           highlight_strength: float = 1.0, progress=None):
+        """RUDRA ACES 2 on a batch of SDR frames.
+
+        Returns (master ACEScg [B,H,W,3], reconstructed mask [B,H,W], tiled).
+        The master's ACES 2.0 SDR view keeps the source's 8-bit codes (within
+        one code on highlight support); ``strength``/``saturation`` are the
+        RUDRA app's trims and ``highlight_strength`` fades the reconstruction
+        back toward the plain ACES 2.0 inverse inside the mask.
+        """
+        import numpy as np
+        from radiance.model.rudra_aces2 import (
+            apply_trims, load_aces2_package, run_batch, sdr_codes_from_image,
+        )
+        device = comfy.model_management.get_torch_device()
+        pkg = load_aces2_package(str(package_path), device=device)
+        codes = sdr_codes_from_image(rgb, inverse_oetf)
+        master, mask, baseline, tiled = run_batch(
+            pkg, codes, progress=(lambda k: progress.update(k)) if progress is not None else None)
+        hs = float(min(max(highlight_strength, 0.0), 1.0))
+        for i in range(master.shape[0]):
+            master[i] = apply_trims(master[i], baseline[i], mask[i], strength=float(strength),
+                                    saturation=float(saturation))
+            if hs < 1.0:
+                w = (mask[i] * (1.0 - hs))[..., None]
+                master[i] = master[i] + w * (baseline[i] - master[i])
+        out = torch.from_numpy(np.ascontiguousarray(master)).to(rgb.device, torch.float32)
+        return out, torch.from_numpy(mask).to(rgb.device, torch.float32), tiled
 
     @staticmethod
     def _temporal_reconstruct(
@@ -459,15 +531,16 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = (
-        "Learned SDR→HDR reconstruction for clipped highlights and crushed "
-        "shadows (RUDRA pixel model, temporal residual model for video). No "
-        "VAE needed; raises instead of falling back when no checkpoint is "
-        "installed. Pixels outside the recovery masks are preserved exactly."
+        "Learned SDR→HDR reconstruction. Default: RUDRA ACES 2, the learned "
+        "ACES 2.0 model (Apache 2.0) — an ACEScg master whose ACES 2.0 SDR "
+        "view keeps the source's 8-bit codes. Falls back to the RUDRA pixel / "
+        "temporal models; raises instead of falling back to expansion when "
+        "no learned model can run."
     )
     FUNCTION = "recover"
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "MASK", "MASK")
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "MASK", "MASK", "MASK")
     RETURN_NAMES = ("image", "highlight_mask", "shadow_mask",
-                    "highlight_confidence", "shadow_confidence")
+                    "highlight_confidence", "shadow_confidence", "reconstructed_mask")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -518,6 +591,20 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
                         "nits); only the recovered highlights and shadows change."
                     ),
                 }),
+                "learned_backend": (["Auto", "RUDRA ACES 2", "Pixel / Temporal"], {"default": "Auto",
+                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, downloads ~3 MB on first "
+                               "use) when it can run, else the pixel/temporal models. RUDRA ACES 2: that model only. "
+                               "Pixel / Temporal: the RUDRA 3.x models (non-commercial weights)."}),
+                "aces2_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.5, "step": 0.01,
+                    "tooltip": "RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) "
+                               "or past it (up to 1.5). The RUDRA app's Strength trim."}),
+                "aces2_saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                    "tooltip": "RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance "
+                               "(1 = as the model made it). Nothing outside the reconstructed mask changes."}),
+                "aces2_package": ("STRING", {"default": "",
+                    "tooltip": "RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches "
+                               "models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use "
+                               "unless RADIANCE_ALLOW_DOWNLOADS=0."}),
             },
         }
 
@@ -531,6 +618,10 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
                 pixel_tile_overlap: int = 64,
                 temporal_window: int = 5, temporal_checkpoint: str = "",
                 reference_white_nits: float = 203.0,
+                learned_backend: str = "Auto",
+                aces2_strength: float = 1.0,
+                aces2_saturation: float = 1.0,
+                aces2_package: str = "",
                 **_legacy):
         # `_legacy` swallows rudra_size / vae / model_meta from pre-3.5 graphs.
         if _legacy.get("vae") is not None:
@@ -541,7 +632,7 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
             img = img.unsqueeze(0)
         if img.shape[0] == 0:                   # empty batch → empty result
             zeros = img[..., 0]
-            return (img, zeros, zeros, zeros, zeros)
+            return (img, zeros, zeros, zeros, zeros, zeros)
         rgb, extra = img[..., :3], img[..., 3:]
         peak_scale = max(float(peak_nits), 100.0) / 100.0
         lin = _inverse_oetf(rgb.clamp(0.0, 1.0), inverse_oetf)
@@ -554,6 +645,30 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
         errors: List[str] = []
         hdr = None
         h_conf = s_conf = None
+        reconstructed = torch.zeros_like(highlights)
+        white_scale = min(max(float(reference_white_nits), 100.0) / 100.0, peak_scale)
+
+        # RUDRA ACES 2 first: a complete SDR -> ACEScg master, not a masked
+        # residual, so it is delivered as it is (see _encode_acescg).
+        backend = learned_backend if learned_backend in {
+            "Auto", "RUDRA ACES 2", "Pixel / Temporal"} else "Auto"
+        if backend == "RUDRA ACES 2" or (backend == "Auto" and _aces2_available(aces2_package)):
+            try:
+                master, reconstructed, _ = self._aces2_reconstruct(
+                    rgb, inverse_oetf, aces2_package, aces2_strength, aces2_saturation,
+                    highlight_strength,
+                )
+                out = _encode_acescg(master, output_encoding, peak_scale, white_scale)
+                if extra.shape[-1] > 0:
+                    out = torch.cat([out, extra], dim=-1)
+                return (out, highlights, shadows, reconstructed, torch.zeros_like(shadows),
+                        reconstructed)
+            except Exception as exc:  # noqa: BLE001
+                if backend == "RUDRA ACES 2" or comfy.model_management.is_oom(exc):
+                    raise RuntimeError(f"SDR → HDR Recover: RUDRA ACES 2 could not run: {exc}") from exc
+                logger.warning("[SDR → HDR Recover] RUDRA ACES 2 unavailable (%s); using the pixel model.", exc)
+                errors.append(f"RUDRA ACES 2: {exc}")
+
         if img.shape[0] >= 5 and batch_mode == "Video Frames":
             try:
                 knees = _adaptive_knees(_luma(lin).clamp(0.0, 1.0), 0.75, 0.85)
@@ -585,16 +700,15 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
                 raise RuntimeError(
                     "SDR → HDR Recover could not run the learned path: "
                     + "; ".join(errors)
-                    + ". Install sdr2hdr_pixel_image.pt in models/radiance (or set "
-                    "RADIANCE_SDR2HDR_PIXEL), or use SDR → HDR Universal, which "
-                    "falls back to deterministic expansion."
+                    + ". Install RUDRA ACES 2 in models/radiance/RUDRA_ACES_2 (or allow "
+                    "its download), or sdr2hdr_shadow_v1.safetensors in models/radiance, "
+                    "or use SDR → HDR Universal, which falls back to deterministic expansion."
                 ) from exc
 
-        white_scale = min(max(float(reference_white_nits), 100.0) / 100.0, peak_scale)
         out = _encode_output(hdr, output_encoding, peak_scale, white_scale)
         if extra.shape[-1] > 0:
             out = torch.cat([out, extra], dim=-1)
-        return (out, highlights, shadows, h_conf, s_conf)
+        return (out, highlights, shadows, h_conf, s_conf, torch.maximum(h_conf, s_conf))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -607,15 +721,16 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     DESCRIPTION = (
         "SDR→HDR orchestrator: deterministic Expand, learned Recover, or "
-        "Hybrid. Recover and Hybrid run the RUDRA pixel model (or the temporal "
-        "model on ordered video); with no checkpoint installed they fall back "
-        "to Expand, and the report output says so. Professional output "
-        "transforms and separate highlight/shadow masks. No VAE needed."
+        "Hybrid. Recover and Hybrid run RUDRA ACES 2, the learned ACES 2.0 "
+        "model (Apache 2.0), or the RUDRA pixel / temporal models; with no "
+        "learned checkpoint available they fall back to Expand, and the report "
+        "output says so. Professional output transforms and separate "
+        "highlight/shadow masks. No VAE needed."
     )
     FUNCTION = "convert"
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "MASK", "MASK", "STRING")
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK", "MASK", "MASK", "STRING", "MASK")
     RETURN_NAMES = ("image", "highlight_mask", "shadow_mask",
-                    "highlight_confidence", "shadow_confidence", "report")
+                    "highlight_confidence", "shadow_confidence", "report", "reconstructed_mask")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -686,9 +801,11 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                     "tooltip": "Adjacent video frames used by temporal RUDRA."}),
                 "temporal_checkpoint": ("STRING", {"default": "",
                     "tooltip": "Optional Phase 3 checkpoint path. Empty uses the configured default."}),
-                "learned_backend": (["Auto", "Direct Pixel", "Temporal"], {"default": "Auto",
-                    "tooltip": "Auto: temporal model on ordered video when installed, else the direct-pixel model. "
-                               "Direct Pixel: pixel model per frame. Temporal: temporal model only (video, 5+ frames)."}),
+                "learned_backend": (["Auto", "RUDRA ACES 2", "Direct Pixel", "Temporal"], {"default": "Auto",
+                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use) when it "
+                               "can run, else the temporal model on ordered video when installed, else the direct-pixel "
+                               "model. RUDRA ACES 2: that model only; it makes the whole image, so knee settings do not "
+                               "apply. Direct Pixel / Temporal: the RUDRA 3.x models (non-commercial weights)."}),
                 "pixel_checkpoint": ("STRING", {"default": "",
                     "tooltip": "Direct-pixel .pt checkpoint. Empty searches models/radiance and RADIANCE_SDR2HDR_PIXEL, and downloads the default RUDRA model (~5 MB) on first use unless RADIANCE_ALLOW_DOWNLOADS=0."}),
                 "pixel_tile_size": ("INT", {"default": 512, "min": 128, "max": 2048, "step": 64,
@@ -701,6 +818,16 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                 "pixel_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
                     "tooltip": "Multiplier on the pixel model's learned residual over its own inverse tone curve "
                                "(0 = curve only, 1 = as trained, 2 = doubled). Direct Pixel backend only."}),
+                "aces2_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.5, "step": 0.01,
+                    "tooltip": "RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) "
+                               "or past it (up to 1.5), times rudra_blend. The RUDRA app's Strength trim."}),
+                "aces2_saturation": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                    "tooltip": "RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance "
+                               "(1 = as the model made it)."}),
+                "aces2_package": ("STRING", {"default": "",
+                    "tooltip": "RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches "
+                               "models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use "
+                               "unless RADIANCE_ALLOW_DOWNLOADS=0."}),
             },
         }
 
@@ -727,6 +854,9 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                 pixel_tile_overlap: int = 64,
                 pixel_recovery_mode: str = "highlights",
                 pixel_strength: float = 1.0,
+                aces2_strength: float = 1.0,
+                aces2_saturation: float = 1.0,
+                aces2_package: str = "",
                 **_legacy):
         # `_legacy` swallows vae / rudra_size / model_meta from pre-3.5 graphs,
         # and "Legacy RUDRA" as a learned_backend value maps to Auto below.
@@ -739,7 +869,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         if n == 0:                              # empty batch → empty result
             img = image.float()
             zeros = img[..., 0]
-            return (img, zeros, zeros, zeros, zeros, "mode: empty batch\nframes: 0")
+            return (img, zeros, zeros, zeros, zeros, "mode: empty batch\nframes: 0", zeros)
 
         peak_scale = max(peak_nits, 100.0) / 100.0
 
@@ -786,12 +916,19 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         path = "deterministic expansion"
 
         # Which learned backend runs, decided once for the whole clip.
-        use_temporal = use_pixel = False
+        use_temporal = use_pixel = use_aces2 = False
         if mode in {"Recover", "Hybrid"} and rudra_blend > 0.0:
             backend = learned_backend if learned_backend in {
-                "Auto", "Direct Pixel", "Temporal",
+                "Auto", "RUDRA ACES 2", "Direct Pixel", "Temporal",
             } else "Auto"
             is_clip = n > 1 and batch_mode == "Video Frames"
+
+            # RUDRA ACES 2 (1.0) is preferred: commercial-clean weights, and a
+            # master whose ACES 2.0 SDR view keeps the source's codes.
+            if backend == "RUDRA ACES 2" or (backend == "Auto" and _aces2_available(aces2_package)):
+                use_aces2 = True
+            elif backend == "RUDRA ACES 2":
+                attempts.append("RUDRA ACES 2 is not installed and cannot be downloaded")
 
             # A trained temporal model is the preferred video backend.
             # ALBABIT-FIX: Auto tries it only when one is installed, as its
@@ -822,6 +959,12 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                         + describe_pixel_checkpoint_search()
                     )
 
+        # With RUDRA ACES 2 chosen, the other backends are only its fallback
+        # (Auto), so the pixel model's memory is not set aside below.
+        fallback_pixel = use_pixel and learned_backend != "RUDRA ACES 2"
+        if use_aces2:
+            use_pixel = use_temporal = False
+
         # ALBABIT-FIX: chunks of frames on ComfyUI's device, written into the
         # outputs (the whole clip at once took over 100 GB of RAM on 10 s of
         # 1080p). Temporal RUDRA needs the whole clip, on the input's device.
@@ -846,6 +989,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                           dtype=torch.float32, device=image.device)
         mask, shadows = out.new_empty((n, height, width)), out.new_empty((n, height, width))
         h_conf, s_conf = out.new_zeros((n, height, width)), out.new_zeros((n, height, width))
+        reconstructed = out.new_zeros((n, height, width))
 
         # ALBABIT-FIX: one node progress bar for RUDRA then the grain pass, one
         # step per frame each; filled at the end whichever of them ran.
@@ -856,7 +1000,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             """Frames start:end, written into the outputs. Returns the last knee,
             where the EMA carries on. A function, so a chunk that runs out of
             memory is freed before it goes again."""
-            nonlocal path, recovery_applied, use_pixel
+            nonlocal path, recovery_applied, use_pixel, use_aces2, use_temporal
             img = torch.nan_to_num(image[start:end].to(chunk_device, torch.float32),
                                    nan=0.0, posinf=1.0, neginf=0.0)
             rgb = img[..., :3]
@@ -892,6 +1036,30 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             recovery_applied = False
             h_c = torch.zeros_like(clipped)
             s_c = torch.zeros_like(shadow)
+
+            if use_aces2:
+                try:
+                    master, recon, tiled = self._aces2_reconstruct(
+                        rgb, inverse_oetf, aces2_package,
+                        float(aces2_strength) * float(rudra_blend), aces2_saturation,
+                    )
+                    out[start:end, ..., :3] = _encode_acescg(
+                        master, output_encoding, peak_scale, white_scale).to(out.device)
+                    mask[start:end] = clipped
+                    shadows[start:end] = shadow
+                    h_conf[start:end] = recon
+                    reconstructed[start:end] = recon
+                    recovery_applied = True
+                    path = "RUDRA ACES 2" + (" (tiled)" if tiled else "")
+                    progress.update(2 * (end - start))
+                    return knees[-1]
+                except Exception as exc:  # noqa: BLE001
+                    if start or comfy.model_management.is_oom(exc) or learned_backend == "RUDRA ACES 2":
+                        raise
+                    logger.warning("RUDRA ACES 2 unavailable (%s).", exc)
+                    attempts.append(f"RUDRA ACES 2 unavailable ({exc})")
+                    use_aces2 = False
+                    use_pixel, use_temporal = fallback_pixel, False
 
             if use_temporal:
                 try:
@@ -964,6 +1132,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             shadows[start:end] = shadow
             h_conf[start:end] = h_c
             s_conf[start:end] = s_c
+            reconstructed[start:end] = torch.maximum(h_c, s_c)
             return knees[-1]
 
         console = tqdm(total=n, desc="SDR to HDR", unit="frame")
@@ -993,7 +1162,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
             peak_nits=float(peak_nits), output_encoding=str(output_encoding),
             rudra_blend=float(rudra_blend),
         )
-        return (out, mask, shadows, h_conf, s_conf, report)
+        return (out, mask, shadows, h_conf, s_conf, report, reconstructed)
 
     @staticmethod
     def _build_report(*, mode, path, recovery_applied, attempts, frames,
@@ -1027,6 +1196,12 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
 
         if recovery_applied:
             lines.append("learned recovery: applied")
+            if path.startswith("RUDRA ACES 2"):
+                lines.append("model: RUDRA ACES 2 (Apache 2.0) — ACEScg master, diffuse white = "
+                             f"{reference_white_nits:.0f} nits; its ACES 2.0 SDR view keeps the source codes; "
+                             "knee settings do not apply")
+            elif path.startswith("direct-pixel") or path.startswith("temporal"):
+                lines.append("model: RUDRA 3.x weights (non-commercial licence)")
             return "\n".join(lines)
 
         # Requested but did not run. Say why, and say what it cost.
@@ -1035,9 +1210,9 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         elif attempts:
             why = "; ".join(attempts)
         else:
-            why = ("no learned checkpoint found — install "
-                   "sdr2hdr_pixel_image.pt in models/radiance or set "
-                   "RADIANCE_SDR2HDR_PIXEL")
+            why = ("no learned model found — install RUDRA ACES 2 in "
+                   "models/radiance/RUDRA_ACES_2 (or let it download), or "
+                   "sdr2hdr_shadow_v1.safetensors in models/radiance")
 
         lines.append(f"learned recovery: NOT APPLIED — {why}")
         lines.append(
