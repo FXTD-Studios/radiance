@@ -1,5 +1,5 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "42386a87-9309-44c9-8a18-f42febf2ab5b",
   "revision": 0,
   "last_node_id": 7,
   "last_link_id": 5,
@@ -13,12 +13,11 @@
       ],
       "size": [
         270,
-        620
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -393,7 +389,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -409,7 +404,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -443,6 +437,30 @@
         "reload",
         ""
       ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -460,7 +478,6 @@
       "flags": {},
       "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -472,7 +489,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 1
@@ -517,7 +533,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -534,7 +549,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -682,23 +696,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -812,6 +809,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -820,24 +874,54 @@
       },
       "widgets_values": [
         "radiance_examples/delivery",
-        "IMG \u2502 EXR (16-bit half)",
+        "IMG │ EXR (16-bit half)",
         "master",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/delivery",
+        "format": "IMG │ EXR (16-bit half)",
+        "filename": "master",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -850,12 +934,11 @@
       ],
       "size": [
         270,
-        434
+        482
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -867,7 +950,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 2
@@ -912,7 +994,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -929,7 +1010,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1077,23 +1157,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -1207,6 +1270,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1215,24 +1335,54 @@
       },
       "widgets_values": [
         "radiance_examples/delivery",
-        "VID \u2502 MP4 (H.265 10-bit)",
+        "VID │ MP4 (H.265 10-bit)",
         "hdr10",
         1,
+        "fixed",
         "PQ (HDR10 / ST.2084)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/delivery",
+        "format": "VID │ MP4 (H.265 10-bit)",
+        "filename": "hdr10",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "PQ (HDR10 / ST.2084)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1245,12 +1395,11 @@
       ],
       "size": [
         313.513671875,
-        222
+        246
       ],
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1262,7 +1411,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 3
@@ -1277,7 +1425,6 @@
           "name": "input_colorspace",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "input_colorspace"
@@ -1294,7 +1441,6 @@
           "name": "output_transform",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "output_transform"
@@ -1385,6 +1531,16 @@
             "name": "gamut_compress_strength"
           },
           "link": null
+        },
+        {
+          "localized_name": "engine",
+          "name": "engine",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "engine"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1398,7 +1554,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1416,7 +1571,6 @@
           "name": "transform_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1433,8 +1587,19 @@
         "Dim",
         0,
         1,
-        1
+        1,
+        "Auto"
       ],
+      "widgets_values_named": {
+        "input_colorspace": "Linear_sRGB",
+        "output_transform": "ACES 2.0 SDR (sRGB/Rec.709)",
+        "peak_luminance": 100,
+        "surround": "Dim",
+        "exposure_adjust": 0,
+        "creative_white_scale": 1,
+        "gamut_compress_strength": 1,
+        "engine": "Auto"
+      },
       "color": "#2e3a3a",
       "bgcolor": "#141419"
     },
@@ -1447,12 +1612,11 @@
       ],
       "size": [
         270,
-        434
+        458
       ],
       "flags": {},
       "order": 6,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1464,7 +1628,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 4
@@ -1509,7 +1672,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1526,7 +1688,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1674,23 +1835,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -1804,6 +1948,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1812,24 +2013,54 @@
       },
       "widgets_values": [
         "radiance_examples/delivery",
-        "VID \u2502 MP4 (H.264)",
+        "VID │ MP4 (H.264)",
         "sdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/delivery",
+        "format": "VID │ MP4 (H.264)",
+        "filename": "sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1847,7 +2078,6 @@
       "flags": {},
       "order": 5,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1859,7 +2089,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 5
@@ -1892,6 +2121,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1974,7 +2210,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1982,7 +2217,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1991,6 +2338,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -2008,7 +2362,6 @@
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
       "title": "Deliver HDR",
@@ -2016,6 +2369,9 @@
       "widgets_values": [
         "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half.\n- HDR10: Write encodes PQ (ST.2084) with Rec.2020 primaries and tags the file. hdr_reference_nits sets where 1.0 lands (203 nits, BT.2408).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr)."
       ],
+      "widgets_values_named": {
+        "text": "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half.\n- HDR10: Write encodes PQ (ST.2084) with Rec.2020 primaries and tags the file. hdr_reference_nits sets where 1.0 lands (203 nits, BT.2408).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr)."
+      },
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -2062,19 +2418,16 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
   "groups": [],
-  "definitions": null,
   "config": {},
   "extra": {
     "ds": {
       "scale": 0.9,
       "offset": [
-        416,
-        110
+        2871.5555555555557,
+        1286
       ]
-    },
-    "reroutes": null
+    }
   },
   "version": 0.4
 }

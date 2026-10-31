@@ -1,5 +1,5 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "14b7e56d-d609-401d-9fc1-02bda46eac04",
   "revision": 0,
   "last_node_id": 5,
   "last_link_id": 4,
@@ -13,12 +13,11 @@
       ],
       "size": [
         270,
-        620
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -391,7 +387,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -407,7 +402,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -441,6 +435,30 @@
         "reload",
         ""
       ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -453,12 +471,11 @@
       ],
       "size": [
         283.37890625,
-        638
+        730
       ],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -470,7 +487,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 1
@@ -485,7 +501,6 @@
           "name": "inverse_oetf",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "inverse_oetf"
@@ -502,7 +517,6 @@
           "name": "peak_nits",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "peak_nits"
@@ -519,7 +533,6 @@
           "name": "reference_white_nits",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "reference_white_nits"
@@ -536,7 +549,6 @@
           "name": "knee_mode",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "knee_mode"
@@ -553,7 +565,6 @@
           "name": "knee",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "knee"
@@ -570,7 +581,6 @@
           "name": "shoulder_gamma",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "shoulder_gamma"
@@ -587,7 +597,6 @@
           "name": "temporal_smoothing",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "temporal_smoothing"
@@ -604,7 +613,6 @@
           "name": "output_encoding",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "output_encoding"
@@ -895,7 +903,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -914,7 +921,6 @@
           "name": "highlight_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -930,7 +936,6 @@
           "name": "shadow_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -946,7 +951,6 @@
           "name": "highlight_confidence",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -962,7 +966,6 @@
           "name": "shadow_confidence",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -978,7 +981,6 @@
           "name": "report",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -994,7 +996,6 @@
           "name": "reconstructed_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -1026,10 +1027,36 @@
         64,
         "highlights",
         1,
-        1.0,
-        1.0,
+        1,
+        1,
         ""
       ],
+      "widgets_values_named": {
+        "inverse_oetf": "sRGB",
+        "peak_nits": 1000,
+        "reference_white_nits": 203,
+        "knee_mode": "adaptive",
+        "knee": 0.75,
+        "shoulder_gamma": 2,
+        "temporal_smoothing": 0.85,
+        "output_encoding": "Linear",
+        "rudra_blend": 1,
+        "batch_mode": "Independent Images",
+        "shadow_threshold": 0.05,
+        "processing_mode": "Hybrid",
+        "highlight_threshold": 0.98,
+        "temporal_window": 5,
+        "temporal_checkpoint": "",
+        "learned_backend": "Auto",
+        "pixel_checkpoint": "",
+        "pixel_tile_size": 512,
+        "pixel_tile_overlap": 64,
+        "pixel_recovery_mode": "highlights",
+        "pixel_strength": 1,
+        "aces2_strength": 1,
+        "aces2_saturation": 1,
+        "aces2_package": ""
+      },
       "color": "#3c2020",
       "bgcolor": "#141419"
     },
@@ -1047,7 +1074,6 @@
       "flags": {},
       "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1059,7 +1085,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 2
@@ -1092,6 +1117,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1174,7 +1206,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1182,7 +1213,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1191,6 +1334,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1208,7 +1358,6 @@
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1220,7 +1369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 3
@@ -1265,7 +1413,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1282,7 +1429,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1430,23 +1576,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -1560,6 +1689,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1571,21 +1757,51 @@
         "IMG │ EXR (32-bit float)",
         "sdr_to_hdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/sdr_to_hdr",
+        "format": "IMG │ EXR (32-bit float)",
+        "filename": "sdr_to_hdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1603,7 +1819,6 @@
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
       "title": "SDR to HDR",
@@ -1611,6 +1826,9 @@
       "widgets_values": [
         "1. Pick an 8-bit image or video in Read.\n2. SDR to HDR Universal runs RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0, about 3 MB, downloaded on first run). The result is a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source codes; reconstructed_mask shows where light was estimated.\n3. The Viewer shows the master through ACES 2.0 with the SDR source as compare_image: use the wipe to see what changed.\n4. Write saves a 32-bit float EXR. Set output_path and filename to taste.\n\nFor large blown highlights, add SDR to HDR AI Fill (RUDRA v3) after Universal (needs Wan2.1-VACE-1.3B and a 16 GB GPU). The report output says which model ran."
       ],
+      "widgets_values_named": {
+        "text": "1. Pick an 8-bit image or video in Read.\n2. SDR to HDR Universal runs RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0, about 3 MB, downloaded on first run). The result is a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source codes; reconstructed_mask shows where light was estimated.\n3. The Viewer shows the master through ACES 2.0 with the SDR source as compare_image: use the wipe to see what changed.\n4. Write saves a 32-bit float EXR. Set output_path and filename to taste.\n\nFor large blown highlights, add SDR to HDR AI Fill (RUDRA v3) after Universal (needs Wan2.1-VACE-1.3B and a 16 GB GPU). The report output says which model ran."
+      },
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -1649,19 +1867,16 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
   "groups": [],
-  "definitions": null,
   "config": {},
   "extra": {
     "ds": {
       "scale": 0.9,
       "offset": [
-        416,
-        110
+        2871.5555555555557,
+        1286
       ]
-    },
-    "reroutes": null
+    }
   },
   "version": 0.4
 }
