@@ -275,4 +275,41 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     return false;
 }
 
-export default { fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, loaderModelType, setWidgetVisible, syncAutoValue };
+// FIX: the ComfyUI frontend (1.4x) saves widgets_values at each widget's own index,
+// leaving a null where an unsaved widget (serialize: false) sits, but restores them
+// in order skipping unsaved widgets. An unsaved DOM widget ahead of saved ones (the
+// Prompt's tab row, the Write's Audio rule) moved every later value one widget up on
+// reload. compactWidgetValues saves without the hole; restoreHoledWidgetValues, called
+// from configure, reads graphs saved with it.
+export function compactWidgetValues(node, o) {
+    const vals = o?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || vals.length !== widgets.length) return;
+    if (!widgets.some(w => w?.serialize === false)) return;
+    o.widgets_values = widgets.flatMap((w, i) => (w?.serialize === false ? [] : [vals[i] ?? null]));
+}
+
+export function restoreHoledWidgetValues(node, info) {
+    // Runs before the frontend's configure, which reads the values in order
+    // (and, for some lengths, drops entries it takes for forceInput slots).
+    const vals = info?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || vals.length !== widgets.length) return;
+    const holeAhead = widgets.some((w, i) => w?.serialize === false && vals[i] == null
+        && widgets.slice(i + 1).some(x => x?.serialize !== false));
+    if (holeAhead) info.widgets_values = vals.filter((_, i) => widgets[i]?.serialize !== false);
+}
+
+// FIX: frontends that support fallbackWidgetsValuesNames (1.5x) read every unnamed
+// widgets_values array by that legacy order, so a graph saved by an older frontend
+// in the current widget order (1.4x saves no widgets_values_named) loaded shifted.
+// When the array has the current length, not the legacy one, name it in the
+// current order first; the frontend then restores it by name. Frontends without
+// named restore ignore widgets_values_named.
+export function nameCurrentWidgetValues(node, info, legacyNames) {
+    const vals = info?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || info.widgets_values_named) return;
+    const saved = widgets.filter(w => w && w.serialize !== false);
+    if (vals.length !== saved.length || vals.length === legacyNames?.length) return;
+    info.widgets_values_named = Object.fromEntries(saved.map((w, i) => [w.name, vals[i]]));
+}
+
+export default { compactWidgetValues, nameCurrentWidgetValues, fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, loaderModelType, restoreHoledWidgetValues, setWidgetVisible, syncAutoValue };
