@@ -8,9 +8,10 @@ OpenImageIO>=3.0.0
 # DPX has no Pillow plugin; OpenImageIO is the VFX-industry-standard library for it.
 opencolorio>=2.5.0
 transformers>=4.36.0
-# Multipass Estimate runs Marigold IID (materials and lighting) through diffusers;
+# The RUDRA AI fill runs Wan VACE (diffusers 0.35+) and Multipass Estimate runs
+# Marigold IID (materials and lighting) through diffusers;
 # accelerate lets its 1.7 GB UNets load without a second full-size copy in RAM.
-diffusers>=0.33.0
+diffusers>=0.35.0
 accelerate>=0.26.0
 scipy>=1.10.0
 defusedxml>=0.7.1

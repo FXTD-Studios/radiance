@@ -48,20 +48,28 @@ class TestDownload:
         for pkg in dl.PACKAGES.values():
             assert pkg.files
             for rel, size, digest in pkg.files:
-                assert size > 0 and len(digest) == 64
-                assert dl.REVISION in pkg.url(rel)
+                assert size > 0 and len(digest) in (40, 64)
+                assert pkg.revision in pkg.url(rel)
+                if size > 1_000_000:
+                    assert len(digest) == 64          # weights: SHA-256
 
-    def test_aces2_is_small_and_on_by_default_genfill_is_ask_first(self):
+    def test_everything_downloads_on_first_use_by_default(self):
         dl = _dl()
-        assert dl.ACES2.default_allowed and dl.ACES2.size_mb <= 5
-        assert not dl.GENFILL_V3.default_allowed
+        assert dl.ACES2.size_mb <= 5
+        for pkg in dl.PACKAGES.values():
+            assert pkg.default_allowed
+        # The text encoder is its own package, so the base model never pulls it.
+        base = {r for r, _, _ in dl.WAN_BASE.files}
+        assert not any(r.startswith("text_encoder/") for r in base)
+        assert dl.WAN_BASE.dirname == dl.WAN_TEXT_ENCODER.dirname == "Wan2.1-VACE-1.3B-diffusers"
+        assert len(dl.WAN_REVISION) == 40
 
     def test_refused_when_downloads_are_off(self, monkeypatch, tmp_path):
         dl = _dl()
         dl._reset_for_tests()
         monkeypatch.setenv("RADIANCE_ALLOW_DOWNLOADS", "0")
         called = []
-        monkeypatch.setattr(dl, "_fetch", lambda url, dest: called.append(url))
+        monkeypatch.setattr(dl, "_fetch", lambda url, dest, *a: called.append(url))
         assert dl.download_package(dl.ACES2) is None
         assert not called
 
@@ -79,7 +87,7 @@ class TestDownload:
         paths = importlib.import_module("radiance.model.paths")
         monkeypatch.setattr(paths, "radiance_model_dirs", lambda: [tmp_path])
 
-        def fetch(url, dest):
+        def fetch(url, dest, *a):
             rel = url.split("/models/FAKE/", 1)[1]
             Path(dest).write_bytes(payloads[rel])
         monkeypatch.setattr(dl, "_fetch", fetch)
@@ -95,7 +103,7 @@ class TestDownload:
         pkg = self._fake_pkg(dl, {"a.bin": b"right"})
         paths = importlib.import_module("radiance.model.paths")
         monkeypatch.setattr(paths, "radiance_model_dirs", lambda: [tmp_path])
-        monkeypatch.setattr(dl, "_fetch", lambda url, dest: Path(dest).write_bytes(b"wrong"))
+        monkeypatch.setattr(dl, "_fetch", lambda url, dest, *a: Path(dest).write_bytes(b"wrong"))
         assert dl.download_package(pkg) is None
         assert not (tmp_path / "FAKE_PKG" / "a.bin").exists()
         assert not (tmp_path / "FAKE_PKG" / "a.bin.part").exists()
@@ -305,3 +313,44 @@ def test_pq_places_diffuse_white_at_reference_white():
     pq = uu._encode_acescg(white.view(1, 1, 1, 3), "PQ (HDR10)", 10.0, 2.03)
     expect = linear_to_pq_bt2408(torch.ones(1, 1, 1, 3), peak_nits=1000.0, reference_white_nits=203.0)
     assert torch.allclose(pq, expect, atol=1e-4)
+
+
+class TestResumeAndBlobIds:
+    def test_git_blob_id_verifies_small_files(self, tmp_path):
+        dl = _dl()
+        f = tmp_path / "x.json"
+        f.write_bytes(b'{"a": 1}\n')
+        import hashlib
+        expect = hashlib.sha1(b"blob 9\0" + f.read_bytes()).hexdigest()
+        assert dl.file_digest(f, expect) == expect
+
+    def test_a_partial_file_resumes(self, tmp_path, monkeypatch):
+        dl = _dl()
+        data = bytes(range(256)) * 4000
+        import hashlib, io
+        part = tmp_path / "big.bin.part"
+        part.write_bytes(data[:100_000])
+        seen = {}
+
+        class Resp(io.BytesIO):
+            status = 206
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def urlopen(req, timeout=0):
+            seen["range"] = req.headers.get("Range")
+            start = int(seen["range"].split("=")[1].rstrip("-"))
+            return Resp(data[start:])
+        monkeypatch.setattr(dl.urllib.request, "urlopen", urlopen)
+        pkg = dl.Package("R", "r", "d", (("big.bin", len(data), hashlib.sha256(data).hexdigest()),), 1, True)
+        dl.download_to(pkg, tmp_path, log=lambda *_: None)
+        assert seen["range"] == "bytes=100000-"
+        assert (tmp_path / "big.bin").read_bytes() == data
+
+    def test_install_script_prefetch_uses_only_the_standard_library(self):
+        import ast
+        src = (Path(__file__).parents[1] / "model" / "rudra_download.py").read_text()
+        top = [n for n in ast.parse(src).body if isinstance(n, (ast.Import, ast.ImportFrom))]
+        names = {a.name.split(".")[0] for n in top for a in n.names} | {
+            (n.module or "").split(".")[0] for n in top if isinstance(n, ast.ImportFrom)}
+        assert not names & {"radiance", "torch", "numpy"}

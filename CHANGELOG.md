@@ -156,8 +156,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   RUDRA's estimator sets their brightness (±3 stops offset), in 33-frame
   windows overlapping by 8. Highlight and shadow prompts. No 8-bit code of the
   master's ACES 2.0 SDR view changes and untouched pixels are bit-identical;
-  `generated_mask` marks what was drawn. Opt-in download of the 271 MB package;
-  needs `diffusers` 0.35+ and about 16 GB of VRAM. Experimental.
+  `generated_mask` marks what was drawn. Its package (271 MB) and the Wan base
+  model (7.7 GB; the 11.4 GB text encoder only for a custom prompt) download on
+  first use, pinned, hash-checked and resumable. Needs about 16 GB of VRAM.
+  Experimental.
+- **Zero setup for SDR → HDR.** `install.py` installs diffusers 0.35+ (an
+  older one is upgraded; Wan VACE needs it) and fetches RUDRA ACES 2 into
+  `models/radiance/RUDRA_ACES_2`, so the learned path works offline from the
+  first queue. `RADIANCE_ALLOW_DOWNLOADS=0` still turns every download off.
 - **EXR MultiPart writes RUDRA's mask channels:** optional `rudra_reconstructed`
   and `rudra_generated` masks go into the beauty part as `rudra.reconstructed`
   and `rudra.generated`, the names RUDRA's tools read.
