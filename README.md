@@ -253,7 +253,7 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 [RUDRA 1.0](https://huggingface.co/fxtdstudios/rudra-models) is the learned model behind **SDR → HDR Universal**, **SDR → HDR Recover** and **SDR → HDR AI Fill**.
 
 - **RUDRA ACES 2** (default, 2.2 MB, downloads on first use): the learned ACES 2.0 reconstruction. SDR in, an ACEScg master out (diffuse white = 1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source's 8-bit codes. Universal and Recover use it whenever it can run; the `reconstructed_mask` output says where light was estimated.
-- **RUDRA AI fill v3** (271 MB, opt-in): a LoRA for Wan2.1-VACE-1.3B that draws the shape inside fully clipped highlights, plus an estimator that sets their brightness (±3 stops). Region prompts. Needs the base model, `diffusers` 0.35 or newer and about 16 GB of VRAM. Experimental: what it draws is plausible, not recovered.
+- **RUDRA AI fill v3** (271 MB, plus the 7.7 GB Wan base model; both download the first time the AI Fill node runs): a LoRA for Wan2.1-VACE-1.3B that draws the shape inside fully clipped highlights, plus an estimator that sets their brightness (±3 stops). Region prompts. Needs about 16 GB of VRAM. Experimental: what it draws is plausible, not recovered.
 
 | Files | Download | Save in |
 |---|---|---|
@@ -262,7 +262,7 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 | the whole repository | [Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | `models/radiance/Wan2.1-VACE-1.3B-diffusers/` |
 | `sdr2hdr_shadow_v1.safetensors` (RUDRA 3.x, fallback) | [Browse](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `models/radiance/` |
 
-The AI fill node downloads its package (and the base model, into the Hugging Face cache) only with `allow_download` on.
+**Nothing to set up.** Installing Radiance (ComfyUI-Manager runs `install.py`) installs the libraries (OpenColorIO 2.5+, diffusers 0.35+) and fetches RUDRA ACES 2; if you install by hand, it downloads on the first SDR → HDR run instead. The AI fill's files download the first time that node runs on a frame with clipped highlights: the LoRA package and the Wan base model (VAE, transformer, tokenizer), and the 11.4 GB umT5 text encoder only the first time you type a custom prompt (the default prompt is cached). Every file is pinned and hash-checked, and an interrupted download resumes. To keep everything offline, set `RADIANCE_ALLOW_DOWNLOADS=0` and put the files above in place yourself.
 
 **Licence:** the RUDRA 1.0 models (ACES 2, AI fill v3) are Apache 2.0, so commercial use is allowed; Wan2.1-VACE-1.3B is Apache 2.0 from Wan-AI. The older RUDRA 3.x weights (`sdr2hdr_shadow_v1` and the temporal model) stay non-commercial ([weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE)).
 
@@ -278,6 +278,7 @@ Drag a file onto the ComfyUI canvas to open it.
 |---|---|
 | [Starter](workflows/start.json) | Generate an image and review it |
 | [SDR to HDR](workflows/sdr_to_hdr.json) | Turn an image into an ACES 2.0 HDR master with RUDRA, compare it with the SDR and save EXR |
+| [SDR to HDR with AI fill](workflows/sdr_to_hdr_ai_fill.json) | The same, plus RUDRA AI fill for large blown highlights (16 GB GPU; models download on first run) |
 | [Colour grading](workflows/colour_grade.json) | Grade an image and save it |
 | [HDR VAE](workflows/hdr_vae_encode_decode.json) | Encode, decode and compare an HDR image |
 | [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight |

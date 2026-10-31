@@ -82,9 +82,10 @@ These parts of the release gate need checks that cannot run in CI:
   tiles when a frame does not fit (an approximation near tile seams, said in
   the report). The 3.x latent decoders were retired in 3.5.0; the 3.x pixel
   and temporal models remain as fallbacks.
-- **AI fill v3 is experimental.** It needs Wan2.1-VACE-1.3B, `diffusers` 0.35
-  or newer and about 16 GB of VRAM; a new prompt loads the 11 GB umT5 text
-  encoder on the CPU once. What it draws is plausible, not recovered: review
+- **AI fill v3 is experimental and large.** About 16 GB of VRAM. Its first run
+  downloads 8 GB (the LoRA package and Wan2.1-VACE-1.3B), and the first custom
+  prompt another 11.4 GB (the umT5 text encoder, loaded on the CPU once; the
+  default prompt is cached and needs none of it). What it draws is plausible, not recovered: review
   every frame (the report flags frames where the fill adds flicker). RUDRA's
   registered gates covered highlights; shadow fill is off by default.
 
