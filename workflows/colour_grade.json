@@ -1,5 +1,5 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "65007391-e9cc-4f5d-98f7-fc18ebe0738a",
   "revision": 0,
   "last_node_id": 7,
   "last_link_id": 5,
@@ -13,12 +13,11 @@
       ],
       "size": [
         270,
-        620
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -390,7 +386,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -406,7 +401,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -440,6 +434,30 @@
         "reload",
         ""
       ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -452,12 +470,11 @@
       ],
       "size": [
         270,
-        294
+        314
       ],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -469,7 +486,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 1
@@ -490,6 +506,13 @@
           "link": null
         },
         {
+          "localized_name": "ocio_context",
+          "name": "ocio_context",
+          "shape": 7,
+          "type": "RADIANCE_OCIO",
+          "link": null
+        },
+        {
           "color_off": null,
           "color_on": null,
           "dir": null,
@@ -499,7 +522,6 @@
           "name": "mode",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "mode"
@@ -516,7 +538,6 @@
           "name": "preset",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "preset"
@@ -533,7 +554,6 @@
           "name": "temperature",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "temperature"
@@ -550,7 +570,6 @@
           "name": "tint",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "tint"
@@ -567,7 +586,6 @@
           "name": "src_illuminant",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "src_illuminant"
@@ -584,7 +602,6 @@
           "name": "dst_illuminant",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "dst_illuminant"
@@ -601,7 +618,6 @@
           "name": "gain_r",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "gain_r"
@@ -618,7 +634,6 @@
           "name": "gain_g",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "gain_g"
@@ -635,7 +650,6 @@
           "name": "gain_b",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "gain_b"
@@ -652,7 +666,6 @@
           "name": "strength",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "strength"
@@ -671,7 +684,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -689,7 +701,6 @@
           "name": "grade_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -711,6 +722,18 @@
         1,
         1
       ],
+      "widgets_values_named": {
+        "mode": "Temperature / Tint",
+        "preset": "Manual",
+        "temperature": 6500,
+        "tint": 0,
+        "src_illuminant": "D65",
+        "dst_illuminant": "D50",
+        "gain_r": 1,
+        "gain_g": 1,
+        "gain_b": 1,
+        "strength": 1
+      },
       "color": "#2e3a3a",
       "bgcolor": "#141419"
     },
@@ -728,7 +751,6 @@
       "flags": {},
       "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -740,7 +762,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 2
@@ -770,7 +791,6 @@
           "name": "preset",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "preset"
@@ -787,7 +807,6 @@
           "name": "preset_strength",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "preset_strength"
@@ -1095,7 +1114,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1113,7 +1131,6 @@
           "name": "grade_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1144,6 +1161,27 @@
         0.5,
         1
       ],
+      "widgets_values_named": {
+        "preset": "None (Custom)",
+        "preset_strength": 1,
+        "match_strength": 1,
+        "preset_file": "",
+        "lift_r": 0,
+        "lift_g": 0,
+        "lift_b": 0,
+        "gamma_r": 1,
+        "gamma_g": 1,
+        "gamma_b": 1,
+        "gain_r": 1,
+        "gain_g": 1,
+        "gain_b": 1,
+        "offset_r": 0,
+        "offset_g": 0,
+        "offset_b": 0,
+        "contrast": 1,
+        "pivot": 0.5,
+        "saturation": 1
+      },
       "color": "#2e3a3a",
       "bgcolor": "#141419"
     },
@@ -1161,7 +1199,6 @@
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1173,7 +1210,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 3
@@ -1203,7 +1239,6 @@
           "name": "slope_r",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "slope_r"
@@ -1220,7 +1255,6 @@
           "name": "slope_g",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "slope_g"
@@ -1237,7 +1271,6 @@
           "name": "slope_b",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "slope_b"
@@ -1254,7 +1287,6 @@
           "name": "offset_r",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "offset_r"
@@ -1271,7 +1303,6 @@
           "name": "offset_g",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "offset_g"
@@ -1288,7 +1319,6 @@
           "name": "offset_b",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "offset_b"
@@ -1305,7 +1335,6 @@
           "name": "power_r",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "power_r"
@@ -1322,7 +1351,6 @@
           "name": "power_g",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "power_g"
@@ -1339,7 +1367,6 @@
           "name": "power_b",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "power_b"
@@ -1356,7 +1383,6 @@
           "name": "saturation",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "saturation"
@@ -1375,7 +1401,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1394,7 +1419,6 @@
           "name": "cdl_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1416,6 +1440,18 @@
         1,
         1
       ],
+      "widgets_values_named": {
+        "slope_r": 1,
+        "slope_g": 1,
+        "slope_b": 1,
+        "offset_r": 0,
+        "offset_g": 0,
+        "offset_b": 0,
+        "power_r": 1,
+        "power_g": 1,
+        "power_b": 1,
+        "saturation": 1
+      },
       "color": "#2e3a3a",
       "bgcolor": "#141419"
     },
@@ -1428,12 +1464,11 @@
       ],
       "size": [
         640,
-        576
+        614
       ],
       "flags": {},
       "order": 5,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1445,7 +1480,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 4
@@ -1478,6 +1512,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1560,7 +1601,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1568,7 +1608,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1577,6 +1729,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1594,7 +1753,6 @@
       "flags": {},
       "order": 6,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1606,7 +1764,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 5
@@ -1651,7 +1808,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1668,7 +1824,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1816,23 +1971,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -1946,6 +2084,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1954,24 +2149,54 @@
       },
       "widgets_values": [
         "radiance_examples/colour_grade",
-        "IMG \u2502 TIFF (16-bit)",
+        "IMG │ TIFF (16-bit)",
         "graded",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/colour_grade",
+        "format": "IMG │ TIFF (16-bit)",
+        "filename": "graded",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1989,7 +2214,6 @@
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
       "title": "Grade",
@@ -1997,6 +2221,9 @@
       "widgets_values": [
         "A basic grade in order: White Balance, then Grade (lift, gamma, gain, offset, contrast, saturation, or a preset), then an ASC CDL (slope, offset, power, saturation) you can export with CDL Export for Resolve or Nuke.\n\nThe Viewer has its own exposure and gamma for checking; they do not change the output. Write saves a 16-bit TIFF."
       ],
+      "widgets_values_named": {
+        "text": "A basic grade in order: White Balance, then Grade (lift, gamma, gain, offset, contrast, saturation, or a preset), then an ASC CDL (slope, offset, power, saturation) you can export with CDL Export for Resolve or Nuke.\n\nThe Viewer has its own exposure and gamma for checking; they do not change the output. Write saves a 16-bit TIFF."
+      },
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -2043,19 +2270,16 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
   "groups": [],
-  "definitions": null,
   "config": {},
   "extra": {
     "ds": {
       "scale": 0.9,
       "offset": [
-        416,
-        110
+        2871.5555555555557,
+        1286
       ]
-    },
-    "reroutes": null
+    }
   },
   "version": 0.4
 }

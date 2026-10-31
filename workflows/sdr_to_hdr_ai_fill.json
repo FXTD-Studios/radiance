@@ -1,5 +1,5 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "68be048a-a3b0-46d0-b006-34b8850ee5fe",
   "revision": 0,
   "last_node_id": 6,
   "last_link_id": 7,
@@ -13,12 +13,11 @@
       ],
       "size": [
         270,
-        620
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -391,7 +387,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -407,7 +402,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -441,6 +435,30 @@
         "reload",
         ""
       ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -453,12 +471,11 @@
       ],
       "size": [
         283.37890625,
-        638
+        730
       ],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -470,7 +487,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 1
@@ -485,7 +501,6 @@
           "name": "inverse_oetf",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "inverse_oetf"
@@ -502,7 +517,6 @@
           "name": "peak_nits",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "peak_nits"
@@ -519,7 +533,6 @@
           "name": "reference_white_nits",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "reference_white_nits"
@@ -536,7 +549,6 @@
           "name": "knee_mode",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "knee_mode"
@@ -553,7 +565,6 @@
           "name": "knee",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "knee"
@@ -570,7 +581,6 @@
           "name": "shoulder_gamma",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "shoulder_gamma"
@@ -587,7 +597,6 @@
           "name": "temporal_smoothing",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "FLOAT",
           "widget": {
             "name": "temporal_smoothing"
@@ -604,7 +613,6 @@
           "name": "output_encoding",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "output_encoding"
@@ -895,7 +903,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -913,7 +920,6 @@
           "name": "highlight_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -929,7 +935,6 @@
           "name": "shadow_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -945,7 +950,6 @@
           "name": "highlight_confidence",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -961,7 +965,6 @@
           "name": "shadow_confidence",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -977,7 +980,6 @@
           "name": "report",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -993,7 +995,6 @@
           "name": "reconstructed_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -1027,10 +1028,36 @@
         64,
         "highlights",
         1,
-        1.0,
-        1.0,
+        1,
+        1,
         ""
       ],
+      "widgets_values_named": {
+        "inverse_oetf": "sRGB",
+        "peak_nits": 1000,
+        "reference_white_nits": 203,
+        "knee_mode": "adaptive",
+        "knee": 0.75,
+        "shoulder_gamma": 2,
+        "temporal_smoothing": 0.85,
+        "output_encoding": "Linear",
+        "rudra_blend": 1,
+        "batch_mode": "Independent Images",
+        "shadow_threshold": 0.05,
+        "processing_mode": "Hybrid",
+        "highlight_threshold": 0.98,
+        "temporal_window": 5,
+        "temporal_checkpoint": "",
+        "learned_backend": "Auto",
+        "pixel_checkpoint": "",
+        "pixel_tile_size": 512,
+        "pixel_tile_overlap": 64,
+        "pixel_recovery_mode": "highlights",
+        "pixel_strength": 1,
+        "aces2_strength": 1,
+        "aces2_saturation": 1,
+        "aces2_package": ""
+      },
       "color": "#3c2020",
       "bgcolor": "#141419"
     },
@@ -1059,64 +1086,9 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 2
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "image_encoding",
-          "locked": null,
-          "name": "image_encoding",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "COMBO",
-          "pos": null,
-          "link": null,
-          "widget": {
-            "name": "image_encoding"
-          }
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "prompt_highlight",
-          "locked": null,
-          "name": "prompt_highlight",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "STRING",
-          "pos": null,
-          "link": null,
-          "widget": {
-            "name": "prompt_highlight"
-          }
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "brightness_offset",
-          "locked": null,
-          "name": "brightness_offset",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "FLOAT",
-          "pos": null,
-          "link": null,
-          "widget": {
-            "name": "brightness_offset"
-          }
         },
         {
           "color_off": null,
@@ -1138,6 +1110,54 @@
           "color_on": null,
           "dir": null,
           "label": null,
+          "localized_name": "image_encoding",
+          "locked": null,
+          "name": "image_encoding",
+          "nameLocked": null,
+          "removable": null,
+          "type": "COMBO",
+          "widget": {
+            "name": "image_encoding"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "prompt_highlight",
+          "locked": null,
+          "name": "prompt_highlight",
+          "nameLocked": null,
+          "removable": null,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_highlight"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "brightness_offset",
+          "locked": null,
+          "name": "brightness_offset",
+          "nameLocked": null,
+          "removable": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness_offset"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
           "localized_name": "fill_shadows",
           "locked": null,
           "name": "fill_shadows",
@@ -1145,11 +1165,10 @@
           "removable": null,
           "shape": 7,
           "type": "BOOLEAN",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "fill_shadows"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1163,11 +1182,10 @@
           "removable": null,
           "shape": 7,
           "type": "STRING",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "prompt_shadow"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1181,11 +1199,10 @@
           "removable": null,
           "shape": 7,
           "type": "INT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "highlight_context_code"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1199,11 +1216,10 @@
           "removable": null,
           "shape": 7,
           "type": "FLOAT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "max_gain_stops"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1217,11 +1233,10 @@
           "removable": null,
           "shape": 7,
           "type": "FLOAT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "shape_gain"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1235,11 +1250,10 @@
           "removable": null,
           "shape": 7,
           "type": "BOOLEAN",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "use_brightness_estimator"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1253,11 +1267,10 @@
           "removable": null,
           "shape": 7,
           "type": "INT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "steps"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1271,11 +1284,10 @@
           "removable": null,
           "shape": 7,
           "type": "INT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "seed"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1289,11 +1301,10 @@
           "removable": null,
           "shape": 7,
           "type": "FLOAT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "guidance"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1307,11 +1318,10 @@
           "removable": null,
           "shape": 7,
           "type": "STRING",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "negative_prompt"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1325,11 +1335,10 @@
           "removable": null,
           "shape": 7,
           "type": "COMBO",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "window"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1343,11 +1352,10 @@
           "removable": null,
           "shape": 7,
           "type": "INT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "overlap"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1361,11 +1369,10 @@
           "removable": null,
           "shape": 7,
           "type": "INT",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "max_area"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1379,11 +1386,10 @@
           "removable": null,
           "shape": 7,
           "type": "STRING",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "base_model"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1397,11 +1403,10 @@
           "removable": null,
           "shape": 7,
           "type": "STRING",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "fill_package"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1415,11 +1420,10 @@
           "removable": null,
           "shape": 7,
           "type": "BOOLEAN",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "allow_download"
-          }
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -1433,11 +1437,10 @@
           "removable": null,
           "shape": 7,
           "type": "BOOLEAN",
-          "pos": null,
-          "link": null,
           "widget": {
             "name": "keep_loaded"
-          }
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1451,7 +1454,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1470,7 +1472,6 @@
           "name": "generated_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -1486,7 +1487,6 @@
           "name": "reconstructed_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -1502,7 +1502,6 @@
           "name": "report",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1515,17 +1514,17 @@
       "widgets_values": [
         "Linear (Rec.709)",
         "",
-        0.0,
+        0,
         false,
         "",
         250,
-        3.0,
-        1.0,
+        3,
+        1,
         true,
         30,
         0,
         "fixed",
-        1.0,
+        1,
         "",
         33,
         8,
@@ -1535,7 +1534,29 @@
         true,
         true
       ],
-      "showAdvanced": null,
+      "widgets_values_named": {
+        "image_encoding": "Linear (Rec.709)",
+        "prompt_highlight": "",
+        "brightness_offset": 0,
+        "fill_shadows": false,
+        "prompt_shadow": "",
+        "highlight_context_code": 250,
+        "max_gain_stops": 3,
+        "shape_gain": 1,
+        "use_brightness_estimator": true,
+        "steps": 30,
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "guidance": 1,
+        "negative_prompt": "",
+        "window": 33,
+        "overlap": 8,
+        "max_area": 399360,
+        "base_model": "",
+        "fill_package": "",
+        "allow_download": true,
+        "keep_loaded": true
+      },
       "color": "#3c2020",
       "bgcolor": "#141419"
     },
@@ -1553,7 +1574,6 @@
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1565,7 +1585,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 6
@@ -1598,6 +1617,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1680,7 +1706,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1688,7 +1713,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1697,6 +1834,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1714,7 +1858,6 @@
       "flags": {},
       "order": 5,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1726,7 +1869,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 7
@@ -1771,7 +1913,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1788,7 +1929,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1936,23 +2076,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -2066,6 +2189,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -2077,21 +2257,51 @@
         "IMG │ EXR (32-bit float)",
         "sdr_to_hdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/sdr_to_hdr",
+        "format": "IMG │ EXR (32-bit float)",
+        "filename": "sdr_to_hdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -2109,7 +2319,6 @@
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
       "title": "SDR to HDR",
@@ -2117,6 +2326,9 @@
       "widgets_values": [
         "SDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame."
       ],
+      "widgets_values_named": {
+        "text": "SDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame."
+      },
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -2171,19 +2383,16 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
   "groups": [],
-  "definitions": null,
   "config": {},
   "extra": {
     "ds": {
       "scale": 0.9,
       "offset": [
-        416,
-        110
+        2871.5555555555557,
+        1286
       ]
-    },
-    "reroutes": null
+    }
   },
   "version": 0.4
 }

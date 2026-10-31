@@ -16,19 +16,40 @@
         82
       ],
       "flags": {},
-      "order": 1,
+      "order": 0,
       "mode": 0,
-      "inputs": [],
-      "outputs": [
+      "inputs": [
         {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            1
-          ],
-          "slot_index": 0
+          "localized_name": "unet_name",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "weight_dtype",
+          "name": "weight_dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "weight_dtype"
+          },
+          "link": null
         }
       ],
+      "outputs": [
+        {
+          "localized_name": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "slot_index": 0,
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "WAN 2.2 HIGH-noise model",
       "properties": {
         "Node name for S&R": "UNETLoader"
       },
@@ -36,7 +57,12 @@
         "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
         "default"
       ],
-      "title": "WAN 2.2 HIGH-noise model"
+      "widgets_values_named": {
+        "unet_name": "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 2,
@@ -50,19 +76,40 @@
         82
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
-      "inputs": [],
-      "outputs": [
+      "inputs": [
         {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            2
-          ],
-          "slot_index": 0
+          "localized_name": "unet_name",
+          "name": "unet_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "unet_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "weight_dtype",
+          "name": "weight_dtype",
+          "type": "COMBO",
+          "widget": {
+            "name": "weight_dtype"
+          },
+          "link": null
         }
       ],
+      "outputs": [
+        {
+          "localized_name": "MODEL",
+          "name": "MODEL",
+          "type": "MODEL",
+          "slot_index": 0,
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "WAN 2.2 LOW-noise model",
       "properties": {
         "Node name for S&R": "UNETLoader"
       },
@@ -70,7 +117,12 @@
         "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
         "default"
       ],
-      "title": "WAN 2.2 LOW-noise model"
+      "widgets_values_named": {
+        "unet_name": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 3,
@@ -84,18 +136,48 @@
         106
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "clip_name",
+          "name": "clip_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "clip_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "type",
+          "name": "type",
+          "type": "COMBO",
+          "widget": {
+            "name": "type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "device",
+          "name": "device",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "device"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "CLIP",
           "name": "CLIP",
           "type": "CLIP",
+          "slot_index": 0,
           "links": [
             3,
             4
-          ],
-          "slot_index": 0
+          ]
         }
       ],
       "properties": {
@@ -105,7 +187,14 @@
         "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
         "wan",
         "default"
-      ]
+      ],
+      "widgets_values_named": {
+        "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "type": "wan",
+        "device": "default"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 4,
@@ -119,17 +208,28 @@
         58
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "localized_name": "vae_name",
+          "name": "vae_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "vae_name"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
+          "localized_name": "VAE",
           "name": "VAE",
           "type": "VAE",
+          "slot_index": 0,
           "links": [
             5
-          ],
-          "slot_index": 0
+          ]
         }
       ],
       "properties": {
@@ -137,7 +237,12 @@
       },
       "widgets_values": [
         "wan_2.1_vae.safetensors"
-      ]
+      ],
+      "widgets_values_named": {
+        "vae_name": "wan_2.1_vae.safetensors"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 5,
@@ -151,33 +256,49 @@
         160
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "clip",
           "name": "clip",
           "type": "CLIP",
           "link": 3
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "CONDITIONING",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
+          "slot_index": 0,
           "links": [
             6,
             7
-          ],
-          "slot_index": 0
+          ]
         }
       ],
+      "title": "Positive",
       "properties": {
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
         "Golden hour city street after rain, low sun flaring between buildings, wet asphalt with bright specular reflections, neon signs, cinematic, shallow depth of field, smooth dolly forward"
       ],
-      "title": "Positive"
+      "widgets_values_named": {
+        "text": "Golden hour city street after rain, low sun flaring between buildings, wet asphalt with bright specular reflections, neon signs, cinematic, shallow depth of field, smooth dolly forward"
+      },
+      "color": "#202026",
+      "bgcolor": "#141419"
     },
     {
       "id": 6,
@@ -191,33 +312,49 @@
         120
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "clip",
           "name": "clip",
           "type": "CLIP",
           "link": 4
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "CONDITIONING",
           "name": "CONDITIONING",
           "type": "CONDITIONING",
+          "slot_index": 0,
           "links": [
             8,
             9
-          ],
-          "slot_index": 0
+          ]
         }
       ],
+      "title": "Negative",
       "properties": {
         "Node name for S&R": "CLIPTextEncode"
       },
       "widgets_values": [
         "blurry, low quality, watermark, text, jpeg artifacts, flicker, overexposed flat highlights"
       ],
-      "title": "Negative"
+      "widgets_values_named": {
+        "text": "blurry, low quality, watermark, text, jpeg artifacts, flicker, overexposed flat highlights"
+      },
+      "color": "#202026",
+      "bgcolor": "#141419"
     },
     {
       "id": 7,
@@ -231,19 +368,58 @@
         130
       ],
       "flags": {},
-      "order": 7,
+      "order": 4,
       "mode": 0,
-      "inputs": [],
-      "outputs": [
+      "inputs": [
         {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            10
-          ],
-          "slot_index": 0
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "length",
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "batch_size",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
         }
       ],
+      "outputs": [
+        {
+          "localized_name": "LATENT",
+          "name": "LATENT",
+          "type": "LATENT",
+          "slot_index": 0,
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "Video latent — 81 frames @ 1280×704",
       "properties": {
         "Node name for S&R": "EmptyHunyuanLatentVideo"
       },
@@ -253,7 +429,14 @@
         81,
         1
       ],
-      "title": "Video latent — 81 frames @ 1280×704"
+      "widgets_values_named": {
+        "width": 1280,
+        "height": 704,
+        "length": 81,
+        "batch_size": 1
+      },
+      "color": "#3e3e4a",
+      "bgcolor": "#141419"
     },
     {
       "id": 8,
@@ -271,36 +454,123 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "model",
           "name": "model",
           "type": "MODEL",
           "link": 1
         },
         {
+          "localized_name": "positive",
           "name": "positive",
           "type": "CONDITIONING",
           "link": 6
         },
         {
+          "localized_name": "negative",
           "name": "negative",
           "type": "CONDITIONING",
           "link": 8
         },
         {
+          "localized_name": "latent_image",
           "name": "latent_image",
           "type": "LATENT",
           "link": 10
+        },
+        {
+          "localized_name": "add_noise",
+          "name": "add_noise",
+          "type": "COMBO",
+          "widget": {
+            "name": "add_noise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "noise_seed",
+          "name": "noise_seed",
+          "type": "INT",
+          "widget": {
+            "name": "noise_seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sampler_name",
+          "name": "sampler_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scheduler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_at_step",
+          "name": "start_at_step",
+          "type": "INT",
+          "widget": {
+            "name": "start_at_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_at_step",
+          "name": "end_at_step",
+          "type": "INT",
+          "widget": {
+            "name": "end_at_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "return_with_leftover_noise",
+          "name": "return_with_leftover_noise",
+          "type": "COMBO",
+          "widget": {
+            "name": "return_with_leftover_noise"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "LATENT",
           "name": "LATENT",
           "type": "LATENT",
+          "slot_index": 0,
           "links": [
             11
-          ],
-          "slot_index": 0
+          ]
         }
       ],
+      "title": "Stage 1 — high-noise (steps 0-10)",
       "properties": {
         "Node name for S&R": "KSamplerAdvanced"
       },
@@ -316,7 +586,20 @@
         10,
         "enable"
       ],
-      "title": "Stage 1 — high-noise (steps 0-10)"
+      "widgets_values_named": {
+        "add_noise": "enable",
+        "noise_seed": 719411573,
+        "control_after_generate": "randomize",
+        "steps": 20,
+        "cfg": 3.5,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "start_at_step": 0,
+        "end_at_step": 10,
+        "return_with_leftover_noise": "enable"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 9,
@@ -334,36 +617,123 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "model",
           "name": "model",
           "type": "MODEL",
           "link": 2
         },
         {
+          "localized_name": "positive",
           "name": "positive",
           "type": "CONDITIONING",
           "link": 7
         },
         {
+          "localized_name": "negative",
           "name": "negative",
           "type": "CONDITIONING",
           "link": 9
         },
         {
+          "localized_name": "latent_image",
           "name": "latent_image",
           "type": "LATENT",
           "link": 11
+        },
+        {
+          "localized_name": "add_noise",
+          "name": "add_noise",
+          "type": "COMBO",
+          "widget": {
+            "name": "add_noise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "noise_seed",
+          "name": "noise_seed",
+          "type": "INT",
+          "widget": {
+            "name": "noise_seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "sampler_name",
+          "name": "sampler_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scheduler",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_at_step",
+          "name": "start_at_step",
+          "type": "INT",
+          "widget": {
+            "name": "start_at_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_at_step",
+          "name": "end_at_step",
+          "type": "INT",
+          "widget": {
+            "name": "end_at_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "return_with_leftover_noise",
+          "name": "return_with_leftover_noise",
+          "type": "COMBO",
+          "widget": {
+            "name": "return_with_leftover_noise"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "LATENT",
           "name": "LATENT",
           "type": "LATENT",
+          "slot_index": 0,
           "links": [
             12
-          ],
-          "slot_index": 0
+          ]
         }
       ],
+      "title": "Stage 2 — low-noise (steps 10-20)",
       "properties": {
         "Node name for S&R": "KSamplerAdvanced"
       },
@@ -379,7 +749,20 @@
         10000,
         "disable"
       ],
-      "title": "Stage 2 — low-noise (steps 10-20)"
+      "widgets_values_named": {
+        "add_noise": "disable",
+        "noise_seed": 0,
+        "control_after_generate": "fixed",
+        "steps": 20,
+        "cfg": 3.5,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "start_at_step": 10,
+        "end_at_step": 10000,
+        "return_with_leftover_noise": "disable"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 10,
@@ -397,11 +780,13 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "samples",
           "name": "samples",
           "type": "LATENT",
           "link": 12
         },
         {
+          "localized_name": "vae",
           "name": "vae",
           "type": "VAE",
           "link": 5
@@ -409,17 +794,20 @@
       ],
       "outputs": [
         {
+          "localized_name": "IMAGE",
           "name": "IMAGE",
           "type": "IMAGE",
+          "slot_index": 0,
           "links": [
             13
-          ],
-          "slot_index": 0
+          ]
         }
       ],
       "properties": {
         "Node name for S&R": "VAEDecode"
-      }
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
     },
     {
       "id": 11,
@@ -430,66 +818,317 @@
       ],
       "size": [
         400,
-        320
+        730
       ],
       "flags": {},
       "order": 11,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 13
+        },
+        {
+          "localized_name": "inverse_oetf",
+          "name": "inverse_oetf",
+          "type": "COMBO",
+          "widget": {
+            "name": "inverse_oetf"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "peak_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "reference_white_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee_mode",
+          "name": "knee_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "knee_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee",
+          "name": "knee",
+          "type": "FLOAT",
+          "widget": {
+            "name": "knee"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shoulder_gamma",
+          "name": "shoulder_gamma",
+          "type": "FLOAT",
+          "widget": {
+            "name": "shoulder_gamma"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_smoothing",
+          "name": "temporal_smoothing",
+          "type": "FLOAT",
+          "widget": {
+            "name": "temporal_smoothing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_encoding",
+          "name": "output_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "output_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "rudra_blend",
+          "name": "rudra_blend",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "rudra_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "batch_mode",
+          "name": "batch_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "batch_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shadow_threshold",
+          "name": "shadow_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shadow_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "processing_mode",
+          "name": "processing_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "processing_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_threshold",
+          "name": "highlight_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "highlight_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_window",
+          "name": "temporal_window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "temporal_window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_checkpoint",
+          "name": "temporal_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "temporal_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "learned_backend",
+          "name": "learned_backend",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "learned_backend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_checkpoint",
+          "name": "pixel_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "pixel_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_size",
+          "name": "pixel_tile_size",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_overlap",
+          "name": "pixel_tile_overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_recovery_mode",
+          "name": "pixel_recovery_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "pixel_recovery_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_strength",
+          "name": "pixel_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "pixel_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_strength",
+          "name": "aces2_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_saturation",
+          "name": "aces2_saturation",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_saturation"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_package",
+          "name": "aces2_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "aces2_package"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
+          "slot_index": 0,
           "links": [
             14,
             15
-          ],
-          "slot_index": 0
+          ]
         },
         {
+          "localized_name": "highlight_mask",
           "name": "highlight_mask",
           "type": "MASK",
-          "links": [],
-          "slot_index": 1
+          "slot_index": 1,
+          "links": []
         },
         {
+          "localized_name": "shadow_mask",
           "name": "shadow_mask",
           "type": "MASK",
-          "links": [],
-          "slot_index": 2
+          "slot_index": 2,
+          "links": []
         },
         {
+          "localized_name": "highlight_confidence",
           "name": "highlight_confidence",
           "type": "MASK",
-          "links": [],
-          "slot_index": 3
+          "slot_index": 3,
+          "links": []
         },
         {
+          "localized_name": "shadow_confidence",
           "name": "shadow_confidence",
           "type": "MASK",
-          "links": [],
-          "slot_index": 4
+          "slot_index": 4,
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": null
         }
       ],
+      "title": "SDR → HDR Universal (math path for video)",
       "properties": {
         "Node name for S&R": "RadianceSDRToHDRUniversal"
       },
       "widgets_values": [
         "sRGB",
-        1000.0,
-        203.0,
+        1000,
+        203,
         "adaptive",
         0.75,
         1.6,
         0.85,
         "Linear",
-        1.0,
+        1,
         "Video Frames",
         0.05,
         "Expand",
@@ -501,9 +1140,39 @@
         512,
         64,
         "highlights",
-        1.0
+        1,
+        1,
+        1,
+        ""
       ],
-      "title": "SDR → HDR Universal (math path for video)"
+      "widgets_values_named": {
+        "inverse_oetf": "sRGB",
+        "peak_nits": 1000,
+        "reference_white_nits": 203,
+        "knee_mode": "adaptive",
+        "knee": 0.75,
+        "shoulder_gamma": 1.6,
+        "temporal_smoothing": 0.85,
+        "output_encoding": "Linear",
+        "rudra_blend": 1,
+        "batch_mode": "Video Frames",
+        "shadow_threshold": 0.05,
+        "processing_mode": "Expand",
+        "highlight_threshold": 0.98,
+        "temporal_window": 5,
+        "temporal_checkpoint": "",
+        "learned_backend": "Auto",
+        "pixel_checkpoint": "",
+        "pixel_tile_size": 512,
+        "pixel_tile_overlap": 64,
+        "pixel_recovery_mode": "highlights",
+        "pixel_strength": 1,
+        "aces2_strength": 1,
+        "aces2_saturation": 1,
+        "aces2_package": ""
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
     },
     {
       "id": 12,
@@ -514,24 +1183,253 @@
       ],
       "size": [
         420,
-        420
+        458
       ],
       "flags": {},
       "order": 12,
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "*",
           "link": 14
         },
         {
+          "localized_name": "audio",
           "name": "audio",
+          "shape": 7,
           "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
           "link": null
         }
       ],
       "outputs": [],
+      "title": "EXR sequence — scene-linear master",
       "properties": {
         "Node name for S&R": "RadianceWrite"
       },
@@ -540,18 +1438,53 @@
         "SEQ │ EXR (16-bit half)",
         "wan22_hdr",
         1,
+        "fixed",
         "Linear (pass-through)",
-        24.0,
+        24,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         true,
-        0.0
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
-      "title": "EXR sequence — scene-linear master"
+      "widgets_values_named": {
+        "output_path": "./output/wan22_hdr",
+        "format": "SEQ │ EXR (16-bit half)",
+        "filename": "wan22_hdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 24,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": true,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
     },
     {
       "id": 13,
@@ -569,32 +1502,92 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
           "link": 15
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "peak_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "reference_white_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "scene_linear_gain",
+          "name": "scene_linear_gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "scene_linear_gain"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "apply_bt2020",
+          "name": "apply_bt2020",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "apply_bt2020"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "localized_name": "encoded_image",
+          "name": "encoded_image",
           "type": "IMAGE",
+          "slot_index": 0,
           "links": [
             16
-          ],
-          "slot_index": 0
+          ]
         }
       ],
+      "title": "PQ encode — HDR10 check",
       "properties": {
         "Node name for S&R": "RadianceHDREncode"
       },
       "widgets_values": [
         "PQ (HDR10)",
         "1000",
-        203.0,
-        1.0,
+        203,
+        1,
         false
       ],
-      "title": "PQ encode — HDR10 check"
+      "widgets_values_named": {
+        "format": "PQ (HDR10)",
+        "peak_nits": "1000",
+        "reference_white_nits": 203,
+        "scene_linear_gain": 1,
+        "apply_bt2020": false
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
     },
     {
       "id": 14,
@@ -612,16 +1605,26 @@
       "mode": 0,
       "inputs": [
         {
+          "localized_name": "images",
           "name": "images",
           "type": "IMAGE",
           "link": 16
         }
       ],
-      "outputs": [],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "PQ-encoded preview (dark mids = normal)",
       "properties": {
         "Node name for S&R": "PreviewImage"
       },
-      "title": "PQ-encoded preview (dark mids = normal)"
+      "color": "#1c223c",
+      "bgcolor": "#141419"
     },
     {
       "id": 15,
@@ -635,17 +1638,22 @@
         300
       ],
       "flags": {},
-      "order": 15,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [],
+      "title": "READ ME — WAN 2.2 HDR",
       "properties": {
         "Node name for S&R": "Note"
       },
       "widgets_values": [
         "WAN 2.2 → HDR — recommended path (v3.1.2+)\n\n• HDR conversion runs on the MATH path: for multi-frame video the\n  SDR→HDR Universal node intentionally skips RUDRA learned\n  reconstruction (WAN's video VAE compresses 81→21 frames, and the\n  current wan/ltx/hunyuan RUDRA checkpoints were trained on T=1\n  stills). Leave the node's optional 'vae' input DISCONNECTED for\n  video — connecting it just logs a skip notice.\n• adaptive knee 0.75 + temporal_smoothing 0.85 = flicker-free\n  highlight expansion; raise shoulder_gamma toward 2.0 if only\n  speculars should expand.\n• Linear output → EXR (16-bit half) is the grading master;\n  the PQ branch is a delivery/QC check (preview looks dim — that's\n  PQ, view on an HDR monitor or via the Radiance HDR Monitor node).\n• For stills: single-frame input + connected VAE + a trained RUDRA\n  checkpoint enables learned highlight reconstruction."
       ],
-      "title": "READ ME — WAN 2.2 HDR"
+      "widgets_values_named": {
+        "text": "WAN 2.2 → HDR — recommended path (v3.1.2+)\n\n• HDR conversion runs on the MATH path: for multi-frame video the\n  SDR→HDR Universal node intentionally skips RUDRA learned\n  reconstruction (WAN's video VAE compresses 81→21 frames, and the\n  current wan/ltx/hunyuan RUDRA checkpoints were trained on T=1\n  stills). Leave the node's optional 'vae' input DISCONNECTED for\n  video — connecting it just logs a skip notice.\n• adaptive knee 0.75 + temporal_smoothing 0.85 = flicker-free\n  highlight expansion; raise shoulder_gamma toward 2.0 if only\n  speculars should expand.\n• Linear output → EXR (16-bit half) is the grading master;\n  the PQ branch is a delivery/QC check (preview looks dim — that's\n  PQ, view on an HDR monitor or via the Radiance HDR Monitor node).\n• For stills: single-frame input + connected VAE + a trained RUDRA\n  checkpoint enables learned highlight reconstruction."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
     }
   ],
   "links": [
@@ -789,7 +1797,6 @@
         800
       ],
       "color": "#3f789e",
-      "font_size": 24,
       "flags": {}
     },
     {
@@ -802,13 +1809,19 @@
         880
       ],
       "color": "#8f5f3f",
-      "font_size": 24,
       "flags": {}
     }
   ],
   "config": {},
   "extra": {
-    "note": "Radiance v3.1.2+ — SDR→HDR Universal math path for video"
+    "note": "Radiance v3.1.2+ — SDR→HDR Universal math path for video",
+    "ds": {
+      "scale": 0.4864864864864865,
+      "offset": [
+        2871.5555555555557,
+        1286
+      ]
+    }
   },
   "version": 0.4
 }
