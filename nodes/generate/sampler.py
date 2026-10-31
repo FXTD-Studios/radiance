@@ -806,6 +806,60 @@ def _sample_custom_progress_safe(context: str, **kwargs):
             ) from exc
         raise
 
+def _adapt_empty_latent_to_model(model, samples, latent_dict, noise_mask, is_video):
+    """Rebuild an all-zero image latent whose channel count doesn't match the model.
+
+    Only touches plain 4D image latents (or 5D single-frame ones) that are
+    entirely zero and carry no noise_mask: those are "Empty Latent" outputs,
+    so rebuilding them loses nothing. Anything with content is returned as-is
+    and still gets the explicit channel-mismatch error from sampling.
+
+    The pixel size comes from RadianceResolution's ``radiance_pixel_size`` tag
+    when present (its "Manual" type makes a 1x, pixel-sized latent), otherwise
+    from Comfy's ``downscale_ratio_spacial`` key, otherwise an 8x VAE is assumed.
+    """
+    if is_video or noise_mask is not None or getattr(samples, "is_nested", False):
+        return samples
+    if not isinstance(samples, torch.Tensor) or samples.ndim not in (4, 5):
+        return samples
+    if samples.ndim == 5 and samples.shape[2] != 1:
+        return samples
+    try:
+        lf = model.get_model_object("latent_format")
+    except Exception:
+        return samples
+    want_c = getattr(lf, "latent_channels", None)
+    if not isinstance(want_c, int) or want_c <= 0 or samples.shape[1] == want_c:
+        return samples
+    if torch.count_nonzero(samples).item() != 0:
+        return samples
+
+    model_ratio = getattr(lf, "spacial_downscale_ratio", 8)
+    if not isinstance(model_ratio, int) or model_ratio <= 0:
+        model_ratio = 8
+    lat_h, lat_w = samples.shape[-2], samples.shape[-1]
+    pixel = latent_dict.get("radiance_pixel_size") if isinstance(latent_dict, dict) else None
+    if isinstance(pixel, (tuple, list)) and len(pixel) == 2:
+        px_w, px_h = int(pixel[0]), int(pixel[1])
+    else:
+        src_ratio = latent_dict.get("downscale_ratio_spacial", 8) if isinstance(latent_dict, dict) else 8
+        if not isinstance(src_ratio, int) or src_ratio <= 0:
+            src_ratio = 8
+        px_w, px_h = lat_w * src_ratio, lat_h * src_ratio
+    new_h, new_w = max(1, px_h // model_ratio), max(1, px_w // model_ratio)
+
+    shape = list(samples.shape)
+    shape[1], shape[-2], shape[-1] = want_c, new_h, new_w
+    logger.warning(
+        "[RadianceSamplerPro] Empty latent has %d channels (%dx%d) but the model "
+        "expects %d channels at %dx downscale; rebuilt it as %s for %dx%d px. "
+        "Connect the Loader's model_meta to RadianceResolution (or set its "
+        "model_type) to make this exact.",
+        samples.shape[1], lat_w, lat_h, want_c, model_ratio, tuple(shape), px_w, px_h,
+    )
+    return torch.zeros(shape, dtype=samples.dtype, device=samples.device)
+
+
 class RadianceSamplerPro:
     """
     Universal diffusion sampler — Flux, SD3, SDXL, WAN, LTX,
@@ -1888,6 +1942,13 @@ class RadianceSamplerPro:
         else:
             latent_samples = ensure_4d(latent_samples, "RadianceSamplerPro")
             frames = None
+        # FIX: an EMPTY latent whose channel count doesn't match the model
+        # (RadianceResolution left on "Manual"/an old model_type with model_meta
+        # unconnected, e.g. a 16ch pixel-sized latent fed to Flux.2 Klein's
+        # 128ch/16x DiT) carries no content, so rebuild it at the model's own
+        # shape instead of failing with "mat1 and mat2 shapes cannot be multiplied".
+        latent_samples = _adapt_empty_latent_to_model(
+            model, latent_samples, latent_image, noise_mask, is_video)
         # An image model sampling in 5D (Qwen-Image) still carries one frame:
         # the batch holds independent images, and the frame axis is the only
         # difference from 4D, so tiling applies to it as it does to 4D.
