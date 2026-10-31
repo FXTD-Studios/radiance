@@ -364,7 +364,7 @@ def test_decoded_frames_are_released_as_the_loop_advances():
 
 
 def _uplift_overhead(num_frames, hw=64):
-    """Peak live bytes above (the five returned outputs + caller's IMAGE)."""
+    """Peak live bytes above (the returned tensors + caller's IMAGE)."""
     mod = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     node = mod.RadianceSDRToHDRUniversal()
     image = torch.rand(num_frames, hw, hw, 3)
@@ -375,7 +375,8 @@ def _uplift_overhead(num_frames, hw=64):
             image, "sRGB", 1000.0, "adaptive", 0.75, 1.6, 0.0,
             "Linear", processing_mode="Expand",
         )
-        result_bytes = sum(t.numel() * t.element_size() for t in outputs[:5])
+        result_bytes = sum(t.numel() * t.element_size() for t in outputs
+                           if isinstance(t, torch.Tensor))
     del node, image, outputs
     gc.collect()
     return tracker.peak - result_bytes - input_bytes, result_bytes
