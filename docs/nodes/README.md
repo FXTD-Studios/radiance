@@ -10,14 +10,14 @@ Every node in the menu, by section: what it does, every input with its type, def
 | [Load & Save](load-save.md) | 5 | Readers, writers, EXR, image, video, and file exchange. |
 | [Generate](generate.md) | 13 | Samplers, loaders, prompts, LoRA, regional conditioning, and denoise. |
 | [Color](color.md) | 18 | White balance, CDL, curves, LUTs, OCIO, grades, and color checks. |
-| [HDR](hdr.md) | 36 | HDR uplift, ACES, tone mapping, analysis, encoding, and delivery. |
+| [HDR](hdr.md) | 37 | HDR uplift, ACES, tone mapping, analysis, encoding, and delivery. |
 | [VFX](vfx.md) | 30 | Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts. |
 | [Video](video.md) | 14 | Text-to-video, image-to-video, temporal generation, and video HDR. |
 | [Upscale](upscale.md) | 10 | AI upscaling, repair, enhancement, and restoration. |
 | [Review](review.md) | 11 | Viewer, scopes, preview servers, contact sheets, and QC. |
 | [Pipeline](pipeline.md) | 7 | DCC bridges, metadata, audio, project handoff, and studio integration. |
 
-145 nodes in the menu.
+146 nodes in the menu.
 
 ## Retired nodes
 

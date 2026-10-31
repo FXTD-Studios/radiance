@@ -160,6 +160,8 @@ Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, 
 | `frame_index` (optional) | int | 1 |  | Frame number of the first image in the batch, used in the file name; later frames count up from it. An AOV with one frame is used for every frame. |
 | `custom_metadata` (optional) | string |  | multi-line text | Extra header attributes, one key=value per line. Keys are stored with a 'rad_' prefix unless they are standard EXR names (owner, comments, capDate and so on). |
 | `strict` (optional) | boolean | on |  | On: stop with an error unless every frame is one multi-part EXR holding every part. Off: if multi-part writing fails, write one EXR per part instead and list them in manifest. |
+| `rudra_reconstructed` (optional) | MASK |  |  | SDR → HDR Universal/Recover reconstructed_mask, written into the beauty part as the channel rudra.reconstructed (where light was estimated, not taken from the source), as RUDRA masters carry it. |
+| `rudra_generated` (optional) | MASK |  |  | SDR → HDR AI Fill generated_mask, written into the beauty part as the channel rudra.generated (1 = drawn by the AI fill). |
 
 **Outputs**
 
