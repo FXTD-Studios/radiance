@@ -1088,6 +1088,13 @@ class RadianceEXRMultiPart:
                 "strict": ("BOOLEAN", {"default": True,
                     "tooltip": "On: stop with an error unless every frame is one multi-part EXR holding every part. "
                                "Off: if multi-part writing fails, write one EXR per part instead and list them in manifest."}),
+                "rudra_reconstructed": ("MASK", {
+                    "tooltip": "SDR → HDR Universal/Recover reconstructed_mask, written into the beauty part as the "
+                               "channel rudra.reconstructed (where light was estimated, not taken from the source), "
+                               "as RUDRA masters carry it."}),
+                "rudra_generated": ("MASK", {
+                    "tooltip": "SDR → HDR AI Fill generated_mask, written into the beauty part as the channel "
+                               "rudra.generated (1 = drawn by the AI fill)."}),
             },
         }
 
@@ -1109,6 +1116,8 @@ class RadianceEXRMultiPart:
         frame_index: int = 1,
         custom_metadata: str = "",
         strict: bool = True,
+        rudra_reconstructed: Optional[torch.Tensor] = None,
+        rudra_generated: Optional[torch.Tensor] = None,
     ) -> Tuple[str, str]:
         import datetime, re as _re
 
@@ -1169,15 +1178,28 @@ class RadianceEXRMultiPart:
             arr = t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]
             return arr.detach().float().cpu().numpy()
 
+        # RUDRA's mask channels ride in the beauty part, named as RUDRA names
+        # them, so RUDRA's own tools (the AI fill, the app's View menu) read them.
+        rudra_masks = [(m, n) for m, n in ((rudra_reconstructed, "rudra.reconstructed"),
+                                           (rudra_generated, "rudra.generated")) if m is not None]
+        for m, n in rudra_masks:
+            if m.dim() == 3 and m.shape[0] not in (1, batch):
+                raise ValueError(f"[EXRMultiPart] '{n}' has {m.shape[0]} frames; beauty has {batch}.")
+
         def write_frame(b: int) -> Dict[str, Any]:
             frame_num = str(frame_index + b).zfill(4)
             filepath  = os.path.join(out_dir, f"{filename_prefix}.{frame_num}.exr")
             parts: Dict[str, np.ndarray] = {name: _t(t, b) for t, name in named}
+            extra = None
+            if rudra_masks:
+                extra = {"beauty": {
+                    n: (m if m.dim() == 2 else m[0 if m.shape[0] == 1 else b]).detach().float().cpu().numpy()
+                    for m, n in rudra_masks}}
 
             if write_exr_multipart_report is None:
                 raise RuntimeError("[EXRMultiPart] No EXR writer available")
             receipt = write_exr_multipart_report(filepath, parts, bit_depth, comp, meta,
-                                                 allow_fallback=not strict)
+                                                 allow_fallback=not strict, extra_channels=extra)
             receipt["frame"] = frame_index + b
             if not receipt["complete"] or (strict and receipt["mode"] != "multipart"):
                 failed = [n for n, st in receipt["parts"].items() if st["status"] != "written"]
