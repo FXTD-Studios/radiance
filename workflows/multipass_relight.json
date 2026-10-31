@@ -1,5 +1,5 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "21035dee-161b-494d-9c9c-f96c651595de",
   "revision": 0,
   "last_node_id": 6,
   "last_link_id": 9,
@@ -13,12 +13,11 @@
       ],
       "size": [
         270,
-        620
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -390,7 +386,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -406,7 +401,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -440,6 +434,30 @@
         "reload",
         ""
       ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -457,7 +475,6 @@
       "flags": {},
       "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -469,7 +486,6 @@
           "name": "beauty",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 1
@@ -514,7 +530,6 @@
           "name": "beauty_encoding",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "beauty_encoding"
@@ -531,7 +546,6 @@
           "name": "geometry",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "BOOLEAN",
           "widget": {
             "name": "geometry"
@@ -548,7 +562,6 @@
           "name": "materials",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "BOOLEAN",
           "widget": {
             "name": "materials"
@@ -565,7 +578,6 @@
           "name": "lighting",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "BOOLEAN",
           "widget": {
             "name": "lighting"
@@ -582,7 +594,6 @@
           "name": "download_missing_models",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "BOOLEAN",
           "widget": {
             "name": "download_missing_models"
@@ -771,7 +782,6 @@
           "name": "passes",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "RADIANCE_PASSES",
           "pos": null,
           "slot_index": null,
@@ -789,7 +799,6 @@
           "name": "beauty",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -805,7 +814,6 @@
           "name": "albedo",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -823,7 +831,6 @@
           "name": "roughness",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -841,7 +848,6 @@
           "name": "metallic",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -859,7 +865,6 @@
           "name": "diffuse_lighting",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -875,7 +880,6 @@
           "name": "specular_lighting",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -891,7 +895,6 @@
           "name": "normal_map",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -909,7 +912,6 @@
           "name": "depth",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -925,7 +927,6 @@
           "name": "world_position",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -943,7 +944,6 @@
           "name": "ao",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -961,7 +961,6 @@
           "name": "curvature",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -977,7 +976,6 @@
           "name": "motion_vector",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -993,7 +991,6 @@
           "name": "geometry_mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1009,7 +1006,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1037,6 +1033,24 @@
         "fixed",
         true
       ],
+      "widgets_values_named": {
+        "beauty_encoding": "sRGB (display)",
+        "geometry": true,
+        "materials": true,
+        "lighting": true,
+        "download_missing_models": true,
+        "geometry_detail": 9,
+        "fov_x_degrees": 0,
+        "normal_convention": "OpenGL (Y-Up)",
+        "ao_radius_m": 0.5,
+        "ao_quality": 8,
+        "material_steps": 4,
+        "material_resolution": 768,
+        "ensemble_size": 1,
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "batch_is_sequence": true
+      },
       "color": "#122c1e",
       "bgcolor": "#141419"
     },
@@ -1049,12 +1063,11 @@
       ],
       "size": [
         400,
-        256
+        276
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1066,7 +1079,6 @@
           "name": "passes",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "RADIANCE_PASSES",
           "pos": null,
           "link": 2
@@ -1081,7 +1093,6 @@
           "name": "filename_prefix",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "filename_prefix"
@@ -1098,7 +1109,6 @@
           "name": "bit_depth",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "bit_depth"
@@ -1115,7 +1125,6 @@
           "name": "compression",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "compression"
@@ -1219,10 +1228,15 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
+          "links": null
+        },
+        {
+          "localized_name": "manifest",
+          "name": "manifest",
+          "type": "STRING",
           "links": null
         }
       ],
@@ -1239,6 +1253,16 @@
         "Single-part multilayer",
         ""
       ],
+      "widgets_values_named": {
+        "filename_prefix": "multipass",
+        "bit_depth": "16-bit Half Float",
+        "compression": "ZIP",
+        "output_path": "radiance_examples/multipass",
+        "remote_path": "",
+        "frame_index": 1001,
+        "exr_layout": "Single-part multilayer",
+        "custom_metadata": ""
+      },
       "color": "#3e3e4a",
       "bgcolor": "#141419"
     },
@@ -1256,7 +1280,6 @@
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1268,7 +1291,6 @@
           "name": "albedo",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 3
@@ -1283,7 +1305,6 @@
           "name": "normal_map",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 4
@@ -1690,7 +1711,6 @@
           "name": "relit",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1708,7 +1728,6 @@
           "name": "diffuse_light",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1724,7 +1743,6 @@
           "name": "specular_light",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1740,7 +1758,6 @@
           "name": "lighting",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1756,7 +1773,6 @@
           "name": "alpha",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1772,7 +1788,6 @@
           "name": "relight_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1799,6 +1814,23 @@
         0,
         false
       ],
+      "widgets_values_named": {
+        "normal_convention": "OpenGL (Y-Up)",
+        "light_type": "Point",
+        "light_x": 0.5,
+        "light_y": 0.5,
+        "light_z": -1,
+        "light_r": 1,
+        "light_g": 1,
+        "light_b": 1,
+        "intensity": 2,
+        "ambient": 0.03,
+        "specular_intensity": 1,
+        "depth_scale": 10,
+        "depth_near_is_white": true,
+        "mix_with_beauty": 0,
+        "output_premultiplied": false
+      },
       "color": "#122c1e",
       "bgcolor": "#141419"
     },
@@ -1816,7 +1848,6 @@
       "flags": {},
       "order": 5,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1828,7 +1859,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 9
@@ -1861,6 +1891,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1943,7 +1980,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1951,7 +1987,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1960,6 +2108,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1977,7 +2132,6 @@
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
       "title": "Multipass Estimate",
@@ -1985,6 +2139,9 @@
       "widgets_values": [
         "Multipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres)."
       ],
+      "widgets_values_named": {
+        "text": "Multipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres)."
+      },
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -2063,19 +2220,16 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
   "groups": [],
-  "definitions": null,
   "config": {},
   "extra": {
     "ds": {
       "scale": 0.9,
       "offset": [
-        416,
-        110
+        2871.5555555555557,
+        1286
       ]
-    },
-    "reroutes": null
+    }
   },
   "version": 0.4
 }

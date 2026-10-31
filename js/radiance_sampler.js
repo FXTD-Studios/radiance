@@ -7,6 +7,7 @@ import {
     liveSourceNode,
     loaderModelType,
     modelMetaSourceNode as _findModelMetaSourceNode,
+    nameCurrentWidgetValues,
     setWidgetVisible as _setWidgetVisible,
     syncAutoValue,
 } from "./radiance_widget_utils.js";
@@ -1413,6 +1414,12 @@ app.registerExtension({
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== "RadianceSamplerPro") return;
         nodeData.fallbackWidgetsValuesNames = SAMPLER_SAVED_WIDGET_ORDER;
+        // A graph saved in the current order: see nameCurrentWidgetValues.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            nameCurrentWidgetValues(this, info, SAMPLER_SAVED_WIDGET_ORDER);
+            return configure.apply(this, arguments);
+        };
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 

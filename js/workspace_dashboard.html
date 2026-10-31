@@ -564,13 +564,13 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.65;
+            opacity: 0.92;
             transition: var(--transition-smooth);
         }
 
         .workflow-card:hover .card-cover img {
             transform: scale(1.05);
-            opacity: 0.8;
+            opacity: 1;
         }
 
         .card-cover-placeholder {
@@ -1207,7 +1207,7 @@
         .workflow-card { background: none !important; backdrop-filter: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: visible; }
         .workflow-card:hover, .workflow-card.official-card:hover { transform: none !important; border: 0 !important; box-shadow: none !important; }
         .card-cover { height: 150px; background: none !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 5px; border-bottom: 1px solid rgba(255,255,255,0.08) !important; }
-        .card-cover img { opacity: .8; border-radius: 5px; }
+        .card-cover img { opacity: .95; border-radius: 5px; }
         .card-cover-placeholder { color: var(--text-dark); }
         .card-content { background: none !important; padding: 10px 2px 0 !important; }
         .card-title { font-size: 13px; }
@@ -1924,10 +1924,11 @@
             }
 
             filteredWorkflows.forEach(wf => {
-                const displayName = wf.filename.split("/").pop().replace(".rad", "");
+                // A title saved with the workflow (stats.title) reads better than the file name.
+                const displayName = wf.metadata?.stats?.title || wf.filename.split("/").pop().replace(".rad", "");
                 const displayNameHtml = escapeHtml(displayName);
                 const displayNameAttr = escapeAttr(displayName);
-                const isOfficial = wf.filename.toLowerCase().startsWith("official/");
+                const isOfficial = /^(official|radiance_4)\//.test(wf.filename.toLowerCase());
                 const hasPreview = wf.metadata?.has_preview;
                 const sizeKB = Math.round(wf.size / 1024);
                 const desc = wf.metadata?.description || "No description provided.";
@@ -1965,6 +1966,11 @@
 
                 if (pipeline.is_hdr) {
                     badgesHtml += `<span class="badge badge-cyan">HDR Pipeline</span>`;
+                }
+
+                const cardTags = Array.isArray(wf.metadata?.stats?.tags) ? wf.metadata.stats.tags.slice(0, 2) : [];
+                for (const tag of cardTags) {
+                    badgesHtml += `<span class="badge badge-gold">${escapeHtml(String(tag))}</span>`;
                 }
 
                 if (pipeline.color_spaces && pipeline.color_spaces.length) {

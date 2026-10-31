@@ -469,6 +469,14 @@ def load_unet_and_baked_vae(
             if caching:
                 _unet_cache.put(unet_key, model)
         except Exception as e:
+            # A ComfyUI older than its FLUX 3 support cannot detect the FLUX 3 DiT
+            # and fails here, before the text encoder's clearer check runs.
+            if resolved_type == "flux3" and not hasattr(comfy.sd.CLIPType, "FLUX3"):
+                raise RuntimeError(
+                    f"❌ Failed to load UNET '{unet_name}': this ComfyUI has no FLUX 3 support, "
+                    "so it cannot read FLUX 3 Image Klein files. Update ComfyUI to 0.41.1 or "
+                    "a build from 15 October 2026 on (ComfyUI-Manager > Update ComfyUI), then "
+                    "restart.") from e
             raise RuntimeError(f"❌ Failed to load UNET '{unet_name}': {e}")
 
     _warn_if_weights_exceed_vram(model, unet_name, weight_dtype, info_lines)
