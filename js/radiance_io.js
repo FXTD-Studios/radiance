@@ -1,8 +1,11 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    compactWidgetValues,
     fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
+    nameCurrentWidgetValues,
+    restoreHoledWidgetValues,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
 
@@ -655,6 +658,19 @@ app.registerExtension({
 					ctx.fillText(note, 10, this.size[1] - 5);
 				}
 				ctx.restore();
+			};
+
+			// The Audio rule is unsaved and sits mid-list: see compactWidgetValues.
+			const configure = nodeType.prototype.configure;
+			nodeType.prototype.configure = function (info) {
+				restoreHoledWidgetValues(this, info);
+                nameCurrentWidgetValues(this, info, WRITE_SAVED_WIDGET_ORDER);
+				return configure.apply(this, arguments);
+			};
+			const onSerialize = nodeType.prototype.onSerialize;
+			nodeType.prototype.onSerialize = function (o) {
+				if (onSerialize) onSerialize.apply(this, arguments);
+				compactWidgetValues(this, o);
 			};
 
 			// Re-apply after a saved workflow restores this node — onNodeCreated
