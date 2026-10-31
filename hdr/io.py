@@ -355,6 +355,7 @@ def write_exr_multipart_report(
     compression: str = "ZIP",
     metadata: Optional[Dict[str, Any]] = None,
     allow_fallback: bool = False,
+    extra_channels: Optional[Dict[str, Dict[str, np.ndarray]]] = None,
 ) -> Dict[str, Any]:
     """
     Write a multi-part EXR v2 file with named layers.
@@ -380,6 +381,11 @@ def write_exr_multipart_report(
         bit_depth: "16-bit Half Float" or "32-bit Float".
         compression: EXR compression (ZIP, PIZ, ZIPS, etc.).
         metadata: Optional dict of string metadata embedded in each part header.
+        extra_channels: Optional {part name: {channel name: (H, W) array}} added
+                  to that part beside its own channels, e.g. RUDRA's
+                  ``rudra.reconstructed`` / ``rudra.generated`` in the beauty part
+                  (multi-part mode only; the per-part fallback leaves them out
+                  and says so in the receipt).
 
     Returns a receipt (FIX-015/016)::
 
@@ -474,6 +480,16 @@ def write_exr_multipart_report(
                     )
                     for ci, cname in enumerate(ch_names)
                 }
+                for cname, plane in ((extra_channels or {}).get(part_name) or {}).items():
+                    plane = np.asarray(plane, dtype=np.float32)
+                    if plane.ndim == 3:
+                        plane = plane[..., 0]
+                    if plane.shape != arr.shape[:2]:
+                        raise ValueError(f"channel {cname!r} is {plane.shape}, part {part_name!r} is "
+                                         f"{arr.shape[:2]}")
+                    if cname in channels_dict:
+                        raise ValueError(f"channel {cname!r} already in part {part_name!r}")
+                    channels_dict[cname] = np.ascontiguousarray(plane, dtype=np_dtype)
                 exr_parts.append(OpenEXR.Part(header, channels_dict, part_name))
 
             OpenEXR.File(exr_parts).write(filepath)
@@ -532,6 +548,8 @@ def write_exr_multipart_report(
             logger.info(f"[EXR MultiPart] Fallback→ wrote {layer_path}")
 
     receipt["complete"] = all(receipt["parts"][n]["status"] == "written" for n in requested)
+    if extra_channels:
+        receipt["extra_channels_dropped"] = sorted(c for d in extra_channels.values() for c in (d or {}))
     logger.warning(
         f"[EXR MultiPart] Wrote {len(receipt['files'])} of {len(requested)} parts as separate EXR files "
         f"instead of one multi-part file. Load each file individually in Nuke."
