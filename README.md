@@ -29,7 +29,7 @@ Generate in HDR, grade and review like a finishing suite, and deliver masters to
 
 ## What Radiance does
 
-145 visible nodes, grouped around four jobs:
+146 visible nodes, grouped around four jobs:
 
 <table>
 <tr>
@@ -44,7 +44,7 @@ FLUX 3 Klein, Qwen-Image 2.1, FLUX.2, Wan, LTX Video and more, from one Loader w
 
 **Make it HDR**
 
-SDR → HDR with the RUDRA model, HDR VAE encode and decode, tone mapping, ACES 2.0 and OpenColorIO, EXR in and out.
+SDR → HDR with RUDRA ACES 2 and AI fill, HDR VAE encode and decode, tone mapping, ACES 2.0 and OpenColorIO, EXR in and out.
 
 </td>
 <td width="25%" valign="top">
@@ -250,14 +250,21 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 <summary><b>RUDRA (SDR to HDR): files and licence</b></summary>
 <br>
 
-[RUDRA](https://huggingface.co/fxtdstudios/RUDRA) is the learned model behind **SDR → HDR Universal** and **SDR → HDR Recover**. The default downloads on first use.
+[RUDRA 1.0](https://huggingface.co/fxtdstudios/rudra-models) is the learned model behind **SDR → HDR Universal**, **SDR → HDR Recover** and **SDR → HDR AI Fill**.
 
-| File | Download | Save in |
+- **RUDRA ACES 2** (default, 2.2 MB, downloads on first use): the learned ACES 2.0 reconstruction. SDR in, an ACEScg master out (diffuse white = 1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source's 8-bit codes. Universal and Recover use it whenever it can run; the `reconstructed_mask` output says where light was estimated.
+- **RUDRA AI fill v3** (271 MB, opt-in): a LoRA for Wan2.1-VACE-1.3B that draws the shape inside fully clipped highlights, plus an estimator that sets their brightness (±3 stops). Region prompts. Needs the base model, `diffusers` 0.35 or newer and about 16 GB of VRAM. Experimental: what it draws is plausible, not recovered.
+
+| Files | Download | Save in |
 |---|---|---|
-| `sdr2hdr_shadow_v1.safetensors` | [Default model](https://huggingface.co/fxtdstudios/RUDRA/resolve/main/sdr2hdr/sdr2hdr_shadow_v1.safetensors) | `models/radiance/` |
-| Other checkpoints | [Browse](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `models/radiance/` |
+| `manifest.json`, `parity.json`, `rudra_g1.ts`, `rudra_g1.onnx` | [RUDRA ACES 2](https://huggingface.co/fxtdstudios/rudra-models/tree/v1.0.0/models/RUDRA_ACES_2) | `models/radiance/RUDRA_ACES_2/` |
+| `rudra_genfill.safetensors`, `brightness.json`, `prompt_cache/` | [AI fill v3](https://huggingface.co/fxtdstudios/rudra-models/tree/v1.0.0/models/rudra_genfill_v3) | `models/radiance/rudra_genfill_v3/` |
+| the whole repository | [Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | `models/radiance/Wan2.1-VACE-1.3B-diffusers/` |
+| `sdr2hdr_shadow_v1.safetensors` (RUDRA 3.x, fallback) | [Browse](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `models/radiance/` |
 
-**Licence:** RUDRA weights are for non-commercial use ([weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE)), separate from the Radiance code licence.
+The AI fill node downloads its package (and the base model, into the Hugging Face cache) only with `allow_download` on.
+
+**Licence:** the RUDRA 1.0 models (ACES 2, AI fill v3) are Apache 2.0, so commercial use is allowed; Wan2.1-VACE-1.3B is Apache 2.0 from Wan-AI. The older RUDRA 3.x weights (`sdr2hdr_shadow_v1` and the temporal model) stay non-commercial ([weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE)).
 
 </details>
 
@@ -270,7 +277,7 @@ Drag a file onto the ComfyUI canvas to open it.
 | Workflow | What it does |
 |---|---|
 | [Starter](workflows/start.json) | Generate an image and review it |
-| [SDR to HDR](workflows/sdr_to_hdr.json) | Turn an image into HDR and save EXR |
+| [SDR to HDR](workflows/sdr_to_hdr.json) | Turn an image into an ACES 2.0 HDR master with RUDRA, compare it with the SDR and save EXR |
 | [Colour grading](workflows/colour_grade.json) | Grade an image and save it |
 | [HDR VAE](workflows/hdr_vae_encode_decode.json) | Encode, decode and compare an HDR image |
 | [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight |

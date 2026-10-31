@@ -137,6 +137,31 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Added
 
+- **RUDRA 1.0 in SDR → HDR (RUDRA ACES 2, Apache 2.0).** Universal and
+  Recover run RUDRA's learned ACES 2.0 model by default (`learned_backend`
+  Auto, or `RUDRA ACES 2`): the staged contract `rudra_native_aces_v2_staged`
+  v2 ported from RUDRA 1.0.1 (OCIO's built-in ACES 2.0 CG config, the
+  TorchScript network stage, compose, hybrid64 clipped smoothing, the
+  appearance constraint), matching RUDRA's own reference bit for bit on the
+  test frames. The result is an ACEScg master (diffuse white = 1.0 = 203 nits)
+  whose ACES 2.0 SDR view keeps the source's 8-bit codes; Linear and AP0 carry
+  it unclamped, PQ and HLG go to Rec.2020 straight from AP1. New inputs
+  `aces2_strength`, `aces2_saturation` (RUDRA's trims) and `aces2_package`;
+  a new last output `reconstructed_mask` (RUDRA's `rudra.reconstructed`) on
+  both nodes. The package (~3 MB, pinned commit, SHA-256 checked) downloads on
+  first use into `models/radiance/RUDRA_ACES_2`. The 3.x pixel and temporal
+  models stay as fallbacks, labelled non-commercial in the report.
+- **SDR → HDR AI Fill (RUDRA v3).** New node: Wan2.1-VACE-1.3B with the FXTD
+  LoRA draws the shape inside fully clipped highlights of an ACES 2 master and
+  RUDRA's estimator sets their brightness (±3 stops offset), in 33-frame
+  windows overlapping by 8. Highlight and shadow prompts. No 8-bit code of the
+  master's ACES 2.0 SDR view changes and untouched pixels are bit-identical;
+  `generated_mask` marks what was drawn. Opt-in download of the 271 MB package;
+  needs `diffusers` 0.35+ and about 16 GB of VRAM. Experimental.
+- **EXR MultiPart writes RUDRA's mask channels:** optional `rudra_reconstructed`
+  and `rudra_generated` masks go into the beauty part as `rudra.reconstructed`
+  and `rudra.generated`, the names RUDRA's tools read.
+
 - **FLUX 3 Image Klein** (Black Forest Labs, 15 October 2026), base and
   step-distilled. Needs a ComfyUI with FLUX 3 support (0.41.1, or a build from
   15 October 2026 on); an older one stops with an update message rather than
