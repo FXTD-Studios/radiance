@@ -1,0 +1,2094 @@
+{
+  "id": "2bdfcee5-e649-44f7-9d9e-0b4baff1888b",
+  "revision": 0,
+  "last_node_id": 11,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "RadianceRead",
+      "pos": [
+        -1400,
+        0
+      ],
+      "size": [
+        270,
+        632
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "browse",
+          "name": "browse",
+          "type": "COMBO",
+          "widget": {
+            "name": "browse"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "media_type",
+          "name": "media_type",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "media_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "path",
+          "name": "path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_frame",
+          "name": "end_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "end_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_step",
+          "name": "frame_step",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_video_frames",
+          "name": "max_video_frames",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_video_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "missing_frames",
+          "name": "missing_frames",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "missing_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "layer"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "on_error",
+          "name": "on_error",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "on_error"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "raw",
+          "name": "raw",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "raw"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "premultiplied",
+          "name": "premultiplied",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "premultiplied"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reload",
+          "name": "reload",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "reload"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upload",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            2
+          ]
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "info",
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRead"
+      },
+      "widgets_values": [
+        "",
+        "Auto",
+        "",
+        "Auto / Linear (pass-through)",
+        1001,
+        0,
+        1,
+        0,
+        0,
+        "Skip",
+        "auto",
+        "Error",
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "image",
+        "reload",
+        ""
+      ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 2,
+      "type": "RadianceRead",
+      "pos": [
+        -1400,
+        700
+      ],
+      "size": [
+        270,
+        632
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "browse",
+          "name": "browse",
+          "type": "COMBO",
+          "widget": {
+            "name": "browse"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "media_type",
+          "name": "media_type",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "media_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "path",
+          "name": "path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "end_frame",
+          "name": "end_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "end_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_step",
+          "name": "frame_step",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_step"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_video_frames",
+          "name": "max_video_frames",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_video_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "missing_frames",
+          "name": "missing_frames",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "missing_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "layer",
+          "name": "layer",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "layer"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "on_error",
+          "name": "on_error",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "on_error"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "raw",
+          "name": "raw",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "raw"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "premultiplied",
+          "name": "premultiplied",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "premultiplied"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reload",
+          "name": "reload",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "reload"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upload",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "info",
+          "name": "info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRead"
+      },
+      "widgets_values": [
+        "",
+        "Auto",
+        "",
+        "Auto / Linear (pass-through)",
+        1001,
+        0,
+        1,
+        0,
+        0,
+        "Skip",
+        "auto",
+        "Error",
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "image",
+        "reload",
+        ""
+      ],
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 3,
+      "type": "RadianceSceneCutDetect",
+      "pos": [
+        -1000,
+        0
+      ],
+      "size": [
+        270,
+        146
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "localized_name": "cut_confidence",
+          "name": "cut_confidence",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cut_confidence"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "min_shot_frames",
+          "name": "min_shot_frames",
+          "type": "INT",
+          "widget": {
+            "name": "min_shot_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "widget": {
+            "name": "method"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "links": [
+            3
+          ]
+        },
+        {
+          "localized_name": "shot_count",
+          "name": "shot_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "score_plot",
+          "name": "score_plot",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSceneCutDetect"
+      },
+      "widgets_values": [
+        0.5,
+        12,
+        "combined"
+      ],
+      "widgets_values_named": {
+        "cut_confidence": 0.5,
+        "min_shot_frames": 12,
+        "method": "combined"
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 4,
+      "type": "RadianceSceneCutSplit",
+      "pos": [
+        -600,
+        0
+      ],
+      "size": [
+        270,
+        162
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "widget": {
+            "name": "cut_data"
+          },
+          "link": 3
+        },
+        {
+          "localized_name": "shot_index",
+          "name": "shot_index",
+          "type": "INT",
+          "widget": {
+            "name": "shot_index"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "frames",
+          "name": "frames",
+          "type": "IMAGE",
+          "links": [
+            4,
+            10
+          ]
+        },
+        {
+          "localized_name": "shot_index",
+          "name": "shot_index",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "end_frame",
+          "name": "end_frame",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "localized_name": "shot_info",
+          "name": "shot_info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSceneCutSplit"
+      },
+      "widgets_values": [
+        "",
+        0
+      ],
+      "widgets_values_named": {
+        "cut_data": "",
+        "shot_index": 0
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 5,
+      "type": "RadianceGradeMatch",
+      "pos": [
+        -200,
+        0
+      ],
+      "size": [
+        270,
+        78
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "localized_name": "reference",
+          "name": "reference",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "localized_name": "strength",
+          "name": "strength",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "matched_image",
+          "name": "matched_image",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        },
+        {
+          "localized_name": "grade_info",
+          "name": "grade_info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceGradeMatch"
+      },
+      "widgets_values": [
+        1
+      ],
+      "widgets_values_named": {
+        "strength": 1
+      },
+      "color": "#2e3a3a",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 6,
+      "type": "RadianceCDLTransform",
+      "pos": [
+        200,
+        0
+      ],
+      "size": [
+        270,
+        294
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "localized_name": "cdl_data",
+          "name": "cdl_data",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "localized_name": "slope_r",
+          "name": "slope_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "slope_g",
+          "name": "slope_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "slope_b",
+          "name": "slope_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "slope_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_r",
+          "name": "offset_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_g",
+          "name": "offset_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "offset_b",
+          "name": "offset_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "offset_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_r",
+          "name": "power_r",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_r"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_g",
+          "name": "power_g",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_g"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "power_b",
+          "name": "power_b",
+          "type": "FLOAT",
+          "widget": {
+            "name": "power_b"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "saturation",
+          "name": "saturation",
+          "type": "FLOAT",
+          "widget": {
+            "name": "saturation"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7,
+            9
+          ]
+        },
+        {
+          "localized_name": "cdl_info",
+          "name": "cdl_info",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceCDLTransform"
+      },
+      "widgets_values": [
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1
+      ],
+      "widgets_values_named": {
+        "slope_r": 1,
+        "slope_g": 1,
+        "slope_b": 1,
+        "offset_r": 0,
+        "offset_g": 0,
+        "offset_b": 0,
+        "power_r": 1,
+        "power_g": 1,
+        "power_b": 1,
+        "saturation": 1
+      },
+      "color": "#2e3a3a",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 7,
+      "type": "RadianceQC",
+      "pos": [
+        600,
+        0
+      ],
+      "size": [
+        293.673828125,
+        382
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "localized_name": "qc_report_json",
+          "name": "qc_report_json",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "localized_name": "mode",
+          "name": "mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "black_threshold",
+          "name": "black_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "black_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "white_threshold",
+          "name": "white_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "white_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlay_opacity",
+          "name": "overlay_opacity",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "overlay_opacity"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "banding_threshold",
+          "name": "banding_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "banding_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "enable_focus_check",
+          "name": "enable_focus_check",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_focus_check"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "enable_artifacts_check",
+          "name": "enable_artifacts_check",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_artifacts_check"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "enable_noise_check",
+          "name": "enable_noise_check",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "enable_noise_check"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fail_on_errors",
+          "name": "fail_on_errors",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "fail_on_errors"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "export_format",
+          "name": "export_format",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "export_format"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "localized_name": "text_report",
+          "name": "text_report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "json_report",
+          "name": "json_report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "status",
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceQC"
+      },
+      "widgets_values": [
+        "Analyze",
+        0,
+        1,
+        0.5,
+        5,
+        false,
+        true,
+        true,
+        false,
+        "",
+        "qc_report",
+        "json"
+      ],
+      "widgets_values_named": {
+        "mode": "Analyze",
+        "black_threshold": 0,
+        "white_threshold": 1,
+        "overlay_opacity": 0.5,
+        "banding_threshold": 5,
+        "enable_focus_check": false,
+        "enable_artifacts_check": true,
+        "enable_noise_check": true,
+        "fail_on_errors": false,
+        "output_path": "",
+        "filename_prefix": "qc_report",
+        "export_format": "json"
+      },
+      "color": "#202026",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 8,
+      "type": "RadianceWrite",
+      "pos": [
+        1000,
+        0
+      ],
+      "size": [
+        302.744140625,
+        458
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 8
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/look_match",
+        "SEQ │ EXR (16-bit half)",
+        "shot_matched",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/look_match",
+        "format": "SEQ │ EXR (16-bit half)",
+        "filename": "shot_matched",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 9,
+      "type": "RadianceViewer",
+      "pos": [
+        1000,
+        650
+      ],
+      "size": [
+        960,
+        640
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 9
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": 10
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        },
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 10,
+      "type": "RadianceViewer",
+      "pos": [
+        -600,
+        400
+      ],
+      "size": [
+        640,
+        614
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 11
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        },
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 11,
+      "type": "Note",
+      "pos": [
+        -1400,
+        -700
+      ],
+      "size": [
+        560,
+        420
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Shot look match across a sequence\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original."
+      ],
+      "widgets_values_named": {
+        "text": "Shot look match across a sequence\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      1,
+      "STRING"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      2,
+      0,
+      5,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      7,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      6,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      4,
+      0,
+      9,
+      1,
+      "IMAGE"
+    ],
+    [
+      11,
+      3,
+      2,
+      10,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.39705882352941174,
+      "offset": [
+        2871.5555555555557,
+        1286
+      ]
+    }
+  },
+  "version": 0.4
+}
