@@ -198,6 +198,7 @@ def node_env(monkeypatch, tmp_path):
     monkeypatch.setattr(g, "resolve_base", lambda *a: str(tmp_path / "base"))
     model = _FakeModel()
     monkeypatch.setattr(g, "get_model", lambda *a, **k: model)
+    monkeypatch.setattr(g, "check_runtime", lambda: None)
     return model
 
 
@@ -234,5 +235,43 @@ def test_node_says_how_to_install_when_missing(monkeypatch):
     g = _g()
     mod = importlib.import_module("radiance.nodes.hdr.rudra_aifill")
     monkeypatch.setattr(g, "resolve_package", lambda *a: None)
+    monkeypatch.setattr(g, "check_runtime", lambda: None)
+    monkeypatch.setenv("RADIANCE_ALLOW_DOWNLOADS", "0")
     with pytest.raises(RuntimeError, match="rudra_genfill_v3"):
         mod.RadianceSDRToHDRAIFill().fill(_linear_master(1), "Linear (Rec.709)", "", 0.0)
+
+
+def test_first_run_downloads_package_and_base(monkeypatch, tmp_path):
+    """Nothing installed: the node fetches the AI fill package and the Wan base itself."""
+    g = _g()
+    dl = importlib.import_module("radiance.model.rudra_download")
+    mod = importlib.import_module("radiance.nodes.hdr.rudra_aifill")
+    monkeypatch.setattr(g, "resolve_package", lambda *a: None)
+    monkeypatch.setattr(g, "resolve_base", lambda *a: None)
+    monkeypatch.setattr(g, "check_runtime", lambda: None)
+    fetched = []
+
+    def fake_download(pkg, **kw):
+        fetched.append(pkg.name)
+        return tmp_path / pkg.dirname
+    monkeypatch.setattr(dl, "download_package", fake_download)
+    model = _FakeModel()
+    monkeypatch.setattr(g, "get_model", lambda *a, **k: model)
+    mod.RadianceSDRToHDRAIFill().fill(_linear_master(1), "Linear (Rec.709)", "", 0.0,
+                                      use_brightness_estimator=False, steps=1, window=9,
+                                      overlap=2, max_area=48 * 64)
+    assert fetched == ["rudra_genfill_v3", "wan_vace_base"]
+
+
+def test_old_diffusers_is_named_before_any_download(monkeypatch):
+    g = _g()
+    import builtins
+    real = builtins.__import__
+
+    def old(name, *a, **k):
+        if name == "diffusers" and a and a[2] and "WanVACETransformer3DModel" in a[2]:
+            raise ImportError("cannot import name WanVACETransformer3DModel")
+        return real(name, *a, **k)
+    monkeypatch.setattr(builtins, "__import__", old)
+    with pytest.raises(RuntimeError, match="diffusers 0.35"):
+        g.check_runtime()

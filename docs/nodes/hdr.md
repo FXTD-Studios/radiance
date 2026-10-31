@@ -813,7 +813,7 @@ RUDRA AI fill v3: draws the shape inside fully clipped highlights of an HDR mast
 | `max_area` (optional) | int | 399360 | 65536 to 921600, step 1024 | Working size in pixels (aspect kept); the fill is brought back to full size. RUDRA uses 832 x 480. |
 | `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
 | `fill_package` (optional) | string |  |  | RUDRA AI fill v3 folder (rudra_genfill.safetensors, brightness.json, prompt_cache). Empty searches models/radiance/rudra_genfill_v3 and RADIANCE_RUDRA_GENFILL. |
-| `allow_download` (optional) | boolean | off |  | Download what is missing: the AI fill v3 package (271 MB, pinned, SHA-256 checked) and the Wan base model from Hugging Face. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `allow_download` (optional) | boolean | on |  | Download what is missing on first use, into models/radiance: the AI fill v3 package (271 MB) and the Wan2.1-VACE-1.3B base model (7.7 GB; its 11.4 GB text encoder only when a custom prompt is first used). Pinned and hash-checked; resumes if interrupted. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
 | `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
 
 **Outputs**

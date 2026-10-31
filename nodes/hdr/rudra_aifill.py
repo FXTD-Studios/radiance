@@ -18,8 +18,10 @@ inside each region, SwitchHDR-style; empty uses RUDRA's base prompt.
 
 Wire it after SDR → HDR Universal or Recover running RUDRA ACES 2 (Linear or
 AP0 output). What it draws is plausible, not recovered: review every frame.
-Needs the base model (``Wan2.1-VACE-1.3B-diffusers``), the RUDRA AI fill v3
-package (271 MB, Apache 2.0), diffusers >= 0.35 and about 16 GB of VRAM.
+The base model (``Wan2.1-VACE-1.3B-diffusers``, 7.7 GB) and the RUDRA AI fill
+v3 package (271 MB, Apache 2.0) download themselves the first time the node
+runs on a frame with clipped highlights. Needs diffusers >= 0.35 (installed
+with Radiance) and about 16 GB of VRAM.
 """
 from __future__ import annotations
 
@@ -129,9 +131,11 @@ class RadianceSDRToHDRAIFill:
                 "fill_package": ("STRING", {"default": "",
                     "tooltip": "RUDRA AI fill v3 folder (rudra_genfill.safetensors, brightness.json, prompt_cache). "
                                "Empty searches models/radiance/rudra_genfill_v3 and RADIANCE_RUDRA_GENFILL."}),
-                "allow_download": ("BOOLEAN", {"default": False,
-                    "tooltip": "Download what is missing: the AI fill v3 package (271 MB, pinned, SHA-256 checked) "
-                               "and the Wan base model from Hugging Face. RADIANCE_ALLOW_DOWNLOADS=0 always wins."}),
+                "allow_download": ("BOOLEAN", {"default": True,
+                    "tooltip": "Download what is missing on first use, into models/radiance: the AI fill v3 "
+                               "package (271 MB) and the Wan2.1-VACE-1.3B base model (7.7 GB; its 11.4 GB text "
+                               "encoder only when a custom prompt is first used). Pinned and hash-checked; "
+                               "resumes if interrupted. RADIANCE_ALLOW_DOWNLOADS=0 always wins."}),
                 "keep_loaded": ("BOOLEAN", {"default": True,
                     "tooltip": "Keep Wan VACE on the GPU between runs. Off frees it after this node."}),
             },
@@ -143,7 +147,7 @@ class RadianceSDRToHDRAIFill:
              highlight_context_code=250, max_gain_stops=3.0, shape_gain=1.0,
              use_brightness_estimator=True, steps=30, seed=0, guidance=1.0, negative_prompt="",
              window=33, overlap=8, max_area=832 * 480, base_model="", fill_package="",
-             allow_download=False, keep_loaded=True):
+             allow_download=True, keep_loaded=True):
         from radiance.model import rudra_genfill as G
         from radiance.model.rudra_aces2 import aces2_view
 
@@ -169,26 +173,24 @@ class RadianceSDRToHDRAIFill:
             z = torch.zeros((n, H, W))
             return (image, z, torch.maximum(prior.cpu(), z), report)
 
-        package = G.resolve_package(fill_package)
-        if package is None and allow_download:
-            from radiance.model.rudra_download import GENFILL_V3, download_package
-            package = download_package(GENFILL_V3, allow=True)
+        # Everything below downloads itself on first use (RADIANCE_ALLOW_DOWNLOADS=0 or
+        # allow_download off stops that, with a message naming the files and folders).
+        G.check_runtime()
+        allow = None if allow_download else False
+        package = G.ensure_package(fill_package, allow=allow)
         if package is None:
             from radiance.model.rudra_download import GENFILL_V3
             raise RuntimeError(
-                "RUDRA AI fill v3 is not installed. Put rudra_genfill.safetensors, brightness.json and "
-                f"prompt_cache/ in ComfyUI/models/radiance/{GENFILL_V3.name}/ (from {GENFILL_V3.page_url}), "
-                "set RADIANCE_RUDRA_GENFILL, or turn on allow_download.")
-        base = G.resolve_base(base_model)
+                "RUDRA AI fill v3 is not installed and could not be downloaded. Put "
+                "rudra_genfill.safetensors, brightness.json and prompt_cache/ in "
+                f"ComfyUI/models/radiance/{GENFILL_V3.dirname}/ (from {GENFILL_V3.page_url}) "
+                "or set RADIANCE_RUDRA_GENFILL.")
+        base = G.ensure_base(base_model, allow=allow)
         if base is None:
-            from radiance.core.consent import downloads_allowed
-            if allow_download and downloads_allowed(default=True):
-                base = G.BASE_REPO          # diffusers fetches it into the Hugging Face cache
-            else:
-                raise RuntimeError(
-                    f"Wan2.1-VACE-1.3B-diffusers not found. Download https://huggingface.co/{G.BASE_REPO} into "
-                    f"ComfyUI/models/radiance/{G.BASE_DIRNAME}/ (or models/diffusers/), set {G.BASE_ENV}, "
-                    "or turn on allow_download.")
+            raise RuntimeError(
+                f"Wan2.1-VACE-1.3B-diffusers is not installed and could not be downloaded. Download "
+                f"https://huggingface.co/{G.BASE_REPO} into ComfyUI/models/radiance/{G.BASE_DIRNAME}/ "
+                f"(or models/diffusers/), or set {G.BASE_ENV}.")
 
         comfy.model_management.unload_all_models()
         comfy.model_management.soft_empty_cache()

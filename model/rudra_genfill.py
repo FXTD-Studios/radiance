@@ -357,6 +357,7 @@ class PromptBank:
 
     def _load_encoder(self):
         from transformers import AutoTokenizer, UMT5EncoderModel
+        ensure_text_encoder(self.base)
         tok = AutoTokenizer.from_pretrained(self.base, subfolder="tokenizer")
         enc = UMT5EncoderModel.from_pretrained(self.base, subfolder="text_encoder", torch_dtype=self.dtype)
         self._encoder = (tok, enc.to(self.device).eval())
@@ -799,6 +800,62 @@ def resolve_base(explicit: str = "") -> Optional[str]:
 def resolve_package(explicit: str = "") -> Optional[Path]:
     from radiance.model.rudra_download import GENFILL_V3, find_package
     return find_package(GENFILL_V3, explicit, PACKAGE_ENV)
+
+
+def check_runtime() -> None:
+    """Fail before any download when this Python cannot run Wan VACE."""
+    try:
+        import diffusers
+        from diffusers import AutoencoderKLWan, WanVACETransformer3DModel  # noqa: F401
+    except ImportError as exc:
+        import sys
+        ver = getattr(sys.modules.get("diffusers"), "__version__", "not installed")
+        raise RuntimeError(
+            f"RUDRA AI fill needs diffusers 0.35 or newer (found {ver}). Run: "
+            f'"{sys.executable}" -m pip install -U "diffusers>=0.35" and restart ComfyUI.') from exc
+
+
+def ensure_package(explicit: str = "", allow: Optional[bool] = None) -> Optional[Path]:
+    """The AI fill v3 package, downloaded on first use (271 MB) unless downloads are off."""
+    found = resolve_package(explicit)
+    if found is not None:
+        return found
+    from radiance.model.rudra_download import GENFILL_V3, download_package
+    return download_package(GENFILL_V3, allow=allow)
+
+
+def ensure_base(explicit: str = "", allow: Optional[bool] = None) -> Optional[str]:
+    """Wan2.1-VACE-1.3B-diffusers, downloaded on first use into
+    models/radiance/ (7.7 GB: VAE, transformer, scheduler, tokenizer; the text
+    encoder comes later, only for a custom prompt) unless downloads are off."""
+    found = resolve_base(explicit)
+    if found is not None:
+        return found
+    from radiance.model.rudra_download import WAN_BASE, download_package
+    got = download_package(WAN_BASE, allow=allow)
+    return str(got) if got is not None else None
+
+
+def ensure_text_encoder(base) -> None:
+    """The umT5 text encoder next to *base*: fetched (11.4 GB) the first time a
+    prompt that is not cached has to be encoded."""
+    if base is None:
+        return
+    folder = Path(str(base))
+    if not folder.is_dir():
+        return                                    # a hub id: transformers fetches it itself
+    from radiance.model.rudra_download import WAN_TEXT_ENCODER, download_package, package_complete
+    te = folder / "text_encoder"
+    if package_complete(folder, WAN_TEXT_ENCODER) or (
+            (te / "config.json").is_file() and any(te.glob("*.safetensors"))
+            and not any(te.glob("*.part"))):
+        return
+    logger.info("[RUDRA AI fill] a new prompt needs the umT5 text encoder; fetching it once (11.4 GB).")
+    if download_package(WAN_TEXT_ENCODER, target=folder) is None:
+        raise RuntimeError(
+            "The prompt is not cached and the umT5 text encoder is missing. Leave the prompt empty "
+            f"(RUDRA's base prompt is cached), allow downloads, or put text_encoder/ from "
+            f"https://huggingface.co/{BASE_REPO} in {folder}.")
 
 
 _MODEL: Dict[str, object] = {}
