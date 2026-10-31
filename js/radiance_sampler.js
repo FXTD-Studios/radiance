@@ -7,6 +7,7 @@ import {
     liveSourceNode,
     loaderModelType,
     modelMetaSourceNode as _findModelMetaSourceNode,
+    nameCurrentWidgetValues,
     setWidgetVisible as _setWidgetVisible,
     syncAutoValue,
 } from "./radiance_widget_utils.js";
@@ -85,62 +86,128 @@ const PRESET_CONFIGS = {
     },
     // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
     // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
+    // ALBABIT-FIX: audio_cfg 3 on LTX 2.3 LowRes, which sets its diction. On 2.5 the
+    // audio at cfg 3 lost its ambience (silent background behind the voice): 1 there.
     "▶ LTX 2.3 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, sampler: "euler",
+        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 3.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 LowRes. Optimal settings for 720p base generation.",
     },
     "▶ LTX 2.3 HighRes (40 steps)": {
         // ALBABIT-FIX: cfg=1 matches old Radiance and skips the negative-prompt forward pass
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, sampler: "euler",
+        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: idem
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
-    // ALBABIT-FIX: same steps/cfg/denoise/flux_shift as the LTX 2.3 pair --
-    // Dev has no official Comfy-Org template to source from. sampler is the
-    // one field NOT mirrored: verified against the official 2.5 T2V template
-    // (KSamplerSelect nodes), which uses euler_ancestral for both stages.
-    "▶ LTX 2.5 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+    // ALBABIT-FIX: the Distilled models follow Lightricks' templates: cfg 1, no extra
+    // guidance, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
+    // exactly, and denoise 0.375 keeps its last 3 steps (0.909375, 0.725, 0.421875, 0).
+    "▶ LTX 2.3 Distilled LowRes (8 steps)": {
+        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.3 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
+    },
+    "▶ LTX 2.3 Distilled HighRes (3 steps)": {
+        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.3 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). Lightricks' 2.3 T2V template starts at 0.85 instead, through a ManualSigmas node on sigmas_override.",
+    },
+    // ALBABIT-FIX: the official 2.5 templates are distilled (8 steps,
+    // euler_ancestral). Tested on Dev: euler gives a natural face where
+    // euler_ancestral smooths it, and 30 LowRes steps add fine detail.
+    // ALBABIT-FIX: Modality + STG (early) with rescale 0.45 won on 3 seeds of 4
+    // (lip-sync, sounds that follow the action); STG to the end hardened the skin.
+    "▶ LTX 2.5 LowRes (30 steps)": {
+        steps: 30, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.45, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) LowRes. Same base settings as LTX 2.3 LowRes — 20-step base generation.",
+        ltx_guidance: "Modality + STG (early)", stg_scale: 1.0, stg_end: 0.5, modality_scale: 3.0,
+        description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice; ltx_guidance couples sound and picture (lip-sync).",
     },
     "▶ LTX 2.5 HighRes (40 steps)": {
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
         return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
-        guidance_rescale_phi: 0.0, preview_method: "None", noise_type: "Gaussian",
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
         conditioning_clip_target: "Auto",
         tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
-        description: "LTX 2.5 (Dev) HighRes upscale. Same base settings as LTX 2.3 HighRes — will likely move to Manual Sigmas later.",
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
+    },
+    "▶ LTX 2.5 Distilled LowRes (8 steps)": {
+        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.5 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
+    },
+    "▶ LTX 2.5 Distilled HighRes (3 steps)": {
+        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
+        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
+        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
+        guidance_rescale_phi: 0.0, noise_type: "Gaussian",
+        conditioning_clip_target: "Auto",
+        tile_mode: false, refiner_start_step: 0, latent_format: "",
+        terminal_sigma_to_zero: true, force_exact_steps: true,
+        ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
+        description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). The ComfyUI 2.5 T2V and I2V templates start at 0.85 instead, through a ManualSigmas node on sigmas_override.",
     },
     "▶ HunyuanVideo (30 steps)": {
         steps: 30, cfg: 6.0, sampler: "euler", scheduler: "simple",
@@ -197,12 +264,65 @@ const PRESET_CONFIGS = {
     },
 };
 
+// ALBABIT-FIX: the LTX 2.5 LowRes preset's former name, migrated on load so a
+// saved graph keeps its values and does not land on an invalid combo value.
+const LEGACY_LTX25_LOWRES = "[V] LTX 2.5 LowRes (20 steps)";
+
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
     "▶ LTX 2.3 HighRes (40 steps)",
-    "▶ LTX 2.5 LowRes (20 steps)",
-    "▶ LTX 2.5 HighRes (40 steps)"
+    "▶ LTX 2.3 Distilled LowRes (8 steps)",
+    "▶ LTX 2.3 Distilled HighRes (3 steps)",
+    "▶ LTX 2.5 LowRes (30 steps)",
+    "▶ LTX 2.5 HighRes (40 steps)",
+    "▶ LTX 2.5 Distilled LowRes (8 steps)",
+    "▶ LTX 2.5 Distilled HighRes (3 steps)"
 ];
+
+// ALBABIT-FIX: mirrors sampler_utils.py's LTX_GUIDANCE_RECIPES (test_sampler_js_mirror.py):
+// [stg_scale, stg_end, modality_scale]. "Custom" shows these three settings.
+const LTX_GUIDANCE_RECIPES = {
+    "Off": [0.0, 1.0, 1.0],
+    "Modality": [0.0, 1.0, 3.0],
+    "Modality + STG (early)": [1.0, 0.5, 3.0],
+    "Modality + STG (full)": [1.0, 1.0, 3.0],
+};
+const LTX_GUIDANCE_SETTINGS = ["stg_scale", "stg_end", "modality_scale"];
+
+// ALBABIT-FIX: the guidance settings sit together under audio_cfg. Graphs
+// saved before 4.0 hold positional widgets_values in this order; declaring it
+// makes the frontend restore this node by name, so its widgets can move.
+const SAMPLER_SAVED_WIDGET_ORDER = [
+    "preset", "steps", "start_step", "end_step", "cfg", "audio_cfg", "sampler", "sampler_mode",
+    "phase_split", "scheduler", "scheduler_mode", "denoise", "flux_shift", "flux_guidance",
+    "flux_guidance_profile", "seed", "fixed", "pag_scale", "model_type", "sigma_blend_steps",
+    "guidance_rescale_phi", "preview_method", "noise_type", "conditioning_clip_target", "add_noise",
+    "return_with_leftover_noise", "ays_schedule", "tile_mode", "tile_size", "tile_overlap",
+    "tile_blend", "terminal_sigma_to_zero", "force_exact_steps", "refiner_start_step",
+    "_js_export_btn", "_js_import_btn", "_js_preset_info", "restart_count", "noise_alpha_start",
+    "noise_alpha_end", "sdr_blend", "sdr_inject_steps", "sdr_decay", "temporal_window",
+    "temporal_overlap", "› Export Preset", "› Import Preset", "preset_info",
+];
+const GUIDANCE_WIDGETS = ["guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
+
+function groupGuidanceWidgets(node) {
+    const widgets = node.widgets;
+    if (!widgets?.some(w => w.name === "audio_cfg")) return;
+    const block = GUIDANCE_WIDGETS.map(name => widgets.find(w => w.name === name)).filter(Boolean);
+    const ordered = widgets.filter(w => !block.includes(w));
+    ordered.splice(ordered.findIndex(w => w.name === "audio_cfg") + 1, 0, ...block);
+    widgets.splice(0, widgets.length, ...ordered);
+}
+
+// ALBABIT-FIX: Custom starts from the recipe it replaces (the last one applyFolding saw).
+function fillLtxGuidanceSettings(node) {
+    const values = LTX_GUIDANCE_RECIPES[node._radLtxRecipe];
+    if (!values) return;
+    LTX_GUIDANCE_SETTINGS.forEach((name, i) => {
+        const w = node.widgets?.find(x => x.name === name);
+        if (w) w.value = values[i];
+    });
+}
 
 // Model taxonomy — mirrors sampler_utils.py so the UI folds the same way the
 // backend resolves models. GUIDANCE_EMBED models use flux_guidance; CFG_GUIDED
@@ -218,6 +338,7 @@ const CFG_GUIDED_MODELS = new Set([
     "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
+    "flux3",
 ]);
 const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 
@@ -299,7 +420,6 @@ function resolveModelType(presetVal, modelTypeVal) {
 const LTX_INCOMPATIBLE_WIDGETS = [
     "flux_guidance",
     "flux_guidance_profile",
-    "preview_method",
     "tile_mode",
     "tile_size",
     "tile_overlap",
@@ -398,6 +518,11 @@ function applyFolding(node) {
     // which interrupted typing; the steady state now changes nothing.
     const hiddenNames = new Set(dummyWidgets);
 
+    // ALBABIT-FIX: ltx_guidance's three settings are its Custom mode's.
+    const ltxGuidance = find("ltx_guidance")?.value;
+    if (ltxGuidance !== undefined && ltxGuidance !== "Custom") node._radLtxRecipe = ltxGuidance;
+    if (ltxGuidance !== "Custom") LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+
     // ── Custom: full manual control → everything visible, only tile sub-options follow tile_mode ──
     if (isCustom) {
         hiddenNames.add("preset_info");
@@ -433,7 +558,6 @@ function applyFolding(node) {
 
     // ── Preset/Auto: compute the smart, model-aware hidden set ──
     const tileModeW = find("tile_mode");
-    const restartCountW = find("restart_count");
     const aysScheduleW = find("ays_schedule");
     const modelTypeW = find("model_type");
     const samplerModeW = find("sampler_mode");
@@ -470,12 +594,15 @@ function applyFolding(node) {
         hiddenNames.add("tile_blend");
     }
 
-    // 3.3. Restart schedules: visible if restart_count > 0
-    const hasRestartCount = restartCountW && parseInt(restartCountW.value, 10) > 0;
-    if (!hasRestartCount) {
-        hiddenNames.add("noise_alpha_start");
-        hiddenNames.add("noise_alpha_end");
-    }
+    // ALBABIT-FIX: the noise alpha ramp weighs a non-Gaussian noise_type at start_step
+    // (its end only past step 0), restart_count needs a connected restart_schedule,
+    // temporal_overlap a window, force_exact_steps a denoise below 1.
+    const gaussian = find("noise_type")?.value === "Gaussian";
+    if (gaussian) hiddenNames.add("noise_alpha_start");
+    if (gaussian || !(parseInt(find("start_step")?.value, 10) > 0)) hiddenNames.add("noise_alpha_end");
+    if (!node.inputs?.some(i => i.name === "restart_schedule" && i.link !== null)) hiddenNames.add("restart_count");
+    if (!(parseInt(find("temporal_window")?.value, 10) > 0)) hiddenNames.add("temporal_overlap");
+    if (Number(find("denoise")?.value) >= 1) hiddenNames.add("force_exact_steps");
 
     // 3.4. Sigma blend steps: visible if Phase-Shift sampler_mode OR ays_schedule
     // is active. phase_split: only meaningful in a Phase-Shift sampler_mode.
@@ -534,17 +661,31 @@ function applyFolding(node) {
         hiddenNames.add("guidance_rescale_phi");
     }
 
-    // 3.5e. LTX models can't use the flux-style guidance / tiling / preview widgets.
+    // 3.5e. LTX models can't use the flux-style guidance / tiling widgets.
     if (isLTX) {
         LTX_INCOMPATIBLE_WIDGETS.forEach(name => hiddenNames.add(name));
     }
 
-    // 3.5f. audio_cfg (LTX 2.5 dual-CFG) is default-hidden -- shown for the
-    // two dedicated LTX 2.5 presets, or under "Auto" when model_meta detects
-    // an LTX 2.5 filename. LTX 2.3 keeps plain cfg (no separate audio scale).
-    const showAudioCfg = presetVal.toLowerCase().includes("ltx 2.5")
-        || (presetVal === "Auto" && _isAutoDetectedLtx25(node));
-    if (!showAudioCfg) hiddenNames.add("audio_cfg");
+    // 3.5f. audio_cfg (LTX-AV dual-CFG) is hidden for every other model. The
+    // backend applies it to all LTX-AV models, LTX 2.3 included.
+    if (effectiveModel !== "ltxav") hiddenNames.add("audio_cfg");
+    // 3.5f-2. ltx_guidance (STG + modality) is LTX-AV only too.
+    if (effectiveModel !== "ltxav") {
+        hiddenNames.add("ltx_guidance");
+        LTX_GUIDANCE_SETTINGS.forEach(name => hiddenNames.add(name));
+    }
+    // ALBABIT-FIX: a packed LTX-AV latent (video + audio) is never windowed
+    // (the wrapper only splits 5D tensors) and only takes Gaussian noise: the
+    // other types build a video-only tensor that the audio stream cannot use.
+    if (effectiveModel === "ltxav") {
+        hiddenNames.add("temporal_window");
+        hiddenNames.add("temporal_overlap");
+        hiddenNames.add("noise_type");
+        hiddenNames.add("noise_alpha_start");
+        hiddenNames.add("noise_alpha_end");
+        const noiseTypeW = find("noise_type");
+        if (noiseTypeW && noiseTypeW.value !== "Gaussian") noiseTypeW.value = "Gaussian";
+    }
 
     // ── Apply the final state in one pass (preset_info / control_after_generate
     // are never added to hiddenNames, so they stay visible automatically) ──
@@ -591,11 +732,8 @@ function applyFolding(node) {
 
 function updateUILocks(node, presetName) {
     if (!node.widgets) return;
-    // ALBABIT-FIX: LTX_PRESETS holds the unicode-marker keys ("▶ LTX 2.3 …"),
-    // but presetName here is the raw backend combo value ("[V] LTX 2.3 …"),
-    // so this literal-equality check was always false -- dead code, no LTX
-    // widget was ever actually locked. resolveModelType() already does the
-    // real (substring-based) match; reuse it instead of a second stale check.
+    // ALBABIT-FIX: presetName is the backend value ("[V] LTX 2.3 …"), never an
+    // LTX_PRESETS key ("▶ …"), so the old equality check never locked anything.
     const isLTX = resolveModelType(presetName, "auto") === "ltxav";
     const isCustom = presetName === "Auto" || presetName === "Custom";
 
@@ -639,11 +777,8 @@ function updateSigmaLocks(node) {
     if (!node.widgets) return;
     const locked = isSigmaOverrideActive(node);
 
-    // ALBABIT-FIX: same bug class as setWidgetVisible -- this runs every 250ms
-    // via the polling loop, and reassigning widget.disabled/inputEl styling
-    // even when "locked" hasn't changed was enough to interrupt in-progress
-    // typing in "steps"/"denoise"/"scheduler"/etc. (SIGMA_OVERRIDE_WIDGETS).
-    // Skip entirely per-widget when already in the desired state.
+    // ALBABIT-FIX: runs every 250 ms; rewriting an unchanged disabled state
+    // interrupted typing in these widgets, so skip the ones already in place.
     let changed = false;
     node.widgets.forEach(widget => {
         if (!SIGMA_OVERRIDE_WIDGETS.includes(widget.name)) return;
@@ -740,11 +875,8 @@ function updatePresetDivergenceMarkers(node) {
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
 
-// ALBABIT-FIX: LTXVConcatAVLatent sits directly in front of latent_image on
-// BOTH pipeline stages, not just HighRes, so a one-hop check always found it
-// first and misclassified every stage as HighRes. LTXVLatentUpsampler is the
-// only unambiguous HighRes signal; walk back a bounded number of hops through
-// the video_latent chain looking for it (never audio_latent).
+// ALBABIT-FIX: LTXVConcatAVLatent feeds latent_image on both stages, so only
+// LTXVLatentUpsampler marks HighRes: walk back a few hops of the video chain.
 const LTX_AV_UPSCALE_STAGE_MAX_HOPS = 6;
 function _nextLatentInputName(node) {
     if (!node.inputs) return null;
@@ -795,8 +927,8 @@ function _modelLoraNames(node, loaderNode) {
 
 // ALBABIT-FIX: some checkpoints need settings their model_type's default lacks;
 // only the file name tells them apart (checked against the model cards). "turbo"
-// also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 Dev/Distilled
-// is left to the LTX 2.3 LowRes/HighRes presets: community values disagree.
+// also needs detectedType (SDXL and SD3.5 Turbo differ). LTX 2.3 / 2.5 Distilled
+// is left to _resolveLtxAvStageDefaults: its step count differs per stage.
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
     // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
@@ -808,7 +940,14 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     }
     if (!filename) return null;
     const f = filename.toLowerCase();
-    if (f.includes("klein")) {
+    // FLUX 3 Image Klein: BFL names the step-distilled files flux3_image_klein_sd_*.
+    // Mirrors refine_distillation_from_meta; at run time the weights decide
+    // (refine_flux3_from_model) and onExecuted shows what was used.
+    if (detectedType === "flux3") {
+        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")) ? { cfg: 1.0, steps: 16 } : null;
+    }
+    // Flux.2 Klein only: a FLUX 3 Klein file has "klein" in its name too.
+    if (f.includes("klein") && !/flux[-_.]?3/.test(f)) {
         return f.includes("base") ? { flux_guidance: 4.0, steps: 50 } : { flux_guidance: 1.0, steps: 4 };
     }
     if (f.includes("schnell")) return { flux_guidance: 0.0, steps: 4 };
@@ -840,10 +979,11 @@ function _resolveLtxAvStageDefaults(unetName, isHighRes) {
     const f = unetName.toLowerCase();
     const version = f.includes("2.5") ? "2.5" : f.includes("2.3") ? "2.3" : null;
     if (!version) return null;
-    const key = isHighRes
-        ? `▶ LTX ${version} HighRes (40 steps)`
-        : `▶ LTX ${version} LowRes (20 steps)`;
-    return PRESET_CONFIGS[key] ?? null;
+    // ALBABIT-FIX: matched without the step count, which differs per version.
+    // A Distilled file takes the Distilled stage presets.
+    const kind = f.includes("distilled") ? "Distilled " : "";
+    const prefix = `▶ LTX ${version} ${kind}${isHighRes ? "HighRes" : "LowRes"} (`;
+    return PRESET_CONFIGS[LTX_PRESETS.find(k => k.startsWith(prefix))] ?? null;
 }
 
 // ALBABIT-FIX: mirrors sampler_utils.py's MODEL_DEFAULTS (test_sampler_js_mirror.py).
@@ -857,6 +997,9 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     flux:          { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 3.5, steps: 20 },
     flux2:         { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
     "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
+    // FLUX 3 Image Klein base (image_flux3_klein_t2i.json); the step-distilled
+    // file is refined to cfg 1, 16 steps by _deriveDistillationOverride.
+    flux3:         { cfg: 3.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 50 },
     // ALBABIT-FIX: cfg/scheduler/steps verified against lodestones' own
     // official Chroma1-HD ComfyUI workflow (cfg was 1.0, scheduler "simple" --
     // both wrong). "steps" is a generic fallback, new for this architecture.
@@ -912,11 +1055,8 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // ALBABIT-FIX: steps=64, verified against Genmo's official Mochi 1
     // model card (cfg was already exact).
     mochi:         { cfg: 4.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 64 },
-    // ALBABIT-FIX: previously fell back to "sd1.5" (cfg=7.0/dpmpp_2m/normal) --
-    // verified against AuraFlow's own official ComfyUI workflow, which
-    // contradicts all three. No shift node present (unlike Lumina2, which
-    // reuses the same ModelSamplingAuraFlow node but at shift=6.0 -- confirmed
-    // NOT applicable to AuraFlow's own workflow, checked directly).
+    // ALBABIT-FIX: was the sd1.5 fallback; values from AuraFlow's official
+    // ComfyUI workflow, which has no shift node (unlike Lumina2).
     aura_flow:     { cfg: 3.48, sampler: "euler",   scheduler: "sgm_uniform", guidance: 0.0, steps: 20 },
     // ALBABIT-FIX: used to fall back to "sd1.5". No official ComfyUI workflow
     // exists: cfg/sampler from community sources, steps 20 from the diffusers
@@ -941,11 +1081,8 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     kandinsky5_image:   { cfg: 3.5, sampler: "euler",           scheduler: "simple", guidance: 0.0, steps: 50 },
 };
 
-// ALBABIT-FIX: shared by updateModelMetaDefaults() (value sync) and
-// applyFolding() (Auto visibility) -- mirrors nodes_sampler.py's
-// use_sd_turbo_schedule. Re-resolves the Loader link/unet_name itself
-// rather than caching -- cheap, and avoids relying on call order between
-// the two functions (toggleFields() calls updateModelMetaDefaults() first).
+// ALBABIT-FIX: shared by updateModelMetaDefaults() and applyFolding(); mirrors
+// use_sd_turbo_schedule and re-reads the Loader instead of caching.
 function _isSdTurboActive(node) {
     const sourceNode = _findModelMetaSourceNode(node);
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
@@ -953,24 +1090,16 @@ function _isSdTurboActive(node) {
     return detectedType === "sdxl" && unetName.toLowerCase().includes("turbo");
 }
 
-// ALBABIT-FIX: same re-resolve-don't-cache pattern as _isSdTurboActive above.
-// Used to auto-show audio_cfg under "Auto" (no named preset) when model_meta
-// is wired to a Loader with an LTX 2.5 filename -- named presets already
-// handle their own visibility via presetVal, this only covers Auto.
-function _isAutoDetectedLtx25(node) {
-    const sourceNode = _findModelMetaSourceNode(node);
-    const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? "";
-    return unetName.toLowerCase().includes("2.5");
-}
-
-// ALBABIT-FIX: _radMetaLinked marks this widget as owned by the model_meta
-// system (🧲 or its own ✎ divergence) so updatePresetDivergenceMarkers()
-// leaves its label alone -- both systems write the same widget.label, and
-// without an explicit flag, whichever ran last silently won regardless of
-// which one was actually supposed to be authoritative.
+// ALBABIT-FIX: _radMetaLinked hands the label to the model_meta markers (🧲 or
+// its ✎): both systems write widget.label, and the last one used to win.
 function _markLinkedWidget(widget, linked, inSync) {
     if (!widget) return false;
+    // ALBABIT-FIX: a widget neither linked now nor before belongs to the preset
+    // markers. Resetting its label here wiped their "✎" on every poll, and the
+    // label flip re-rendered the widget mid-typing (a typed cfg reverted).
+    const wasLinked = widget._radMetaLinked;
     widget._radMetaLinked = linked;
+    if (!linked && !wasLinked) return false;
     const markerText = linked ? (inSync ? LINKED_MARKER : PRESET_MARKER) : null;
     if (widget._radOrigLabel === undefined && !markerText) return false;
     if (widget._radOrigLabel === undefined) widget._radOrigLabel = widget.label ?? widget.name;
@@ -980,11 +1109,9 @@ function _markLinkedWidget(widget, linked, inSync) {
     return true;
 }
 
-// ALBABIT-FIX: extends the guidance/steps sync (above) to model_type/cfg/
-// sampler/scheduler/denoise (plus, for LTX-AV, which Sampler
-// stage this node is -- see _isLtxAvHighResStage). Gated on preset
-// (Auto/Custom) only; the per-field checks in syncAutoValue() already
-// protect any field the user deliberately set.
+// ALBABIT-FIX: under Auto/Custom, syncs model_type, guidance, steps, cfg,
+// sampler, scheduler, denoise, audio_cfg, schedule and guidance (per LTX-AV stage);
+// syncAutoValue() keeps any value the user set.
 function updateModelMetaDefaults(node) {
     if (!node.widgets) return;
     const presetW = node.widgets.find(w => w.name === "preset");
@@ -1026,6 +1153,15 @@ function updateModelMetaDefaults(node) {
         // split so far) -- undefined everywhere else, same as any other
         // unresolved field above.
         [node.widgets.find(w => w.name === "denoise"), ltxavStage?.denoise],
+        [node.widgets.find(w => w.name === "audio_cfg"), ltxavStage?.audio_cfg],
+        // ALBABIT-FIX: the stage's schedule and guidance too. Left at the widgets' own
+        // values (shift 1, inexact steps, no STG), an Auto pass ran another recipe
+        // than its preset: on an upscaled pass, another sigma range.
+        [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift],
+        [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
+        [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
+        [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
+        [node.widgets.find(w => w.name === "guidance_rescale_phi"), ltxavStage?.guidance_rescale_phi],
     ];
 
     let changed = false;
@@ -1072,7 +1208,9 @@ async function exportPreset(node) {
     const widgets = node.widgets;
     if (!widgets) return;
 
-    const exportFields = ["steps", "cfg", "sampler", "scheduler", "denoise", "flux_shift", "flux_guidance"];
+    // ALBABIT-FIX: with the LTX settings, so an imported preset renders the same.
+    const exportFields = ["steps", "cfg", "audio_cfg", "sampler", "scheduler", "denoise", "flux_shift",
+        "flux_guidance", "guidance_rescale_phi", "ltx_guidance", ...LTX_GUIDANCE_SETTINGS];
     const settings = {};
     for (const widget of widgets) {
         if (exportFields.includes(widget.name)) {
@@ -1275,6 +1413,13 @@ app.registerExtension({
     name: "FXTD.RadianceSampler",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name !== "RadianceSamplerPro") return;
+        nodeData.fallbackWidgetsValuesNames = SAMPLER_SAVED_WIDGET_ORDER;
+        // A graph saved in the current order: see nameCurrentWidgetValues.
+        const configure = nodeType.prototype.configure;
+        nodeType.prototype.configure = function (info) {
+            nameCurrentWidgetValues(this, info, SAMPLER_SAVED_WIDGET_ORDER);
+            return configure.apply(this, arguments);
+        };
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 
@@ -1282,6 +1427,7 @@ app.registerExtension({
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
 
             const self = this;
+            groupGuidanceWidgets(this);
 
             this.addWidget("button", "› Export Preset", null, () => exportPreset(this), { serialize: false });
             this.addWidget("button", "› Import Preset", null, () => importPreset(this), { serialize: false });
@@ -1324,6 +1470,10 @@ app.registerExtension({
                     }
                 }
             };
+
+            // ALBABIT-FIX: onConfigure refreshes it too; the text saved in a graph
+            // is an older preset's description.
+            this._radUpdateDescription = updateDescription;
 
             let lastPresetValue = presetWidget.value;
 
@@ -1369,6 +1519,17 @@ app.registerExtension({
                 }
             });
 
+            const ltxGuidanceW = self.widgets?.find(x => x.name === "ltx_guidance");
+            if (ltxGuidanceW) {
+                const origLtxCallback = ltxGuidanceW.callback;
+                ltxGuidanceW.callback = function (value, ...rest) {
+                    const res = origLtxCallback ? origLtxCallback.call(this, value, ...rest) : undefined;
+                    if (value === "Custom") fillLtxGuidanceSettings(self);
+                    toggleFields(self);
+                    return res;
+                };
+            }
+
             // Hook connection change events (optional ports linked/unlinked)
             const origConnect = this.onConnectionsChange;
             this.onConnectionsChange = function (...args) {
@@ -1407,11 +1568,9 @@ app.registerExtension({
                 updateDescription(val);
             }
 
-            // ALBABIT-FIX: _configuredByLoad is set in onConfigure (loaded workflow).
-            // For a loaded node, onConfigure fires right after onNodeCreated with correct values;
-            // its 150ms timer handles initial folding so we skip this one to avoid a race where
-            // this fires while configure() is still running (large workflows take > 100ms).
-            // For a freshly added node, onConfigure never fires, so this timer is the only one.
+            // ALBABIT-FIX: a loaded node folds in onConfigure's 150 ms timer; skipping
+            // here avoids racing configure() on large workflows. A new node never
+            // gets onConfigure, so this timer is its only one.
             const nodeRef = this;
             setTimeout(() => {
                 if (nodeRef._configuredByLoad) return;
@@ -1433,12 +1592,17 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function (info) {
             if (onConfigure) onConfigure.apply(this, arguments);
             const self = this;
+            const loadedPresetW = self.widgets?.find(w => w.name === "preset");
+            if (loadedPresetW?.value === LEGACY_LTX25_LOWRES) loadedPresetW.value = "[V] LTX 2.5 LowRes (30 steps)";
             // ALBABIT-FIX: signal to the onNodeCreated timer that onConfigure ran,
             // so the timer skips and avoids a potential race with in-progress configuration.
             self._configuredByLoad = true;
             const reapply = () => {
                 const presetW = self.widgets?.find(w => w.name === "preset");
-                if (presetW) updateUILocks(self, presetW.value);
+                if (presetW) {
+                    updateUILocks(self, presetW.value);
+                    self._radUpdateDescription?.(presetW.value);
+                }
                 toggleFields(self);
                 // ALBABIT-FIX: flag widgets already diverging from the preset in
                 // the loaded workflow (e.g. cfg edited before saving).

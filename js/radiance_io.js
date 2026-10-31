@@ -1,8 +1,11 @@
 import { app } from "../../scripts/app.js";
 
 import {
+    compactWidgetValues,
     fitNodeSize,
     forceWidgetReinsert as _forceWidgetReinsert,
+    nameCurrentWidgetValues,
+    restoreHoledWidgetValues,
     setWidgetVisible as _setWidgetVisible,
 } from "./radiance_widget_utils.js";
 
@@ -37,7 +40,11 @@ function writeWidgetVisibility(v) {
         exr_compression: isExr,
         start_frame: isSeq,
         frame_padding: isSeq,
-        audio_source: isVid,
+        audio_section: isVid || isSeq,
+        write_audio: isSeq,
+        audio_source: isVid || (isSeq && !!v.write_audio),
+        audio_codec: isVid || (isSeq && !!v.write_audio),
+        audio_path: isSeq && !!v.write_audio,
         broadcast_safe: !isFloatFmt && !isVid,
         color_space: !ocio,
         ocio_config: ocio,
@@ -234,6 +241,18 @@ try {
 } catch (e) {
 	console.warn("[Radiance.IO] Failed to patch Element.prototype.setAttribute", e);
 }
+
+// ALBABIT-FIX: version's control widget sits right after it. Writes saved before
+// it hold positional widgets_values in this order; declaring it makes the
+// frontend restore them by name.
+const WRITE_SAVED_WIDGET_ORDER = [
+	"output_path", "format", "filename", "version", "color_space", "fps", "quality",
+	"exr_compression", "start_frame", "frame_padding", "audio_source", "broadcast_safe",
+	"overwrite", "proxy_scale", "working_space", "ocio_colorspace", "ocio_config",
+	"hdr_reference_nits", "hdr10_mastering_display",
+];
+const WRITE_AUDIO_WIDGETS = ["write_audio", "audio_source", "audio_codec", "audio_path"];
+
 app.registerExtension({
 	name: "Radiance.IO",
 	async beforeRegisterNodeDef(nodeType, nodeData, app) {
@@ -490,10 +509,23 @@ app.registerExtension({
 		// the pre-v3 RadianceDigitalCinemaWrite and never matched. The group comes
 		// from the format prefix ("IMG │", "SEQ │", "VID │").
 		if (nodeData.name === "RadianceWrite") {
+			nodeData.fallbackWidgetsValuesNames = WRITE_SAVED_WIDGET_ORDER;
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
 			nodeType.prototype.onNodeCreated = function () {
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
 				const node = this;
+
+				// ALBABIT-FIX: an "Audio" rule above the audio settings, at the bottom. A DOM
+				// widget, never saved; its layout sits inside, as hiding resets the element's display.
+				const ruleEl = document.createElement("div");
+				ruleEl.innerHTML = '<div style="display:flex;align-items:center;gap:8px;height:20px;padding:0 2px;'
+					+ 'color:#9aa3ad;font:600 10px/1 sans-serif;letter-spacing:.1em;text-transform:uppercase">'
+					+ '<span>Audio</span><span style="flex:1;height:1px;background:#4a4f57"></span></div>';
+				const rule = node.addDOMWidget("audio_section", "radiance_section", ruleEl,
+					{ serialize: false, getMinHeight: () => 20, getMaxHeight: () => 20 });
+				rule.serialize = false;
+				node.widgets.splice(node.widgets.indexOf(rule), 1);
+				node.widgets.splice(node.widgets.findIndex(w => WRITE_AUDIO_WIDGETS.includes(w.name)), 0, rule);
 
 				// Captured once: a hidden widget can leave node.widgets.
 				const writeWidgets       = Object.fromEntries(node.widgets.map(w => [w.name, w]));
@@ -626,6 +658,19 @@ app.registerExtension({
 					ctx.fillText(note, 10, this.size[1] - 5);
 				}
 				ctx.restore();
+			};
+
+			// The Audio rule is unsaved and sits mid-list: see compactWidgetValues.
+			const configure = nodeType.prototype.configure;
+			nodeType.prototype.configure = function (info) {
+				restoreHoledWidgetValues(this, info);
+                nameCurrentWidgetValues(this, info, WRITE_SAVED_WIDGET_ORDER);
+				return configure.apply(this, arguments);
+			};
+			const onSerialize = nodeType.prototype.onSerialize;
+			nodeType.prototype.onSerialize = function (o) {
+				if (onSerialize) onSerialize.apply(this, arguments);
+				compactWidgetValues(this, o);
 			};
 
 			// Re-apply after a saved workflow restores this node — onNodeCreated

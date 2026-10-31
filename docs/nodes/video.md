@@ -4,7 +4,7 @@
 
 Text-to-video, image-to-video, temporal generation, and video HDR.
 
-15 nodes. [All sections](README.md)
+14 nodes. [All sections](README.md)
 
 - [I2V Pipeline](#i2v-pipeline)
 - [T2V Pipeline](#t2v-pipeline)
@@ -16,7 +16,6 @@ Text-to-video, image-to-video, temporal generation, and video HDR.
 - [Video HDR Conditioner](#video-hdr-conditioner)
 - [Video HDR Decode](#video-hdr-decode)
 - [Video Latent Noise](#video-latent-noise)
-- [Video Loader](#video-loader)
 - [Video Mask Propagator](#video-mask-propagator)
 - [Video Model Info](#video-model-info)
 - [Video Prompt Builder](#video-prompt-builder)
@@ -36,7 +35,7 @@ End-to-end image-to-video generation pipeline with motion control.
 | `clip` | CLIP |  |  | Text encoder matching the model, used for both prompts. |
 | `vae` | VAE |  |  | VAE matching the model. Encodes the reference image, sets the latent shape and decodes preview_frames. |
 | `reference_image` | IMAGE |  |  | Start frame (display-referred sRGB, one image). Its width and height set the video size, rounded down to the VAE's spatial compression. |
-| `positive_prompt` | string | `smooth camera motion, cinematic HDR, 4K` | multi-line text | What should happen in the shot. ', <n> nits HDR, <gamut>' is appended when peak_nits is above 100. |
+| `positive_prompt` | string | `smooth camera motion, cinematic HDR, 4K` | multi-line text | What should happen in the shot. ', &lt;n> nits HDR, &lt;gamut>' is appended when peak_nits is above 100. |
 | `negative_prompt` | string | `watermark, blurry, flickering, sdr` | multi-line text | What to steer away from, encoded with the same text encoder. |
 | `frames` | int | 25 | 1 to 512 | Requested frames. The latent holds ceil(frames / temporal compression) frames; use a multiple of the compression plus 1 (e.g. 25, 49, 81) to get exactly this count back. |
 | `seed` | int | 0 | 0 to 2147483648 | Seed for the initial noise and the sampler. |
@@ -89,7 +88,7 @@ End-to-end text-to-video generation pipeline with HDR support.
 | `cfg` (optional) | float | 0 | 0 to 30, step 0.1 | Guidance scale. 0 uses the model default (the LTX-Video preset's 3.5 when no dit_config is connected). cfg_schedule_json overrides it. |
 | `sampler_name` (optional) | choice | `euler` | ComfyUI's samplers | ComfyUI sampler. Ignored when dit_config carries a model_name. |
 | `scheduler` (optional) | choice | `normal` | ComfyUI's schedulers | ComfyUI sigma scheduler. Ignored when dit_config carries a model_name. |
-| `peak_nits` (optional) | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Adds '<n> nits HDR' to the prompt. Prompt text only, no pixel change; 100 requests an SDR look. |
+| `peak_nits` (optional) | choice | `1000` | `100`, `203`, `400`, `600`, `1000`, `4000`, `10000` | Adds '&lt;n> nits HDR' to the prompt. Prompt text only, no pixel change; 100 requests an SDR look. |
 | `target_gamut` (optional) | choice | `BT.2020` | `BT.2020`, `P3-D65`, `P3-DCI`, `BT.709`, `ACEScg` | Adds the selected gamut descriptor to the prompt. Prompt text only, no pixel conversion. |
 | `hdr_eotf` (optional) | choice | `PQ (ST.2084)` | `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear`, `sRGB / BT.1886` | Adds a transfer-function descriptor to the prompt. Prompt text only, no pixel encoding. |
 | `hdr_strength` (optional) | float | 0.5 | 0 to 1, step 0.05 | Prompt weight of the appended HDR descriptors (gamut, EOTF, peak nits), as (text:weight) with weight = 2 x strength: 0.5 is neutral, 1.0 doubles their emphasis, 0 leaves them out. |
@@ -191,7 +190,7 @@ Pass decoded video frames through, HDR-encode them, or write them as a 32-bit fl
 | `mode` | choice | `passthrough` | `passthrough`, `hdr_decode`, `exr_sequence`, `preview_gif` | passthrough: return frames. hdr_decode: run Video HDR Decode (Reinhard, PQ out) and return the HDR signal. exr_sequence / preview_gif: also write files. Only the last two write to disk. |
 | `hdr_metadata_json` (optional) | string | `{"peak_nits":1000,"eotf":"PQ (ST.2084)"}` |  | hdr_decode only. Its peak_nits and gamut (BT.2020 if absent) are used; the eotf key is ignored, output is always PQ. |
 | `output_folder` (optional) | string |  |  | Empty: ComfyUI's output folder. |
-| `filename_prefix` (optional) | string | `radiance_video` |  | File name start: <prefix>_<6-digit frame>.exr, or <prefix>_preview.gif (overwritten on each run). |
+| `filename_prefix` (optional) | string | `radiance_video` |  | File name start: &lt;prefix>_&lt;6-digit frame>.exr, or &lt;prefix>_preview.gif (overwritten on each run). |
 | `fps` (optional) | float | 24 | 1 to 120 | GIF playback rate (frame duration 1000 / fps ms). preview_gif only. |
 | `frame_offset` (optional) | int | 0 |  | Added to the frame number in EXR file names. exr_sequence only. |
 
@@ -304,49 +303,6 @@ Correctly shaped, seeded i.i.d. Gaussian latent noise for a video model (indepen
 | :--- | :--- |
 | `noise_latent` | LATENT |
 | `shape_report` | STRING |
-
-## Video Loader
-
-`RadianceVideoLoader`
-
-Video loader v3.3 — for LTX 2.3, Wan, HunyuanVideo, etc. Supports Baked/standalone VAE, optional Audio VAE, and optional latent upscale model, on top of the universal loader features.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `preset` | choice | `Custom` | `Custom`, `CogVideoX`, `Cosmos World`, `HunyuanVideo`, `LTX Video`, `LTX Video (Low VRAM)`, `LTX Video 2.3`, `LTX Video 2.3 (Low VRAM)`, `LTX Video 2.5`, `LTX Video 2.5 (Low VRAM)`, and 8 more | Quick-configure for common architectures. Overrides model_type, dtypes, offload_mode, and hints which CLIP slots are needed. |
-| `unet_name` | choice |  | files found in the matching models or input folder | Main diffusion model (UNET / DiT / Transformer). For WAN 2.2, select either the high_noise or low_noise file — the companion expert is detected automatically. The 'model' output always carries the high_noise expert and 'model_low_noise' always carries the low_noise expert, regardless of which file is selected. |
-| `weight_dtype` | choice | `default` | `default`, `fp8_e4m3fn`, `fp8_e5m2`, `fp16`, `bf16`, `fp32` | UNET weight precision. fp8_e4m3fn saves ~40% VRAM vs fp16. |
-| `model_type` | choice | `Auto-Detect` | `Auto-Detect`, `hunyuan_video`, `wan`, `ltxv`, `ltxav`, `wan_ti2v`, `cosmos`, `cogvideox`, `mochi`, `minimax`, and 2 more | 'Auto-Detect' reads the checkpoint's key names to determine architecture. Override manually if detection fails. |
-| `vae_name` | choice | `Baked VAE (from UNET)` | `Baked VAE (from UNET)` | VAE for encoding/decoding latents. 'Baked VAE (from UNET)' extracts it from the checkpoint. |
-| `audio_vae_name` (optional) | choice | `None` | `None`, `Baked Audio VAE (from UNET)` | Audio VAE for LTX 2.3. Choose 'Baked' or a standalone safetensors file. |
-| `upscale_model_name` (optional) | choice | `None` | `None` | Latent Upscale Model (e.g. for LTX 2.3 or HunyuanVideo). |
-| `clip_l` (optional) | choice | `None` | `None` | CLIP-L (text encoder). Used by: SD1.5, SDXL, Flux, SD3. |
-| `clip_g` (optional) | choice | `None` | `None` | CLIP-G (text encoder). Used by: SDXL, SD3, SD3.5. |
-| `t5xxl` (optional) | choice | `None` | `None`, `Baked (from UNET)` | T5-XXL (text encoder). Used by: Flux, SD3, SD3.5, Wan, PixArt, LTX (pre-2.3). 'Baked (from UNET)' loads it from the main checkpoint -- AuraFlow ships no standalone text encoder file. |
-| `llm_encoder` (optional) | choice | `None` | `None` | LLM encoder. Used by: HunyuanVideo (Llava-Llama3), LTX 2.3 (Gemma 3), Lumina2 (Gemma-2), Z-Image (Qwen3), Flux.2 (Mistral-3/Qwen3). |
-| `text_projection` (optional) | choice | `None` | `None`, `Baked (from UNET)` | Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). 'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader. |
-| `clip_dtype` (optional) | choice | `default` | `default`, `fp16`, `bf16`, `fp8_e4m3fn`, `fp32` | CLIP weight precision. Independent from UNET. For Flux T5XXL: fp8 saves ~4.7 GB vs fp16. |
-| `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). |
-| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. |
-| `check_vram` (optional) | choice | `On` | `On`, `Off` | Estimate VRAM before load and warn if tight. |
-| `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
-| `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
-| `auto_download` (optional) | boolean | on |  | If a selected model is missing and is one Radiance knows, download it on first run from its pinned Hugging Face source, checked against its SHA-256 before it is installed (large: 4 to 60 GB). Gated repositories (FLUX.2-dev, FLUX.2-klein 9B, LTX-2.5) need their licence accepted on Hugging Face and HF_TOKEN set. RADIANCE_ALLOW_DOWNLOADS=0 always stops downloads. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `model` | MODEL |
-| `model_low_noise` | MODEL |
-| `clip` | CLIP |
-| `vae` | VAE |
-| `audio_vae` | VAE |
-| `lora_stack` | LORA_STACK |
-| `upscale_model` | LATENT_UPSCALE_MODEL |
-| `model_meta` | STRING |
 
 ## Video Mask Propagator
 

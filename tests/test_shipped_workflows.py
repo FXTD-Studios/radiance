@@ -14,6 +14,7 @@ saved value against its input's type, so the next added input that breaks a
 shipped workflow fails here instead of in a user's first queue.
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,38 @@ def _ok(value, typ):
     return True
 
 
+# Nodes the frontend restores by name: their JS declares the order their graphs were saved in.
+SAVED_ORDERS = {
+    "RadianceSamplerPro": ("radiance_sampler.js", "SAMPLER_SAVED_WIDGET_ORDER"),
+    "RadianceUnifiedLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
+    "RadianceImageLoader": ("radiance_loader.js", "LOADER_SAVED_WIDGET_ORDER"),
+    "RadianceWrite": ("radiance_io.js", "WRITE_SAVED_WIDGET_ORDER"),
+    "RadianceCinematicPromptEncoder": ("radiance_prompt.js", "PROMPT_SAVED_WIDGET_ORDER"),
+}
+
+
+# The order the ComfyUI frontend saves these nodes in (read from frontend 1.48.7):
+# its own widget order, not INPUT_TYPES', as the JS moves and adds widgets.
+FRONTEND_ORDERS = {
+    k: v for k, v in json.loads((Path(__file__).resolve().parent / "frontend_widget_orders.json")
+                                .read_text(encoding="utf-8")).items() if not k.startswith("_")
+}
+
+
+def _restored(node):
+    """The node's widget values by name, as the frontend restores them."""
+    values = node.get("widgets_values") or []
+    current = FRONTEND_ORDERS.get(node["type"])
+    order = current if current and len(values) == len(current) else _saved_order(*SAVED_ORDERS[node["type"]])
+    return dict(zip(order, values))
+
+
+def _saved_order(js_file, const):
+    js = (Path(__file__).resolve().parents[1] / "js" / js_file).read_text(encoding="utf-8")
+    body = re.search(rf"const {const} = \[(.*?)\];", js, re.S).group(1)
+    return re.findall(r'"([^"]+)"', body)
+
+
 def test_there_are_shipped_workflows():
     assert WORKFLOWS, "no workflows/*.json found"
 
@@ -86,13 +119,35 @@ def test_every_radiance_widget_value_fits_its_input(path):
             continue
         values = node.get("widgets_values") or []
         expected = _expected_widgets(cls)
-        # Fewer values than widgets is fine when only the tail is missing (the
-        # frontend gives newer trailing inputs their defaults); a gap in the
-        # middle shows up below as a value that does not fit its input.
-        for (name, typ, _), value in zip(expected, values):
-            if not _ok(value, typ):
+        # The Sampler, the Loader, the Write and the Prompt are restored by name (their JS declares the
+        # order their graphs were saved in); the others by position. Fewer values than
+        # widgets is fine when only the tail is missing (the frontend gives
+        # newer trailing inputs their defaults); a gap in the middle shows up
+        # below as a value that does not fit its input.
+        named = node.get("widgets_values_named")
+        if named is None and node.get("type") in SAVED_ORDERS:
+            # A graph saved by the current frontend holds its own widget order;
+            # one saved before 4.0 holds the JS's *_SAVED_WIDGET_ORDER.
+            current = FRONTEND_ORDERS.get(node["type"])
+            order = current if current and len(values) == len(current) else _saved_order(*SAVED_ORDERS[node["type"]])
+            named = dict(zip(order, values))
+        pairs = ([(name, typ, named[name]) for name, typ, _ in expected if name in named] if named is not None
+                 else [(name, typ, value) for (name, typ, _), value in zip(expected, values)])
+        for name, typ, value in pairs:
+            # The _js_* placeholders exist to absorb old JS button values (None).
+            if not name.startswith("_js_") and not _ok(value, typ):
                 problems.append(f"{node['type']} #{node['id']}.{name} = {value!r} does not fit {typ if isinstance(typ, str) else 'its options'}")
     assert not problems, "\n".join(problems)
+
+
+def test_write_saved_order_is_its_widgets_before_the_version_control():
+    """Old Writes are restored by this order; version's control widget came later, defaulting to fixed."""
+    from radiance.nodes.io.write import RadianceWrite
+    widgets = [name for name, _, _ in _expected_widgets(RadianceWrite)]
+    assert widgets[3:5] == ["version", "control_after_generate"]
+    saved = _saved_order(*SAVED_ORDERS["RadianceWrite"])
+    assert set(saved) <= set(widgets), "a renamed input would lose its saved value"
+    assert RadianceWrite.INPUT_TYPES()["optional"]["version"][1]["control_after_generate"] == "fixed"
 
 
 def test_start_graph_is_wired():
@@ -102,14 +157,13 @@ def test_start_graph_is_wired():
     vae_in = next(i for i in decode["inputs"] if i["name"] == "vae")
     assert vae_in.get("link") is not None, "HDR VAE Decode has no VAE connected"
     loader = next(n for n in nodes.values() if n["type"] == "RadianceUnifiedLoader")
-    widgets = [e[0] for e in _expected_widgets(_mappings()["RadianceUnifiedLoader"])]
-    vals = dict(zip(widgets, loader["widgets_values"]))
+    vals = _restored(loader)
     assert vals["unet_name"] == "flux-2-klein-4b-fp8.safetensors"
     assert vals["vae_name"] == "flux2-vae.safetensors"
     assert vals["llm_encoder"] == "qwen_3_4b.safetensors"
     assert vals["clip_l"] == vals["t5xxl"] == "None"
     sampler = next(n for n in nodes.values() if n["type"] == "RadianceSamplerPro")
-    values = dict(zip([e[0] for e in _expected_widgets(_mappings()[sampler["type"]])], sampler["widgets_values"]))
+    values = _restored(sampler)
     assert values["steps"] == 4 and values["flux_guidance"] == 1
     meta_link = next(i["link"] for i in sampler["inputs"] if i["name"] == "model_meta")
     assert any(link[0] == meta_link and link[1] == loader["id"] and link[2] == 4 for link in wf["links"])
@@ -160,3 +214,12 @@ def test_no_machine_specific_paths(path):
     text = path.read_text(encoding="utf-8")
     for marker in ("/root/", "/home/", "/tmp/", "/Users/", "C:\\\\Users", "C:/Users"):
         assert marker not in text, f"{path.name} contains a machine path ({marker})"
+
+
+def test_prompt_saved_order_is_its_widgets_without_action():
+    """Old Prompts are restored by this order; text_to_video and action came later, around base_prompt."""
+    from radiance.nodes.generate.prompt import RadianceCinematicPromptEncoder
+    widgets = [name for name, _, _ in _expected_widgets(RadianceCinematicPromptEncoder)]
+    assert widgets[:3] == ["text_to_video", "base_prompt", "action"]
+    later = ("text_to_video", "action")
+    assert [w for w in widgets if w not in later] == _saved_order(*SAVED_ORDERS["RadianceCinematicPromptEncoder"])

@@ -106,6 +106,7 @@ logger = logging.getLogger("radiance.prompt")
 
 from radiance.config.constants import VERSION as __version__  # noqa: E402
 from radiance.nodes.branding import schema_branding  # noqa: E402
+from radiance.sampler_utils import VIDEO_MODEL_TYPES  # noqa: E402
 
 
 class CinematicDatasets:
@@ -844,7 +845,8 @@ PROSE_ARCHS = {"flux", "sd3", "sd3.5", "wan", "ltxv", "ltxav", "pixart",  # ALBA
                "flux2", "flux2-klein", "z_image", "lumina2", "chroma", "qwen_image",
                "hidream", "cosmos", "cogvideox", "mochi", "wan_ti2v", "krea2",
                "hunyuan_image", "hunyuan_video_15", "kandinsky5", "kandinsky5_image",
-               "longcat_image", "omnigen2", "qwen3_llm", "qwen25_llm", "llm"}
+               "longcat_image", "omnigen2", "qwen3_llm", "qwen25_llm", "llm",
+               "flux3"}
 
 # Only these read their prompt through CLIP alone (77-token chunks, weighted
 # tags). Anything else, including an arch this file has never heard of, is a
@@ -988,6 +990,11 @@ def _detect_arch_from_clip(clip, target_arch: str,
         return "wan"
     if "mistral3_24b" in keys:
         return "flux2"
+    # FLUX 3 Image Klein's Qwen3-VL-4B registers as "qwen3vl_4b", as Mage-Flow's
+    # does; only the tokenizer class tells them apart (comfy.text_encoders.flux).
+    if "qwen3vl_4b" in keys and any(
+            c.__name__ == "Flux3Tokenizer" for c in type(getattr(clip, "tokenizer", None)).__mro__):
+        return "flux3"
     if "qwen3_4b" in keys or "qwen3_8b" in keys:
         return "qwen3_llm"          # Z-Image or Flux.2 Klein: same encoder
     if "gemma2_2b" in keys:
@@ -1804,11 +1811,9 @@ def build_cinematic_prompt_v3(
     return (final_prompt, negative_prompt, token_count)
 
 
-# ALBABIT-FIX: fields with a live node widget. apply_style_preset() used to
-# overwrite these unconditionally on every execution -- the docstring's
-# "partial overrides... intentional" claim never held, since every preset
-# defines all 9 fields. Widgets are now respected; js/radiance_prompt.js
-# fills them on selection and flags later edits with a "●" marker.
+# ALBABIT-FIX: the fields with a node widget. apply_style_preset() overwrote
+# them on every run; js/radiance_prompt.js now fills them on selection and
+# marks a later edit with "✎".
 _WIDGET_BACKED_PRESET_FIELDS = frozenset({
     "framing", "camera_type", "lens_focal", "aperture_dof",
     "lighting", "style_aesthetic", "color_grading",
@@ -1914,7 +1919,15 @@ def _zero_conditioning(cond):
 
 # ALBABIT-FIX: the architectures whose reference images the Prompt passes on
 # (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models).
-_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein")
+_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3")
+
+# The architectures that read reference images as VAE latents only.
+_LATENT_REFERENCE_ARCHS = ("flux2", "flux2-klein", "flux3")
+
+#: FLUX 3 Image Klein: reference images per edit (BFL's reference code), and the
+#: largest a reference is kept at native size (BFL's pipeline, ~16 MP).
+FLUX3_MAX_REFERENCES = 10
+FLUX3_MAX_REFERENCE_MP = 16.0
 
 
 # ALBABIT-FIX: Qwen-Image Edit reference images, wired as the official 2511
@@ -1950,6 +1963,69 @@ def _flux2_references(vae, references):
         if empty is None:
             empty = nodes_flux.EmptyFlux2LatentImage.execute(width=scaled.shape[2], height=scaled.shape[1]).args[0]
     return latents, empty
+
+
+def _flux3_references(vae, references, resolution):
+    """FLUX 3 Image Klein reference images, as ReferenceMultiLatent encodes them.
+
+    Each image is resized to about (resolution / 1024)^2 megapixels, keeping
+    its aspect ratio (1024: the official templates' 1 MP), or kept at its own
+    size with resolution 0 (BFL's pipeline), capped at 16 MP either way. The
+    empty latent is the first reference's latent times 0, so the output takes
+    its size, as in BFL's code. Cite them in the prompt as <ref_image_0>...
+    """
+    import math
+    if len(references) > FLUX3_MAX_REFERENCES:
+        raise ValueError(f"Prompt: FLUX 3 Image Klein reads {FLUX3_MAX_REFERENCES} reference "
+                         f"images and {len(references)} are connected. Disconnect image_"
+                         f"{FLUX3_MAX_REFERENCES + 1} and above.")
+    latents = []
+    for image in references.values():
+        image = image[:, :, :, :3]
+        height, width = image.shape[1:3]
+        mp = (resolution / 1024.0) ** 2 if resolution and resolution > 0 else width * height / (1024 * 1024)
+        mp = min(mp, FLUX3_MAX_REFERENCE_MP)
+        scale = math.sqrt(mp * 1024 * 1024 / (width * height))
+        w, h = max(1, round(width * scale)), max(1, round(height * scale))
+        if (w, h) != (width, height):
+            image = comfy.utils.common_upscale(image.movedim(-1, 1), w, h, "lanczos", "disabled").movedim(1, -1)
+        latents.append(vae.encode(image))
+    return latents, {"samples": latents[0] * 0.0}
+
+
+#: A FLUX 3 layout table (the native "FLUX 3 Image Layout Prompt" node's output,
+#: or typed by hand): a JSON list of {"id", "bbox", "desc"} rows at the end.
+def _split_flux3_layout(text):
+    """(prompt, layout): a trailing layout table is kept out of the prompt
+    builder, which would otherwise rewrite its punctuation, and re-attached."""
+    for i in [m.start() for m in re.finditer(r"\[", text)]:
+        tail = text[i:].strip()
+        try:
+            rows = json.loads(tail)
+        except ValueError:
+            continue
+        if isinstance(rows, list) and rows and all(isinstance(r, dict) and "bbox" in r for r in rows):
+            return text[:i].rstrip(), tail
+    return text, ""
+
+
+def _check_flux3_layout(text):
+    """The layout input as the encoder appends it: one JSON line, rows checked."""
+    try:
+        rows = json.loads(text)
+    except ValueError as exc:
+        raise ValueError(f"Prompt: the layout input is not JSON ({exc}). Send the boxes from the "
+                         "Viewer again, or clear it.") from None
+    if not isinstance(rows, list):
+        raise ValueError("Prompt: the layout input must be a JSON list of boxes.")
+    for i, row in enumerate(rows, 1):
+        bbox = row.get("bbox") if isinstance(row, dict) else None
+        if (not isinstance(bbox, list) or len(bbox) != 4
+                or not all(isinstance(v, (int, float)) and 0 <= v <= 1000 for v in bbox)
+                or bbox[0] > bbox[2] or bbox[1] > bbox[3]):
+            raise ValueError(f"Prompt: layout box {i} needs a bbox of [ymin, xmin, ymax, xmax] "
+                             "on the 0-1000 grid.")
+    return json.dumps(rows, ensure_ascii=False) if rows else ""
 
 
 def _with_reference_latents(cond, latents):
@@ -1996,89 +2072,174 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 "on guidance-distilled models."
             ),
             inputs=[
-                io.Clip.Input("clip", tooltip="CLIP model for encoding."),
+                io.Clip.Input("clip", tooltip="Text encoder (CLIP, T5 or LLM), from the Loader."),
+                # ALBABIT-FIX: above base_prompt, wired to the workflow's text-to-video switch
+                # or set by hand. js/radiance_prompt.js restores saved graphs by name.
+                io.Boolean.Input(
+                    "text_to_video", default=True, optional=True,
+                    tooltip=("Whether the text describes the whole shot.\n"
+                             "• On: base_prompt, action, then the menus' words.\n"
+                             "• Off, when an image or a video already shows the subject, the scene and "
+                             "the look (image-to-video): action alone. Describe only what changes.\n\n"
+                             "Wire it to the boolean that turns text-to-video on, or set it here.\n"
+                             "• Off: base_prompt is dimmed and the menus are hidden.\n"
+                             "• Hidden and ignored under an image model."),
+                ),
                 # 3.5.0: empty with a placeholder. The old default text was a
                 # real value, so an untouched node encoded "A cinematic scene...".
                 io.String.Input(
                     "base_prompt", multiline=True, default="", optional=True,
                     placeholder="Describe the subject and the scene",
-                    tooltip="Primary subject/scene description.",
+                    tooltip=("Describe the subject and the scene.\n\n"
+                             "The menus below add their words around it:\n"
+                             "• framing opens it, e.g. \"A close-up of <your text>.\"\n"
+                             "• The camera, lighting and look menus follow it, as short sentences.\n\n"
+                             "LTX 2: words in quotes (says \"Hello!\") are spoken.\n\n"
+                             "Dimmed and marked \"⚠ image-to-video, ignored\" while text_to_video is off."),
                 ),
-                # ALBABIT-FIX: default to "None (Custom)" so a freshly-added node starts
-                # blank rather than silently pre-loaded with "→ Classic Hollywood"'s
-                # look. The 7 style widget defaults below are set to "None" to match --
-                # js/radiance_prompt.js's resetToCustomDefaults() keeps them in sync
-                # whenever "None (Custom)" is (re)selected.
+                # ALBABIT-FIX: read by video models only, so one text serves image and
+                # video workflows. js/radiance_prompt.js reads saved graphs by name,
+                # which lets it sit under base_prompt.
+                io.String.Input(
+                    "action", multiline=True, default="", optional=True,
+                    placeholder="What happens over time (video models only)",
+                    tooltip=("What happens over time: the moves in order, the words spoken, "
+                             "the camera moves, the sounds.\n"
+                             "• Video models (LTX, Wan, HunyuanVideo, MiniMax H3…) read it "
+                             "right after base_prompt.\n"
+                             "• Image models skip it: a pose or a still moment goes in base_prompt.\n\n"
+                             "Dimmed and marked \"⚠ image model, ignored\" under an image model."),
+                ),
+                # ALBABIT-FIX: "None (Custom)" by default, so a new node starts blank, not
+                # with "→ Classic Hollywood". The 7 style menus default to "None" to match,
+                # as js/radiance_prompt.js's resetToCustomDefaults() sets them.
                 io.Combo.Input("style_preset", options=cls.STYLE_PRESETS, default="None (Custom)",
-                               optional=True, tooltip="One-click style preset."),
+                               optional=True,
+                               tooltip=("Fills the 7 menus below with a look.\n"
+                                        "• A menu changed afterwards shows ✎.\n"
+                                        "• None (Custom) sets them back to None.\n"
+                                        "• The preset's film stock, shutter and aspect ratio, "
+                                        "which have no menu, are added at run time.")),
                 io.Combo.Input("framing", options=cls.FRAMING, default="None",
-                               optional=True, tooltip="Shot framing type."),
+                               optional=True,
+                               tooltip="Shot size.\nIt opens the prompt, e.g. \"A close-up of <your text>.\""),
                 io.Combo.Input("camera_type", options=cls.CAMERAS, default="None",
-                               optional=True, tooltip="Camera body."),
+                               optional=True, tooltip="Camera body, named in the sentence after your text."),
                 io.Combo.Input("lens_focal", options=cls.LENSES, default="None",
-                               optional=True, tooltip="Lens + focal length."),
+                               optional=True, tooltip="Lens and focal length, in the camera's sentence."),
                 io.Combo.Input("aperture_dof", options=cls.APERTURES, default="None",
-                               optional=True, tooltip="Depth of field."),
+                               optional=True, tooltip="Aperture and depth of field, in the camera's sentence."),
                 io.Combo.Input("lighting", options=cls.LIGHTING, default="None",
-                               optional=True, tooltip="Lighting style."),
+                               optional=True, tooltip="Lighting, in its own sentence (\"Lit by…\")."),
                 io.Combo.Input("style_aesthetic", options=cls.STYLES, default="None",
-                               optional=True, tooltip="Visual aesthetic."),
+                               optional=True,
+                               tooltip=("Visual style, near the end of the prompt.\n"
+                                        "negative_strength Standard and Aggressive add the opposite "
+                                        "styles to the negative.")),
                 io.Combo.Input("color_grading", options=cls.COLOR_GRADING, default="None",
-                               optional=True, tooltip="Color grading look."),
+                               optional=True, tooltip="Color grade, near the end of the prompt."),
                 # ALBABIT-FIX: Off by default, so the negative is what was typed,
                 # as in ComfyUI's templates. Saved workflows keep their value.
                 io.Combo.Input(
                     "negative_strength", options=["Off", "Soft", "Standard", "Aggressive"],
                     default="Off", optional=True,
-                    tooltip="Generic negative terms added before negative_prompt. Off encodes negative_prompt alone, as ComfyUI's templates do.",
+                    tooltip=("Generic terms added before negative_prompt.\n"
+                             "• Off: negative_prompt alone, as ComfyUI's templates do.\n"
+                             "• Soft: blur, low quality, watermark (and text on SD 1.5, SD 2 and SDXL).\n"
+                             "• Standard: also deformed, ugly, duplicate, disfigured, bad anatomy, "
+                             "and the styles opposite to a realistic, anime, painted or CGI style_aesthetic.\n"
+                             "• Aggressive: also limb, noise and framing defects (mutated, extra limbs, "
+                             "cropped, lowres…).\n\n"
+                             "Flux.1, Flux.2 Dev and MiniMax H3 get Soft at most."),
                 ),
                 io.String.Input(
                     "negative_prompt", multiline=True, default="", optional=True,
-                    tooltip="Custom negative prompt. Appended after auto-negatives.",
+                    tooltip=("What to keep out of the result, added after the negative_strength terms.\n\n"
+                             "Greyed or marked \"⚠ no CFG, ignored\" when it has no effect, e.g. when "
+                             "every sampler it feeds runs at CFG 1."),
                 ),
                 io.Combo.Input(
                     "negative_mode", options=["Auto", "Always encode", "Zero (skip encode)"],
                     default="Auto", optional=True,
-                    tooltip="Auto: on guidance-distilled models (Flux, Flux.2, MiniMax H3) "
-                            "with no custom negative, return a zeroed negative instead of "
-                            "encoding one: ComfyUI never reads the negative at CFG 1, so this "
-                            "saves a full text-encoder pass. Always encode: pick this if you "
-                            "run those models above CFG 1 with a negative. Zero: never encode "
-                            "the negative.",
+                    tooltip=("How the negative is encoded.\n"
+                             "• Auto: on guidance-distilled models (Flux.1, Flux.2 Dev, MiniMax H3) "
+                             "with no negative_prompt, a zeroed negative instead of an encoded one. "
+                             "ComfyUI never reads the negative at CFG 1, so this saves a text-encoder pass.\n"
+                             "• Always encode: for those models run above CFG 1 with a negative.\n"
+                             "• Zero (skip encode): never encodes the negative."),
                 ),
-                # ALBABIT-FIX: forceInput -- this is always a wired value from the
-                # Loader, never hand-typed; matches the other model_meta inputs
-                # added to RUDRA-capable nodes (engine.py, uplift_universal.py).
+                # ALBABIT-FIX: forceInput: always wired from the Loader, never typed, like
+                # the other model_meta inputs (engine.py, uplift_universal.py).
                 io.String.Input(
                     "model_meta", default="", force_input=True, optional=True,
-                    tooltip="Optional JSON metadata from the Loader's model_meta output. "
-                            "When connected, architecture detection uses this before "
-                            "tokenizer heuristics.",
+                    tooltip=("The Loader's model_meta output.\n"
+                             "• Tells the node the model family, instead of guessing it from the text encoder.\n"
+                             "• Shows only the inputs that family reads."),
                 ),
                 # ALBABIT-FIX: reference images for Qwen-Image 2.1, Qwen-Image Edit and
                 # Flux.2 editing, wired as the native nodes. image_1 is the image to edit.
                 # After model_meta, the last V1 input, so its slot index is unchanged.
                 io.Vae.Input(
                     "vae", optional=True,
-                    tooltip="Encodes the reference images into the latents the model edits "
-                            "from. Flux.2 needs it; Qwen-Image 2.1 and Qwen-Image Edit without "
-                            "it read the images through the text encoder only.",
+                    tooltip=("Encodes the reference images into the latents the model edits from.\n"
+                             "• Flux.2 and Flux.3 Klein: needed.\n"
+                             "• Qwen-Image 2.1 and Qwen-Image Edit: without it, they read the images "
+                             "through the text encoder only."),
                 ),
                 io.Int.Input(
                     "resolution", default=1024, min=0, max=4096, step=32, optional=True,
-                    tooltip="Qwen-Image 2.1: reference images are resized to about resolution "
-                            "x resolution pixels, at multiples of 32, keeping their aspect "
-                            "ratio. 0 keeps each at its own size, rounded to a multiple of 32. "
-                            "Flux.2 and Qwen-Image Edit size them on their own.",
+                    tooltip=("Size of the reference images: about resolution x resolution pixels.\n"
+                             "• Qwen-Image 2.1: at multiples of 32, keeping their aspect ratio. "
+                             "0 keeps each at its own size, rounded to a multiple of 32.\n"
+                             "• Flux.3 Klein: 1024 is the templates' 1 MP. 0 keeps each at its own "
+                             "size, up to 16 MP. The output takes image_1's size.\n"
+                             "• Flux.2 and Qwen-Image Edit size them on their own."),
                 ),
                 io.Autogrow.Input(
                     "images", optional=True,
                     template=io.Autogrow.TemplateNames(
                         io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
-                    tooltip="Reference images for Qwen-Image 2.1, Qwen-Image Edit (3 at most) "
-                            "and Flux.2 editing. image_1 is the image to edit, the others are "
-                            "references. With Qwen-Image 2.1, cite them in the prompt as "
-                            "<image1>, <image2>...",
+                    tooltip=("Reference images for editing, read by Qwen-Image 2.1, Qwen-Image Edit, "
+                             "Flux.2 and Flux.3 Klein.\n"
+                             "• image_1 is the image to edit, the others are references.\n"
+                             "• Qwen-Image 2.1: cite them in the prompt as <image1>, <image2>…\n"
+                             "• Qwen-Image Edit: 3 at most.\n"
+                             "• Flux.3 Klein: 10 at most, cited as <ref_image_0> (image_1), "
+                             "<ref_image_1>…"),
+                ),
+                # 4.0.0: optional prompt upsampler (FLUX 3 Image Klein, Qwen-Image 2.1).
+                # Appended after every older input, so saved widget values keep their slots.
+                io.Clip.Input(
+                    "upsampler_clip", optional=True,
+                    tooltip=("The family's prompt upsampler, used only when upsample_prompt is on.\n"
+                             "• The Loader's upsampler_clip output.\n"
+                             "• Or Load CLIP with qwen3.5_9b_flux3_prompt_upsampler_* (type flux3) "
+                             "or qwen3.5_9b_qwen_image_2.1_pe_* (type qwen_image)."),
+                ),
+                io.Boolean.Input(
+                    "upsample_prompt", default=False, optional=True,
+                    tooltip=("FLUX 3 Image Klein and Qwen-Image 2.1: rewrites the prompt into the "
+                             "detailed caption the model was trained on, with the model authors' "
+                             "upsampler and system prompt (as ComfyUI's templates do).\n"
+                             "• With reference images, it uses the edit instructions and sees the images.\n"
+                             "• positive_text shows the rewritten prompt."),
+                ),
+                io.Int.Input(
+                    "upsampler_seed", default=0, min=0, max=0xffffffffffffffff, optional=True,
+                    control_after_generate=True,
+                    tooltip="Seed of the upsampler's sampling.\nThe same seed and prompt give the same rewrite.",
+                ),
+                # 4.0.0: FLUX 3 layout boxes, written by the Viewer's Tools > FLUX 3
+                # Layout Boxes (Send to Prompt) or typed by hand.
+                io.String.Input(
+                    "layout", multiline=True, default="", optional=True,
+                    tooltip=("FLUX 3 Image Klein: the layout table.\n"
+                             '• A JSON list of {"id": "obj_1", "bbox": [ymin, xmin, ymax, xmax], '
+                             '"desc": "..."}, bbox on a 0-1000 grid, as ComfyUI\'s FLUX 3 Image '
+                             "Layout Prompt writes it.\n"
+                             "• Draw the boxes in the Viewer (Tools > FLUX 3 Layout Boxes), "
+                             "or paste the table at the end of base_prompt.\n"
+                             "• Cite them in the prompt as <obj_1>, <obj_2>…"),
                 ),
             ],
             outputs=[
@@ -2093,11 +2254,11 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 io.String.Output(display_name="resolved_arch",
                                  tooltip="Detected architecture used to choose prose vs CLIP-style prompting."),
                 io.Int.Output(display_name="token_count",
-                              tooltip="Tokenizer-derived positive prompt token count after safety handling."),
+                              tooltip="Token count of the positive prompt, from the model's tokenizer."),
                 io.Latent.Output(display_name="latent",
-                                 tooltip="Empty latent at image_1's size after the resize. Sample on "
-                                         "it to edit: any other size shifts the edit. None without "
-                                         "reference images."),
+                                 tooltip=("Empty latent at image_1's size after the resize.\n"
+                                          "• Sample on it to edit: any other size shifts the edit.\n"
+                                          "• None without reference images.")),
             ],
         )
 
@@ -2121,17 +2282,33 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         vae=None,
         resolution=1024,
         images=None,
+        upsampler_clip=None,
+        upsample_prompt=False,
+        upsampler_seed=0,
+        layout="",
+        action="",
+        text_to_video=True,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
             raise RuntimeError("CLIP input is None. Connect a valid CLIP model.")
-        if not base_prompt or not base_prompt.strip():
-            raise ValueError("Prompt: the prompt is empty. Describe the "
-                             "subject and the scene in base_prompt.")
         negative_prompt_in = negative_prompt
+        # A wired STRING can arrive as None.
+        base_prompt, action = base_prompt or "", action or ""
 
         # ── Resolve architecture automatically ──────────────────────────────
         resolved_arch = _detect_arch_from_clip(clip, "Auto", model_meta)
+        # ALBABIT-FIX: image-to-video turns text_to_video off: the image shows the
+        # subject and the scene, so a video model reads the action alone. An image
+        # model reads no action and keeps base_prompt.
+        is_video = resolved_arch in VIDEO_MODEL_TYPES
+        image_to_video = is_video and not text_to_video
+        if image_to_video:
+            base_prompt = ""
+        has_base = bool(base_prompt.strip())
+        if not has_base and not (is_video and action.strip()):
+            raise ValueError("Prompt: the prompt is empty. Describe the subject and the scene "
+                             "in base_prompt, or for image-to-video what happens in action.")
 
         # ALBABIT-FIX: only Qwen-Image 2.1, Qwen-Image Edit and Flux.2 read reference
         # images here; any other encoder would drop them without a word.
@@ -2139,9 +2316,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         references = {name: images[name] for name in slots if images[name] is not None}
         if references and resolved_arch not in _REFERENCE_ARCHS:
             raise ValueError(
-                f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit and "
-                f"Flux.2 only, and the text encoder resolves to '{resolved_arch}'. Connect "
-                f"model_meta from the Loader, or disconnect the images.")
+                f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit, "
+                f"Flux.2 and Flux.3 Klein only, and the text encoder resolves to '{resolved_arch}'. "
+                f"Connect model_meta from the Loader, or disconnect the images.")
         # qwen_image is also plain Qwen-Image, which has no image input. The
         # weights do not tell the two apart, so the file name is the only hint;
         # a warning, not an error, so a renamed Edit checkpoint still runs.
@@ -2152,9 +2329,31 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 "only Qwen-Image Edit reads them, and plain Qwen-Image gives an off-target "
                 "result. Load a Qwen-Image Edit checkpoint, or disconnect the images.",
                 unet_file)
-        if references and resolved_arch not in ("qwen_image21", "qwen_image") and vae is None:
-            raise ValueError("Prompt: Flux.2 reads reference images as VAE latents. "
+        if references and resolved_arch in _LATENT_REFERENCE_ARCHS and vae is None:
+            family = "Flux.3 Klein" if resolved_arch == "flux3" else "Flux.2"
+            raise ValueError(f"Prompt: {family} reads reference images as VAE latents. "
                              "Connect the vae input.")
+
+        # FLUX 3 layout table: kept verbatim, past the prompt builder.
+        flux3_layout = ""
+        if resolved_arch == "flux3":
+            base_prompt, flux3_layout = _split_flux3_layout(base_prompt)
+        if layout and layout.strip():
+            if resolved_arch != "flux3":
+                raise ValueError(
+                    f"Prompt: the layout boxes are read by FLUX 3 Image Klein only, and the text "
+                    f"encoder resolves to '{resolved_arch}'. Clear the layout input.")
+            if flux3_layout:
+                raise ValueError("Prompt: a layout table is both at the end of base_prompt and in "
+                                 "the layout input. Keep one.")
+            flux3_layout = _check_flux3_layout(layout)
+
+        # The action goes on as if typed at the end of base_prompt; a clause left
+        # open by a comma, semicolon or colon ends with a full stop instead.
+        if is_video and action and action.strip():
+            parts = [p for p in (base_prompt.rstrip().rstrip(",;:").rstrip(), action.strip()) if p]
+            _end_subject_sentence(parts)
+            base_prompt = " ".join(parts)
 
         # ── Apply style preset ──────────────────────────────────────────────
         settings = {
@@ -2166,6 +2365,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         }
         if style_preset != "None (Custom)":
             settings = apply_style_preset(style_preset, settings)
+        # ALBABIT-FIX: the image also shows the look, so image-to-video drops the menus
+        # too. With no base_prompt, framing, which opens it, would open the action.
+        if image_to_video:
+            settings = dict.fromkeys(settings, "None")
+        elif not has_base:
+            settings["framing"] = "None"
 
         # ── Build prompt ────────────────────────────────────────────────────
         # ALBABIT-FIX: ltxav takes the same prose path as Flux/WAN; camera terms
@@ -2200,6 +2405,15 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ── Formatting clean-up (spacing, stray commas) ───────────────────────
         # Auto-fix punctuation/spacing. Prose archs don't need danbooru tag enhancers.
         final_prompt = enhance_prompt_grammar(final_prompt, "Grammar & Formatting", arch=resolved_arch)
+        # 4.0.0: the family's prompt upsampler, on the built prompt (the
+        # presets are part of the request). The layout table stays out of it:
+        # the FLUX 3 upsampler is told never to write coordinates or ids.
+        if upsample_prompt:
+            from .upsampler import upsample as _upsample
+            final_prompt = _upsample(upsampler_clip, resolved_arch, final_prompt,
+                                     references=references, seed=upsampler_seed)
+        if flux3_layout:
+            final_prompt = f"{final_prompt.rstrip()} {flux3_layout}"
 
         # ── Tokenize, count, encode ─────────────────────────────────────────
         # 3.5.0: no BREAK insertion and no truncation. ComfyUI has no BREAK
@@ -2233,7 +2447,10 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 clip=clip, prompt=final_prompt, vae=vae, **qwen_edit_images).args[0]
         else:
             positive_cond, latent = _encode_tokens(clip, pos_tokens), None
-            if references:
+            if references and resolved_arch == "flux3":
+                flux2_refs, latent = _flux3_references(vae, references, resolution)
+                positive_cond = _with_reference_latents(positive_cond, flux2_refs)
+            elif references:
                 flux2_refs, latent = _flux2_references(vae, references)
                 positive_cond = _with_reference_latents(positive_cond, flux2_refs)
         progress.update(1)
@@ -2270,7 +2487,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # as engine.py's rudra_fallback/log_overexposure_risk.
         return {
             "ui": {"weak_neg_arch": [resolved_arch in _WEAK_NEG_ARCHS],
-                   "negative_skipped": [bool(skip_negative)]},
+                   "negative_skipped": [bool(skip_negative)],
+                   "video_arch": [is_video],
+                   "text_to_video": [bool(text_to_video)]},
             "result": (
                 positive_cond,
                 negative_cond,

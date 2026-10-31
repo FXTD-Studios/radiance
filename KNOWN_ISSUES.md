@@ -1,4 +1,4 @@
-# Known Issues — Radiance 3.5
+# Known Issues — Radiance 4.0 (beta)
 
 Tracked limitations and tech debt. Full production approval remains open: the
 video visual-acceptance failure below blocks production approval of temporal windowing. Other limitations
@@ -19,9 +19,10 @@ These parts of the release gate need checks that cannot run in CI:
   uses the ACES 2.0 100-nit P3-D65 rendering with gamma 2.6.
 - **Saved ACES 2.0 Tonescale nodes** keep `grey_target` 0.10 and run the
   labelled creative curve; set 0 for the reference tone scale.
-- **RGBA on review utilities.** Focus Peaking, Split View, Contact Sheet and
-  Video Assembler still raise on 4-channel input (TEN-007, P1). No colour is
-  changed; they fail rather than run.
+- **RGBA on review utilities (resolved in 4.0).** Focus Peaking keeps alpha
+  on its output; Split View, Contact Sheet, Flipbook GIF and Preview Server
+  show RGB; Video Assembler gives RGB frames opaque alpha when a buffer mixes
+  RGB and RGBA (TEN-007).
 
 ## Architecture / tech debt
 
@@ -39,26 +40,31 @@ These parts of the release gate need checks that cannot run in CI:
 - **Masks and Qualifiers are inert on the WebGPU backend.** `js/radiance_webgpu.js`
   carries no WGSL for either one. The shared base class, `js/radiance_renderer.js`,
   implements `setMask` and `setQualifier` and stores the state, so the Viewer's
-  calls succeed and nothing changes on screen: both tabs are fully interactive
-  and completely inert on that backend. WebGPU is opt-in since 3.4.0
-  (`localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
-  both.
-  OCIO has the same WGSL gap and at least says so, returning "OpenColorIO needs
-  the WebGL backend; this renderer has no WGSL path for it"; these two say
-  nothing. *Planned fix:* none scheduled. The two resolutions are porting the
-  shaders to WGSL, or disabling the tabs on WebGPU with that message. The gap is
+  calls succeed and nothing changes on screen: the panel's Masks tab (power
+  window and HSL qualifier) is fully interactive and completely inert on that
+  backend. WebGPU is opt-in since 3.4.0
+  (Settings (⚙) > Renderer in the viewer header, stored as
+  `localStorage.radiance_prefer_webgpu = "1"`); WebGL, the default, renders
+  both. On WebGPU the tab opens with a notice saying so and how to switch
+  back (4.0 corrected its text, which still claimed WebGPU was the default).
+  OCIO has the same WGSL gap and returns "OpenColorIO needs the WebGL backend;
+  this renderer has no WGSL path for it". *Planned fix:* porting the shaders
+  to WGSL; none scheduled. The gap is
   listed in `js/tests/backend_parity.test.mjs`, which fails if this entry and
   the shipped source stop agreeing, so neither resolution can land without
   updating this list.
   Beyond masks, qualifiers and OCIO (3.5.0 audit), the WebGPU backend also
-  differs from WebGL in: no sRGB decode for 8-bit input; a 3D LUT read with the
-  wrong stride; the red curve applied to every channel; a transposed hue
-  matrix; misregistered bloom; and no heatmap, gamut/clip warnings, scope
+  differs from WebGL in: no sRGB decode for 8-bit input; the red curve
+  applied to every channel; a transposed hue matrix; misregistered bloom; and no heatmap, gamut/clip warnings, scope
   signal, viewer f-stop or scene-linear graded EXR, and compare shows only
   wipe there (B, Difference and Blink need `setCompareShow`, WebGL only).
   `FEATURE_PARITY` now says
   false. Porting these to WGSL is the remaining work; until then WebGL is the
   default and the tested path.
+  (4.0: the 3D LUT upload, which read RGB data with an RGBA stride and replaced
+  zeros with identity values, is fixed. Every gap above is listed once in
+  `js/radiance_backend_gaps.js`, which the viewer's WebGPU badge and its
+  Settings note are built from; the Scopes panel says what its scopes read.)
 
 - **Monolithic files.** `hdr/vae.py` (3324 lines), `nodes/io/write.py` (2972)
   and `nodes/monitor/viewer.py` (1220, with dynamic `globals().update()`
@@ -67,22 +73,27 @@ These parts of the release gate need checks that cannot run in CI:
   `delivery/handler.py`, which still reaches up into the node layer for
   `RadianceWrite`. Tracked in the README's Status & to-do list.
 
-- **Learned SDR → HDR is one pixel model.** The latent-space RUDRA decoders
-  (per-model `rudra_turbo_decoder_*` / `rudra_full_decoder_*` checkpoints,
-  the video decoders trained on stills, and the truncated `ltx-video` full
-  decoder) were retired in 3.5.0. `SDR → HDR Universal` and `Recover` run the
-  pixel model (`sdr2hdr_shadow_v1.safetensors`) on any image or frame batch and the
-  temporal residual model on ordered video when its checkpoint is installed.
-  The pixel model processes video frames independently; a clip may need
-  downstream deflicker until the temporal checkpoint ships.
+- **RUDRA ACES 2 runs frame by frame.** RUDRA 1.0's learned ACES 2.0 model
+  has no temporal inference (`temporal_inference: false` in its manifest); it
+  was trained for frame-to-frame consistency and its clipped interiors are
+  flat, so it flickers far less than the 3.x pixel model, but a clip may still
+  want downstream deflicker. Its OCIO stages run on the CPU (about a second
+  per 1080p frame); the network runs on the GPU and falls back to 1024 px
+  tiles when a frame does not fit (an approximation near tile seams, said in
+  the report). The 3.x latent decoders were retired in 3.5.0; the 3.x pixel
+  and temporal models remain as fallbacks.
+- **AI fill v3 is experimental and large.** About 16 GB of VRAM. Its first run
+  downloads 8 GB (the LoRA package and Wan2.1-VACE-1.3B), and the first custom
+  prompt another 11.4 GB (the umT5 text encoder, loaded on the CPU once; the
+  default prompt is cached and needs none of it). What it draws is plausible, not recovered: review
+  every frame (the report flags frames where the fill adds flicker). RUDRA's
+  registered gates covered highlights; shadow fill is off by default.
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 
-- **SAM Loader / SAM Mask Generator are not shipped.** Radiance bundles no
-  SAM runtime; the generator used to return discs drawn around the click
-  points. Both nodes are hidden from the menu (`DEPRECATED`), still load in
-  saved graphs, and raise a clear error when executed. *Planned fix:* a real
-  SAM2 backend, or removal in 4.0.
+- **No SAM node.** Radiance bundles no SAM runtime. The 3.5 placeholders
+  (SAM Loader, SAM Mask Generator) were removed in 4.0; use a SAM2 node pack
+  and feed its MASK into Radiance.
 - **Upscale `confidence` output is geometric.** 1 at tile centres, lower
   toward tile edges. It locates seam blending; it does not measure
   hallucination, which none of the backends report.
@@ -151,22 +162,24 @@ The six nodes that broke or crawled at production size, ten more that held the c
 
 Writing a tooltip for all 1,259 inputs meant reading the code behind each
 one. The bugs it found are fixed (see the changelog, "Bugs found while
-documenting every input"). These controls still do not do what their name
-says; each tooltip says what really happens.
+documenting every input"). The controls it found that did not do what their
+name said are resolved below; each tooltip says what really happens.
 
-**Controls that do nothing or less than their name**
+**Controls that did nothing or less than their name (resolved in 4.0)**
 
-- Do nothing: Sampler `conditioning_clip_target`; Bit Depth Degrade
-  `restore_from_quantized`.
-- Only label a report: ACES Compliance `output_type` and `peak_nits`; Color
-  Space Info `scene_referred` and `peak_nits`.
-- Narrower than named: `creative_white_scale` is a linear gain;
-  CFG++ "(Perpendicular)" is a cosine cfg
-  scale.
-- Denoise: `motion_compensation` is a ±1 px search.
+- Implemented: Bit Depth Degrade `restore_from_quantized` dequantises;
+  CFG++ "(Perpendicular)" now guides perpendicular to the conditional
+  prediction; Denoise `motion_compensation` is hierarchical block matching
+  (about ±30 px) instead of a ±1 px search.
+- Relabelled, by design: Sampler `conditioning_clip_target` has no effect (the
+  encoder is chosen at encode time; the widget stays so saved workflows load);
+  ACES Compliance `peak_nits` and Color Space Info `scene_referred` and
+  `peak_nits` are labels and metadata; `creative_white_scale` is a linear gain,
+  and both tooltips say so.
+- ACES Compliance `output_type` was listed here by mistake: it chooses the
+  reference the image is compared with.
 
-*Planned fix:* one pass that either implements each control or removes it,
-with a test per item, section by section. Done so far: Color (LUT and LUT
+*Earlier passes,* with a test per item, section by section: Color (LUT and LUT
 Blend `log_space`, HueCurves `grade_info`, OCIO Context) and Upscale (resampling
 kernels, Downscale `antialiasing`, Auto colour space). The production pass also
 fixed ClipDetector channel selection with soft edges, ExposureBlend weighting
@@ -222,31 +235,26 @@ node downloads").
 
 ## Minor
 
-- **Three legacy nodes are hidden, not removed.** HDR Latent Encoder and HDR
-  Turbo Encoder stop with a message naming VAE Encode (HDR), because their
-  decoders were retired and their latents would render clipped. ACES 2.0
-  Output Transform (Legacy) still works. All three stay registered only so
-  saved graphs open. *Planned:* remove them in 3.6.
-- **Learned highlight recovery restores brightness, not colour.** RUDRA's
-  released SDR → HDR checkpoints (v5, shadow_v1 and seeds) were trained on
-  SDR rendered at -1 EV, which almost never clipped (median clipped fraction
-  0.000%). In blown areas their per-channel output is outside what they
-  learned, so Radiance takes only the learned luminance there, keeps the
-  source colour, and fades it in as the source goes to white. A highlight
-  clipped in one channel only (a saturated red light) gets the deterministic
-  expansion, not a learned guess. *Planned fix:* a RUDRA checkpoint trained
-  on RUDRA's clipping corpus (0 EV render), after which the colour can be
-  handed back to the model.
+- **ACES 2.0 Output Transform (Legacy) is hidden, not removed.** It still
+  renders, so it stays registered for saved graphs; new graphs use the ACES
+  2.0 Output Transform. HDR Latent Encoder and HDR Turbo Encoder, which only
+  stopped with a message naming VAE Encode (HDR), were removed in 4.0.
+- **The RUDRA 3.x pixel model restores brightness, not colour.** Only when
+  RUDRA ACES 2 cannot run (no package and downloads off, or
+  `learned_backend` set to the 3.x models): those checkpoints were trained on
+  SDR rendered at -1 EV, which almost never clipped, so Radiance takes only
+  their learned luminance in blown areas and keeps the source colour. RUDRA
+  ACES 2 has its own colour constraint and is delivered as it is.
 - **The pixel model has a hard edge where the clip mask starts.** The
   highlight mask ramps over SDR codes `highlight_threshold`..1.0 (0.98 by
   default), so on noisy or dithered 8-bit input the mask edge speckles.
   Lowering `highlight_threshold` to about 0.9 widens the ramp.
 
-- **`RadianceSDRToHDRUniversal`'s learned modes need the RUDRA checkpoint,
-  which now downloads itself (3.5.0).** On first use, with no
-  RUDRA checkpoint installed, Radiance fetches `sdr2hdr_shadow_v1` (~5 MB, pinned
-  commit, SHA-256 checked) into `models/radiance`. What remains: on a machine
-  with `RADIANCE_ALLOW_DOWNLOADS=0`, `HF_HUB_OFFLINE=1`, no network, or no
+- **`RadianceSDRToHDRUniversal`'s learned modes need a RUDRA model, which
+  downloads itself.** On first use Radiance fetches RUDRA ACES 2 (~3 MB, pinned
+  commit, SHA-256 checked) into `models/radiance/RUDRA_ACES_2` (4.0), or with
+  the 3.x backends chosen `sdr2hdr_shadow_v1` (~5 MB) into `models/radiance`.
+  What remains: on a machine with `RADIANCE_ALLOW_DOWNLOADS=0`, `HF_HUB_OFFLINE=1`, no network, or no
   writable models folder, `Recover` and `Hybrid` still produce output
   bit-identical to `Expand`. That is a safe fallback; the node's `report`
   output says which path ran and why, the console logs the manual download

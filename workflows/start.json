@@ -33,12 +33,54 @@
           "link": 38
         },
         {
+          "localized_name": "vae",
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "label": "image_1",
+          "localized_name": "image_1",
+          "name": "images.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "upsampler_clip",
+          "name": "upsampler_clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        },
+        {
+          "localized_name": "text_to_video",
+          "name": "text_to_video",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "text_to_video"
+          },
+          "link": null
+        },
+        {
           "localized_name": "base_prompt",
           "name": "base_prompt",
           "shape": 7,
           "type": "STRING",
           "widget": {
             "name": "base_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "action",
+          "name": "action",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "action"
           },
           "link": null
         },
@@ -151,6 +193,46 @@
             "name": "negative_mode"
           },
           "link": null
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "resolution"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upsample_prompt",
+          "name": "upsample_prompt",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "upsample_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upsampler_seed",
+          "name": "upsampler_seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "upsampler_seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "layout",
+          "name": "layout",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "layout"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -193,13 +275,22 @@
           "name": "token_count",
           "type": "INT",
           "links": null
+        },
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "links": null
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceCinematicPromptEncoder"
+        "Node name for S&R": "RadianceCinematicPromptEncoder",
+        "radExtraHeight": 0
       },
       "widgets_values": [
+        true,
         "A stunning fashion model walking confidently on a luxury runway, wearing an elegant flowing red haute couture gown, dramatic white stage spotlights illuminating the scene, high-end fashion show, glossy runway, audience softly blurred in the background, cinematic lighting, volumetric light beams, premium fashion photography, Vogue editorial style, ultra-realistic skin, natural facial features, intricate fabric details, realistic folds, perfect composition, full-body shot, shallow depth of field, HDR, 8K, crisp focus, professional runway atmosphere, luxury, elegance, high contrast, masterpiece.",
+        "",
         "None (Custom)",
         "Medium Shot (MS)",
         "ARRI Alexa 35",
@@ -210,8 +301,34 @@
         "None",
         "Standard",
         "low quality, blurry, cartoon, CGI, illustration, painting, anime, deformed body, extra limbs, extra fingers, bad anatomy, duplicate person, watermark, logo, text, oversaturated, overexposed, noisy, distorted face, unrealistic proportions",
-        "Auto"
+        "Auto",
+        1024,
+        false,
+        0,
+        "randomize",
+        ""
       ],
+      "widgets_values_named": {
+        "text_to_video": true,
+        "base_prompt": "A stunning fashion model walking confidently on a luxury runway, wearing an elegant flowing red haute couture gown, dramatic white stage spotlights illuminating the scene, high-end fashion show, glossy runway, audience softly blurred in the background, cinematic lighting, volumetric light beams, premium fashion photography, Vogue editorial style, ultra-realistic skin, natural facial features, intricate fabric details, realistic folds, perfect composition, full-body shot, shallow depth of field, HDR, 8K, crisp focus, professional runway atmosphere, luxury, elegance, high contrast, masterpiece.",
+        "action": "",
+        "style_preset": "None (Custom)",
+        "framing": "Medium Shot (MS)",
+        "camera_type": "ARRI Alexa 35",
+        "lens_focal": "50mm Standard Prime",
+        "aperture_dof": "f/2.8 (Cinematic Separation)",
+        "lighting": "God Rays (Crepuscular Rays)",
+        "style_aesthetic": "Cinematic Movie Still",
+        "color_grading": "None",
+        "negative_strength": "Standard",
+        "negative_prompt": "low quality, blurry, cartoon, CGI, illustration, painting, anime, deformed body, extra limbs, extra fingers, bad anatomy, duplicate person, watermark, logo, text, oversaturated, overexposed, noisy, distorted face, unrealistic proportions",
+        "negative_mode": "Auto",
+        "resolution": 1024,
+        "upsample_prompt": false,
+        "upsampler_seed": 0,
+        "control_after_generate": "randomize",
+        "layout": ""
+      },
       "color": "#3c2020",
       "bgcolor": "#141419"
     },
@@ -274,6 +391,12 @@
         1,
         ""
       ],
+      "widgets_values_named": {
+        "filename": "shot01",
+        "artist": "radiance",
+        "version": 1,
+        "radiance_launcher_grp": ""
+      },
       "color": "#111111",
       "bgcolor": "#111111"
     },
@@ -286,7 +409,7 @@
       ],
       "size": [
         418.46875,
-        998
+        902
       ],
       "flags": {},
       "order": 4,
@@ -779,6 +902,46 @@
             "name": "temporal_overlap"
           },
           "link": null
+        },
+        {
+          "localized_name": "ltx_guidance",
+          "name": "ltx_guidance",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "ltx_guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "stg_scale",
+          "name": "stg_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "stg_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "stg_end",
+          "name": "stg_end",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "stg_end"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "modality_scale",
+          "name": "modality_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "modality_scale"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -819,6 +982,11 @@
         0,
         1,
         0,
+        0,
+        "Off",
+        0,
+        1,
+        1,
         "euler",
         "Standard",
         0.4,
@@ -832,7 +1000,6 @@
         "randomize",
         0,
         "auto",
-        0,
         0,
         "None",
         "Gaussian",
@@ -860,8 +1027,62 @@
         4,
         null,
         null,
-        "FLUX.2 Klein 4B distilled: 4 steps, guidance 1.0."
+        "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
       ],
+      "widgets_values_named": {
+        "preset": "Auto",
+        "steps": 4,
+        "start_step": 0,
+        "end_step": 0,
+        "cfg": 1,
+        "audio_cfg": 0,
+        "guidance_rescale_phi": 0,
+        "ltx_guidance": "Off",
+        "stg_scale": 0,
+        "stg_end": 1,
+        "modality_scale": 1,
+        "sampler": "euler",
+        "sampler_mode": "Standard",
+        "phase_split": 0.4,
+        "scheduler": "simple",
+        "scheduler_mode": "Manual",
+        "denoise": 1,
+        "flux_shift": 1,
+        "flux_guidance": 1,
+        "flux_guidance_profile": "Static",
+        "seed": 635798887398420,
+        "control_after_generate": "randomize",
+        "pag_scale": 0,
+        "model_type": "auto",
+        "sigma_blend_steps": 0,
+        "preview_method": "None",
+        "noise_type": "Gaussian",
+        "conditioning_clip_target": "Auto",
+        "add_noise": true,
+        "return_with_leftover_noise": false,
+        "ays_schedule": false,
+        "tile_mode": false,
+        "tile_size": 128,
+        "tile_overlap": 16,
+        "tile_blend": "feather",
+        "terminal_sigma_to_zero": false,
+        "force_exact_steps": false,
+        "refiner_start_step": 20,
+        "_js_export_btn": "",
+        "_js_import_btn": "",
+        "_js_preset_info": "",
+        "restart_count": 0,
+        "noise_alpha_start": 1,
+        "noise_alpha_end": 1,
+        "sdr_blend": 0.35,
+        "sdr_inject_steps": 6,
+        "sdr_decay": 0.65,
+        "temporal_window": 0,
+        "temporal_overlap": 4,
+        "› Export Preset": null,
+        "› Import Preset": null,
+        "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
+      },
       "color": "#182238",
       "bgcolor": "#141419"
     },
@@ -874,7 +1095,7 @@
       ],
       "size": [
         270,
-        498
+        674
       ],
       "flags": {},
       "order": 1,
@@ -929,6 +1150,26 @@
           "type": "COMBO",
           "widget": {
             "name": "vae_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_vae_name",
+          "name": "audio_vae_name",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_vae_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upscale_model_name",
+          "name": "upscale_model_name",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "upscale_model_name"
           },
           "link": null
         },
@@ -1041,6 +1282,26 @@
             "name": "auto_download"
           },
           "link": null
+        },
+        {
+          "localized_name": "model_shift",
+          "name": "model_shift",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "model_shift"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "upsampler",
+          "name": "upsampler",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "upsampler"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1083,6 +1344,30 @@
             38,
             39
           ]
+        },
+        {
+          "localized_name": "upsampler_clip",
+          "name": "upsampler_clip",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "localized_name": "model_low_noise",
+          "name": "model_low_noise",
+          "type": "MODEL",
+          "links": null
+        },
+        {
+          "localized_name": "audio_vae",
+          "name": "audio_vae",
+          "type": "VAE",
+          "links": null
+        },
+        {
+          "localized_name": "upscale_model",
+          "name": "upscale_model",
+          "type": "LATENT_UPSCALE_MODEL",
+          "links": null
         }
       ],
       "properties": {
@@ -1097,6 +1382,8 @@
         "None",
         "None",
         "None",
+        "None",
+        "None",
         "qwen_3_4b.safetensors",
         "None",
         "default",
@@ -1104,8 +1391,32 @@
         "On",
         "On",
         "raise",
-        false
+        false,
+        0,
+        "None"
       ],
+      "widgets_values_named": {
+        "preset": "Custom",
+        "unet_name": "flux-2-klein-4b-fp8.safetensors",
+        "weight_dtype": "default",
+        "model_type": "Auto-Detect",
+        "vae_name": "flux2-vae.safetensors",
+        "audio_vae_name": "None",
+        "upscale_model_name": "None",
+        "clip_l": "None",
+        "clip_g": "None",
+        "t5xxl": "None",
+        "llm_encoder": "qwen_3_4b.safetensors",
+        "text_projection": "None",
+        "clip_dtype": "default",
+        "offload_mode": "none",
+        "check_vram": "On",
+        "use_cache": "On",
+        "lora_on_error": "raise",
+        "auto_download": false,
+        "model_shift": 0,
+        "upsampler": "None"
+      },
       "color": "#182238",
       "bgcolor": "#141419"
     },
@@ -1121,9 +1432,8 @@
         640
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1135,7 +1445,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 37
@@ -1168,6 +1477,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1250,7 +1566,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1260,7 +1575,118 @@
       "title": "Viewer (Lite)",
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple"
+        "radiance_viewer_mode": "simple",
+        "radiance_viewer_workspace": "review",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1269,6 +1695,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1308,6 +1741,13 @@
           "link": 24
         },
         {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
           "localized_name": "exposure_bracketing",
           "name": "exposure_bracketing",
           "shape": 7,
@@ -1357,7 +1797,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1366,6 +1918,13 @@
         0,
         ""
       ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
       "color": "#282830",
       "bgcolor": "#141419"
     },
@@ -1381,7 +1940,7 @@
         223.65625
       ],
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -1460,6 +2019,13 @@
         0,
         true
       ],
+      "widgets_values_named": {
+        "model_size": "Large (335M - Best)",
+        "normalize": true,
+        "invert": false,
+        "blur_edges": 0,
+        "use_gpu": true
+      },
       "color": "#122c1e",
       "bgcolor": "#141419"
     },
@@ -1690,9 +2256,9 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            37,
             33,
-            34
+            34,
+            37
           ]
         },
         {
@@ -1725,6 +2291,26 @@
         "Direct HDR",
         1000
       ],
+      "widgets_values_named": {
+        "target_space": "sRGB",
+        "tile_size": "Auto",
+        "overlap": 128,
+        "temporal_size": "Auto",
+        "temporal_overlap": 0,
+        "exposure_adjust": 0,
+        "hdr_mode": "Compress (Log)",
+        "display_tonemap": "ACES Filmic",
+        "inverse_tonemap": false,
+        "target_stops": 12,
+        "export_rhdr": true,
+        "rhdr_precision": "f32",
+        "source_space": "ARRI LogC4",
+        "hdr_output": true,
+        "decode_noise_scale": 0,
+        "hdr_scale_factor": 1,
+        "decode_mode": "Direct HDR",
+        "hdr_peak_nits": 1000
+      },
       "color": "#3c2020",
       "bgcolor": "#141419"
     },
@@ -1743,6 +2329,13 @@
       "order": 2,
       "mode": 0,
       "inputs": [
+        {
+          "localized_name": "model_meta",
+          "name": "model_meta",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
         {
           "localized_name": "preset",
           "name": "preset",
@@ -1983,6 +2576,24 @@
         81,
         24
       ],
+      "widgets_values_named": {
+        "preset": "Custom",
+        "width": 1024,
+        "height": 1024,
+        "orientation": "As Preset",
+        "model_type": "Flux.2 / Flux.2 Klein (128ch)",
+        "batch_size": 1,
+        "scale_factor": 1,
+        "latent_channels": 0,
+        "mp_target": 0,
+        "mp_aspect_ratio": "1:1",
+        "enable_video": false,
+        "crop_to_res": true,
+        "frame_computation": "Manual (Frames)",
+        "duration_seconds": 5,
+        "video_frames": 81,
+        "frame_rate": 24
+      },
       "color": "#1c223c",
       "bgcolor": "#141419"
     }
@@ -2132,8 +2743,8 @@
     "ds": {
       "scale": 0.5937921772122439,
       "offset": [
-        3516.892605548368,
-        -11786.685465288198
+        2871.5555555555557,
+        1286
       ]
     },
     "frontendVersion": "1.45.19",

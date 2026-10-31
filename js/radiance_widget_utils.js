@@ -96,14 +96,16 @@ const LOADER_PRESET_MODEL_TYPE = {
     "Wan 2.1": "wan", "Wan 2.1 (Low VRAM)": "wan",
     "Wan 2.2": "wan", "Wan 2.2 (Low VRAM)": "wan", "Wan 2.2 TI2V": "wan_ti2v",
     "LTX Video": "ltxv", "LTX Video (Low VRAM)": "ltxv",
-    "LTX Video 2.3": "ltxav", "LTX Video 2.3 (Low VRAM)": "ltxav",
-    "LTX Video 2.5": "ltxav", "LTX Video 2.5 (Low VRAM)": "ltxav",
+    "LTX Video 2.3 Dev": "ltxav", "LTX Video 2.3 Dev (Low VRAM)": "ltxav", "LTX Video 2.3 Distilled": "ltxav",
+    "LTX Video 2.5 Dev": "ltxav", "LTX Video 2.5 Dev (Low VRAM)": "ltxav",
+    "LTX Video 2.5 Distilled": "ltxav", "LTX Video 2.5 Distilled (Low VRAM)": "ltxav",
     "Cosmos World": "cosmos", "CogVideoX": "cogvideox", "Mochi": "mochi",
     "PixArt Sigma": "pixart", "AuraFlow": "aura_flow",
     "Lumina2": "lumina2", "Z-Image": "z_image",
     "MiniMax H3": "minimax", "MiniMax H3 (Low VRAM)": "minimax",
     "Qwen-Image 2.1": "qwen_image21", "Qwen-Image 2.1 (Low VRAM)": "qwen_image21",
     "Qwen-Image": "qwen_image", "Qwen-Image Edit 2511": "qwen_image",
+    "Flux.3 Klein": "flux3", "Flux.3 Klein (Low VRAM)": "flux3",
 };
 
 // ALBABIT-FIX: the architecture the Loader 'loaderNode' loads, as its
@@ -116,7 +118,10 @@ export function loaderModelType(loaderNode) {
     // unet_name tells them apart, as Auto-Detect does at execution.
     if (presetVal === "Flux.2" || presetVal === "Flux.2 (Low VRAM)") {
         const unetName = loaderNode.widgets?.find(w => w.name === "unet_name")?.value || "";
-        return unetName.toLowerCase().includes("klein") ? "flux2-klein" : "flux2";
+        const n = unetName.toLowerCase();
+        // A FLUX 3 Klein file in a Flux.2 preset still loads as FLUX 3 (Auto-Detect).
+        if (/flux[-_.]?3/.test(n)) return "flux3";
+        return n.includes("klein") ? "flux2-klein" : "flux2";
     }
     if (presetVal && presetVal !== "Custom" && LOADER_PRESET_MODEL_TYPE[presetVal]) {
         return LOADER_PRESET_MODEL_TYPE[presetVal];
@@ -190,6 +195,10 @@ function trackUserHeight(node) {
  */
 export function setWidgetVisible(widget, visible, node, options = {}) {
     if (!widget) return false;
+    // ALBABIT-FIX: frontend 1.57 keeps a linked widget hidden whatever is written here, so
+    // each poll saw a change, reinserted it and wiped a number being typed in the node.
+    // One this helper hid itself (type "hidden") can still be shown again.
+    if (widget.type !== "hidden" && node?.inputs?.find(i => i.widget?.name === widget.name)?.link != null) return false;
 
     // MERGE-PORT (beta/main 9a5ac88): remember the prior state so the Vue
     // remount below only happens on a real transition, and so callers can
@@ -266,4 +275,41 @@ export function setWidgetVisible(widget, visible, node, options = {}) {
     return false;
 }
 
-export default { fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, loaderModelType, setWidgetVisible, syncAutoValue };
+// FIX: the ComfyUI frontend (1.4x) saves widgets_values at each widget's own index,
+// leaving a null where an unsaved widget (serialize: false) sits, but restores them
+// in order skipping unsaved widgets. An unsaved DOM widget ahead of saved ones (the
+// Prompt's tab row, the Write's Audio rule) moved every later value one widget up on
+// reload. compactWidgetValues saves without the hole; restoreHoledWidgetValues, called
+// from configure, reads graphs saved with it.
+export function compactWidgetValues(node, o) {
+    const vals = o?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || vals.length !== widgets.length) return;
+    if (!widgets.some(w => w?.serialize === false)) return;
+    o.widgets_values = widgets.flatMap((w, i) => (w?.serialize === false ? [] : [vals[i] ?? null]));
+}
+
+export function restoreHoledWidgetValues(node, info) {
+    // Runs before the frontend's configure, which reads the values in order
+    // (and, for some lengths, drops entries it takes for forceInput slots).
+    const vals = info?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || vals.length !== widgets.length) return;
+    const holeAhead = widgets.some((w, i) => w?.serialize === false && vals[i] == null
+        && widgets.slice(i + 1).some(x => x?.serialize !== false));
+    if (holeAhead) info.widgets_values = vals.filter((_, i) => widgets[i]?.serialize !== false);
+}
+
+// FIX: frontends that support fallbackWidgetsValuesNames (1.5x) read every unnamed
+// widgets_values array by that legacy order, so a graph saved by an older frontend
+// in the current widget order (1.4x saves no widgets_values_named) loaded shifted.
+// When the array has the current length, not the legacy one, name it in the
+// current order first; the frontend then restores it by name. Frontends without
+// named restore ignore widgets_values_named.
+export function nameCurrentWidgetValues(node, info, legacyNames) {
+    const vals = info?.widgets_values, widgets = node?.widgets;
+    if (!Array.isArray(vals) || !widgets || info.widgets_values_named) return;
+    const saved = widgets.filter(w => w && w.serialize !== false);
+    if (vals.length !== saved.length || vals.length === legacyNames?.length) return;
+    info.widgets_values_named = Object.fromEntries(saved.map((w, i) => [w.name, vals[i]]));
+}
+
+export default { compactWidgetValues, nameCurrentWidgetValues, fitNodeSize, forceWidgetReinsert, getWidget, isInputLive, liveSourceNode, loaderModelType, restoreHoledWidgetValues, setWidgetVisible, syncAutoValue };

@@ -104,6 +104,8 @@ docs/
 !docs/site/*.html
 !docs/site/*.css
 !docs/site/*.js
+# The AI navigation map stays local.
+docs/ai/
 
 # Local dev-server artifacts
 artifacts/

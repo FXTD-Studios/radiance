@@ -31,11 +31,9 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Common OCIO config locations (searched in order)
+# Searched only when color/ocio_setup has no active config ($OCIO and the
+# studio config come first, from there).
 _OCIO_SEARCH_PATHS = [
-    # Environment variable (highest priority, industry standard)
-    lambda: os.environ.get("OCIO"),
-    # The config Radiance set up automatically (ocio_setup)
-    lambda: os.path.join(os.path.dirname(os.path.realpath(__file__)), "ACES", "studio-config.ocio"),
     # ACES configs in common locations
     lambda: _find_file("/usr/share/ocio", "config.ocio"),
     lambda: _find_file(os.path.expanduser("~/.config/ocio"), "config.ocio"),
@@ -89,26 +87,38 @@ def _download_default_config() -> Optional[str]:
 
 def discover_ocio_config() -> Optional[str]:
     """
-    Auto-discover the active OCIO config file.
+    The active OCIO config file or URI.
 
     Search order:
-      1. $OCIO environment variable (industry standard)
-      2. Common system paths (/usr/share/ocio, ~/ocio, etc.)
-      3. The ACES studio config Radiance sets up automatically (no download)
+      1. color/ocio_setup.active_config_path(): $OCIO when it loads, else the
+         ACES studio config Radiance sets up automatically (no download).
+         Shared with every other OCIO consumer since 4.0.
+      2. Common system paths (/usr/share/ocio, ~/ocio, etc.), only when there
+         is no active config (no OpenColorIO built-ins and no bundled config)
+      3. _download_default_config(), which runs the setup again
 
     Returns:
-        Absolute path to config.ocio, or None if not found.
+        An absolute path to the config, an ocio:// URI, or None.
     """
+    try:
+        from radiance.color.ocio_setup import active_config_path
+        path = active_config_path()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"[Radiance OCIO] no active config: {exc}")
+        path = ""
+    if path:
+        logger.info(f"[Radiance OCIO] Config discovered: {path}")
+        return path if path.startswith("ocio://") else os.path.abspath(path)
+
     for finder in _OCIO_SEARCH_PATHS:
         try:
-            path = finder()
-            if path and os.path.isfile(path):
-                logger.info(f"[Radiance OCIO] Config discovered: {path}")
-                return os.path.abspath(path)
+            found = finder()
+            if found and os.path.isfile(found):
+                logger.info(f"[Radiance OCIO] Config discovered: {found}")
+                return os.path.abspath(found)
         except Exception:
             continue
-            
-    # Fallback to auto-downloading config
+
     return _download_default_config()
 
 
@@ -148,10 +158,14 @@ class OCIOConfigManager:
             return False
 
         try:
-            config_path = os.path.abspath(config_path)
-            if not os.path.isfile(config_path):
-                logger.error(f"[Radiance OCIO] Config not found: {config_path}")
-                return False
+            # An ocio:// URI names a built-in config; ocio_setup uses one when
+            # the package folder is read-only. It used to be refused here, so
+            # the manager had no config on such an install.
+            if not config_path.startswith("ocio://"):
+                config_path = os.path.abspath(config_path)
+                if not os.path.isfile(config_path):
+                    logger.error(f"[Radiance OCIO] Config not found: {config_path}")
+                    return False
 
             self.config = OCIO.Config.CreateFromFile(config_path)
             self.config_path = config_path

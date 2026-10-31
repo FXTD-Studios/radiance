@@ -361,7 +361,7 @@ def test_video_fps_and_audio(nodes, tmp_path):
     assert abs(info.fps_float - 23.976) < 1e-3, info.fps_float
     import subprocess
     streams = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", p],
-                             capture_output=True, text=True).stdout.split()
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.split()
     assert "audio" in streams, streams
 
 

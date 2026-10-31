@@ -149,8 +149,8 @@ def test_pixels_outside_recovery_mask_are_bit_exact(node, fake_rudra):
     img = vals.view(1, 1, -1, 1).expand(1, 1, 6, 3).contiguous()
     kw = dict(BASE_KW, highlight_threshold=0.98, shadow_threshold=0.001)
 
-    base, _, _, _, _, _ = node.convert(image=img, rudra_blend=0.0, **kw)
-    out, _, _, _, _, _ = node.convert(image=img, rudra_blend=1.0, pixel_recovery_mode="all", **kw)
+    base, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=0.0, **kw)
+    out, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=1.0, pixel_recovery_mode="all", **kw)
 
     torch.testing.assert_close(out, base, atol=0.0, rtol=0.0)
 
@@ -159,7 +159,7 @@ def test_peak_is_still_enforced_after_removing_the_second_limiter(node, fake_rud
     """Dropping the outer limiter must not let learned radiance exceed peak."""
     fake_rudra(rec_value=1000.0)
     img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(1, 8, 8, 3).contiguous()
-    out, _, _, _, _, report = node.convert(
+    out, _, _, _, _, report, _ = node.convert(
         image=img, rudra_blend=1.0, pixel_recovery_mode="all",
         **dict(BASE_KW, peak_nits=200.0, shoulder_gamma=1.0))
     assert "learned recovery: applied" in report
@@ -180,7 +180,7 @@ def test_soft_peak_limit_left_alone_is_still_bounded():
 # ── 4. Empty batches ────────────────────────────────────────────────────────
 
 def test_empty_batch_returns_empty_rather_than_raising(node):
-    out, mask, shadows, h_conf, s_conf, _ = node.convert(
+    out, mask, shadows, h_conf, s_conf, _, _ = node.convert(
         image=torch.zeros(0, 4, 4, 3), **dict(BASE_KW, knee_mode="adaptive", knee=0.75))
     assert out.shape[0] == 0
     for m in (mask, shadows, h_conf, s_conf):
@@ -207,7 +207,7 @@ def test_expand_is_monotonic_and_hits_reference_white(node):
     somewhere to put diffuse white.
     """
     ramp = torch.linspace(0, 1, 256).view(1, 1, 256, 1).repeat(1, 1, 1, 3)
-    out, _, _, _, _, _ = node.convert(image=ramp, processing_mode="Expand", **BASE_KW)
+    out, _, _, _, _, _, _ = node.convert(image=ramp, processing_mode="Expand", **BASE_KW)
     y = mod._luma(out)[0, 0]
     assert bool((torch.diff(y) >= -1e-6).all()), "expansion is not monotonic"
     # 3.5.0: Linear is BT.2408-normalised, so reference white is exactly 1.0.
@@ -224,7 +224,7 @@ def test_peak_nits_is_the_ceiling_not_the_target(node, peak):
     brighter. peak_nits is the ceiling and the encode target; where SDR white
     sits is `reference_white_nits`.
     """
-    out, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
+    out, _, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
                                    **dict(BASE_KW, peak_nits=peak, processing_mode="Expand"))
     # 3.5.0: output unit is the effective reference white (capped at peak).
     ref = min(203.0, peak)
@@ -235,7 +235,7 @@ def test_peak_nits_is_the_ceiling_not_the_target(node, peak):
 
 @pytest.mark.parametrize("peak", [1000.0, 4000.0, 10000.0])
 def test_the_old_behaviour_is_still_reachable(node, peak):
-    out, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
+    out, _, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
                                    **dict(BASE_KW, peak_nits=peak, processing_mode="Expand",
                                           reference_white_nits=peak))
     # reference white == peak: SDR white at the peak, which is linear 1.0.
@@ -246,7 +246,7 @@ def test_alpha_survives_every_output_encoding(node):
     rgba = torch.cat([torch.full((1, 4, 4, 3), 0.5),
                       torch.full((1, 4, 4, 1), 0.25)], dim=-1)
     for enc in ("Linear", "Linear ACES2065-1 (AP0)", "PQ (HDR10)", "HLG"):
-        out, _, _, _, _, _ = node.convert(image=rgba, **dict(BASE_KW, output_encoding=enc))
+        out, _, _, _, _, _, _ = node.convert(image=rgba, **dict(BASE_KW, output_encoding=enc))
         assert out.shape[-1] == 4, enc
         assert float(out[0, 0, 0, 3]) == pytest.approx(0.25), enc
 

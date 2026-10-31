@@ -5,9 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "radiance"
 description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to HDR, HDR VAE encode and decode, OCIO colour management, EXR I/O, a pro Viewer, and Nuke / Resolve handoff."
-# Keep in step with config/constants.py VERSION, package.json and CHANGELOG.md;
+# Keep in step with config/constants.py VERSION, package.json, js/radiance_version.js
+# and CHANGELOG.md;
 # tests/test_version_sync.py fails if they drift.
-version = "3.5.4"
+version = "4.0.0"
 readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
@@ -55,7 +56,7 @@ dependencies = [
     "OpenImageIO>=3.0.0",
     "opencolorio>=2.5.0",   # ACES 2.0 reference Output Transforms (built-in studio config v4)
     "transformers>=4.36.0",
-    "diffusers>=0.33.0",    # Multipass Estimate: Marigold IID materials and lighting
+    "diffusers>=0.35.0",    # RUDRA AI fill (Wan VACE, 0.35+) and Multipass Estimate (Marigold)
     "accelerate>=0.26.0",   # low-memory loading of the Marigold UNets
     "scipy>=1.10.0",
     "defusedxml>=0.7.1",
@@ -85,7 +86,8 @@ test = [
     "scipy>=1.9",
     "Pillow>=9.0",
     "defusedxml>=0.7",
-    "opencv-python-headless>=4.7",
+    # cv2 comes from the runtime dependency opencv-python; a second, headless
+    # distribution here installed two packages that both provide cv2.
     "safetensors>=0.4.0",
     "tqdm>=4.66",
     "tifffile>=2023.7.10",
@@ -117,7 +119,7 @@ Models        = "https://huggingface.co/fxtdstudios/RUDRA"
 PublisherId      = "fxtdstudios"
 DisplayName      = "Radiance"
 Icon             = "https://raw.githubusercontent.com/fxtd-studios/radiance/main/r_icon.png"
-requires-comfyui = ">=0.2.2"
+requires-comfyui = ">=0.40.0"
 
 [tool.setuptools]
 package-dir = { "radiance" = "." }
@@ -180,6 +182,9 @@ radiance = [
     "workflows/TEMPLATES/*.rad",
     "scripts/training/train_temporal_rudra.py",
     "scripts/start_nuke_server.py",
+    # The prompt upsampler's system prompts (nodes/generate/upsampler.py reads
+    # them at run time); a wheel without them failed on first use (audit R3).
+    "nodes/generate/upsampler_prompts/*.txt",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────

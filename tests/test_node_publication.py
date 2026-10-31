@@ -205,6 +205,7 @@ class TestDeprecatedAliasesLoadWithoutCluttering:
 
     ALIASES = {
         "RadianceImageLoader": "RadianceUnifiedLoader",
+        "RadianceVideoLoader": "RadianceUnifiedLoader",
         "RadianceControlApply": "RadianceControlNetApply",
         "RadianceWorkspace": "RadianceProjectManager",
     }

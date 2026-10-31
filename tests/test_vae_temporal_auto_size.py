@@ -142,3 +142,10 @@ class TestResolveTemporalFrames:
         """Internal callers (e.g. recursive chunking
         block) may pass a plain int rather than a widget-style string."""
         assert _resolve_temporal_frames(3, None, 8) == 3
+
+
+def test_tile_engine_moved_to_vae_tiling_and_is_re_exported():
+    """4.0 split: the class lives in hdr/vae_tiling.py; old imports still work."""
+    from hdr import vae, vae_tiling
+    assert vae.TileEngine is vae_tiling.TileEngine
+    assert vae_tiling.TileEngine.__module__.endswith("vae_tiling")

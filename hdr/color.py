@@ -1246,7 +1246,7 @@ class ACES2OutputTransform:
                         "min": 0.5,
                         "max": 1.5,
                         "step": 0.01,
-                        "tooltip": "Creative exposure adjustment before tone mapping.",
+                        "tooltip": "Linear gain on all channels before tone mapping, so it acts as extra exposure (1.5 = about +0.6 stop), not a white point change. 1.0 = no change.",
                     },
                 ),
                 "exposure_adjust": (

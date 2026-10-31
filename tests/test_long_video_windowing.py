@@ -545,8 +545,9 @@ def test_the_new_widgets_are_appended_after_every_existing_optional_input():
     at the end.
     """
     optional = list(RadianceSamplerPro.INPUT_TYPES()["optional"].keys())
-    assert optional[-2:] == ["temporal_window", "temporal_overlap"], (
-        f"the windowing widgets are not last: {optional}"
+    after_meta = optional[optional.index("model_meta") + 1:]
+    assert after_meta[:2] == ["temporal_window", "temporal_overlap"], (
+        f"the windowing widgets do not follow model_meta: {optional}"
     )
     for name in (
         "refiner_model", "noise_override", "sigmas_override",

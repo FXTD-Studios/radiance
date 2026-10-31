@@ -4,13 +4,19 @@ import math
 import logging
 import gc
 import errno
+import os
+import io
+import base64
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
+from PIL import Image
 import comfy.samplers
 import comfy.sample
 import comfy.model_management
 import comfy.utils
+import folder_paths
+from radiance.core.model_fetch import ModelFetchError, fetch
 from radiance.core.tiling import clamp_overlap
 try:
     from ...tensor_contract import ensure_4d, ensure_5d
@@ -26,6 +32,11 @@ except ImportError:
     _HAS_NESTED_TENSOR = False
 
 try:
+    from comfy_extras.nodes_lt import LTXVModalityGuidance, LTXVSpatioTemporalGuidance
+except ImportError:  # ComfyUI before LTX 2.5 support
+    LTXVModalityGuidance = LTXVSpatioTemporalGuidance = None
+
+try:
     from ...sampler_utils import (
         DYNAMIC_GUIDANCE_EARLY_MULTIPLIER, DYNAMIC_GUIDANCE_LATE_MULTIPLIER, 
         DYNAMIC_GUIDANCE_EARLY_THRESHOLD, DYNAMIC_GUIDANCE_LATE_THRESHOLD, 
@@ -39,18 +50,19 @@ try:
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
         validate_step_range, apply_pag_to_model, AYS_ANCHORS, get_ays_sigmas,
-        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus,
+        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus, perpendicular_cfg_function,
         build_sigma_report, _temporally_correlate, _perlin_noise, _perlin_noise_2d,
         _spectral_noise, _get_freq_grid, _spectral_noise_2d, _brownian_noise,
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
         route_conditioning, tile_sample,
         plan_temporal_windows, temporal_window_weights, slice_conds_temporally,
-        MODEL_DEFAULTS,
+        MODEL_DEFAULTS, LTX_GUIDANCE_MODES, LTX_STG_BLOCKS, resolve_ltx_guidance,
+        make_guidance_rescale_patch,
     )
 except (ImportError, ValueError):
     from sampler_utils import (
@@ -66,18 +78,19 @@ except (ImportError, ValueError):
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
         validate_step_range, apply_pag_to_model, AYS_ANCHORS, get_ays_sigmas,
-        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus,
+        guidance_rescale_cfg, correct_sigma_end, apply_cfg_plus_plus, perpendicular_cfg_function,
         build_sigma_report, _temporally_correlate, _perlin_noise, _perlin_noise_2d,
         _spectral_noise, _get_freq_grid, _spectral_noise_2d, _brownian_noise,
         _simplex_noise, _voronoi_noise, _curl_noise, generate_noise,
         route_conditioning, tile_sample,
         plan_temporal_windows, temporal_window_weights, slice_conds_temporally,
-        MODEL_DEFAULTS,
+        MODEL_DEFAULTS, LTX_GUIDANCE_MODES, LTX_STG_BLOCKS, resolve_ltx_guidance,
+        make_guidance_rescale_patch,
     )
 
 logger = logging.getLogger("radiance.sampler")
@@ -130,7 +143,7 @@ def _count_non_finite(t) -> Optional[int]:
         return None
 
 
-def assert_latent_finite(samples) -> None:
+def assert_latent_finite(samples, node_name: str = "RadianceSamplerPro") -> None:
     """Fail the node when the sampled latent carries NaN or Inf.
 
     Two defects lived in the old inline version of this check.
@@ -165,9 +178,9 @@ def assert_latent_finite(samples) -> None:
         # Unknown container: say so at WARNING, where it is actually visible,
         # rather than debug.
         logger.warning(
-            "[RadianceSamplerPro] Could not run the NaN/Inf guard: sampled latent is "
+            "[%s] Could not run the NaN/Inf guard: sampled latent is "
             "a %s, which is neither a Tensor nor a NestedTensor. The output is "
-            "UNCHECKED.", type(samples).__name__,
+            "UNCHECKED.", node_name, type(samples).__name__,
         )
         return
 
@@ -176,8 +189,8 @@ def assert_latent_finite(samples) -> None:
         count = _count_non_finite(t)
         if count is None:
             logger.warning(
-                "[RadianceSamplerPro] Could not run the NaN/Inf guard on %s (%s). "
-                "That part of the output is UNCHECKED.", label, type(t).__name__,
+                "[%s] Could not run the NaN/Inf guard on %s (%s). "
+                "That part of the output is UNCHECKED.", node_name, label, type(t).__name__,
             )
             continue
         if count:
@@ -185,7 +198,7 @@ def assert_latent_finite(samples) -> None:
 
     if bad_streams:
         raise RuntimeError(
-            "[RadianceSamplerPro] The sampled latent contains NaN or Inf "
+            f"[{node_name}] The sampled latent contains NaN or Inf "
             f"({'; '.join(bad_streams)}).\n\n"
             "This is a diverged run, usually a CFG blowup, fp16/bf16 overflow, or a "
             "degenerate sigma schedule. Lower cfg (and flux_guidance / pag_scale if "
@@ -399,11 +412,8 @@ def _make_energy_cfg_patch(layers, latent_shapes=None):
         uncond = args["uncond_denoised"]
         cfg_val = args["cond_scale"]
 
-        # ALBABIT-FIX: a packed multi-modality latent (e.g. LTX-AV) arrives
-        # as a flat (B, 1, N) tensor with no spatial grid to overlay the mask
-        # against. Unpack (using shapes captured at registration time) to
-        # recover the video stream's real grid, mask that alone, leave any
-        # other stream (audio) untouched, then re-pack.
+        # ALBABIT-FIX: a packed LTX-AV latent is a flat (B, 1, N) tensor: unpack it
+        # with the registered shapes, mask the video stream only, then re-pack.
         if latent_shapes and len(latent_shapes) > 1 and cond.ndim < 4 and cond.shape == uncond.shape:
             try:
                 cond_parts = comfy.utils.unpack_latents(cond, latent_shapes)
@@ -533,6 +543,53 @@ def make_temporal_window_wrapper(
     return wrapper
 
 
+# ALBABIT-FIX: the decoders "TAESD" reads from models/vae_approx, by the name
+# ComfyUI looks for, pinned so a missing one can be fetched on first use.
+_TAESD_URL = "https://raw.githubusercontent.com/madebyollin/taesd/027d3ef404a04a141e60d5ec0fee149c2c8bdd74/"
+_TAEHV_URL = "https://raw.githubusercontent.com/madebyollin/taehv/011dfc2112197741c540e0bdd5b7b67bcc930771/safetensors/"
+_LIGHTTAE_URL = "https://huggingface.co/lightx2v/Autoencoders/resolve/02cbfd1a0a336bbd87da49fd8cc155ed11ff123e/"
+_TAESD_DECODERS = {
+    "taesd_decoder": (_TAESD_URL + "taesd_decoder.pth", "02873377c3f4659cd9f9adb2f718dcb434ba4c7bba3af3ee7bb95cbdabe2d3cf", 4913399),
+    "taesdxl_decoder": (_TAESD_URL + "taesdxl_decoder.pth", "a3956b8a7a763f251c7357aad6375dacdb6d971121c73e97a3069fc33a94fe1e", 4913541),
+    "taesd3_decoder": (_TAESD_URL + "taesd3_decoder.pth", "178fbb90c8c3bab4fe5e30dcba3b85d8bd2c9a203f71239c3a3223720c310b58", 4940671),
+    "taef1_decoder": (_TAESD_URL + "taef1_decoder.pth", "beae86f2eeaf0cea884dc8ffe639fb297dac8c984441bb53420f07d767785104", 4943336),
+    "taef2_decoder": (_TAESD_URL + "taef2_decoder.pth", "0a44a31e1ae59eb9dbf9359d24942fd3ef5928162c1800d97a28c61d51be0ab5", 2704756),
+    "taeqi2_1_decoder": (_TAESD_URL + "taeqi2_1_decoder.pth", "53c2212f4ea6c8ad06a30d4969d891f80339ff87bb3f77fe793848613d3a9042", 15314938),
+    "taehv": (_TAEHV_URL + "taehv.safetensors", "032ad4ddc689513287ce02fcc099b5278592526ed1eac0324a7fab94bb690ed9", 22642902),
+    "taeh3": (_TAEHV_URL + "taeh3.safetensors", "4fd022bfcab08772fe0536b17ea1a3bbb5625be11e397868d1c5d891863d4c13", 22709752),
+    "taeltx2_3": (_TAEHV_URL + "taeltx2_3.safetensors", "f0773b4e3e57318e6aa4dd4a35e1d16213a5f160fbc0376163f06888bbcbe246", 23531296),
+    "lighttaew2_1": (_LIGHTTAE_URL + "lighttaew2_1.safetensors", "8666e769f449f2d955651564bcadb0c5e12461b50480e67b7241f32c15f11a19", 45274004),
+    "lighttaew2_2": (_LIGHTTAE_URL + "lighttaew2_2.safetensors", "10124099e0c9864db4e6bcd0f09d822282753e553d344fcf2748cf50140ba16a", 45684280),
+    "lighttaehy1_5": (_LIGHTTAE_URL + "lighttaehy1_5.safetensors", "cdb8cfd653c769046748f87fd44a065cf0a92501c3588a506bbcab383c2f27ad", 45499896),
+}
+# ALBABIT-FIX: decoders whose fetch failed, not retried until ComfyUI restarts,
+# so an offline machine warns once instead of on every run.
+_TAESD_FAILED = set()
+
+
+def _ensure_taesd_decoder(name: str) -> Optional[str]:
+    """Path of the models/vae_approx file ComfyUI uses for *name*, after
+    fetching it when it is missing and pinned above. None when there is none."""
+    found = next((f for f in folder_paths.get_filename_list("vae_approx") if f.startswith(name)), None)
+    if found is not None:
+        return folder_paths.get_full_path("vae_approx", found)
+    if name not in _TAESD_DECODERS or name in _TAESD_FAILED:
+        return None
+    url, sha256, size = _TAESD_DECODERS[name]
+    # ALBABIT-FIX: a folder the user added (Stability Matrix's ApproxVAE, any
+    # extra_model_paths.yaml entry) comes after ComfyUI's own: it gets the file.
+    own = os.path.join(os.path.normcase(os.path.abspath(folder_paths.models_dir)), "")
+    folders = folder_paths.get_folder_paths("vae_approx")
+    folder = next((f for f in folders if not os.path.normcase(os.path.abspath(f)).startswith(own)), folders[0])
+    dest = os.path.join(folder, url.rsplit("/", 1)[1])
+    try:
+        return fetch(url, dest, sha256=sha256, size=size, label=f"Preview decoder {name}")
+    except ModelFetchError as exc:
+        _TAESD_FAILED.add(name)
+        logger.warning("%s\n[Radiance] The preview falls back to Latent2RGB until ComfyUI restarts.", exc)
+        return None
+
+
 def _resolve_latent_previewer(model, preview_method: str):
     """Build a ComfyUI latent previewer for *preview_method*, or None.
 
@@ -552,6 +609,8 @@ def _resolve_latent_previewer(model, preview_method: str):
     try:
         import latent_preview  # ComfyUI top-level module
         from comfy.cli_args import args as comfy_args, LatentPreviewMethod
+        from comfy.latent_formats import LTXAV
+        from comfy.sd import VAE
     except ImportError as exc:
         logger.warning(
             "[Radiance] Latent preview unavailable (%s: %s).", type(exc).__name__, exc
@@ -577,13 +636,35 @@ def _resolve_latent_previewer(model, preview_method: str):
     if device is None:
         device = comfy.model_management.get_torch_device()
 
+    # ALBABIT-FIX: "TAESD" fetches the model's missing decoder first, and is
+    # Latent2RGB without one. ComfyUI wires none to LTX-2 latents; taeltx2_3
+    # reads LTX 2.3 and 2.5 ones, through ComfyUI's own video previewer.
+    ltx2_decoder = None
+    shown = preview_method
+    if method == LatentPreviewMethod.TAESD:
+        ltx2 = isinstance(latent_format, LTXAV)
+        name = "taeltx2_3" if ltx2 else latent_format.taesd_decoder_name
+        decoder = _ensure_taesd_decoder(name) if name else None
+        if decoder is None:
+            method = LatentPreviewMethod.Latent2RGB
+            shown = f"Latent2RGB ({name} unavailable)" if name else "Latent2RGB (no TAESD decoder for this model)"
+        else:
+            shown = f"TAESD ({os.path.basename(decoder)})"
+            if ltx2:
+                ltx2_decoder = decoder
+
     # get_previewer() reads the global --preview-method. Override it for the
     # duration of the call so the node's widget wins, then put the launch
     # setting back so other nodes in the same prompt are unaffected.
     previous_method = getattr(comfy_args, "preview_method", None)
     try:
-        comfy_args.preview_method = method
-        previewer = latent_preview.get_previewer(device, latent_format)
+        if ltx2_decoder is not None:
+            taesd = VAE(comfy.utils.load_torch_file(ltx2_decoder))
+            taesd.first_stage_model.show_progress_bar = False
+            previewer = latent_preview.TAEHVPreviewerImpl(taesd)
+        else:
+            comfy_args.preview_method = method
+            previewer = latent_preview.get_previewer(device, latent_format)
     except Exception as exc:
         logger.warning(
             "[Radiance] Could not build the '%s' previewer (%s: %s).",
@@ -599,10 +680,50 @@ def _resolve_latent_previewer(model, preview_method: str):
             "[Radiance] ComfyUI has no previewer for this model's latent format "
             "with preview_method='%s'.", preview_method,
         )
+    else:
+        logger.info("[Radiance] Preview: %s", shown)
     return previewer
 
 
-def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
+# ALBABIT-FIX: a video latent previews as a loop of its latent frames in the
+# node's player (js/radiance_sampler_preview.js), not as its first frame.
+def _video_preview_frames(previewer, latent) -> Optional[List[str]]:
+    """Every latent frame of a 5D video latent as a JPEG data URL, or None when
+    *previewer* decodes a single image (an image latent, a previewer another
+    custom node wrapped)."""
+    import latent_preview  # ComfyUI top-level module
+
+    if latent.ndim != 5 or latent.shape[2] < 2:
+        return None
+    frames = latent[0].movedim(1, 0)  # [T, C, H, W]
+    if isinstance(previewer, latent_preview.TAEHVPreviewerImpl):
+        # ALBABIT-FIX: about 2 MP of LTX output per decode (4 frames at 960x544,
+        # 1 at 1080p): four 1080p frames at once took 6 GB of VRAM mid-sampling.
+        per_decode = max(1, 2048 // (frames.shape[-2] * frames.shape[-1]))
+        chunks = (previewer.taesd.decode(chunk.unsqueeze(2))[:, 0] for chunk in frames.split(per_decode))
+    elif isinstance(previewer, latent_preview.Latent2RGBPreviewer) and previewer.latent_rgb_factors_reshape is None:
+        bias = previewer.latent_rgb_factors_bias
+        rgb = torch.nn.functional.linear(frames.movedim(1, -1), previewer.latent_rgb_factors.to(frames),
+                                         None if bias is None else bias.to(frames))
+        chunks = [(rgb + 1.0) / 2.0]
+    else:
+        return None
+
+    urls = []
+    for chunk in chunks:
+        chunk = chunk.float()
+        scale = latent_preview.MAX_PREVIEW_RESOLUTION / max(chunk.shape[1:3])
+        if scale < 1:
+            chunk = torch.nn.functional.interpolate(chunk.movedim(-1, 1), scale_factor=scale, mode="bilinear",
+                                                    antialias=True).movedim(1, -1)
+        for frame in (chunk.clamp(0, 1) * 255).to(device="cpu", dtype=torch.uint8).numpy():
+            buf = io.BytesIO()
+            Image.fromarray(frame).save(buf, format="JPEG", quality=85)
+            urls.append("data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii"))
+    return urls
+
+
+def _make_phase_preview_callback(pbar, previewer, phase_start_step: int, node_id=None, fps: float = 3.0):
     """Progress callback that reports a global step and a real preview image.
 
     DEFECT GUARD: the old callback handed ProgressBar.update_absolute a bare
@@ -611,8 +732,10 @@ def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
     side. decode_latent_to_preview_image() returns the 3-tuple the protocol
     defines (PreviewImageTuple in comfy_execution/progress.py).
     """
+    next_loop = 0.0
 
     def callback(step, x0, x1, total_steps):
+        nonlocal next_loop
         global_step = step + phase_start_step
         preview = None
         if previewer is not None:
@@ -620,7 +743,21 @@ def _make_phase_preview_callback(pbar, previewer, phase_start_step: int):
                 latent = x0
                 if getattr(latent, "is_nested", False):
                     latent = latent.tensors[0]
-                preview = previewer.decode_latent_to_preview_image("JPEG", latent)
+                started = time.perf_counter()
+                frames = None
+                if node_id is not None and (started >= next_loop or step + 1 == total_steps):
+                    frames = _video_preview_frames(previewer, latent)
+                if frames is not None:
+                    from server import PromptServer
+                    server = PromptServer.instance
+                    server.send_sync("radiance.sampler.preview", {"node": node_id, "fps": fps, "frames": frames},
+                                     server.client_id)
+                    # ALBABIT-FIX: the loop refreshes once 19 times its own cost has passed,
+                    # about 5 % of the sampling: at every LTX 2.5 step it cost 12 %.
+                    ended = time.perf_counter()
+                    next_loop = ended + 19 * (ended - started)
+                elif started >= next_loop:  # between refreshes, a still frame would cover the loop
+                    preview = previewer.decode_latent_to_preview_image("JPEG", latent)
             except Exception as exc:
                 logger.debug(
                     "[Radiance] Preview decode failed at step %d (%s: %s); "
@@ -668,6 +805,60 @@ def _sample_custom_progress_safe(context: str, **kwargs):
                 f"loaded, then regenerate the latent.\n\nOriginal error: {exc}"
             ) from exc
         raise
+
+def _adapt_empty_latent_to_model(model, samples, latent_dict, noise_mask, is_video):
+    """Rebuild an all-zero image latent whose channel count doesn't match the model.
+
+    Only touches plain 4D image latents (or 5D single-frame ones) that are
+    entirely zero and carry no noise_mask: those are "Empty Latent" outputs,
+    so rebuilding them loses nothing. Anything with content is returned as-is
+    and still gets the explicit channel-mismatch error from sampling.
+
+    The pixel size comes from RadianceResolution's ``radiance_pixel_size`` tag
+    when present (its "Manual" type makes a 1x, pixel-sized latent), otherwise
+    from Comfy's ``downscale_ratio_spacial`` key, otherwise an 8x VAE is assumed.
+    """
+    if is_video or noise_mask is not None or getattr(samples, "is_nested", False):
+        return samples
+    if not isinstance(samples, torch.Tensor) or samples.ndim not in (4, 5):
+        return samples
+    if samples.ndim == 5 and samples.shape[2] != 1:
+        return samples
+    try:
+        lf = model.get_model_object("latent_format")
+    except Exception:
+        return samples
+    want_c = getattr(lf, "latent_channels", None)
+    if not isinstance(want_c, int) or want_c <= 0 or samples.shape[1] == want_c:
+        return samples
+    if torch.count_nonzero(samples).item() != 0:
+        return samples
+
+    model_ratio = getattr(lf, "spacial_downscale_ratio", 8)
+    if not isinstance(model_ratio, int) or model_ratio <= 0:
+        model_ratio = 8
+    lat_h, lat_w = samples.shape[-2], samples.shape[-1]
+    pixel = latent_dict.get("radiance_pixel_size") if isinstance(latent_dict, dict) else None
+    if isinstance(pixel, (tuple, list)) and len(pixel) == 2:
+        px_w, px_h = int(pixel[0]), int(pixel[1])
+    else:
+        src_ratio = latent_dict.get("downscale_ratio_spacial", 8) if isinstance(latent_dict, dict) else 8
+        if not isinstance(src_ratio, int) or src_ratio <= 0:
+            src_ratio = 8
+        px_w, px_h = lat_w * src_ratio, lat_h * src_ratio
+    new_h, new_w = max(1, px_h // model_ratio), max(1, px_w // model_ratio)
+
+    shape = list(samples.shape)
+    shape[1], shape[-2], shape[-1] = want_c, new_h, new_w
+    logger.warning(
+        "[RadianceSamplerPro] Empty latent has %d channels (%dx%d) but the model "
+        "expects %d channels at %dx downscale; rebuilt it as %s for %dx%d px. "
+        "Connect the Loader's model_meta to RadianceResolution (or set its "
+        "model_type) to make this exact.",
+        samples.shape[1], lat_w, lat_h, want_c, model_ratio, tuple(shape), px_w, px_h,
+    )
+    return torch.zeros(shape, dtype=samples.dtype, device=samples.device)
+
 
 class RadianceSamplerPro:
     """
@@ -737,8 +928,8 @@ class RadianceSamplerPro:
                         "min": 0.0,
                         "max": 100.0,
                         "step": 0.1,
-                        "tooltip": "LTX-AV only (e.g. LTX 2.5): separate CFG scale for the audio "
-                                   "half of the latent. 0 = same as cfg (single-CFG, pre-2.5 behavior).",
+                        "tooltip": "LTX-AV only (LTX 2.3, LTX 2.5): separate CFG scale for the audio "
+                                   "half of the latent. 0 = same as cfg. 1 keeps the ambience under the voice.",
                     },
                 ),
                 "sampler": (comfy.samplers.KSampler.SAMPLERS, {"tooltip": (
@@ -747,8 +938,9 @@ class RadianceSamplerPro:
                 "sampler_mode": (SamplerMode.ALL, {"default": SamplerMode.STANDARD, "tooltip": (
                     "Standard: one sampler throughout. Phase-Shift: switch at phase_split to dpmpp_2m "
                     "(DPM) or to the same sampler on the sgm_uniform schedule (SGM); not used for video "
-                    "models. CFG++: scales cfg toward 1.0 by a cosine of each stage's starting sigma, so a "
-                    "plain single-stage run keeps cfg unchanged.")}),
+                    "models. CFG++: guidance keeps only the part of (cond - uncond) orthogonal to the "
+                    "conditional prediction, and cfg is scaled toward 1.0 by a cosine of each stage's "
+                    "starting sigma (a single-stage run keeps cfg).")}),
                 "phase_split": (
                     "FLOAT",
                     {"default": 0.40, "min": 0.0, "max": 1.0, "step": 0.05,
@@ -835,13 +1027,17 @@ class RadianceSamplerPro:
                         "min": 0.0,
                         "max": 1.0,
                         "step": 0.05,
-                        "tooltip": "Guidance rescale (Imagen). 0=off, 0.7=recommended for SDXL. Prevents oversaturation at high CFG.",
+                        "tooltip": "Guidance rescale (Imagen). 0=off, 0.7=recommended for SDXL. Prevents oversaturation at high CFG. "
+                                   "On LTX 2.3 / 2.5, video and audio are rescaled separately.",
                     },
                 ),
 
-                "preview_method": (PREVIEW_METHODS, {"default": "None", "tooltip": (
-                    "Live preview during sampling. TAESD needs the taesd weights in models/vae_approx and "
-                    "falls back to Latent2RGB without them. None sends no Radiance preview, only ComfyUI's progress bar.")}),
+                "preview_method": (PREVIEW_METHODS, {"default": "TAESD", "tooltip": (
+                    "Live preview during sampling. TAESD decodes it with the model's small preview decoder from models/vae_approx, "
+                    "downloaded once (3 to 46 MB) when it is missing unless RADIANCE_ALLOW_DOWNLOADS=0, and falls back to "
+                    "Latent2RGB for a model that has none. Latent2RGB is a coarse color preview that needs no file. "
+                    "None sends no Radiance preview, only ComfyUI's progress bar. "
+                    "Video models play their latent frames in a loop under the node: click it to pause, drag the bar to pick a moment.")}),
 
                 "noise_type": (
                     NOISE_TYPES,
@@ -908,7 +1104,7 @@ class RadianceSamplerPro:
             "optional": {
                 "refiner_model": ("MODEL", {"tooltip": (
                     "Optional second model that takes over from refiner_start_step with the same conditioning, "
-                    "so it must accept the same text-encoder width. PAG, guidance rescale and the SDR anchor are "
+                    "so it must accept the same text-encoder width. PAG, guidance rescale, ltx_guidance and the SDR anchor are "
                     "not applied to it. Ignored in tile_mode.")}),
                 "refiner_start_step": (
                     "INT",
@@ -1092,7 +1288,22 @@ class RadianceSamplerPro:
                         ),
                     },
                 ),
-
+                # ── LTX-AV guidance (STG + modality) ──────────────────────────
+                # ALBABIT-FIX: the frontend shows these under audio_cfg and restores
+                # the node by name (radiance_sampler.js, SAMPLER_SAVED_WIDGET_ORDER).
+                "ltx_guidance": (LTX_GUIDANCE_MODES, {"default": "Off", "tooltip": (
+                    "LTX 2.3 / 2.5 only: Lightricks' extra guidance for the Dev model, through ComfyUI's "
+                    "LTXV STG and modality nodes. Modality guidance keeps sound and picture coupled "
+                    "(lip-sync, sounds that follow the action); STG on block 28 steadies structure and "
+                    "motion but can harden skin, so 'early' stops it halfway. Each adds one model pass "
+                    "per step. Custom starts from the recipe it replaces and uses the three settings below.")}),
+                "stg_scale": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10.0, "step": 0.05,
+                    "tooltip": "ltx_guidance Custom: STG strength (0 = off, 1 = Lightricks' reference)."}),
+                "stg_end": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": ("ltx_guidance Custom: where STG stops, as ComfyUI's end_percent (1 = the "
+                                "whole run; 0.5 = about step 23 of 30 with the LTX 2.5 LowRes preset).")}),
+                "modality_scale": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 0.1,
+                    "tooltip": "ltx_guidance Custom: modality guidance strength (1 = off, 3 = Lightricks' reference)."}),
             },
             "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
@@ -1175,6 +1386,14 @@ class RadianceSamplerPro:
         if preset in ("Auto", "Custom"):
             defaults = get_model_defaults(detected_type)
             distilled = refine_distillation_from_meta(detected_type, meta_unet_file, [*meta_loras, *chain_loras])
+            # FLUX 3 Image Klein: the weights say whether this is the base or the
+            # step-distilled model, so the choice is known without model_meta
+            # (and wins over a file name that does not follow BFL's naming).
+            flux3_known = False
+            if detected_type == "flux3":
+                from_weights = refine_flux3_from_model(model)
+                if from_weights is not None:
+                    distilled, flux3_known = (from_weights or None), True
 
             # Apply defaults if user has them at "default" values -- distilled
             # (e.g. SDXL/SD3.5 Turbo) takes priority over the generic default.
@@ -1186,12 +1405,15 @@ class RadianceSamplerPro:
             # the time. It is only replaced now when model_meta names the exact
             # checkpoint, so the choice is known to be right; otherwise it is
             # kept and the base value is suggested.
-            if kwargs.get('cfg') == 1.0 and detected_type != "flux":
+            # ALBABIT-FIX: not on an LTX-AV upscaled pass (denoise below 1): cfg 1 is
+            # its stage preset's own value, and 3 added a negative pass on every step.
+            ltx_upscale = detected_type == "ltxav" and kwargs.get('denoise', 1.0) < 1.0
+            if kwargs.get('cfg') == 1.0 and detected_type != "flux" and not ltx_upscale:
                 suggested = (distilled or {}).get("cfg", defaults.get("cfg", 1.0))
-                if meta_unet_file and suggested != 1.0:
+                if (meta_unet_file or flux3_known) and suggested != 1.0:
                     kwargs['cfg'] = suggested
                     logger.info(f"Auto-applied cfg={suggested} for {detected_type} "
-                                f"({meta_unet_file})")
+                                f"({meta_unet_file or 'from the model weights'})")
                 elif suggested != 1.0:
                     logger.info(
                         f"cfg=1.0 kept for {detected_type}: without model_meta the "
@@ -1207,11 +1429,8 @@ class RadianceSamplerPro:
                 if model_default_guidance > 0 or defaults.get("guidance_type") != "embedding":
                     kwargs['flux_guidance'] = model_default_guidance
 
-            # ALBABIT-FIX: "steps" isn't always present in either dict (e.g.
-            # Krea Dev's override is guidance-only; most architectures have no
-            # generic default at all, steps stays manual) -- distilled takes
-            # priority, defaults is a generic per-architecture fallback (only
-            # a few architectures define one, e.g. Chroma).
+            # ALBABIT-FIX: neither dict always has "steps" (Krea Dev's override is
+            # guidance-only); the distilled value wins over the architecture one.
             if kwargs.get('steps') == 20:
                 model_default_steps = (distilled or {}).get("steps", defaults.get("steps"))
                 if model_default_steps is not None:
@@ -1501,8 +1720,24 @@ class RadianceSamplerPro:
 # unguarded forward still builds and retains an autograd graph.
     @torch.no_grad()
     def _encode_sdr_reference(self, ref, vae, work):
+        # comfy.sd.VAE.encode returns the latent tensor; only the VAEEncode node
+        # wraps it in {"samples": ...}. Indexing the tensor with "samples" made
+        # every real VAE crash the sample. Accept both, and pass RGB the way
+        # VAEEncode does: a VAE given an alpha channel fails.
+        if ref.shape[-1] > 3:
+            ref = ref[..., :3]
         res = vae.encode(ref)
-        ref_latent = res["samples"]
+        ref_latent = res["samples"] if isinstance(res, dict) else res
+        if ref_latent.ndim == 5:
+            # A video VAE encodes the still as a (B, C, T, h, w) clip; its
+            # first latent frame is the image. A temporal VAE reads a batch of
+            # references as one clip, so the later frames are dropped: say so.
+            if ref_latent.shape[2] > 1:
+                logger.warning(
+                    "[SDR Conditioning] sdr_vae encoded the reference as a clip of %d latent "
+                    "frames; only the first conditions the sample. Pass one image.",
+                    ref_latent.shape[2])
+            ref_latent = ref_latent[:, :, 0]
         B = work.shape[0]
         if ref_latent.shape[0] == 1 and B > 1:
             ref_latent = ref_latent.expand(B, -1, -1, -1)
@@ -1585,6 +1820,10 @@ class RadianceSamplerPro:
         noise_alpha_end: float = 1.0,
         temporal_window: int = 0,
         temporal_overlap: int = 4,
+        ltx_guidance: str = "Off",
+        stg_scale: float = 0.0,
+        stg_end: float = 1.0,
+        modality_scale: float = 1.0,
         sdr_reference: Optional[torch.Tensor] = None,
         sdr_vae: Optional[Any] = None,
         # Same defaults as the widgets (0.35, 6). They were 0.0 and 0 here, so
@@ -1601,11 +1840,9 @@ class RadianceSamplerPro:
         t_start = time.time()
         timings: Dict[str, float] = {}
 
-        # ALBABIT-FIX: refiner_model swaps only the MODEL mid-run, never the
-        # CONDITIONING -- a mismatched context_dim crashes deep in the sampling
-        # loop with a cryptic PyTorch shape error. Fail early and clearly
-        # instead (e.g. SDXL Base's 2048-dim clip_l+clip_g conditioning vs
-        # Refiner's 1280-dim clip_g-only).
+        # ALBABIT-FIX: refiner_model swaps the MODEL only, so a conditioning of
+        # another width (SDXL Base 2048 vs Refiner 1280) crashed deep in
+        # sampling. Fail early with a clear message.
         if refiner_model is not None and positive:
             try:
                 refiner_dim = refiner_model.model.model_config.unet_config.get("context_dim")
@@ -1635,17 +1872,14 @@ class RadianceSamplerPro:
         # 2. Model Detection & Default Calibration
         detected_type, params, meta_unet_file = self._configure_model_and_defaults(model, model_type, preset,
             model_meta=model_meta, chain_loras=self._model_chain_loras(prompt, unique_id),
-            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift,
+            cfg=cfg, flux_guidance=flux_guidance, flux_shift=flux_shift, denoise=denoise,
             sampler=sampler, scheduler=scheduler, scheduler_mode=scheduler_mode, steps=steps)
 
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
         sampler, scheduler, steps = params['sampler'], params['scheduler'], params['steps']
 
-        # ALBABIT-FIX: SD-Turbo/SDXL-Turbo were only distilled at 10 fixed
-        # discrete timesteps -- standard continuous schedulers pick sigma
-        # values the model was never trained to be good at (see
-        # get_sd_turbo_sigmas). Same "sdxl" + "turbo" filename detection
-        # already used for the cfg/steps/sampler override above.
+        # ALBABIT-FIX: SD/SDXL-Turbo were distilled on 10 discrete timesteps only,
+        # so they get get_sd_turbo_sigmas (same "sdxl" + "turbo" file name test).
         use_sd_turbo_schedule = detected_type == "sdxl" and "turbo" in meta_unet_file.lower()
 
         # The seed default moved to 1 for this, but decrement, randomize or a
@@ -1708,6 +1942,13 @@ class RadianceSamplerPro:
         else:
             latent_samples = ensure_4d(latent_samples, "RadianceSamplerPro")
             frames = None
+        # FIX: an EMPTY latent whose channel count doesn't match the model
+        # (RadianceResolution left on "Manual"/an old model_type with model_meta
+        # unconnected, e.g. a 16ch pixel-sized latent fed to Flux.2 Klein's
+        # 128ch/16x DiT) carries no content, so rebuild it at the model's own
+        # shape instead of failing with "mat1 and mat2 shapes cannot be multiplied".
+        latent_samples = _adapt_empty_latent_to_model(
+            model, latent_samples, latent_image, noise_mask, is_video)
         # An image model sampling in 5D (Qwen-Image) still carries one frame:
         # the batch holds independent images, and the frame axis is the only
         # difference from 4D, so tiling applies to it as it does to 4D.
@@ -1965,13 +2206,43 @@ class RadianceSamplerPro:
                         )
                     )
 
+        # ALBABIT-FIX: video part of a packed LTX-AV latent (the rest is audio), for the
+        # per-modality guidance below.
+        av_video_numel = None
+        if is_ltx_av and getattr(work_latent, "is_nested", False):
+            parts = work_latent.unbind()
+            if len(parts) >= 2:
+                av_video_numel = math.prod(parts[0].shape[1:])
+
+        # ── LTX-AV guidance (STG + modality) ─────────────────────────────────
+        # ALBABIT-FIX: ComfyUI's own LTXV nodes, registered before guidance
+        # rescale so the rescale sees the whole guided result, as in Lightricks'
+        # reference guider.
+        ltx_guided = False
+        if is_ltx_av:
+            _stg, _stg_end, _modality = resolve_ltx_guidance(ltx_guidance, stg_scale, stg_end, modality_scale)
+            ltx_guided = _stg > 0.0 or not math.isclose(_modality, 1.0)
+            if ltx_guided:
+                if LTXVSpatioTemporalGuidance is None:
+                    raise ValueError(
+                        "Sampler: ltx_guidance needs ComfyUI's LTXV STG and modality nodes "
+                        "(LTX 2.5 support). Update ComfyUI, or set ltx_guidance to Off.")
+                if _stg > 0.0:
+                    model = LTXVSpatioTemporalGuidance.execute(model, _stg, LTX_STG_BLOCKS, 0.0, _stg_end).args[0]
+                if not math.isclose(_modality, 1.0):
+                    model = LTXVModalityGuidance.execute(model, _modality, 0.0, 1.0).args[0]
+                logger.info("[Radiance] LTX guidance '%s': STG %.2f on block %s until %.2f, modality %.2f.",
+                            ltx_guidance, _stg, LTX_STG_BLOCKS, _stg_end, _modality)
+
         if pag_scale > 0:
             # cfg goes in so apply_pag_to_model can say at registration that the
             # patch cannot fire at cfg <= 1.0, instead of logging success and
             # doing nothing. This node's own cfg default is 1.0.
             model = apply_pag_to_model(model, pag_scale, cfg=cfg)
 
-        if guidance_rescale_phi > 0.0 and cfg <= 1.0:
+        # ALBABIT-FIX: STG and modality guidance move the result at cfg 1 too, so
+        # the rescale applies there as well (Lightricks rescales after all of it).
+        if guidance_rescale_phi > 0.0 and cfg <= 1.0 and not ltx_guided:
             # DEFECT: this branch used to have no else and no warning. Guidance
             # rescale divides by the guided std and is only meaningful when CFG
             # actually pushed the result away from the conditional prediction;
@@ -1988,27 +2259,12 @@ class RadianceSamplerPro:
                 guidance_rescale_phi, cfg,
             )
 
-        if guidance_rescale_phi > 0.0 and cfg > 1.0:
-            phi = guidance_rescale_phi
-
-            # ALBABIT-FIX: was on set_model_sampler_cfg_function (noise-space
-            # single slot), but this math is denoised-space -- cfg_result
-            # silently became x - denoised. Moved to the correct API,
-            # set_model_sampler_post_cfg_function (comfy/samplers.py:600-603),
-            # and now reads args["denoised"] directly instead of recomputing.
-            def guidance_rescale_patch(args):
-                guided = args["denoised"]
-                cond = args["cond_denoised"]
-
-                dims = list(range(1, guided.ndim))
-                guided_std = guided.std(dim=dims, keepdim=True).clamp(min=1e-6)
-                cond_std = cond.std(dim=dims, keepdim=True).clamp(min=1e-6)
-
-                rescaled = guided * (cond_std / guided_std)
-                return rescaled * phi + guided * (1.0 - phi)
-
-            model.set_model_sampler_post_cfg_function(guidance_rescale_patch)
-            logger.info(f"Guidance Rescale applied (phi={phi:.2f})")
+        if guidance_rescale_phi > 0.0 and (cfg > 1.0 or ltx_guided):
+            # ALBABIT-FIX: a post-cfg function, as its math is denoised-space. On
+            # LTX-AV, video and audio are rescaled separately (av_video_numel).
+            model.set_model_sampler_post_cfg_function(
+                make_guidance_rescale_patch(guidance_rescale_phi, av_video_numel))
+            logger.info(f"Guidance Rescale applied (phi={guidance_rescale_phi:.2f})")
 
         if sdr_latent is not None and sdr_inject_steps > 0:
             _step_counter = [0]
@@ -2084,19 +2340,14 @@ class RadianceSamplerPro:
         # LTX-AV latent. Noise-space slot, so it composes cleanly with the 3
         # post-cfg patches above (a different slot, applied after this one).
         if is_ltx_av and _HAS_NESTED_TENSOR and audio_cfg > 0.0 and not math.isclose(audio_cfg, cfg):
-            _v_numel = None
-            if getattr(work_latent, "is_nested", False):
-                parts = work_latent.unbind()
-                if len(parts) >= 2:
-                    _v_numel = math.prod(parts[0].shape[1:])
-            if _v_numel is None:
+            if av_video_numel is None:
                 logger.warning(
                     "[Radiance] audio_cfg=%.2f set but the latent isn't a nested "
                     "audio+video tensor -- ignoring (using cfg=%.2f for both).",
                     audio_cfg, cfg,
                 )
             else:
-                _video_cfg, _audio_cfg, _v = cfg, audio_cfg, _v_numel
+                _video_cfg, _audio_cfg, _v = cfg, audio_cfg, av_video_numel
 
                 def _ltx_av_dual_cfg_patch(args):
                     cond, uncond = args["cond"], args["uncond"]
@@ -2109,6 +2360,24 @@ class RadianceSamplerPro:
                     "[Radiance] LTX-AV dual CFG active (video_cfg=%.2f, audio_cfg=%.2f).",
                     _video_cfg, _audio_cfg,
                 )
+
+        # ── CFG++ (Perpendicular) ────────────────────────────────────────────
+        # Until 4.0 the mode only scaled cfg per stage (still done below);
+        # nothing was perpendicular. The guidance now keeps only the part of
+        # (cond - uncond) orthogonal to cond. A cfg function another patch
+        # already set (LTX-AV dual CFG) is kept: the slot holds one function.
+        # Both models are clones by now, so the inputs stay unpatched.
+        if is_cfg_plus_plus:
+            for _cm, _what in ((model, "model"), (refiner_model, "refiner_model")):
+                if _cm is None:
+                    continue
+                if "sampler_cfg_function" in _cm.model_options:
+                    logger.warning(
+                        "[Radiance] CFG++ (Perpendicular): another cfg function is already "
+                        "set on %s (e.g. LTX-AV audio_cfg); keeping it, so only the "
+                        "per-stage cfg scale applies there.", _what)
+                else:
+                    _cm.set_model_sampler_cfg_function(perpendicular_cfg_function)
 
         if SamplerMode.is_phase_shift(sampler_mode) and detected_type in VIDEO_MODEL_TYPES:
             logger.warning(
@@ -2228,28 +2497,23 @@ class RadianceSamplerPro:
         # sample_custom draws its bar in the console, never on the node.
         pbar_ref = comfy.utils.ProgressBar(len(sigmas) - 1)
         previewer_ref = None
-        use_custom_preview = False
         if preview_method != "None":
             previewer_ref = _resolve_latent_previewer(model, preview_method)
 
-            if previewer_ref is not None:
-                use_custom_preview = True
-                logger.debug(f"Preview callback active: {preview_method}")
-            else:
-                # DEFECT GUARD: disable_pbar was wired to a flag that went True
-                # whenever the widget was not "None", so a previewer that could
-                # not be built left the run with no Radiance preview AND
-                # ComfyUI's console progress bar switched off. use_custom_preview
-                # stays False, so the console bar stays on.
+            if previewer_ref is None:
                 logger.warning(
                     "[Radiance] preview_method='%s' produced no previewer; "
                     "sampling runs without a preview.",
                     preview_method,
                 )
 
+        # ALBABIT-FIX: a video loop plays 24 fps over the latent's temporal
+        # compression: 3 latent frames a second for LTX, its real time.
+        preview_fps = 24 / model.model.latent_format.temporal_downscale_ratio if previewer_ref is not None else None
+
         def create_phase_callback(phase_start_step):
             return _make_phase_preview_callback(
-                pbar_ref, previewer_ref, phase_start_step
+                pbar_ref, previewer_ref, phase_start_step, unique_id, preview_fps
             )
 
         current_latent = work_latent
@@ -2569,10 +2833,8 @@ class RadianceSamplerPro:
                             new_noises = []
                             for idx, sub_t in enumerate(current_latent.tensors):
                                 if is_first_stage and add_noise:
-                                    # ALBABIT-FIX: use pre-seeded noise sub-tensor from
-                                    # _prepare_noise instead of torch.randn_like, which
-                                    # ignores the seed and produces non-deterministic noise
-                                    # mismatched from native RandomNoise — root cause of
+                                    # ALBABIT-FIX: the seeded sub-tensor from _prepare_noise,
+                                    # not the unseeded torch.randn_like, whose mismatch caused
                                     # black bars in LTX-AV NestedTensor inference.
                                     if (
                                         isinstance(noise, _NestedTensor)
@@ -2613,7 +2875,9 @@ class RadianceSamplerPro:
                         latent_image=stage_latent,
                         noise_mask=noise_mask,
                         callback=create_phase_callback(s_start),
-                        disable_pbar=use_custom_preview,
+                        # ALBABIT-FIX: the console bar stays on with a preview, as in
+                        # ComfyUI's KSampler; turning it off hid the step count.
+                        disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED,
                         seed=seed,
                     )
                     current_latent = result
