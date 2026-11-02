@@ -646,7 +646,8 @@ function applyFolding(node) {
         ? LTX_GUIDANCE_SETTINGS.map(name => Number(find(name)?.value))
         : LTX_GUIDANCE_RECIPES[ltxGuidance] ?? LTX_GUIDANCE_RECIPES.Off;
     const ltxGuided = effectiveModel === "ltxav" && (stg > 0 || Math.abs(modality - 1) > 1e-9);
-    if (Number(find("cfg")?.value) <= 1 && !ltxGuided) hiddenNames.add("guidance_rescale_phi");
+    // ALBABIT-FIX: while the model is unknown, the backend may still raise cfg from the weights.
+    if (effectiveModel !== "auto" && Number(find("cfg")?.value) <= 1 && !ltxGuided) hiddenNames.add("guidance_rescale_phi");
 
     // 3.5c-2. MiniMax H3's reference pipeline uses BasicGuider, which has no
     // cfg input at all. Unlike guidance-embed models (flux_guidance stands

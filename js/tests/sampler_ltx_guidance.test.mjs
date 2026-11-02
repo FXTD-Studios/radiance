@@ -79,6 +79,10 @@ test('guidance_rescale_phi shows only while cfg is above 1, whatever the model',
     ltx.widgets[4].value = 'Off';
     context.fold(ltx);
     assert.ok(!shown(ltx).includes('guidance_rescale_phi'), 'LTX-AV without guidance at cfg 1');
+    const unknown = samplerNode('Auto', 'Off');
+    unknown.widgets[2].value = 1.0;
+    context.fold(unknown);
+    assert.ok(shown(unknown).includes('guidance_rescale_phi'), 'an unresolved model may still run a real cfg');
 });
 
 test('flux_guidance_profile shows for a CFG model while cfg is above 1, flux_guidance never', () => {
