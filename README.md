@@ -75,8 +75,8 @@ EXR, ProRes and HDR10 / HLG masters with your grade baked in, a render queue, an
 | **Qwen-Image 2.1** | Text-to-image and editing with up to 16 references, and images with transparency |
 | **Prompt upsampler** | Turns a short prompt into the detailed one FLUX 3 Klein and Qwen-Image 2.1 were trained on |
 | **Deliver Master** | Graded-master export from the Viewer, with a render queue and HDR10 / HLG |
-| **Viewer workspaces** | Review, Color, Inspect, Compare and QC, each showing only what that job needs |
-| **Compare and QC** | Scene-linear difference for HDR plates, onion skin, and a QC workspace that lists problem frames |
+| **Viewer workspaces** | Review, Color and Inspect, each showing only what that job needs; compare is on the bar in all three |
+| **Compare and QC** | Scene-linear difference for HDR plates, onion skin, and a QC tab that lists problem frames |
 
 <details>
 <summary><b>Everything else in 4.0</b></summary>
@@ -293,15 +293,13 @@ Drag a file onto the ComfyUI canvas to open it.
 
 ## Using the Viewer
 
-The Viewer opens in **Simple** mode: picture, compare and playback. Switch to **Advanced** in its title bar for the workspaces.
+The Viewer opens in **Review**: picture, compare and playback. Its title bar switches to **Color** or **Inspect**. A | B | Wipe | Diff | Blink, under the picture, is the same in all three.
 
 | Workspace | Use it to |
 |---|---|
 | **Review** | Play, bookmark frames, write notes, export a review report |
 | **Color** | Grade, mask, add effects, read the scopes |
-| **Inspect** | Read pixel values, channels and analysis |
-| **Compare** | Wipe, difference (display or scene-linear), onion skin and blink against a reference |
-| **QC** | Check every frame for NaN/Inf, range, alpha and flicker, and jump to the bad ones |
+| **Inspect** | Read pixel values, channels and analysis; the QC tab checks every frame for NaN/Inf, range, alpha and flicker and jumps to the bad ones |
 
 <details>
 <summary><b>Handy keys</b> (hover the Viewer first; <b>H</b> or <b>?</b> lists them all)</summary>

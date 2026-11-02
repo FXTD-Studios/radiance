@@ -129,11 +129,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   does not understand protocol 3.
 - **Write `filename`** may not leave `output_path`: an absolute path, a drive
   letter or `..` is refused. A subfolder inside `output_path` still works.
-- **Viewer workspaces.** The Simple / Advanced switch is now Review, Color,
-  Inspect and Compare. Review is the old Simple layout; the others use the
-  Advanced layout and each shows the panel tabs it needs (a shortcut to a
-  hidden tab moves to the workspace that has it). A graph saved in Advanced
-  opens in Color.
+- **Viewer workspaces.** The Simple / Advanced switch is now Review, Color
+  and Inspect. Review is the old Simple layout; the others use the Advanced
+  layout and each shows the panel tabs it needs (a shortcut to a hidden tab
+  moves to the workspace that has it). A graph saved in Advanced opens in
+  Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
 
@@ -313,6 +313,41 @@ else is fixes. Read the upgrade notes before moving a production setup.
 The viewer was reviewed end to end (controls, colour, performance) and these
 are the results.
 
+- **One answer to "what am I looking at?"** The View select in the viewer
+  bar is the one display control. With ACES 2.0 applied through OpenColorIO,
+  the bar's LUT select and the Grade tab's Output Transform read "ACES
+  Filmic" (the curve held in reserve while OCIO loads) and the status bar said
+  "Scene Linear / ACES Filmic". The bar's LUT select is gone; View names what
+  it resolves to ("Auto: ACES 2.0 SDR", "Custom: Reinhard Tonemap", "OCIO:
+  <view>" for a loaded config); Output Transform reads "From View (...)"
+  unless a custom curve is picked, and "From View" returns to the last view;
+  the status bar shows the whole chain, input → display / view.
+- **Nothing floats over the picture.** The viewer bar and the sequence dock
+  sit in their own rows under the picture; floated over the canvas, they
+  covered the lower half of the frame when zoomed or panned. A still shows
+  the transport only (the Ref Wipe tools and V2 lane need a second frame),
+  and the V2 hint shows while the Ref Wipe tool is picked. The green frame
+  drawn at fixed insets, which looked like a safe-area guide but followed
+  nothing, is gone, and the centre cross starts off.
+- **The picture gets the room.** The left tool rail is off by default;
+  Window > Tool Rail brings it back. Everything on it is elsewhere: the
+  channels are a group on the viewer bar (RGB R G B A, lit as they change by
+  key or click), Center Cross and Pixel Grid joined the View menu, and the
+  rest were already in the View, Color and Tools menus. The right panel opens
+  at 520 px (its narrowest) until it is resized. At the 1200 × 800 the
+  viewer grows to, a 16:9 frame in the Color workspace went from 358 × 201
+  to 643 × 362 pixels. The viewer bar's compare button reads "Show B", so it
+  is not mistaken for the blue channel.
+- **One compare switch, three workspaces.** The Advanced viewer bar has the
+  Review bar's A | B | Wipe | Diff | Blink, one mode lit, where it had B, Wipe,
+  Difference and Blink toggles; the header's Compare button, which cycled
+  modes without saying which, is gone. The Compare workspace had no compare
+  controls of its own and opened on Scopes, so it looked like Inspect; QC was
+  one panel tab. Both are now part of Inspect (Inspector, Scopes, Analysis,
+  QC), and a graph saved in either opens there.
+- **Picking a view, or a custom curve, takes the display back from a loaded
+  OCIO config.** The config's transform stayed on the renderer, so the
+  picture kept the config's view while the View select named another.
 - **Scopes** plot code values from every pixel, in float, with footroom and
   headroom: sRGB white reaches the 100% line (it stopped at 58% under nit
   labels), a single clipped pixel shows, and nits are offered only for a PQ or
@@ -339,7 +374,7 @@ are the results.
   (sliders were never undoable and saturation 0 came back as 1), Reset and
   Reset All differ, each section has its own reset, double-click resets a
   slider, readouts are editable, the grade is saved with the workflow, and
-  grade presets are in the Grade tab. The two LUT selects stay in step.
+  grade presets are in the Grade tab.
 - **Curve editor:** the histogram is the float frame on the curve's own axis,
   Alt+drag only pans, curve texels are read at their centres, and negatives
   pass through.
@@ -411,7 +446,7 @@ are the results.
   compare on their real values instead of their tone-mapped ones. It needs B
   as a float frame (the compare input); with a pinned still or a preview it
   stays display-referred and the button says so. WebGL only.
-- **QC workspace.** QC is now a workspace (Alt+7 for its panel): run or stop
+- **QC tab.** QC is a tab of the Inspect workspace (Alt+7): run or stop
   the checks, each check with its measured value and the frames it flagged,
   and the flagged frames with what each failed; a frame number jumps there.
 - **Deliver render queue.** Add to Queue keeps the current settings and grade

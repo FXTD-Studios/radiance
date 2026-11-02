@@ -57,6 +57,7 @@ function installHelpers() {
         const n = __make('advanced');
         await __sleep(300);
         const v = n.radianceViewer;
+        v.toggleToolRail(true);   // off by default since 4.0; these tests are about the rail
         n.onExecuted(__frames(1, W, H, extra));
         await __until(() => v.image && v.imageWidth === W && v.hdrData, 15000);
         await __sleep(300);
@@ -306,7 +307,7 @@ test('the rail highlight follows the real state, and toggles say on or off', { s
     assert.equal(out.safe.mode, 'action');
     assert.equal(out.safe.st.pressed, 'true');
     assert.match(out.safe.label, /action/i, 'the rail does not say which safe area is showing');
-    assert.equal(out.cross.pressed, 'false', 'Center Cross starts on, so one click turns it off');
+    assert.equal(out.cross.pressed, 'true', 'Center Cross starts off (a guide, not chrome), so one click turns it on');
     for (const [id, has] of out.toggles) assert.ok(has, `${id} has no aria-pressed`);
 });
 

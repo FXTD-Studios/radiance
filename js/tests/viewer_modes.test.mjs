@@ -5,13 +5,19 @@ import {
     resolveSaved, propsFor, suggestWorkspace, workspaceById, tabsFor, workspaceForTab, PANEL_TABS,
 } from '../radiance_viewer_modes.js';
 
-test('QC is offered, on the Advanced layout, opening its own tab', () => {
-    assert.ok(workspaceById('qc'));
-    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect', 'compare', 'qc']);
-    assert.equal(workspaceById('qc').layout, 'advanced');
-    assert.deepEqual(tabsFor('qc'), ['scopes', 'analysis', 'qc']);
-    assert.equal(workspaceForTab('qc', 'color'), 'qc');
-    assert.ok(workspaceById('qc').tabs.includes(workspaceById('qc').tab));
+test('three workspaces: Review, Color and Inspect, which holds QC', () => {
+    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect']);
+    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis', 'qc']);
+    assert.equal(workspaceForTab('qc', 'color'), 'inspect');
+});
+
+test('the retired Compare and QC workspaces land in Inspect', () => {
+    for (const id of ['compare', 'qc']) {
+        assert.equal(workspaceById(id).id, 'inspect');
+        assert.deepEqual(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: id }),
+            { layout: 'advanced', workspace: 'inspect' }, `a graph saved in ${id}`);
+        assert.deepEqual(propsFor(id), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'inspect' });
+    }
 });
 
 test('workspace ids are unique and every one names a known layout', () => {
@@ -36,14 +42,13 @@ test('a stale, mismatched or unavailable workspace falls back to the layout defa
     // layout says simple, workspace says color: an older Radiance rewrote the layout
     assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'color' }).workspace, 'review');
     assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'qc' }).workspace, 'review');
-    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'qc');
+    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'inspect');
     assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'nope' }).workspace, 'color');
 });
 
 test('stored props keep the old layout key, so older versions still read it', () => {
     assert.deepEqual(propsFor('review'), { radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'review' });
-    assert.deepEqual(propsFor('compare'), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'compare' });
-    assert.deepEqual(propsFor('qc'), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' });
+    assert.deepEqual(propsFor('inspect'), { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'inspect' });
     assert.equal(propsFor('missing'), null);
 });
 
@@ -53,10 +58,9 @@ test('normalizeLayout and defaults', () => {
     assert.equal(defaultWorkspaceFor('x'), 'review');
 });
 
-test('a suggestion appears only when it would help, and is never forced', () => {
-    assert.deepEqual(suggestWorkspace({ hasB: true }, 'review').workspace, 'compare');
-    assert.equal(suggestWorkspace({ hasB: true }, 'compare'), null);
-    assert.equal(suggestWorkspace({ hasB: false }, 'review'), null);
+test('no workspace is suggested: the compare switch is on the bar in every one', () => {
+    assert.equal(suggestWorkspace({ hasB: true }, 'review'), null);
+    assert.equal(suggestWorkspace({ hasB: false }, 'color'), null);
     assert.equal(suggestWorkspace(null, 'review'), null);
 });
 
@@ -87,7 +91,7 @@ function viewer({ hasB = false, compareMode = 'none' } = {}) {
     Object.assign(v, {
         node: { properties: {}, size: [900, 600], setSize(s) { this.size = s; } },
         container: { classList: { toggle: (c, on) => (on ? cls.add(c) : cls.delete(c)), has: (c) => cls.has(c) } },
-        _modeBtns: new Map(['review', 'color', 'inspect', 'compare'].map((id) => {
+        _modeBtns: new Map(['review', 'color', 'inspect'].map((id) => {
             const b = { setAttribute() {}, classes: new Set(), title: '' };
             b.classList = { toggle(c, on) { if (c === 'is-active') b.on = on; if (on) b.classes.add(c); else b.classes.delete(c); } };
             return [id, b];
@@ -122,24 +126,25 @@ test('Inspect uses the Advanced layout, opens the Inspector tab, and grows the n
     assert.deepEqual(v.node.size, [1180, 760]);
 });
 
-test('Compare never changes the compare mode by itself', () => {
+test('a workspace never changes the compare mode', () => {
     for (const [hasB, mode] of [[true, 'none'], [false, 'none'], [true, 'blink']]) {
-        const v = viewer({ hasB, compareMode: mode });
-        v.setWorkspace('compare');
-        assert.equal(v.compareMode, mode);
-        assert.equal(v.workspace, 'compare');
+        for (const ws of ['inspect', 'color', 'review', 'compare']) {
+            const v = viewer({ hasB, compareMode: mode });
+            v.setWorkspace(ws);
+            assert.equal(v.compareMode, mode, ws);
+        }
     }
 });
 
-test('unknown workspaces do nothing, and QC opens its tab', () => {
+test('unknown workspaces do nothing, and the retired QC opens Inspect on its tab', () => {
     const v = viewer();
     v.setWorkspace('nope');
     assert.equal(v.workspace, undefined);
     assert.deepEqual(v.node.properties, {});
-    v.setWorkspace('qc');
-    assert.equal(v.workspace, 'qc');
+    v.setWorkspace('qc', { tab: 'qc' });
+    assert.equal(v.workspace, 'inspect');
     assert.equal(v._referenceRightTab, 'qc');
-    assert.equal(v.node.properties.radiance_viewer_workspace, 'qc');
+    assert.equal(v.node.properties.radiance_viewer_workspace, 'inspect');
 });
 
 test('setUIMode on its own (old callers) keeps the workspace consistent', () => {
@@ -166,20 +171,15 @@ test('the switcher is built from the module, and the restore path is unchanged',
     assert.match(src, /setUIMode\?\.\(saved \|\| 'advanced'\)/);
 });
 
-test('a connected B puts a hint on Compare, never switches, and clears once Compare is opened', () => {
+test('a connected B puts no hint on any workspace and switches nothing', () => {
     const v = viewer();
     v.setWorkspace('review');
     v._hasCompareInput = true;
     v._compareHintSeen = false;
     v._syncWorkspaceHint();
-    const cmp = v._modeBtns.get('compare');
-    assert.ok(cmp.classes.has('has-hint'));
-    assert.match(cmp.title, /A reference \(B\) is connected/);
-    assert.equal(v.workspace, 'review');                    // nothing switched
+    assert.ok([...v._modeBtns.values()].every((b) => !b.classes.has('has-hint')));
+    assert.equal(v.workspace, 'review');
     assert.equal(v.compareMode, 'none');
-    v.setWorkspace('compare');
-    v.setWorkspace('color');
-    assert.ok(!cmp.classes.has('has-hint'));                // seen for this run
 });
 
 test('no B, no hint', () => {
@@ -189,16 +189,9 @@ test('no B, no hint', () => {
     assert.ok([...v._modeBtns.values()].every((b) => !b.classes.has('has-hint')));
 });
 
-test('a new run resets the hint unless Compare is already open', () => {
-    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'radiance_viewer.js'), 'utf8');
-    assert.match(src, /viewer\._hasCompareInput = compareImages\.length > 0;/);
-    assert.match(src, /viewer\._compareHintSeen = viewer\.workspace === 'compare';/);
-});
-
 test('each Advanced workspace shows its own panel tabs, in panel order', () => {
     assert.deepEqual(tabsFor('color'), ['grade', 'masks', 'effects', 'scopes']);
-    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis']);
-    assert.deepEqual(tabsFor('compare'), ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis', 'qc']);
     assert.deepEqual(tabsFor('nope'), [...PANEL_TABS]);
     for (const w of WORKSPACES.filter((x) => x.tabs)) assert.ok(w.tabs.includes(w.tab), `${w.id} opens on a tab it hides`);
     // every tab is reachable from some workspace

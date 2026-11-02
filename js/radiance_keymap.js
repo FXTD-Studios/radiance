@@ -59,6 +59,8 @@ export const KEYMAP = Object.freeze([
     },
     { id: 'view.safeAreas', keys: [{ code: 'KeyS' }], label: 'Safe Areas', help: 'Cycle safe areas', section: 'View', menu: 'View', group: 'guides' },
     { id: 'view.grid', keys: [{ code: 'KeyG', shift: true }], label: 'Grid', help: 'Cycle grid modes', section: 'View', menu: 'View', group: 'guides' },
+    { id: 'view.centerCross', keys: [], label: 'Center Cross', menu: 'View', group: 'guides' },
+    { id: 'view.pixelGrid', keys: [], label: 'Pixel Grid', menu: 'View', group: 'guides' },
     { id: 'view.pixelFilter', keys: [{ code: 'KeyN' }], label: 'Nearest / Linear Filter', help: 'Nearest or linear magnification', section: 'View', menu: 'View', group: 'guides' },
     { id: 'view.loupe', keys: [{ code: 'KeyQ' }], label: 'Pixel Loupe', section: 'View', menu: 'View', group: 'guides' },
     { id: 'view.exposureUp', keys: [{ code: 'Equal', shift: 'any' }], label: 'Viewer f-stop +½', help: 'Viewer f-stop up half a stop (display only)', section: 'View', menu: 'View', group: 'viewer' },
@@ -129,6 +131,7 @@ export const KEYMAP = Object.freeze([
 
     // ── Window / General ──
     { id: 'window.panel', keys: [], label: 'Right Panel', menu: 'Window', group: 'layout' },
+    { id: 'window.rail', keys: [], label: 'Tool Rail', menu: 'Window', group: 'layout' },
     { id: 'window.compact', keys: [], label: 'Compact Layout', menu: 'Window', group: 'layout' },
     { id: 'window.fullscreen', keys: [{ code: 'KeyF', shift: true }], label: 'Full Screen', section: 'General', menu: 'Window', group: 'screen' },
     { id: 'general.run', keys: [{ code: 'Enter', shift: true }], label: 'Run workflow', section: 'General' },
