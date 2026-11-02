@@ -24638,8 +24638,10 @@ app.registerExtension({
             if (this.radianceViewer) {
                 // Debounce resize to prevent thrashing
                 if (this._resizeTimer) clearTimeout(this._resizeTimer);
+                // The node can be removed (or the graph cleared) before this fires.
                 this._resizeTimer = setTimeout(() => {
-                    this.radianceViewer.resize();
+                    this._resizeTimer = null;
+                    this.radianceViewer?.resize();
                 }, 20);
             }
         };
