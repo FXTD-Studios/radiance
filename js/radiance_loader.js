@@ -172,14 +172,16 @@ const PRESET_CONFIGS = {
     // ALBABIT-FIX: Dev and Klein in one preset, Auto-Detect tells them apart.
     // Quality-first (full precision, then fp8), as MiniMax H3 below; "Flux.2
     // (Low VRAM)" inverts it and never lists a full-precision file.
+    // ALBABIT-FIX: each Klein Base before the distilled file of its size (same
+    // seed: the braid asked for, fewer red patches); Low VRAM keeps the distilled.
     "Flux.2": {
         "unet_hints": [
             "flux2-dev.safetensors",
-            "flux-2-klein-9b.safetensors", "flux-2-klein-base-9b.safetensors",
-            "flux-2-klein-4b.safetensors", "flux-2-klein-base-4b.safetensors",
+            "flux-2-klein-base-9b.safetensors", "flux-2-klein-9b.safetensors",
+            "flux-2-klein-base-4b.safetensors", "flux-2-klein-4b.safetensors",
             "flux2_dev_fp8mixed.safetensors",
-            "flux-2-klein-9b-fp8.safetensors", "flux-2-klein-base-9b-fp8.safetensors",
-            "flux-2-klein-4b-fp8.safetensors", "flux-2-klein-base-4b-fp8.safetensors",
+            "flux-2-klein-base-9b-fp8.safetensors", "flux-2-klein-9b-fp8.safetensors",
+            "flux-2-klein-base-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors",
             "klein-9b-kv", "klein-base", "klein-9b", "klein-4b",
             "flux2-dev", "flux2_dev", "flux.2-dev",
             "flux2-klein", "flux2_klein", "flux.2-klein", "klein",
