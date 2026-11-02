@@ -107,6 +107,9 @@ class RadianceViewer {
         ['manual', 'Custom (Output Transform)'],
     ];
 
+    /** The Grade tab's Output Transform entry that leaves the display to the View. */
+    static FROM_VIEW = '__from_view__';
+
     /**
      * M18: the one place the Advanced viewer's colours and type sizes are
      * set. The CSS reads them as --radiance-* custom properties (see
@@ -1270,6 +1273,7 @@ class RadianceViewer {
         this.viewGamma = 1;       // 3.5.0: viewer gamma
         this.sourceTag = { encoding: 'linear', colorspace: 'Linear Rec.709 (sRGB)' };
         this.viewMode = _prefs.viewMode;   // a saved 'manual' loads as 'auto'
+        this._lastViewMode = this.viewMode;
         this.lutOptions = [
             "None",
             "sRGB (Display)",
@@ -3704,6 +3708,7 @@ class RadianceViewer {
         viewSelect.value = this.viewMode;
         viewSelect.onchange = () => this.setViewMode(viewSelect.value);
         this._viewSelect = viewSelect;
+        this._syncViewSelect();
 
         // 3.5.0: playback rate and loop, reachable. Both used to live in
         // createHUD() after an unconditional return, so playback was fixed at
@@ -3840,32 +3845,6 @@ class RadianceViewer {
         this._syncViewerBarBtns();
         bar.appendChild(left);
 
-        const right = document.createElement('div');
-        right.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
-        const lutLabel = document.createElement('span');
-        lutLabel.textContent = 'LUT';
-        lutLabel.className = 'radiance-pro-bar-label';
-        const lutSelect = document.createElement('select');
-        this.lutOptions.slice(0, 10).forEach(label => {
-            const opt = document.createElement('option');
-            opt.textContent = label;
-            opt.value = label;
-            lutSelect.appendChild(opt);
-        });
-        lutSelect.value = this.displayLut;
-        // The same route as the Grade tab's Output Transform: a manual pick that
-        // the next image cannot replace, with both selects kept in step. This
-        // set displayLut directly, so the view stayed on Auto and the next frame
-        // put its own LUT back; the localStorage value it wrote was never read.
-        lutSelect.onchange = () => {
-            this._pushUndo?.();
-            this._setManualDisplayLut(lutSelect.value);
-            this._gradeChanged?.();
-        };
-        this._vbLutSelect = lutSelect;
-        right.appendChild(lutLabel);
-        right.appendChild(lutSelect);
-        bar.appendChild(right);
         return bar;
     }
 
@@ -5013,6 +4992,8 @@ class RadianceViewer {
         this.colorspaceInfo = document.createElement('span');
         this.colorspaceInfo.textContent = 'sRGB / HDR';
         this.colorspaceInfo.style.color = t.accent;
+        // The whole display chain: long with an OCIO view, so it shortens with an ellipsis.
+        this.colorspaceInfo.style.cssText += 'min-width:0;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         this.statusBar.appendChild(this.colorspaceInfo);
 
         this.dimensionInfo = document.createElement('span');
@@ -14293,19 +14274,14 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!this.image) {
             this.dimensionInfo.textContent = '—×—';
             this._syncZoomReadouts();
-            if (this.colorspaceInfo) this.colorspaceInfo.textContent = `${this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace} / ${this.displayLut || 'None'}`;
+            this._refreshDisplayChain();
             return;
         }
 
         const z = (this.zoom * 100).toFixed(0);
         this.dimensionInfo.textContent = `${this.imageWidth}×${this.imageHeight}`;
         this._syncZoomReadouts();
-        if (this.colorspaceInfo) {
-            const input = this.inputSpace === 'None' ? 'Scene Linear' : this.inputSpace;
-            const output = this.displayLut || 'None';
-            this.colorspaceInfo.textContent = `${input} / ${output}`;
-            this.colorspaceInfo.title = `Input: ${input} | Display: ${output}`;
-        }
+        this._refreshDisplayChain();
 
         // v4.1: Pipeline precision badge (replaces old simple bit-depth text)
         this._updateBitDepthBadge();
@@ -15606,7 +15582,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             'ACES Filmic',
         ], ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(this.displayLut) ? 'ACES Filmic' : (this.displayLut || 'None'), v => {
             this._pushUndo();
-            this._setManualDisplayLut(v);
+            if (v === RadianceViewer.FROM_VIEW) this.setViewMode(this._lastViewMode || 'auto');
+            else this._setManualDisplayLut(v);
             this._gradeChanged();
         });
 
@@ -16118,20 +16095,100 @@ self.onmessage = async ({ data: { id, url } }) => {
         };
         this.canvas.addEventListener('pointerdown', this._qualifierPickHandler, true);
     }
-    /** Keep the viewer bar's LUT select and the Grade tab's Output Transform on the same value. */
+    /**
+     * The Grade tab's Output Transform and the View select show what is applied.
+     * Off a custom pick, Output Transform reads "From View" rather than the
+     * filmic curve held in reserve while OpenColorIO loads.
+     */
     _syncLutSelects() {
-        const value = this.displayLut || 'None';
-        const set = (sel, v) => {
-            if (!sel) return;
-            if (![...sel.options].some(o => o.value === v)) {
-                const o = document.createElement('option');
-                o.value = v; o.textContent = v;
-                sel.appendChild(o);
+        const sel = this._gradeOutputSelect;
+        if (sel) {
+            let fromView = [...sel.options].find(o => o.value === RadianceViewer.FROM_VIEW);
+            if (!fromView) {
+                fromView = document.createElement('option');
+                fromView.value = RadianceViewer.FROM_VIEW;
+                sel.insertBefore(fromView, sel.firstChild);
             }
-            sel.value = v;
-        };
-        set(this._vbLutSelect, value);
-        set(this._gradeOutputSelect, ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(value) ? 'ACES Filmic' : value);
+            fromView.textContent = `From View (${this._displayChain().view})`;
+            let value = RadianceViewer.FROM_VIEW;
+            if (this.viewMode === 'manual') {
+                value = ['ACES 1.3 (ODT)', 'ACES 2.0'].includes(this.displayLut) ? 'ACES Filmic' : (this.displayLut || 'None');
+                if (![...sel.options].some(o => o.value === value)) {
+                    const o = document.createElement('option');
+                    o.value = value; o.textContent = value;
+                    sel.appendChild(o);
+                }
+            }
+            sel.value = value;
+        }
+        this._syncViewSelect();
+        this._refreshDisplayChain();
+    }
+
+    /**
+     * What the picture goes through, as the renderer applies it: OpenColorIO's
+     * display and view when it is active, else Radiance's own display curve.
+     */
+    _displayChain() {
+        const input = this.inputSpace && this.inputSpace !== 'None'
+            ? this.inputSpace.replace(/^IDT: /, '').replace(/ → Linear$/, '')
+            : (this.sourceTag?.colorspace || 'Linear Rec.709 (sRGB)');
+        if (this.ocioActive) {
+            const config = this._ocioUserConfig ? (this.ocio?.name || 'OCIO config') : null;
+            return { input, display: this.ocioDisplay || '', view: this.ocioView || '', config, approx: false };
+        }
+        const view = this.displayLut && this.displayLut !== 'None' ? this.displayLut : 'No view transform';
+        return { input, display: '', view, config: null, approx: !!this._viewApprox };
+    }
+
+    /** One line for the status bar: input → display / view. */
+    _displayChainLabel() {
+        const c = this._displayChain();
+        const out = c.display ? `${c.display} / ${c.view}` : c.view;
+        return `${c.input} → ${out}${c.approx ? ' (approx., OCIO loading)' : ''}`;
+    }
+
+    _refreshDisplayChain() {
+        if (!this.colorspaceInfo) return;
+        const c = this._displayChain();
+        this.colorspaceInfo.textContent = this._displayChainLabel();
+        this.colorspaceInfo.title = [`Input: ${c.input}`, c.display && `Display: ${c.display}`,
+            `View: ${c.view}${c.approx ? ' (built-in approximation until OpenColorIO is loaded)' : ''}`,
+            c.config && `Config: ${c.config}`, 'Set with the View select in the viewer bar.'].filter(Boolean).join('\n');
+    }
+
+    /**
+     * The View select names what each entry resolves to: Auto shows the view it
+     * picked, Custom the curve picked in the Grade tab, and a loaded OCIO config
+     * appears as its own entry while it owns the display.
+     */
+    _syncViewSelect() {
+        const sel = this._viewSelect;
+        if (!sel) return;
+        const opt = (value) => [...sel.options].find(o => o.value === value);
+        const base = Object.fromEntries(RadianceViewer.VIEW_MODES);
+        const auto = opt('auto');
+        if (auto) {
+            const resolved = this._effectiveView?.();
+            const name = (base[resolved] || '').replace(/ \((OCIO|approx\.)\)$/, '');
+            auto.textContent = this.viewMode === 'auto' && name ? `Auto: ${name}` : base.auto;
+        }
+        const manual = opt('manual');
+        if (manual) manual.textContent = this.viewMode === 'manual' && this.displayLut
+            ? `Custom: ${this.displayLut}` : base.manual;
+        let config = opt('ocio-config');
+        if (this._ocioUserConfig && this.ocioActive) {
+            if (!config) {
+                config = document.createElement('option');
+                config.value = 'ocio-config';
+                sel.appendChild(config);
+            }
+            config.textContent = `OCIO: ${this.ocioView || this.ocio?.name || 'config'}`;
+            sel.value = 'ocio-config';
+        } else {
+            config?.remove();
+            if (sel.value !== this.viewMode) sel.value = this.viewMode;
+        }
     }
 
     _renderReferenceScopes(parent) {
@@ -19384,21 +19441,35 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     setViewMode(mode) {
+        if (mode === 'ocio-config') { this._syncViewSelect(); return; }   // already showing it
         this.viewMode = mode;
         if (mode !== 'manual') {
+            this._lastViewMode = mode;
             try { localStorage.setItem('radiance_view_mode', mode); } catch { /* private mode */ }
             // Picking a view here is explicit: it takes the display back from
             // a config loaded in the colour panel.
-            this._ocioUserConfig = false;
+            this._releaseUserConfig();
         }
-        if (this._viewSelect && this._viewSelect.value !== mode) this._viewSelect.value = mode;
         this._applyView();
+    }
+
+    /**
+     * Hand the display back from a config loaded in the colour panel. Its OCIO
+     * transform was left on the renderer, so the picture kept the config's view
+     * while the View select named another; the config itself stays loaded.
+     */
+    _releaseUserConfig() {
+        if (!this._ocioUserConfig) return;
+        this._ocioUserConfig = false;
+        this._ocioAutoConfigId = null;
+        this._ocioAutoActive = false;
+        this._ocioDisable();
     }
 
     /** An explicit pick from the Output Transform / LUT menus. */
     _setManualDisplayLut(value) {
         this.viewMode = 'manual';
-        if (this._viewSelect) this._viewSelect.value = 'manual';
+        this._releaseUserConfig();
         this._ocioAutoOff();
         this._viewApprox = false;
         this.displayLut = value;
@@ -19416,7 +19487,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _applyView() {
-        if (this._ocioUserConfig) { this.render?.(); return; }    // the show's config decides
+        if (this._ocioUserConfig) { this._syncLutSelects?.(); this.render?.(); return; }    // the show's config decides
         const v = this._effectiveView();
         if (v === 'manual') { this.render?.(); return; }
         if (v === 'aces2' || v === 'aces13') {
@@ -19477,6 +19548,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._ocioApply();
         if (this.ocioActive) this._viewApprox = false;
         else this._ocioAutoActive = false;
+        this._syncLutSelects?.();
     }
 
     _ocioSetStatus(level, text) {
@@ -19556,6 +19628,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ? `${built.label} — this view is a pass-through, so the picture will not change.`
                 : `Applied ${built.label}.`,
         );
+        this._syncLutSelects?.();
         this._lastRenderContent?.();
         this.render();
     }
@@ -19566,6 +19639,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.renderer?.setOCIODisplay?.(null);
         this.renderer?.setDisplayColorSpace?.('srgb');
         if (reason) this._ocioSetStatus('error', `${reason} Radiance's own display pipeline is in use.`);
+        this._syncLutSelects?.();
         this._lastRenderContent?.();
         this.render();
     }
@@ -21970,6 +22044,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** A control changed the grade: draw, refresh scopes, and keep the workflow copy current. */
     _gradeChanged() {
+        this._refreshDisplayChain?.();       // the input space is part of the chain
         this.requestRender?.();
         this.requestScopeUpdate?.();
         this._schedulePersistGrade();

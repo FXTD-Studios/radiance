@@ -190,15 +190,14 @@ test('C4/M10: the composite shader computes what gradePixelFull computes', { ski
     }
 });
 
-test('M5: the LUT selects route through one manual pick and stay in step', { skip }, () => {
+test('M5: one display control: an Output Transform pick is a manual view the bar names, and the next image keeps it', { skip }, () => {
     const m = report.cases.m5;
     assert.ok(m.hasBar);
-    // The bar set displayLut directly and left the view on Auto, so the next
-    // image replaced the pick.
-    assert.deepEqual(m.afterBar, { viewMode: 'manual', displayLut: 'Rec.709 (Broadcast)', gradeSelect: 'Rec.709 (Broadcast)' });
-    assert.deepEqual(m.afterGrade, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', bar: 'Reinhard Tonemap' });
-    assert.deepEqual(m.afterNextImage, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', bar: 'Reinhard Tonemap', gradeSelect: 'Reinhard Tonemap' });
-    assert.equal(m.deadKeyWritten, null, 'the bar still writes a localStorage key nothing reads');
+    assert.equal(m.barLut, false, 'the viewer bar has no LUT select of its own');
+    assert.deepEqual(m.afterGrade, { viewMode: 'manual', displayLut: 'Rec.709 (Broadcast)', gradeSelect: 'Rec.709 (Broadcast)', bar: 'manual' });
+    assert.deepEqual(m.afterSecond, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', barLabel: 'Custom: Reinhard Tonemap' });
+    assert.deepEqual(m.afterNextImage, { viewMode: 'manual', displayLut: 'Reinhard Tonemap', barLabel: 'Custom: Reinhard Tonemap', gradeSelect: 'Reinhard Tonemap' });
+    assert.equal(m.deadKeyWritten, null, 'a localStorage key nothing reads was written');
 });
 
 test('H6: the grade is saved into the workflow and restored by onConfigure', { skip }, () => {
