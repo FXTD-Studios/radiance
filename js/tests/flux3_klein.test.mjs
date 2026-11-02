@@ -220,6 +220,8 @@ test("BFL's current file names: plain is distilled, -base- is the base, in the L
     assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_SD_BF16), ['flux3', 16, 1.0, 0.0]);
     assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_BASE_BF16), ['flux3', 50, 3.5, 0.0]);
     assert.deepEqual(samplerDefaults('Flux.3 Klein', BASE_BF16), ['flux3', 50, 3.5, 0.0], 'the first plain name was the base');
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', `klein-base\\${NEW_SD_BF16}`), ['flux3', 16, 1.0, 0.0],
+        'a folder name does not count');
 });
 
 // ── Resolution and Prompt mirrors ──────────────────────────────────────────

@@ -946,7 +946,8 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
         }
     }
     if (!filename) return null;
-    const f = filename.toLowerCase();
+    // ALBABIT-FIX: the file's own name, not its folder, as in Python.
+    const f = filename.toLowerCase().split(/[\\/]/).pop();
     // FLUX 3 Image Klein: BFL names the step-distilled files flux3_image_klein_sd_*.
     // ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
     // model and flux3-image-klein-base-* the base, while the old plain
