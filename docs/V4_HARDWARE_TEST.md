@@ -116,8 +116,9 @@ anything that fails.
       zooms; a pen (Wacom) pans and zooms like a mouse.
 - [ ] Masks tab: a power window limits the grade on screen and in an exported
       .cube preview; the qualifier's Pick colour selects the picked hue.
-- [ ] Settings (⚙) > High contrast is readable on your monitor, and the rail
-      and panels read comfortably at your usual display scaling.
+- [ ] Settings (⚙) > High contrast is readable on your monitor, and the tool
+      rail (Window > Tool Rail) and panels read comfortably at your usual
+      display scaling.
 
 ## Sign-off
 

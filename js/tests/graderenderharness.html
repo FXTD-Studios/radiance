@@ -155,20 +155,21 @@ window.__run = async () => {
             apply(v, { ...full, colorScience: 1 });
             out.cases.full.push({ in: px, cct: true, gpu: graded(v), cpu: gradePixelFull(px, { ...NEUTRAL, ...full, colorScience: 1 }) });
         }
-        // M5: the bar's LUT select and the Grade tab's Output Transform are one control.
+        // M5: one display control. The bar's LUT select is gone: a curve is picked in
+        // the Grade tab's Output Transform, and the bar's View select names it.
         {
             localStorage.removeItem('radiance_hud_display_lut');
             const { node, v } = await load([0.18, 0.18, 0.18]);
-            const bar = v._vbLutSelect;
-            const m5 = { hasBar: !!bar };
-            bar.value = 'Rec.709 (Broadcast)';
-            bar.dispatchEvent(new Event('change', { bubbles: true }));
+            const bar = v._viewSelect;
+            const m5 = { hasBar: !!bar, barLut: !!v._vbLutSelect };
             v._setReferenceTab('grade');
             const outSel = v._gradeOutputSelect;
-            m5.afterBar = { viewMode: v.viewMode, displayLut: v.displayLut, gradeSelect: outSel?.value };
+            outSel.value = 'Rec.709 (Broadcast)';
+            outSel.dispatchEvent(new Event('change', { bubbles: true }));
+            m5.afterGrade = { viewMode: v.viewMode, displayLut: v.displayLut, gradeSelect: outSel.value, bar: bar.value };
             outSel.value = 'Reinhard Tonemap';
             outSel.dispatchEvent(new Event('change', { bubbles: true }));
-            m5.afterGrade = { viewMode: v.viewMode, displayLut: v.displayLut, bar: bar.value };
+            m5.afterSecond = { viewMode: v.viewMode, displayLut: v.displayLut, barLabel: bar.selectedOptions[0].textContent };
             // The next image must not replace a manual pick.
             node.onExecuted({ radiance_images: [{
                 filename: 'p.png', subfolder: '', type: 'temp', hdr_sidecar: 'c_0.5_0.5_0.5.rhdr', hdr_primary: true,
@@ -177,7 +178,7 @@ window.__run = async () => {
             }] });
             await waitFor(() => v.frameHDRData?.[0], 8000);
             await sleep(150);
-            m5.afterNextImage = { viewMode: v.viewMode, displayLut: v.displayLut, bar: bar.value, gradeSelect: v._gradeOutputSelect?.value };
+            m5.afterNextImage = { viewMode: v.viewMode, displayLut: v.displayLut, barLabel: bar.selectedOptions[0].textContent, gradeSelect: v._gradeOutputSelect?.value };
             m5.deadKeyWritten = localStorage.getItem('radiance_hud_display_lut');
             out.cases.m5 = m5;
         }
