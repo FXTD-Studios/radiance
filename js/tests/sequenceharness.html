@@ -143,6 +143,8 @@ window.__run = async function (opts) {
             // 3.5.0: a new viewer opens in Simple, which hides the panels this
             // measures. Advanced is the case that grew the node.
             n2.radianceViewer?.setUIMode?.('advanced');
+            // The tool rail (off by default since 4.0) is the tallest content.
+            n2.radianceViewer?.toggleToolRail?.(true);
             await sleep(300);
             out.autoHostHeight = Math.round(auto.getBoundingClientRect().height);
             out.autoContentHeight = Math.max(...[...auto.querySelectorAll('.radiance-right-control-panel, .radiance-pro-sidebar')]
