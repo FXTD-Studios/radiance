@@ -81,6 +81,25 @@ test('guidance_rescale_phi shows only while cfg is above 1, whatever the model',
     assert.ok(!shown(ltx).includes('guidance_rescale_phi'), 'LTX-AV without guidance at cfg 1');
 });
 
+test('flux_guidance_profile shows for a CFG model while cfg is above 1, flux_guidance never', () => {
+    const context = samplerContext();
+    const node = samplerNode('Auto', 'Off');
+    node.widgets.push({ name: 'flux_guidance', value: 0.0 }, { name: 'flux_guidance_profile', value: 'Static' });
+    for (const model of ['flux3', 'flux2-klein', 'z_image']) {
+        node.widgets[1].value = model;
+        node.widgets[2].value = 4.0;
+        context.fold(node);
+        assert.ok(shown(node).includes('flux_guidance_profile'), `${model} at cfg 4`);
+        assert.ok(!shown(node).includes('flux_guidance'), model);
+        node.widgets[2].value = 1.0;
+        context.fold(node);
+        assert.ok(!shown(node).includes('flux_guidance_profile'), `${model} at cfg 1`);
+    }
+    node.widgets[1].value = 'flux';
+    context.fold(node);
+    assert.ok(shown(node).includes('flux_guidance_profile') && shown(node).includes('flux_guidance'), 'Flux.1 unchanged');
+});
+
 test('Custom starts from the recipe it replaces', () => {
     const context = samplerContext();
     const node = samplerNode(LTX25_LOWRES, 'Modality', [2.0, 0.2, 7.0]);
