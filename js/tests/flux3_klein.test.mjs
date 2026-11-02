@@ -47,6 +47,14 @@ test('Flux.3 Klein picks the FLUX 3 transformer, Qwen3-VL-4B and the Flux.2 VAE'
     assert.deepEqual([...loaderCtx.slots['Flux.3 Klein']], ['llm_encoder']);
 });
 
+test('Flux.3 Klein picks the base before the distilled file of the same precision, Low VRAM the distilled', () => {
+    const c = loaderCtx.presets['Flux.3 Klein'];
+    assert.equal(loaderCtx.unetMatch(c, [NEW_SD_BF16, NEW_BASE_BF16]), NEW_BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [SD_BF16, BASE_BF16]), BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [NEW_SD_INT8, NEW_BASE_INT8]), NEW_BASE_INT8);
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.3 Klein (Low VRAM)'], [NEW_BASE_INT8, NEW_SD_INT8]), NEW_SD_INT8);
+});
+
 test('the text encoder is never the prompt upsampler or a Qwen3 file of Flux.2 Klein', () => {
     for (const preset of ['Flux.3 Klein', 'Flux.3 Klein (Low VRAM)']) {
         const hints = loaderCtx.presets[preset].clip_hints.llm_encoder;
