@@ -28,6 +28,11 @@ const BASE_BF16 = 'flux3_image_klein_bf16.safetensors';
 const SD_BF16 = 'flux3_image_klein_sd_bf16.safetensors';
 const BASE_INT8 = 'flux3_image_klein_int8_convrot.safetensors';
 const SD_INT8 = 'flux3_image_klein_sd_int8_convrot.safetensors';
+// BFL's current names: plain is distilled, -base- is the base.
+const NEW_BASE_BF16 = 'flux3-image-klein-base-bf16.safetensors';
+const NEW_SD_BF16 = 'flux3-image-klein-bf16.safetensors';
+const NEW_BASE_INT8 = 'flux3-image-klein-base-int8-convrot.safetensors';
+const NEW_SD_INT8 = 'flux3-image-klein-int8-convrot.safetensors';
 const TE_BF16 = 'qwen3vl_4b_bf16.safetensors';
 const TE_INT8 = 'qwen3vl_4b_int8_convrot.safetensors';
 const PUP = 'qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors';
@@ -183,6 +188,20 @@ test('a FLUX 3 file under a Flux.2 preset is FLUX 3, not Flux.2 Klein', () => {
     assert.deepEqual(samplerDefaults('Flux.2', SD_INT8), ['flux3', 16, 1.0, 0.0]);
     // Flux.2 Klein itself is unchanged.
     assert.deepEqual(samplerDefaults('Flux.2', 'flux-2-klein-base-4b.safetensors'), ['flux2-klein', 50, 1.0, 4.0]);
+});
+
+test("BFL's current file names: plain is distilled, -base- is the base, in the Loader and the Sampler", () => {
+    const c = loaderCtx.presets['Flux.3 Klein'];
+    assert.equal(loaderCtx.unetMatch(c, [KLEIN2, NEW_SD_BF16]), NEW_SD_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [KLEIN2, NEW_BASE_BF16]), NEW_BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.3 Klein (Low VRAM)'],
+        [NEW_SD_BF16, NEW_BASE_INT8, NEW_SD_INT8]), NEW_SD_INT8);
+    for (const preset of ['Flux.2', 'Flux.2 (Low VRAM)']) {
+        assert.equal(loaderCtx.unetMatch(loaderCtx.presets[preset], [NEW_SD_BF16, NEW_BASE_BF16]), null, preset);
+    }
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_SD_BF16), ['flux3', 16, 1.0, 0.0]);
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_BASE_BF16), ['flux3', 50, 3.5, 0.0]);
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', BASE_BF16), ['flux3', 50, 3.5, 0.0], 'the first plain name was the base');
 });
 
 // ── Resolution and Prompt mirrors ──────────────────────────────────────────
