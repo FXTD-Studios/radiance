@@ -329,6 +329,15 @@ are the results.
   and the V2 hint shows while the Ref Wipe tool is picked. The green frame
   drawn at fixed insets, which looked like a safe-area guide but followed
   nothing, is gone, and the centre cross starts off.
+- **The picture gets the room.** The left tool rail is off by default;
+  Window > Tool Rail brings it back. Everything on it is elsewhere: the
+  channels are a group on the viewer bar (RGB R G B A, lit as they change by
+  key or click), Center Cross and Pixel Grid joined the View menu, and the
+  rest were already in the View, Color and Tools menus. The right panel opens
+  at 520 px (its narrowest) until it is resized. At the 1200 × 800 the
+  viewer grows to, a 16:9 frame in the Color workspace went from 358 × 201
+  to 643 × 362 pixels. The viewer bar's compare button reads "Show B", so it
+  is not mistaken for the blue channel.
 - **Picking a view, or a custom curve, takes the display back from a loaded
   OCIO config.** The config's transform stayed on the renderer, so the
   picture kept the config's view while the View select named another.

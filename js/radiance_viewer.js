@@ -696,6 +696,10 @@ class RadianceViewer {
                 .radiance-pro-viewer-bar select {
                     max-width: 130px;
                 }
+                .radiance-pro-viewer-bar .radiance-vb-channels { display: flex; gap: 0; }
+                .radiance-pro-viewer-bar .radiance-vb-channels button { border-radius: 0; padding: 0 8px; margin-left: -1px; }
+                .radiance-pro-viewer-bar .radiance-vb-channels button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+                .radiance-pro-viewer-bar .radiance-vb-channels button:last-child { border-radius: 0 4px 4px 0; }
                 .radiance-pro-viewer-bar select option,
                 .radiance-ref-field select option,
                 select.radiance-ocio-select option {
@@ -973,7 +977,8 @@ class RadianceViewer {
                     .radiance-pro-brand { min-width: 170px; }
                     .radiance-pro-file-meta span:not(.radiance-pro-file-name):not(.radiance-pro-chip):not(.radiance-pro-engine) { display: none; }
                 }
-                .radiance-pro-container.radiance-pro-compact .radiance-pro-sidebar {
+                .radiance-pro-container.radiance-pro-compact .radiance-pro-sidebar,
+                .radiance-pro-container.radiance-pro-rail-off .radiance-pro-sidebar {
                     display: none;
                 }
                 .radiance-pro-container.radiance-pro-compact .radiance-right-control-panel {
@@ -3193,6 +3198,24 @@ class RadianceViewer {
         [this._sbPrev, this._sbPlay, this._sbNext].forEach((b) => { if (b) b.disabled = single && !this.videoMode; });
     }
 
+    toggleCenterCross() {
+        if (!this.viewerCross) return;
+        this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none';
+        this._syncRail?.();
+    }
+
+    /**
+     * The left tool rail is off by default: every item on it is in the View,
+     * Color and Tools menus or on the viewer bar, and its 200 px came out of
+     * the picture. Window > Tool Rail brings it back (kept per browser).
+     */
+    toggleToolRail(on = !this.toolRail) {
+        this.toolRail = !!on;
+        try { localStorage.setItem('radiance_tool_rail', this.toolRail ? '1' : '0'); } catch { /* private mode */ }
+        this.container?.classList.toggle('radiance-pro-rail-off', !this.toolRail);
+        this.resize?.();
+    }
+
     toggleCompactLayout() {
         this.compactLayout = !this.compactLayout;
         this._applyResponsiveLayout();
@@ -3548,7 +3571,7 @@ class RadianceViewer {
                 action: () => this.cycleGridMode(),
                 state: () => ({ on: (this.gridMode || 0) > 0, label: GRID[this.gridMode || 0] }) },
             { id: 'center-cross', toggle: true, label: 'Center Cross',
-                action: () => { this.viewerCross.style.display = this.viewerCross.style.display === 'none' ? '' : 'none'; },
+                action: () => this.toggleCenterCross(),
                 state: () => ({ on: this.viewerCross?.style.display !== 'none' }) },
             // Was a second Grid button. A pixel grid outlines each image
             // pixel, and only draws once a pixel is 8 screen pixels wide.
@@ -3823,8 +3846,25 @@ class RadianceViewer {
             left.appendChild(btn);
             return btn;
         };
+        // The channels, from the rail (now off by default): one group, the shown one lit.
+        const chans = document.createElement('div');
+        chans.className = 'radiance-vb-channels';
+        chans.setAttribute('role', 'group');
+        chans.setAttribute('aria-label', 'Channel');
+        this._vbChannelBtns = new Map();
+        [['rgb', 'RGB', 'channel.rgb'], ['r', 'R', 'channel.r'], ['g', 'G', 'channel.g'], ['b', 'B', 'channel.b'], ['a', 'A', 'channel.alpha']]
+            .forEach(([c, label, action]) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = label;
+                btn.title = `${c === 'rgb' ? 'All channels' : `${label} channel`} (${_shortcutLabel(action)})`;
+                btn.onclick = () => { this.showZdepth = false; this.channel = c; this.render(); };
+                chans.appendChild(btn);
+                this._vbChannelBtns.set(c, btn);
+            });
+        left.appendChild(chans);
         const _toggle = (m) => () => this.setCompareMode(this.compareMode === m ? 'none' : m);
-        this._vbAbBtn   = _vbBtn('B',          _toggle('b'));
+        this._vbAbBtn   = _vbBtn('Show B',     _toggle('b'));
         this._vbWipeBtn = _vbBtn('Wipe',       _toggle('wipe'));
         this._vbDiffBtn = _vbBtn('Difference', _toggle('difference'));
         this._vbBlinkBtn= _vbBtn('Blink',      _toggle('blink'));
@@ -4534,6 +4574,8 @@ class RadianceViewer {
         const t = this.theme;
 
         this.container.classList.add('radiance-pro-container');
+        try { this.toolRail = localStorage.getItem('radiance_tool_rail') === '1'; } catch { this.toolRail = false; }
+        this.container.classList.toggle('radiance-pro-rail-off', !this.toolRail);
         // contain: size -- BLACK-VIEWER FIX, layout half. Without it the
         // sidebar and inspector report their full content height (measured:
         // 2019 px), the Vue node frontend grows the node to fit (measured:
@@ -4594,8 +4636,9 @@ class RadianceViewer {
         this.viewColumn.appendChild(this.canvasWrapper);
 
         // ── Right Control Panel (HUD host) ────────────────────────────────────
-        const savedRcpWidth = parseInt(localStorage.getItem('radiance_rcp_width') || '620');
-        const rcpWidth = Math.min(760, Math.max(520, savedRcpWidth || 620));
+        // 520 (the narrowest the panel goes) unless resized: the picture is the point.
+        const savedRcpWidth = parseInt(localStorage.getItem('radiance_rcp_width') || '520');
+        const rcpWidth = Math.min(760, Math.max(520, savedRcpWidth || 520));
         this.rightControlPanel = document.createElement('div');
         this.rightControlPanel.className = 'radiance-right-control-panel';
         this.rightControlPanel.id = `radiance-panel-${this.node?.id ?? Math.random().toString(36).slice(2)}`;
@@ -8767,6 +8810,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'tool.reference': this._setTimelineTool('reference'); break;
             // Window and general
             case 'window.panel': this.toggleControls(); break;
+            case 'window.rail': this.toggleToolRail(); break;
+            case 'view.centerCross': this.toggleCenterCross(); break;
+            case 'view.pixelGrid': this.togglePixelGrid(); break;
             case 'window.compact': this.toggleCompactLayout(); break;
             case 'window.fullscreen': this.toggleFullscreen(); break;
             case 'general.run': this.runWorkflow(); break;
@@ -9713,7 +9759,20 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     /** Sync the viewer-bar compare buttons (A/B, Wipe, Difference, Blink) to current state. */
+    /** The viewer bar's channel group follows the shown channel, however it was picked. */
+    _syncChannelBtns() {
+        const shown = this.showZdepth ? null : (this.channel || 'rgb');
+        if (shown === this._vbChannelShown) return;
+        this._vbChannelShown = shown;
+        this._vbChannelBtns?.forEach((btn, c) => {
+            const on = c === shown;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', String(on));
+        });
+    }
+
     _syncViewerBarBtns() {
+        this._syncChannelBtns();
         const cm = this.compareMode || 'none';
         const playing = !!this.isPlaying;
         const setActive = (btn, active) => {
@@ -13656,6 +13715,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.canvas.width === 0 || this.canvas.height === 0) return;
         this._syncGrainTicker();
         this._syncRail();
+        this._syncChannelBtns();
 
         // ═══════════════════════════════════════════════════════════════
         // GPU-ACCELERATED WEBGL RENDERING PATH (Primary - Always On)
