@@ -770,7 +770,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
                 return {"cfg": 1.0, "steps": int(match.group(1))}
     if not unet_file:
         return None
-    name = unet_file.lower()
+    # ALBABIT-FIX: the file's own name, not its folder: a "klein-base/" folder made
+    # a distilled file read as the base.
+    name = re.split(r"[\\/]", unet_file)[-1].lower()
     if detected_type == "flux3":
         return FLUX3_DISTILLED if _flux3_name_is_distilled(name) else None
     # ALBABIT-FIX: the LTX 2.3 / 2.5 Distilled models run at cfg 1 in both passes; the
