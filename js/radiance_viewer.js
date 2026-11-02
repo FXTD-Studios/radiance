@@ -2825,7 +2825,6 @@ class RadianceViewer {
             b.classList.toggle('is-active', id === this.workspace);
             b.setAttribute('aria-pressed', String(id === this.workspace));
         });
-        if (this.workspace === 'compare') this._compareHintSeen = true;
         this._syncWorkspaceHint();
         this._syncCompareUI();
         this._syncSimpleTransport();
@@ -3322,7 +3321,6 @@ class RadianceViewer {
             return btn;
         };
         action('Snapshot', 'Snapshot', () => this.showExportMenu?.({ target: actions }));
-        action('Compare', 'Compare', () => this.cycleCompareMode());
         this._hdrHeatmapBtn = action('HDR', 'HDR heatmap: scene luminance in nits', () => this.toggleHDRHeatmap());
         this._hdrHeatmapBtn.setAttribute('aria-pressed', 'false');
         // M18: hiding the panel is its own button. It used to be the gear,
@@ -3847,6 +3845,10 @@ class RadianceViewer {
             return btn;
         };
         // The channels, from the rail (now off by default): one group, the shown one lit.
+        const chLabel = document.createElement('span');
+        chLabel.className = 'radiance-pro-bar-label';
+        chLabel.textContent = 'Channel';
+        left.appendChild(chLabel);
         const chans = document.createElement('div');
         chans.className = 'radiance-vb-channels';
         chans.setAttribute('role', 'group');
@@ -3863,11 +3865,29 @@ class RadianceViewer {
                 this._vbChannelBtns.set(c, btn);
             });
         left.appendChild(chans);
-        const _toggle = (m) => () => this.setCompareMode(this.compareMode === m ? 'none' : m);
-        this._vbAbBtn   = _vbBtn('Show B',     _toggle('b'));
-        this._vbWipeBtn = _vbBtn('Wipe',       _toggle('wipe'));
-        this._vbDiffBtn = _vbBtn('Difference', _toggle('difference'));
-        this._vbBlinkBtn= _vbBtn('Blink',      _toggle('blink'));
+        // Compare: the same A | B | Wipe | Diff | Blink switch as the Review bar,
+        // one mode lit. A is compare off.
+        const cmpLabel = document.createElement('span');
+        cmpLabel.className = 'radiance-pro-bar-label';
+        cmpLabel.textContent = 'Compare';
+        left.appendChild(cmpLabel);
+        const cmp = document.createElement('div');
+        cmp.className = 'radiance-vb-channels radiance-vb-compare';
+        cmp.setAttribute('role', 'group');
+        cmp.setAttribute('aria-label', 'Compare');
+        const cmpBtn = (mode, label, tip) => {
+            const btn = document.createElement('button');
+            btn.type = 'button'; btn.textContent = label; btn.title = tip;
+            btn.onclick = () => this.setCompareMode(mode);
+            cmp.appendChild(btn);
+            return btn;
+        };
+        this._vbABtn    = cmpBtn('none', 'A', 'Show A, compare off');
+        this._vbAbBtn   = cmpBtn('b', 'B', 'Show B');
+        this._vbWipeBtn = cmpBtn('wipe', 'Wipe', `Wipe between B (left) and A (right); drag the line (${_shortcutLabel('view.compare')})`);
+        this._vbDiffBtn = cmpBtn('difference', 'Diff', 'Difference between A and B');
+        this._vbBlinkBtn= cmpBtn('blink', 'Blink', 'Flip between A and B');
+        left.appendChild(cmp);
         // Issue #74: a pinned B shows here in every workspace, with its release.
         this._vbPinBtn  = _vbBtn('Release B', () => { if (this.compareSource === 'pinned') this.unpinFrame(); });
         this._vbPinBtn.className = 'radiance-vb-pin';
@@ -9779,6 +9799,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (!btn) return;
             btn.classList.toggle('is-active', active);
         };
+        setActive(this._vbABtn,     cm === 'none');
         setActive(this._vbAbBtn,    cm === 'b');
         setActive(this._vbWipeBtn,  cm === 'wipe');
         setActive(this._vbDiffBtn,  cm === 'difference');
@@ -24781,7 +24802,7 @@ app.registerExtension({
                 pageCompare ? compareImages : null, normalImages);
             // The node's compare_image (not a pinned still): hint at Compare for this run.
             viewer._hasCompareInput = compareImages.length > 0;
-            viewer._compareHintSeen = viewer.workspace === 'compare';
+            viewer._compareHintSeen = false;
             // A QC run describes the media it measured: a new run clears it.
             viewer._qcAbort?.abort();
             viewer._qcReport = null;

@@ -491,7 +491,7 @@ test('#74: turning B off drops the pin B made for itself, and a Ref Wipe block t
             const out = {};
             v._vbAbBtn.click();                     // no B connected: pins A as B
             out.pinnedByB = v.compareSource;
-            v._vbAbBtn.click();                     // B off again
+            v._vbABtn.click();                      // B off again: A
             out.afterOff = v.compareSource;
             v.setFrame(15); await __sleep(80);
             out.inBlock = { mode: v.compareMode, frame: v._refWipeFrame };
@@ -551,7 +551,7 @@ test('#74: a slip beyond the frame window fetches B, and B changing inside the b
             await __until(() => v._refWipeFrame === 40, 10000);
             const out = { frame: v._refWipeFrame, mode: v.compareMode, held: v._frameWindow.extra.slice() };
             // B twice: compare off inside the block.
-            v._vbAbBtn.click(); v._vbAbBtn.click();
+            v._vbAbBtn.click(); v._vbABtn.click();
             out.off = v.compareMode;
             v.v2Segments[0].offset = 31;
             v._refreshSequenceDock();
