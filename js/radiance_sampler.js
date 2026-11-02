@@ -640,7 +640,12 @@ function applyFolding(node) {
     // ALBABIT-FIX: gated on the live cfg alone, whatever the model: LongCat embeds
     // guidance and still runs a real cfg (4), while distilled models (Flux.3 and
     // Flux.2 Klein, Z-Image Turbo, LTX Distilled) run cfg 1, where it does nothing.
-    if (Number(find("cfg")?.value) <= 1) hiddenNames.add("guidance_rescale_phi");
+    // Under LTX-AV's STG or modality guidance the backend rescales at cfg 1 too.
+    const [stg, , modality] = ltxGuidance === "Custom"
+        ? LTX_GUIDANCE_SETTINGS.map(name => Number(find(name)?.value))
+        : LTX_GUIDANCE_RECIPES[ltxGuidance] ?? LTX_GUIDANCE_RECIPES.Off;
+    const ltxGuided = effectiveModel === "ltxav" && (stg > 0 || Math.abs(modality - 1) > 1e-9);
+    if (Number(find("cfg")?.value) <= 1 && !ltxGuided) hiddenNames.add("guidance_rescale_phi");
 
     // 3.5c-2. MiniMax H3's reference pipeline uses BasicGuider, which has no
     // cfg input at all. Unlike guidance-embed models (flux_guidance stands

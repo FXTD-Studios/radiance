@@ -71,6 +71,14 @@ test('guidance_rescale_phi shows only while cfg is above 1, whatever the model',
         context.fold(node);
         assert.ok(shown(node).includes('guidance_rescale_phi'), `${model} at cfg 4`);
     }
+    const ltx = samplerNode(LTX25_LOWRES, 'Modality + STG (early)');
+    ltx.widgets[1].value = 'ltxav';
+    ltx.widgets[2].value = 1.0;
+    context.fold(ltx);
+    assert.ok(shown(ltx).includes('guidance_rescale_phi'), 'LTX-AV guidance rescales at cfg 1 too');
+    ltx.widgets[4].value = 'Off';
+    context.fold(ltx);
+    assert.ok(!shown(ltx).includes('guidance_rescale_phi'), 'LTX-AV without guidance at cfg 1');
 });
 
 test('Custom starts from the recipe it replaces', () => {
