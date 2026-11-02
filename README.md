@@ -212,7 +212,7 @@ Black Forest Labs' 5.6B open-weights model. **Distilled** is fast (16 steps, CFG
 
 | File | Save in |
 |---|---|
-| `flux3_image_klein_sd_*.safetensors` (distilled) or `flux3_image_klein_*.safetensors` (base): bf16, int8 or nvfp4 | `models/diffusion_models/` |
+| `flux3-image-klein-*.safetensors` (distilled) or `flux3-image-klein-base-*.safetensors` (base): bf16, int8 or nvfp4. BFL's first names also work: `flux3_image_klein_sd_*` (distilled), `flux3_image_klein_*` (base) | `models/diffusion_models/` |
 | `qwen3vl_4b_bf16.safetensors` or `qwen3vl_4b_int8_convrot.safetensors` | `models/text_encoders/` |
 | `flux2-vae.safetensors` (the FLUX.2 VAE) | `models/vae/` |
 

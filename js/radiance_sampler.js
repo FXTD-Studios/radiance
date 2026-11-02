@@ -941,10 +941,14 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     if (!filename) return null;
     const f = filename.toLowerCase();
     // FLUX 3 Image Klein: BFL names the step-distilled files flux3_image_klein_sd_*.
+    // ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
+    // model and flux3-image-klein-base-* the base, while the old plain
+    // flux3_image_klein_* was the base. Both spellings stay recognised.
     // Mirrors refine_distillation_from_meta; at run time the weights decide
     // (refine_flux3_from_model) and onExecuted shows what was used.
     if (detectedType === "flux3") {
-        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")) ? { cfg: 1.0, steps: 16 } : null;
+        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")
+            || (f.includes("flux3-image-klein") && !f.includes("-base"))) ? { cfg: 1.0, steps: 16 } : null;
     }
     // Flux.2 Klein only: a FLUX 3 Klein file has "klein" in its name too.
     if (f.includes("klein") && !/flux[-_.]?3/.test(f)) {

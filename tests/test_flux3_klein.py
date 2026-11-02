@@ -157,7 +157,9 @@ class TestSampler:
         assert (kw["cfg"], kw["steps"]) == (3.5, 50)
 
     @pytest.mark.parametrize("unet, expected", [(BASE_FILE, (3.5, 50)), (SD_FILE, (1.0, 16)),
-                                                ("flux3_image_klein_sd_bf16.safetensors", (1.0, 16))])
+                                                ("flux3_image_klein_sd_bf16.safetensors", (1.0, 16)),
+                                                ("flux3-image-klein-bf16.safetensors", (1.0, 16)),
+                                                ("flux3-image-klein-base-int8-convrot.safetensors", (3.5, 50))])
     def test_file_name_decides_when_the_model_does_not_say(self, unet, expected):
         meta = json.dumps({"arch": "flux3", "unet_file": unet})
         _, kw = _auto(None, meta=meta)

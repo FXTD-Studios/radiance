@@ -720,7 +720,11 @@ FLUX3_DISTILLED: Dict[str, Any] = {"cfg": 1.0, "steps": 16}
 def _flux3_name_is_distilled(name: str) -> bool:
     """BFL names the step-distilled files ``flux3_image_klein_sd_*``."""
     name = name.lower()
-    return "_sd_" in name or "_sd." in name or "distill" in name
+    # ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
+    # model and flux3-image-klein-base-* the base, while the old plain
+    # flux3_image_klein_* was the base. Both spellings stay recognised.
+    return ("_sd_" in name or "_sd." in name or "distill" in name
+            or ("flux3-image-klein" in name and "-base" not in name))
 
 
 def refine_flux3_from_model(model) -> Optional[Dict[str, Any]]:
