@@ -123,3 +123,53 @@ test('picking a view takes the display back from a loaded config, which the pict
         assert.ok(!r.after.options.includes('ocio-config'));
     } finally { await page.close(); }
 });
+
+// ── The picture first: nothing floats over it ──────────────────────────────
+
+test('the viewer bar and the sequence dock sit under the picture, not on it', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const r = await page.evaluate(async () => {
+            const node = __make('advanced');
+            window.v = node.radianceViewer;
+            node.onExecuted(__frames(6, 64, 48));
+            await __until(() => v.hdrData, 30000);
+            await __sleep(200);
+            const c = v.canvas.getBoundingClientRect();
+            const bar = v.viewerBar.getBoundingClientRect(), dock = v.sequenceDock.getBoundingClientRect();
+            return { barTop: bar.top, dockTop: dock.top, canvasBottom: c.bottom,
+                inWrapper: v.canvasWrapper.contains(v.viewerBar) || v.canvasWrapper.contains(v.sequenceDock),
+                frame: !!v.container.querySelector('.radiance-viewer-frame'),
+                cross: getComputedStyle(v.viewerCross).display };
+        });
+        assert.equal(r.inWrapper, false);
+        assert.ok(r.barTop >= r.canvasBottom - 0.5, `the bar overlaps the picture (${r.barTop} < ${r.canvasBottom})`);
+        assert.ok(r.dockTop > r.barTop);
+        assert.equal(r.frame, false, 'the decorative green frame is gone');
+        assert.equal(r.cross, 'none', 'the centre cross starts off');
+        assert.deepEqual(page.errors, []);
+    } finally { await page.close(); }
+});
+
+test('a still shows the transport only; the Ref Wipe tools and V2 lane need a sequence', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const r = await page.evaluate(async () => {
+            const shown = (v, sel) => { const el = v.sequenceDock.querySelector(sel); return !!el && getComputedStyle(el).display !== 'none'; };
+            const one = __make('advanced'); one.onExecuted(__frames(1, 64, 48));
+            const many = __make('advanced'); many.onExecuted(__frames(6, 64, 48));
+            const a = one.radianceViewer, b = many.radianceViewer;
+            await __until(() => a.hdrData && b.hdrData, 30000);
+            await __sleep(200);
+            const out = {
+                still: { tools: shown(a, '.radiance-pro-timeline-tools'), v2: shown(a, '.radiance-pro-lane-v2'), play: shown(a, '.radiance-pro-sequence-controls') },
+                seq: { tools: shown(b, '.radiance-pro-timeline-tools'), v2: shown(b, '.radiance-pro-lane-v2'), guide: shown(b, '.radiance-pro-v2-guide') },
+            };
+            b._setTimelineTool('reference');
+            out.seq.guideWithTool = shown(b, '.radiance-pro-v2-guide');
+            return out;
+        });
+        assert.deepEqual(r.still, { tools: false, v2: false, play: true });
+        assert.deepEqual(r.seq, { tools: true, v2: true, guide: false, guideWithTool: true });
+    } finally { await page.close(); }
+});
