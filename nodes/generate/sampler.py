@@ -2434,7 +2434,9 @@ class RadianceSamplerPro:
 
         is_dynamic = "Dynamic" in flux_guidance_profile and detected_type in GUIDANCE_EMBED_MODELS
 
-        is_dynamic_cfg = "Dynamic" in flux_guidance_profile and detected_type in CFG_GUIDED_MODELS
+        # ALBABIT-FIX: the cfg ramp leaves cfg 1 unchanged (compute_dynamic_cfg), so
+        # a Dynamic profile there only split the run into stages for nothing.
+        is_dynamic_cfg = "Dynamic" in flux_guidance_profile and detected_type in CFG_GUIDED_MODELS and cfg > 1.0
 
         if is_dynamic:
 

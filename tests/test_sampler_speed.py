@@ -61,6 +61,12 @@ def test_dynamic_cfg_does_not_turn_on_the_uncond_pass():
     assert su.compute_dynamic_cfg(5.0, 0, 20, 1.0) > 5.0      # still shapes real CFG
 
 
+def test_dynamic_cfg_at_cfg_1_samples_in_one_stage():
+    _, recorder = run_sampler(model_type="sdxl", steps=40, cfg=1.0,
+                              flux_guidance_profile="Dynamic (Creative Start/End)")
+    assert len(recorder.calls) == 1
+
+
 @pytest.mark.parametrize("model_type,early,late", [("flux", 0.6, 0.95), ("sdxl", 1.2, 0.7)])
 @pytest.mark.parametrize("denoise", [1.0, 0.5])
 def test_dynamic_stages_reach_the_guidance_targets(model_type, early, late, denoise):
