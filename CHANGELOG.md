@@ -145,6 +145,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Nano Banana stills animated by Seedance and by Wan 3.0. Each lifts the result
   with SDR → HDR Universal (RUDRA ACES 2) and has AI Fill bypassed and ready.
   Built in ComfyUI 0.43's own frontend and validated by its server.
+  They live in `workflows/api/`, apart from the local workflows in `workflows/`,
+  and the README lists the two kinds separately.
 - **RUDRA 1.0 in SDR → HDR (RUDRA ACES 2, Apache 2.0).** Universal and
   Recover run RUDRA's learned ACES 2.0 model by default (`learned_backend`
   Auto, or `RUDRA ACES 2`): the staged contract `rudra_native_aces_v2_staged`
