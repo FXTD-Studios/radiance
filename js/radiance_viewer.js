@@ -655,10 +655,9 @@ class RadianceViewer {
                     color: var(--radiance-accent);
                 }
                 .radiance-pro-viewer-bar {
-                    position: absolute;
-                    left: 18px;
-                    right: 18px;
-                    bottom: calc(var(--sequence-dock-height, 128px) + 12px);
+                    position: relative;
+                    flex: 0 0 auto;
+                    margin: 6px 10px 0;
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
@@ -717,20 +716,6 @@ class RadianceViewer {
                     font-size: var(--radiance-fs-body);
                     font-weight: 600;
                 }
-                .radiance-viewer-frame {
-                    position: absolute;
-                    inset: 52px 34px 72px;
-                    border: 1px solid rgba(74,222,128,0.35);
-                    box-shadow: inset 0 0 0 1px rgba(74,222,128,0.08);
-                    pointer-events: none;
-                    z-index: 55;
-                }
-                .radiance-viewer-frame::before {
-                    content: "";
-                    position: absolute;
-                    inset: -34px;
-                    border: 1px dashed rgba(74,222,128,0.65);
-                }
                 .radiance-viewer-cross {
                     position: absolute;
                     left: 50%;
@@ -760,17 +745,15 @@ class RadianceViewer {
                     width: 20px;
                 }
                 .radiance-pro-sequence-dock {
-                    position: absolute;
-                    left: 18px;
-                    right: 18px;
-                    bottom: 12px;
-                    min-height: 88px;
+                    position: relative;
+                    flex: 0 0 auto;
+                    margin: 6px 10px 8px;
+                    min-height: 0;
                     display: flex;
                     flex-direction: column;
                     border: 1px solid var(--radiance-panel-border);
                     border-radius: 8px;
                     background: var(--radiance-panel);
-                    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
                     z-index: 68;
                     pointer-events: auto;
                     overflow: hidden;
@@ -823,6 +806,12 @@ class RadianceViewer {
                     color: var(--radiance-accent);
                     background: var(--radiance-accent-soft);
                 }
+                /* The timeline's tools and its V2 lane edit Ref Wipe blocks, which
+                   need a second frame; a still shows the transport only. The V2
+                   hint shows while the Ref Wipe tool is picked. */
+                .radiance-pro-sequence-dock.is-single .radiance-pro-timeline-tools,
+                .radiance-pro-sequence-dock.is-single .radiance-pro-lane-v2 { display: none !important; }   /* the lane sets display inline */
+                .radiance-pro-sequence-dock:not(.tool-reference) .radiance-pro-v2-guide { display: none; }
                 .radiance-pro-timeline-tools {
                     display: flex;
                     align-items: center;
@@ -2761,7 +2750,7 @@ class RadianceViewer {
         const menuItems = this.proMenuBar?.querySelector('.radiance-pro-menu-items');
         [menuItems, this.proToolbar, this.proSidebar, this.rightControlPanel, this.scopePanel,
          this.viewerBar, this.sequenceDock, this.bottomInfoBar, this.statusBar, this.transportPanel,
-         this.viewerFrame, this.viewerCross]
+         this.viewerCross]
             .forEach((el) => el?.setAttribute('data-rv-advanced', ''));
 
         // The switch, in the title bar (visible in both modes).
@@ -3988,6 +3977,7 @@ class RadianceViewer {
     /** Pick a timeline tool ('select', 'slip', 'reference') and show it on the buttons. */
     _setTimelineTool(id) {
         this.activeTimelineTool = id;
+        this.sequenceDock?.classList.toggle('tool-reference', id === 'reference');
         Object.values(this._timelineToolButtons || {}).forEach(b => b.updateVisual());
     }
 
@@ -4076,6 +4066,7 @@ class RadianceViewer {
     _refreshSequenceDock() {
         if (!this.sequenceTrack) return;
         const total = Math.max(this.totalFrames || 0, this.frameImages?.length || 0);
+        this.sequenceDock?.classList.toggle('is-single', total <= 1);
         const current = (this.currentFrame || 0) + 1;
         if (this.sequenceFrameLabel) {
             this.sequenceFrameLabel.textContent = total > 0 ? `${current} / ${total}` : '- / -';
@@ -4142,6 +4133,7 @@ class RadianceViewer {
 
             if (this.v2Segments.length === 0) {
                 const guide = document.createElement('span');
+                guide.className = 'radiance-pro-v2-guide';
                 guide.textContent = '✚ Click here with the Ref Wipe tool to place a block on V2';
                 guide.style.cssText = 'position:absolute; left:12px; font-size:var(--radiance-fs-heading); font-family:var(--radiance-font-ui); color:var(--radiance-text-muted); pointer-events:none;';
                 v2Lane.appendChild(guide);
@@ -4590,9 +4582,16 @@ class RadianceViewer {
         this.mainArea.appendChild(this.proSidebar);
 
         // Canvas wrapper
+        // The picture on top and the viewer bar and sequence dock under it, in
+        // their own rows: floated over the canvas, they covered the lower half
+        // of the frame and fit-to-view squeezed the picture into what was left.
+        this.viewColumn = document.createElement('div');
+        this.viewColumn.className = 'radiance-pro-view-column';
+        this.viewColumn.style.cssText = `flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--radiance-bg);`;
+        this.mainArea.appendChild(this.viewColumn);
         this.canvasWrapper = document.createElement('div');
-        this.canvasWrapper.style.cssText = `flex: 1 1 auto; position: relative; overflow: hidden; background: var(--radiance-bg);`;
-        this.mainArea.appendChild(this.canvasWrapper);
+        this.canvasWrapper.style.cssText = `flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: var(--radiance-bg);`;
+        this.viewColumn.appendChild(this.canvasWrapper);
 
         // ── Right Control Panel (HUD host) ────────────────────────────────────
         const savedRcpWidth = parseInt(localStorage.getItem('radiance_rcp_width') || '620');
@@ -4661,20 +4660,18 @@ class RadianceViewer {
         this.glCanvas.style.cssText = `position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;`;
         this.canvasWrapper.appendChild(this.glCanvas); // Insert after 2D canvas so it overlays
 
-        this.viewerFrame = document.createElement('div');
-        this.viewerFrame.className = 'radiance-viewer-frame';
-        this.canvasWrapper.appendChild(this.viewerFrame);
 
         this.viewerCross = document.createElement('div');
         this.viewerCross.className = 'radiance-viewer-cross';
+        this.viewerCross.style.display = 'none';   // a guide to turn on (View > Center Cross), not chrome
         this.canvasWrapper.appendChild(this.viewerCross);
 
         this.viewerBar = this.createViewerBar();
-        this.canvasWrapper.appendChild(this.viewerBar);
+        this.viewColumn.appendChild(this.viewerBar);
 
         this.sequenceDock = this.createSequenceDock();
         this._installUndoShortcuts();
-        this.canvasWrapper.appendChild(this.sequenceDock);
+        this.viewColumn.appendChild(this.sequenceDock);
 
         // v5.0: WebGPU-preferred GPU chain (WebGPU → WebGL → 2D fallback)
         this.useWebGL = true;
@@ -11456,6 +11453,10 @@ self.onmessage = async ({ data: { id, url } }) => {
         this.canvas.height = newH;
         this.overlayCanvas.width = newW;
         this.overlayCanvas.height = newH;
+        // The pointer maths reads these between mousemoves; a canvas that changed
+        // height under a cached ratio put a click a few pixels off.
+        this._canvasScaleX = newW / rect.width;
+        this._canvasScaleY = newH / rect.height;
 
         // BLACK-VIEWER FIX (2 of 2): the canvas changed size and the view did
         // not follow. pan/zoom are in canvas pixels, so a frame fitted while
