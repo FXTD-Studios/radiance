@@ -570,6 +570,14 @@ test('FLUX 3 layout boxes are drawn on the picture, kept in UV, and sent to the 
         r.targets = [...(panel()?.querySelectorAll('.radiance-layout-target option') || [])].map((o) => o.value);
         const rect = v.canvas.getBoundingClientRect();
         const sx = rect.width / v.canvas.width, sy = rect.height / v.canvas.height;
+        // MouseEvent rounds clientX/Y to whole pixels, so the corners land on
+        // whole pixels: zoom 5, and the image origin on a whole screen pixel.
+        // (The canvas top is fractional under the flex rows of the viewer bar
+        // and dock, which put a 19.2 px drag 0.2 % short.)
+        v.zoom = 5;
+        v.panX = Math.round(rect.left + v.panX * sx) / sx - rect.left / sx;
+        v.panY = Math.round(rect.top + v.panY * sy) / sy - rect.top / sy;
+        v.render();
         const at = (ix, iy) => ({ clientX: rect.left + (v.panX + ix * v.zoom) * sx, clientY: rect.top + (v.panY + iy * v.zoom) * sy });
         const drag = (a, b) => {
             v.canvas.dispatchEvent(new MouseEvent('mousedown', { ...at(...a), button: 0, bubbles: true }));

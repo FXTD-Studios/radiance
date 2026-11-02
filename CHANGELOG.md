@@ -322,6 +322,13 @@ are the results.
   <view>" for a loaded config); Output Transform reads "From View (...)"
   unless a custom curve is picked, and "From View" returns to the last view;
   the status bar shows the whole chain, input → display / view.
+- **Nothing floats over the picture.** The viewer bar and the sequence dock
+  sit in their own rows under the picture; floated over the canvas, they
+  covered the lower half of the frame when zoomed or panned. A still shows
+  the transport only (the Ref Wipe tools and V2 lane need a second frame),
+  and the V2 hint shows while the Ref Wipe tool is picked. The green frame
+  drawn at fixed insets, which looked like a safe-area guide but followed
+  nothing, is gone, and the centre cross starts off.
 - **Picking a view, or a custom curve, takes the display back from a loaded
   OCIO config.** The config's transform stayed on the renderer, so the
   picture kept the config's view while the View select named another.
