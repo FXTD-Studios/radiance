@@ -173,3 +173,63 @@ test('a still shows the transport only; the Ref Wipe tools and V2 lane need a se
         assert.deepEqual(r.seq, { tools: true, v2: true, guide: false, guideWithTool: true });
     } finally { await page.close(); }
 });
+
+// ── The tool rail is off by default; nothing on it is lost ─────────────────
+
+test('the tool rail starts off and Window > Tool Rail brings it back', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const r = await page.evaluate(async () => {
+            localStorage.removeItem('radiance_tool_rail');
+            const node = __make('advanced');
+            window.v = node.radianceViewer;
+            node.onExecuted(__frames(1, 64, 48));
+            await __until(() => v.hdrData, 30000);
+            await __sleep(200);
+            const rail = () => getComputedStyle(v.proSidebar).display !== 'none';
+            const width = () => Math.round(v.canvas.getBoundingClientRect().width);
+            const off = { rail: rail(), width: width() };
+            v._runKeyAction('window.rail'); await __sleep(200);
+            const on = { rail: rail(), width: width(), saved: localStorage.getItem('radiance_tool_rail') };
+            v._runKeyAction('window.rail'); await __sleep(100);
+            localStorage.removeItem('radiance_tool_rail');
+            return { off, on };
+        });
+        assert.equal(r.off.rail, false);
+        assert.equal(r.on.rail, true);
+        assert.equal(r.on.saved, '1');
+        assert.ok(r.off.width >= r.on.width + 150, `the rail's room goes to the picture (${r.off.width} vs ${r.on.width})`);
+    } finally { await page.close(); }
+});
+
+test('what only the rail had is on the viewer bar and in the View menu', { skip }, async () => {
+    const page = await viewerPage();
+    try {
+        const r = await page.evaluate(async () => {
+            const lit = () => [...v.viewerBar.querySelectorAll('.radiance-vb-channels button')]
+                .filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.textContent);
+            const start = lit();
+            v._runKeyAction('channel.g'); await __sleep(50);
+            const byKey = lit();
+            [...v.viewerBar.querySelectorAll('.radiance-vb-channels button')].find(b => b.textContent === 'A').click(); await __sleep(50);
+            const byClick = { lit: lit(), channel: v.channel };
+            const items = [];
+            const viewBtn = [...v.proMenuBar.querySelectorAll('.radiance-pro-menu-items > button')].find(b => b.textContent.trim() === 'View');
+            viewBtn.click(); await __sleep(20);
+            document.querySelectorAll('.radiance-pro-dropdown .radiance-pro-menu-item').forEach(it => items.push(it.children[0].textContent.trim()));
+            document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            const cross0 = getComputedStyle(v.viewerCross).display;
+            v._runKeyAction('view.centerCross');
+            const pg0 = !!v.pixelGrid;
+            v._runKeyAction('view.pixelGrid');
+            return { start, byKey, byClick, items, cross0, cross1: getComputedStyle(v.viewerCross).display, pg: [pg0, !!v.pixelGrid] };
+        });
+        assert.deepEqual(r.start, ['RGB']);
+        assert.deepEqual(r.byKey, ['G'], 'the bar follows a channel picked with a key');
+        assert.deepEqual(r.byClick, { lit: ['A'], channel: 'a' });
+        for (const label of ['Center Cross', 'Pixel Grid']) assert.ok(r.items.includes(label), `View menu has no ${label}`);
+        assert.equal(r.cross0, 'none');
+        assert.notEqual(r.cross1, 'none');
+        assert.deepEqual(r.pg, [false, true]);
+    } finally { await page.close(); }
+});
