@@ -157,6 +157,16 @@ test('the Flux.2 presets no longer grab a FLUX 3 Klein file through their bare "
     assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.2'], [SD_INT8, KLEIN2]), KLEIN2);
 });
 
+test('Flux.2 picks each Klein Base before the distilled file of its size, Low VRAM the distilled', () => {
+    const c = loaderCtx.presets['Flux.2'];
+    const k9 = 'flux-2-klein-9b.safetensors', base9 = 'flux-2-klein-base-9b.safetensors';
+    const k9fp8 = 'flux-2-klein-9b-fp8.safetensors', base9fp8 = 'flux-2-klein-base-9b-fp8.safetensors';
+    assert.equal(loaderCtx.unetMatch(c, [k9, base9]), base9);
+    assert.equal(loaderCtx.unetMatch(c, [k9fp8, base9fp8]), base9fp8);
+    assert.equal(loaderCtx.unetMatch(c, [base9, 'flux2-dev.safetensors']), 'flux2-dev.safetensors', 'Dev stays first');
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.2 (Low VRAM)'], [base9fp8, k9fp8]), k9fp8);
+});
+
 // ── Sampler ────────────────────────────────────────────────────────────────
 
 function samplerDefaults(preset, unet) {
