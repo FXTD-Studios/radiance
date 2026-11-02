@@ -137,6 +137,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Added
 
+- **API workflows with RUDRA** (25): one per provider's current image or
+  video API node: Nano Banana 2.1, Seedream 5, GPT Image 2.5, FLUX 3, Qwen
+  Image 3, Wan, Ideogram V4, Recraft V3, Kling 3.0, Grok, Luma UNI-1 for images;
+  Seedance 2.5, Wan 2.7, Veo 3.1, Kling 3.0, MiniMax H3, Runway Gen-4, Luma Ray
+  3.2, Vidu Q3, PixVerse V6, LTX 2.5, FLUX 3 Video and Grok Video for video; and
+  Nano Banana stills animated by Seedance and by Wan 3.0. Each lifts the result
+  with SDR → HDR Universal (RUDRA ACES 2) and has AI Fill bypassed and ready.
+  Built in ComfyUI 0.43's own frontend and validated by its server.
 - **RUDRA 1.0 in SDR → HDR (RUDRA ACES 2, Apache 2.0).** Universal and
   Recover run RUDRA's learned ACES 2.0 model by default (`learned_backend`
   Auto, or `RUDRA ACES 2`): the staged contract `rudra_native_aces_v2_staged`

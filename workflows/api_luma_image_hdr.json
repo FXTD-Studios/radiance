@@ -1,0 +1,1364 @@
+{
+  "id": "8c8fcb05-ec58-413d-824e-a36147e740ab",
+  "revision": 0,
+  "last_node_id": 6,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LumaImageNode2",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        420,
+        232
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "COMFY_DYNAMICCOMBO_V3",
+          "widget": {
+            "name": "model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aspect_ratio",
+          "name": "model.aspect_ratio",
+          "type": "COMBO",
+          "widget": {
+            "name": "model.aspect_ratio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "style",
+          "name": "model.style",
+          "type": "COMBO",
+          "widget": {
+            "name": "model.style"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "web_search",
+          "name": "model.web_search",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "model.web_search"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "image_1",
+          "name": "model.image_ref.image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1,
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LumaImageNode2"
+      },
+      "widgets_values": [
+        "Golden hour on a mountain lake, the low sun just above the ridge flaring through pine trees, glittering specular highlights on the water, a wooden dock in the foreground, cinematic wide shot, natural colour",
+        "uni-1",
+        "16:9",
+        "auto",
+        false,
+        0,
+        "randomize"
+      ],
+      "widgets_values_named": {
+        "prompt": "Golden hour on a mountain lake, the low sun just above the ridge flaring through pine trees, glittering specular highlights on the water, a wooden dock in the foreground, cinematic wide shot, natural colour",
+        "model": "uni-1",
+        "model.aspect_ratio": "16:9",
+        "model.style": "auto",
+        "model.web_search": false,
+        "seed": 0,
+        "control_after_generate": "randomize"
+      },
+      "color": "#182238",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 2,
+      "type": "RadianceSDRToHDRUniversal",
+      "pos": [
+        530,
+        60
+      ],
+      "size": [
+        283.37890625,
+        730
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "localized_name": "inverse_oetf",
+          "name": "inverse_oetf",
+          "type": "COMBO",
+          "widget": {
+            "name": "inverse_oetf"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "peak_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "widget": {
+            "name": "reference_white_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee_mode",
+          "name": "knee_mode",
+          "type": "COMBO",
+          "widget": {
+            "name": "knee_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "knee",
+          "name": "knee",
+          "type": "FLOAT",
+          "widget": {
+            "name": "knee"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shoulder_gamma",
+          "name": "shoulder_gamma",
+          "type": "FLOAT",
+          "widget": {
+            "name": "shoulder_gamma"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_smoothing",
+          "name": "temporal_smoothing",
+          "type": "FLOAT",
+          "widget": {
+            "name": "temporal_smoothing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_encoding",
+          "name": "output_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "output_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "rudra_blend",
+          "name": "rudra_blend",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "rudra_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "batch_mode",
+          "name": "batch_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "batch_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shadow_threshold",
+          "name": "shadow_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shadow_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "processing_mode",
+          "name": "processing_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "processing_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_threshold",
+          "name": "highlight_threshold",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "highlight_threshold"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_window",
+          "name": "temporal_window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "temporal_window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "temporal_checkpoint",
+          "name": "temporal_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "temporal_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "learned_backend",
+          "name": "learned_backend",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "learned_backend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_checkpoint",
+          "name": "pixel_checkpoint",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "pixel_checkpoint"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_size",
+          "name": "pixel_tile_size",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_tile_overlap",
+          "name": "pixel_tile_overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "pixel_tile_overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_recovery_mode",
+          "name": "pixel_recovery_mode",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "pixel_recovery_mode"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "pixel_strength",
+          "name": "pixel_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "pixel_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_strength",
+          "name": "aces2_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_saturation",
+          "name": "aces2_saturation",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "aces2_saturation"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aces2_package",
+          "name": "aces2_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "aces2_package"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "highlight_mask",
+          "name": "highlight_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "shadow_mask",
+          "name": "shadow_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "highlight_confidence",
+          "name": "highlight_confidence",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "shadow_confidence",
+          "name": "shadow_confidence",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": [
+            3,
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRUniversal"
+      },
+      "widgets_values": [
+        "sRGB",
+        1000,
+        203,
+        "adaptive",
+        0.75,
+        2,
+        0.85,
+        "Linear",
+        1,
+        "Independent Images",
+        0.05,
+        "Hybrid",
+        0.98,
+        5,
+        "",
+        "Auto",
+        "",
+        512,
+        64,
+        "highlights",
+        1,
+        1,
+        1,
+        ""
+      ],
+      "widgets_values_named": {
+        "inverse_oetf": "sRGB",
+        "peak_nits": 1000,
+        "reference_white_nits": 203,
+        "knee_mode": "adaptive",
+        "knee": 0.75,
+        "shoulder_gamma": 2,
+        "temporal_smoothing": 0.85,
+        "output_encoding": "Linear",
+        "rudra_blend": 1,
+        "batch_mode": "Independent Images",
+        "shadow_threshold": 0.05,
+        "processing_mode": "Hybrid",
+        "highlight_threshold": 0.98,
+        "temporal_window": 5,
+        "temporal_checkpoint": "",
+        "learned_backend": "Auto",
+        "pixel_checkpoint": "",
+        "pixel_tile_size": 512,
+        "pixel_tile_overlap": 64,
+        "pixel_recovery_mode": "highlights",
+        "pixel_strength": 1,
+        "aces2_strength": 1,
+        "aces2_saturation": 1,
+        "aces2_package": ""
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 3,
+      "type": "RadianceSDRToHDRAIFill",
+      "pos": [
+        530,
+        850
+      ],
+      "size": [
+        400,
+        658
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 3
+        },
+        {
+          "localized_name": "image_encoding",
+          "name": "image_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "image_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_highlight"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "brightness_offset",
+          "name": "brightness_offset",
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness_offset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_shadows",
+          "name": "fill_shadows",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "fill_shadows"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_shadow",
+          "name": "prompt_shadow",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_shadow"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_context_code",
+          "name": "highlight_context_code",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "highlight_context_code"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_gain_stops",
+          "name": "max_gain_stops",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "max_gain_stops"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shape_gain",
+          "name": "shape_gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shape_gain"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_brightness_estimator",
+          "name": "use_brightness_estimator",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "use_brightness_estimator"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance",
+          "name": "guidance",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "window",
+          "name": "window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlap",
+          "name": "overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_area",
+          "name": "max_area",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_area"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "base_model",
+          "name": "base_model",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "base_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_package",
+          "name": "fill_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "fill_package"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "allow_download",
+          "name": "allow_download",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "allow_download"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "keep_loaded",
+          "name": "keep_loaded",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "keep_loaded"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4,
+            6
+          ]
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAIFill"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "",
+        0,
+        false,
+        "",
+        250,
+        3,
+        1,
+        true,
+        30,
+        0,
+        "randomize",
+        1,
+        "",
+        33,
+        8,
+        399360,
+        "",
+        "",
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "image_encoding": "Linear (Rec.709)",
+        "prompt_highlight": "",
+        "brightness_offset": 0,
+        "fill_shadows": false,
+        "prompt_shadow": "",
+        "highlight_context_code": 250,
+        "max_gain_stops": 3,
+        "shape_gain": 1,
+        "use_brightness_estimator": true,
+        "steps": 30,
+        "seed": 0,
+        "control_after_generate": "randomize",
+        "guidance": 1,
+        "negative_prompt": "",
+        "window": 33,
+        "overlap": 8,
+        "max_area": 399360,
+        "base_model": "",
+        "fill_package": "",
+        "allow_download": true,
+        "keep_loaded": true
+      },
+      "color": "#3c2020",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 4,
+      "type": "RadianceViewer",
+      "pos": [
+        1000,
+        60
+      ],
+      "size": [
+        620,
+        540
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE,VIDEO",
+          "link": 4
+        },
+        {
+          "localized_name": "compare_image",
+          "name": "compare_image",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": 5
+        },
+        {
+          "localized_name": "zdepth",
+          "name": "zdepth",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "localized_name": "exposure_bracketing",
+          "name": "exposure_bracketing",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "input_space",
+          "name": "input_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "float_precision",
+          "name": "float_precision",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 5,
+      "type": "RadianceEXRMultiPart",
+      "pos": [
+        1000,
+        690
+      ],
+      "size": [
+        400,
+        444
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "beauty",
+          "name": "beauty",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "localized_name": "depth",
+          "name": "depth",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "albedo",
+          "name": "albedo",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "custom_1",
+          "name": "custom_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "custom_2",
+          "name": "custom_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "localized_name": "rudra_reconstructed",
+          "name": "rudra_reconstructed",
+          "shape": 7,
+          "type": "MASK",
+          "link": 7
+        },
+        {
+          "localized_name": "rudra_generated",
+          "name": "rudra_generated",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "bit_depth",
+          "name": "bit_depth",
+          "type": "COMBO",
+          "widget": {
+            "name": "bit_depth"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "compression",
+          "name": "compression",
+          "type": "COMBO",
+          "widget": {
+            "name": "compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "custom_1_name",
+          "name": "custom_1_name",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "custom_1_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "custom_2_name",
+          "name": "custom_2_name",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "custom_2_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "remote_path",
+          "name": "remote_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "remote_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_index",
+          "name": "frame_index",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_index"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "custom_metadata",
+          "name": "custom_metadata",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "custom_metadata"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "strict",
+          "name": "strict",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "strict"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "manifest",
+          "name": "manifest",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceEXRMultiPart"
+      },
+      "widgets_values": [
+        "radiance_api/luma_image",
+        "32-bit Float",
+        "ZIP",
+        "emission",
+        "specular",
+        "",
+        "",
+        1,
+        "",
+        true
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "radiance_api/luma_image",
+        "bit_depth": "32-bit Float",
+        "compression": "ZIP",
+        "custom_1_name": "emission",
+        "custom_2_name": "specular",
+        "output_path": "",
+        "remote_path": "",
+        "frame_index": 1,
+        "custom_metadata": "",
+        "strict": true
+      },
+      "color": "#282830",
+      "bgcolor": "#141419"
+    },
+    {
+      "id": 6,
+      "type": "Note",
+      "pos": [
+        40,
+        372
+      ],
+      "size": [
+        520,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Luma UNI-1 → HDR\n\n1. Luma UNI-1 Image generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/."
+      ],
+      "widgets_values_named": {
+        "text": "Luma UNI-1 → HDR\n\n1. Luma UNI-1 Image generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/."
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      2,
+      6,
+      3,
+      1,
+      "MASK"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      3,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      2,
+      6,
+      5,
+      6,
+      "MASK"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Luma · API generation",
+      "bounding": [
+        20,
+        -10,
+        460,
+        322
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "RUDRA HDR",
+      "bounding": [
+        510,
+        -10,
+        440,
+        1538
+      ],
+      "color": "#8f5f3f",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Review and EXR",
+      "bounding": [
+        980,
+        -10,
+        660,
+        1164
+      ],
+      "color": "#444",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5944931163954944,
+      "offset": [
+        60,
+        80
+      ]
+    },
+    "radiance": {
+      "title": "Luma UNI-1\n→ HDR",
+      "kicker": "API · Image",
+      "tags": [
+        "Luma UNI-1",
+        "RUDRA ACES 2",
+        "EXR 32F"
+      ],
+      "api": "LumaImageNode2"
+    }
+  },
+  "version": 0.4
+}
