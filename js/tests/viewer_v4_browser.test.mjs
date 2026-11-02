@@ -25,33 +25,38 @@ async function inPage(fn, arg) {
     }
 }
 
-test('a connected B puts a hint on Compare and switches nothing', { skip }, async () => {
+test('a connected B switches nothing, and A | B | Wipe | Diff | Blink is on the bar in every workspace', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make('simple'); const v = n.radianceViewer;
         const msg = __frames(3, 64, 48);
         for (let i = 0; i < 3; i++) msg.radiance_images.push({ filename: 'b_64x48_46.png', subfolder: '', type: 'temp', is_compare: true, frame: i });
         n.onExecuted(msg);
         await __until(() => v.image, 10000);
-        const btn = v._modeBtns.get('compare');
         const modeBefore = v.compareMode;
         v._syncWorkspaceHint();
-        const r = { hint: btn.classList.contains('has-hint'), title: btn.title, ws: v.workspace, modeKept: v.compareMode === modeBefore };
-        v.setWorkspace('compare'); r.modeAfterCompare = v.compareMode === modeBefore; v.setWorkspace('review');
-        r.afterSeen = btn.classList.contains('has-hint');
-        n.onExecuted(__frames(2, 64, 48));
-        await __sleep(50);
-        r.noB = btn.classList.contains('has-hint');
+        const r = { hints: [...v._modeBtns.values()].filter((b) => b.classList.contains('has-hint')).length,
+            ws: v.workspace, modeKept: v.compareMode === modeBefore, workspaces: [...v._modeBtns.keys()] };
+        const labels = (root) => [...root.querySelectorAll('button')].map((b) => b.textContent);
+        r.review = labels(v.simpleBar).filter((t) => ['A', 'B', 'Wipe', 'Diff', 'Blink'].includes(t));
+        v.setWorkspace('color');
+        r.advanced = labels(v.viewerBar.querySelector('.radiance-vb-compare'));
+        r.headerCompare = [...v.container.querySelectorAll('.radiance-pro-actions button')]
+            .some((b) => b.textContent.trim() === 'Compare');
+        v._vbWipeBtn.click(); r.wipe = v.compareMode;
+        v._vbABtn.click(); r.off = v.compareMode;
         __remove(n);
         return r;
     });
     assert.deepEqual(errors, []);
-    assert.equal(out.hint, true, 'no hint with a B connected');
-    assert.match(out.title, /A reference \(B\) is connected/);
-    assert.equal(out.ws, 'review', 'the hint switched the workspace');
-    assert.equal(out.modeKept, true, 'the hint changed the compare mode');
-    assert.equal(out.modeAfterCompare, true, 'opening Compare changed the compare mode');
-    assert.equal(out.afterSeen, false, 'the hint stayed after Compare was opened');
-    assert.equal(out.noB, false, 'a run without B still shows the hint');
+    assert.equal(out.hints, 0);
+    assert.equal(out.ws, 'review');
+    assert.equal(out.modeKept, true);
+    assert.deepEqual(out.workspaces, ['review', 'color', 'inspect']);
+    assert.deepEqual(out.review, ['A', 'B', 'Wipe', 'Diff', 'Blink']);
+    assert.deepEqual(out.advanced, out.review, 'the Advanced bar is the same switch');
+    assert.equal(out.headerCompare, false, 'the header Compare button is gone');
+    assert.equal(out.wipe, 'wipe');
+    assert.equal(out.off, 'none');
 });
 
 test('an Alt+drag stroke is stored per frame in UV, follows zoom, persists and reloads', { skip }, async () => {
@@ -161,7 +166,7 @@ test('each workspace shows only its panel tabs, and a hidden tab moves to the wo
         const r = {};
         v.setWorkspace('inspect'); r.inspect = labels(); r.inspectActive = active();
         v.setWorkspace('color'); r.color = labels(); r.colorActive = active();
-        v.setWorkspace('compare'); r.compare = labels(); r.compareActive = active();
+        v.setWorkspace('compare'); r.compare = { ws: v.workspace, tabs: labels() };
         v.setWorkspace('inspect');
         v._setReferenceTab('grade');
         r.afterShortcut = { ws: v.workspace, tabs: labels(), active: active() };
@@ -170,12 +175,11 @@ test('each workspace shows only its panel tabs, and a hidden tab moves to the wo
         return r;
     });
     assert.deepEqual(errors, []);
-    assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis', 'qc']);
     assert.equal(out.inspectActive, 'inspector');
     assert.deepEqual(out.color, ['grade', 'masks', 'effects', 'scopes']);
     assert.equal(out.colorActive, 'grade');
-    assert.deepEqual(out.compare, ['inspector', 'scopes', 'analysis']);
-    assert.equal(out.compareActive, 'scopes');
+    assert.deepEqual(out.compare, { ws: 'inspect', tabs: ['inspector', 'scopes', 'analysis', 'qc'] }, 'the retired Compare opens Inspect');
     assert.deepEqual(out.afterShortcut, { ws: 'color', tabs: ['grade', 'masks', 'effects', 'scopes'], active: 'grade' });
     assert.equal(out.compareMode, 'none');
 });
@@ -419,7 +423,7 @@ test('a QC run can be stopped, and keeps what it measured as incomplete', { skip
     assert.match(out.label, /\(stopped\)$/);
 });
 
-test('the QC workspace runs the checks, lists each one and the flagged frames, and a frame jumps the viewer', { skip }, async () => {
+test('the QC tab runs the checks, lists each one and the flagged frames, and a frame jumps the viewer', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make(); const v = n.radianceViewer;
         // Eight float frames at 0.05, frame 5 at 1.0: a flicker up and back down.
@@ -428,8 +432,8 @@ test('the QC workspace runs the checks, lists each one and the flagged frames, a
         msg.radiance_images.forEach((e, i) => { e.hdr_sidecar = e.hdr_filename = `g_64x48_${seq[i]}.rhdr`; });
         n.onExecuted(msg);
         await __until(() => v.image && v.hdrData, 15000);
-        const r = { offered: v._modeBtns.has('qc') };
-        v._modeBtns.get('qc').click();
+        const r = { offered: v._modeBtns.has('inspect') && !v._modeBtns.has('qc') };
+        v._runKeyAction('panel.qc');
         await __sleep(50);
         const panel = () => v.container.querySelector('.radiance-ref-col') || document;
         r.ws = v.workspace; r.tab = v._referenceRightTab;
@@ -448,7 +452,7 @@ test('the QC workspace runs the checks, lists each one and the flagged frames, a
         flick?.querySelector('.radiance-qc-frame')?.click();
         await __sleep(50);
         r.frameAfterJump = v.currentFrame;
-        // Alt+7 from another workspace lands on QC.
+        // Alt+7 from another workspace lands on Inspect's QC tab.
         v.setWorkspace('color');
         v._runKeyAction('panel.qc');
         r.altSeven = [v.workspace, v._referenceRightTab];
@@ -456,9 +460,9 @@ test('the QC workspace runs the checks, lists each one and the flagged frames, a
         return r;
     });
     assert.deepEqual(errors, []);
-    assert.equal(out.offered, true, 'QC is not in the workspace switch');
-    assert.equal(out.ws, 'qc'); assert.equal(out.tab, 'qc');
-    assert.deepEqual(out.tabs, ['scopes', 'analysis', 'qc']);
+    assert.equal(out.offered, true, 'QC is a tab of Inspect, not a workspace');
+    assert.equal(out.ws, 'inspect'); assert.equal(out.tab, 'qc');
+    assert.deepEqual(out.tabs, ['inspector', 'scopes', 'analysis', 'qc']);
     assert.match(out.before, /Not run/);
     assert.equal(out.reportDisabled, true, 'Report is offered before any QC run');
     assert.match(out.status, /^WARN · 8\/8 frames$/);
@@ -470,7 +474,7 @@ test('the QC workspace runs the checks, lists each one and the flagged frames, a
     assert.match(out.perFrame[0][1], /Flicker/);
     assert.equal(out.runLabel, 'Run again');
     assert.equal(out.frameAfterJump, 5);
-    assert.deepEqual(out.altSeven, ['qc', 'qc']);
+    assert.deepEqual(out.altSeven, ['inspect', 'qc']);
 });
 
 test('the Deliver render queue renders snapshots one by one, reports each job, and stops after the current one', { skip }, async () => {
