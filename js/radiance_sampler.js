@@ -617,17 +617,18 @@ function applyFolding(node) {
     //  - flux_shift (flow-match shift) is a no-op for SDXL/SD1.5 (ddpm noise
     //    schedule, no flow-matching) -- hidden for those, shown otherwise
     //    (including "auto"/unresolved, same show-by-default bias as guidance below).
-    //  - flux_guidance / profile only apply to guidance-embed models; CFG-guided
-    //    models (WAN, Hunyuan, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore them.
+    //  - flux_guidance only applies to guidance-embed models; CFG-guided
+    //    models (WAN, Hunyuan, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore it.
     const usesGuidanceEmbed =
         GUIDANCE_EMBED_MODELS.has(effectiveModel) ||
         (effectiveModel === "auto" && !CFG_GUIDED_MODELS.has(effectiveModel));
     const usesFlowShift = effectiveModel !== "sdxl" && effectiveModel !== "sd1.5";
     if (!usesFlowShift) hiddenNames.add("flux_shift");
-    if (!usesGuidanceEmbed) {
-        hiddenNames.add("flux_guidance");
-        hiddenNames.add("flux_guidance_profile");
-    }
+    if (!usesGuidanceEmbed) hiddenNames.add("flux_guidance");
+    // ALBABIT-FIX: the Dynamic profile ramps a CFG model's cfg too (the backend's
+    // is_dynamic_cfg, cfg above 1 only, as its tooltip says): shown for those.
+    const usesDynamicCfg = CFG_GUIDED_MODELS.has(effectiveModel) && Number(find("cfg")?.value) > 1;
+    if (!usesGuidanceEmbed && !usesDynamicCfg) hiddenNames.add("flux_guidance_profile");
 
     // 3.5b. PAG / AYS: narrow architecture support (verified against
     // sampler_utils.py's actual hook conditions, not just naming) -- hidden
