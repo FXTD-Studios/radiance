@@ -59,6 +59,20 @@ test('ltx_guidance shows its three settings only on Custom, and only for LTX 2.3
     assert.ok(!shown(node).includes('ltx_guidance') && !shown(node).includes('stg_scale'));
 });
 
+test('guidance_rescale_phi shows only while cfg is above 1, whatever the model', () => {
+    const context = samplerContext();
+    for (const model of ['flux3', 'flux2-klein', 'z_image', 'flux']) {
+        const node = samplerNode('Auto', 'Off');
+        node.widgets[1].value = model;
+        node.widgets[2].value = 1.0;
+        context.fold(node);
+        assert.ok(!shown(node).includes('guidance_rescale_phi'), `${model} at cfg 1`);
+        node.widgets[2].value = 4.0;
+        context.fold(node);
+        assert.ok(shown(node).includes('guidance_rescale_phi'), `${model} at cfg 4`);
+    }
+});
+
 test('Custom starts from the recipe it replaces', () => {
     const context = samplerContext();
     const node = samplerNode(LTX25_LOWRES, 'Modality', [2.0, 0.2, 7.0]);
