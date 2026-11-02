@@ -195,7 +195,7 @@ test('a FLUX 3 step-distilled file drives it to 16 steps at cfg 1', () => {
 test('a FLUX 3 file under a Flux.2 preset is FLUX 3, not Flux.2 Klein', () => {
     assert.deepEqual(samplerDefaults('Flux.2', SD_INT8), ['flux3', 16, 1.0, 0.0]);
     // Flux.2 Klein itself is unchanged.
-    assert.deepEqual(samplerDefaults('Flux.2', 'flux-2-klein-base-4b.safetensors'), ['flux2-klein', 50, 1.0, 4.0]);
+    assert.deepEqual(samplerDefaults('Flux.2', 'flux-2-klein-base-4b.safetensors'), ['flux2-klein', 50, 4.0, 0.0]);
 });
 
 test("BFL's current file names: plain is distilled, -base- is the base, in the Loader and the Sampler", () => {

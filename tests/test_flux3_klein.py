@@ -172,7 +172,7 @@ class TestSampler:
     def test_flux2_klein_rule_does_not_touch_flux3(self):
         from radiance.sampler_utils import refine_distillation_from_meta
         assert refine_distillation_from_meta("flux3", BASE_FILE) is None
-        assert refine_distillation_from_meta("flux2-klein", "flux-2-klein-4b.safetensors") == {"guidance": 1.0, "steps": 4}
+        assert refine_distillation_from_meta("flux2-klein", "flux-2-klein-4b.safetensors") == {"cfg": 1.0, "steps": 4}
 
 
 # ── Resolution ──────────────────────────────────────────────────────────────
