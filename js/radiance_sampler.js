@@ -636,11 +636,11 @@ function applyFolding(node) {
     if (!AYS_SUPPORTED_MODELS.has(effectiveModel)) hiddenNames.add("ays_schedule");
 
     // 3.5c. Guidance rescale only has an effect when cfg > 1.0 (nodes_sampler.py
-    // gates it on that exact condition) -- moot for guidance-embed models,
-    // whose cfg is pinned at 1.0 by design.
-    // ALBABIT-FIX: gated on the live cfg too: LongCat embeds guidance and still
-    // runs a real cfg (4), where the rescale does apply.
-    if (usesGuidanceEmbed && Number(find("cfg")?.value) <= 1) hiddenNames.add("guidance_rescale_phi");
+    // gates it on that exact condition).
+    // ALBABIT-FIX: gated on the live cfg alone, whatever the model: LongCat embeds
+    // guidance and still runs a real cfg (4), while distilled models (Flux.3 and
+    // Flux.2 Klein, Z-Image Turbo, LTX Distilled) run cfg 1, where it does nothing.
+    if (Number(find("cfg")?.value) <= 1) hiddenNames.add("guidance_rescale_phi");
 
     // 3.5c-2. MiniMax H3's reference pipeline uses BasicGuider, which has no
     // cfg input at all. Unlike guidance-embed models (flux_guidance stands
