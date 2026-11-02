@@ -129,11 +129,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   does not understand protocol 3.
 - **Write `filename`** may not leave `output_path`: an absolute path, a drive
   letter or `..` is refused. A subfolder inside `output_path` still works.
-- **Viewer workspaces.** The Simple / Advanced switch is now Review, Color,
-  Inspect and Compare. Review is the old Simple layout; the others use the
-  Advanced layout and each shows the panel tabs it needs (a shortcut to a
-  hidden tab moves to the workspace that has it). A graph saved in Advanced
-  opens in Color.
+- **Viewer workspaces.** The Simple / Advanced switch is now Review, Color
+  and Inspect. Review is the old Simple layout; the others use the Advanced
+  layout and each shows the panel tabs it needs (a shortcut to a hidden tab
+  moves to the workspace that has it). A graph saved in Advanced opens in
+  Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
 
@@ -338,6 +338,13 @@ are the results.
   viewer grows to, a 16:9 frame in the Color workspace went from 358 × 201
   to 643 × 362 pixels. The viewer bar's compare button reads "Show B", so it
   is not mistaken for the blue channel.
+- **One compare switch, three workspaces.** The Advanced viewer bar has the
+  Review bar's A | B | Wipe | Diff | Blink, one mode lit, where it had B, Wipe,
+  Difference and Blink toggles; the header's Compare button, which cycled
+  modes without saying which, is gone. The Compare workspace had no compare
+  controls of its own and opened on Scopes, so it looked like Inspect; QC was
+  one panel tab. Both are now part of Inspect (Inspector, Scopes, Analysis,
+  QC), and a graph saved in either opens there.
 - **Picking a view, or a custom curve, takes the display back from a loaded
   OCIO config.** The config's transform stayed on the renderer, so the
   picture kept the config's view while the View select named another.
@@ -439,7 +446,7 @@ are the results.
   compare on their real values instead of their tone-mapped ones. It needs B
   as a float frame (the compare input); with a pinned still or a preview it
   stays display-referred and the button says so. WebGL only.
-- **QC workspace.** QC is now a workspace (Alt+7 for its panel): run or stop
+- **QC tab.** QC is a tab of the Inspect workspace (Alt+7): run or stop
   the checks, each check with its measured value and the frames it flagged,
   and the flagged frames with what each failed; a frame number jumps there.
 - **Deliver render queue.** Add to Queue keeps the current settings and grade

@@ -1,5 +1,5 @@
 /**
- * Viewer workspaces: Review, Color, Inspect, Compare, QC.
+ * Viewer workspaces: Review, Color, Inspect.
  *
  * Pure data and functions, no DOM, so the rules are testable in Node.
  * radiance_viewer.js holds the DOM and calls in here.
@@ -31,15 +31,17 @@ export const WORKSPACES = Object.freeze([
       tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'],
       tip: 'Grade, masks, effects and scopes' },
     { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true,
-      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis'],
-      tip: 'Frame inspector, channels, scopes and analysis' },
-    { id: 'compare', label: 'Compare', layout: LAYOUT_ADVANCED, available: true,
-      tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis'],
-      tip: 'A/B, wipe, difference and blink against a reference' },
-    { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: true,
-      tab: 'qc', tabs: ['qc', 'scopes', 'analysis'],
-      tip: 'Measured checks over every frame: NaN/Inf, range, alpha and flicker' },
+      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis', 'qc'],
+      tip: 'Frame inspector, channels, scopes, analysis and QC' },
 ]);
+
+/**
+ * Workspaces that 4.0 betas offered and that are now part of another. Compare
+ * had no controls of its own (A | B | Wipe | Diff | Blink is on the bar in
+ * every workspace) and opened on Scopes, so it looked like Inspect; QC was one
+ * panel tab. A saved graph or a call naming one lands where it went.
+ */
+const RETIRED = Object.freeze({ compare: 'inspect', qc: 'inspect' });
 
 /** Every right-panel tab of the Advanced layout, in Alt+1..7 order. */
 export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis', 'qc']);
@@ -47,7 +49,7 @@ export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects
 const BY_ID = new Map(WORKSPACES.map((w) => [w.id, w]));
 
 export function workspaceById(id) {
-    return BY_ID.get(id) || null;
+    return BY_ID.get(RETIRED[id] || id) || null;
 }
 
 /** The workspaces the switcher shows. */
@@ -89,14 +91,11 @@ export function propsFor(workspaceId) {
 /**
  * A suggestion for what the person may want, from facts about the loaded media.
  * Never applied automatically: the viewer shows it as a hint. Returns null when
- * there is nothing worth saying.
+ * there is nothing worth saying, which since the Compare workspace went (the
+ * compare switch is on the bar in every workspace) is always.
  *   facts: { frames, hasB, isHDR }
  */
-export function suggestWorkspace(facts, current) {
-    const f = facts || {};
-    if (f.hasB && current !== 'compare') {
-        return { workspace: 'compare', reason: 'A reference (B) is connected.' };
-    }
+export function suggestWorkspace(facts, current) {   // eslint-disable-line no-unused-vars
     return null;
 }
 
