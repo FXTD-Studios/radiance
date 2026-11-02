@@ -327,10 +327,10 @@ function fillLtxGuidanceSettings(node) {
 // Model taxonomy — mirrors sampler_utils.py so the UI folds the same way the
 // backend resolves models. GUIDANCE_EMBED models use flux_guidance; CFG_GUIDED
 // models drive denoising with plain CFG and ignore the guidance-embed widgets.
-// ALBABIT-FIX: "sd35" renamed "sd3.5". flux2/flux2-klein embed guidance like
-// flux; lumina2 and z_image run a plain KSampler cfg in their official templates.
+// ALBABIT-FIX: "sd35" renamed "sd3.5". flux2 embeds guidance like flux;
+// lumina2 and z_image run a plain KSampler cfg in their official templates.
 // tests/test_sampler_js_mirror.py keeps these sets equal to sampler_utils.py's.
-const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "flux2-klein", "ltxv", "longcat_image"]);
+const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "ltxv", "longcat_image"]);
 // ALBABIT-FIX: "sd15" renamed "sd1.5". lumina2, z_image and wan_ti2v run a real
 // KSampler cfg with no guidance-embed node in their official workflows.
 const CFG_GUIDED_MODELS = new Set([
@@ -338,7 +338,9 @@ const CFG_GUIDED_MODELS = new Set([
     "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
-    "flux3",
+    // ALBABIT-FIX: Flux.2 Klein has no guidance_in: Base runs a real cfg 4
+    // (BFL's guidance_scale), as in sampler_utils.py.
+    "flux2-klein", "flux3",
 ]);
 const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 
@@ -869,8 +871,8 @@ function updatePresetDivergenceMarkers(node) {
     if (changed) node.setDirtyCanvas(true, true);
 }
 
-// ALBABIT-FIX: Flux.2 Klein Base (~50 steps, guidance 4.0) and distilled (4
-// steps, ~1.0) share one architecture; only the file name tells them apart.
+// ALBABIT-FIX: Flux.2 Klein Base (~50 steps, cfg 4.0) and distilled (4
+// steps, cfg 1.0) share one architecture; only the file name tells them apart.
 // With model_meta wired to a Loader, its unet_name is read live, and
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
@@ -952,7 +954,7 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     }
     // Flux.2 Klein only: a FLUX 3 Klein file has "klein" in its name too.
     if (f.includes("klein") && !/flux[-_.]?3/.test(f)) {
-        return f.includes("base") ? { flux_guidance: 4.0, steps: 50 } : { flux_guidance: 1.0, steps: 4 };
+        return f.includes("base") ? { cfg: 4.0, steps: 50 } : { cfg: 1.0, steps: 4 };
     }
     if (f.includes("schnell")) return { flux_guidance: 0.0, steps: 4 };
     if (f.includes("krea")) return { flux_guidance: 4.5 };
@@ -1000,7 +1002,7 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // workflow templates.
     flux:          { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 3.5, steps: 20 },
     flux2:         { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
-    "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
+    "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 20 },
     // FLUX 3 Image Klein base (image_flux3_klein_t2i.json); the step-distilled
     // file is refined to cfg 1, 16 steps by _deriveDistillationOverride.
     flux3:         { cfg: 3.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 50 },
