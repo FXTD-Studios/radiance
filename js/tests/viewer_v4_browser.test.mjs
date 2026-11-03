@@ -176,7 +176,7 @@ test('each workspace shows only its panel tabs, and a hidden tab moves to the wo
     });
     assert.deepEqual(errors, []);
     assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis', 'qc']);
-    assert.equal(out.inspectActive, 'inspector');
+    assert.equal(out.inspectActive, 'scopes');
     assert.deepEqual(out.color, ['grade', 'masks', 'effects', 'scopes']);
     assert.equal(out.colorActive, 'grade');
     assert.deepEqual(out.compare, { ws: 'inspect', tabs: ['inspector', 'scopes', 'analysis', 'qc'] }, 'the retired Compare opens Inspect');

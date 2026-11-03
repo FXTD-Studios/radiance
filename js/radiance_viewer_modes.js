@@ -31,8 +31,8 @@ export const WORKSPACES = Object.freeze([
       tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'],
       tip: 'Grade, masks, effects and scopes' },
     { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true,
-      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis', 'qc'],
-      tip: 'Frame inspector, channels, scopes, analysis and QC' },
+      tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis', 'qc'],
+      tip: 'Scopes, probe and QC; frame inspector, channels and analysis' },
 ]);
 
 /**
