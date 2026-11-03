@@ -162,7 +162,7 @@ window.__run = async () => {
             const { node, v } = await load([0.18, 0.18, 0.18]);
             const bar = v._viewSelect;
             const m5 = { hasBar: !!bar, barLut: !!v._vbLutSelect };
-            v._setReferenceTab('grade');
+            v.openColourSettings();          // Output Transform lives in the Project colour sheet
             const outSel = v._gradeOutputSelect;
             outSel.value = 'Rec.709 (Broadcast)';
             outSel.dispatchEvent(new Event('change', { bubbles: true }));

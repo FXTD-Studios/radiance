@@ -30,6 +30,7 @@ async function viewerPage() {
         node.onExecuted(__frames(1, 64, 48));
         await __until(() => v.hdrData, 30000);
         await __until(() => v.ocioActive, 20000);
+        v.openColourSettings();          // Output Transform lives in the Project colour sheet
         await __sleep(100);
     });
     return page;
@@ -231,5 +232,33 @@ test('what only the rail had is on the viewer bar and in the View menu', { skip 
         assert.equal(r.cross0, 'none');
         assert.notEqual(r.cross1, 'none');
         assert.deepEqual(r.pg, [false, true]);
+    } finally { await page.close(); }
+});
+
+// ── Grade for a colorist: wheels first, a parade beside them ───────────────
+
+test('the Grade tab opens on a live parade and the wheels; colour set-up is one line', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const r = await page.evaluate(async () => {
+            const node = __make('advanced');
+            window.v = node.radianceViewer;
+            node.onExecuted(__frames(1, 64, 48));
+            await __until(() => v.hdrData, 30000);
+            v._setReferenceTab('grade');
+            await __sleep(400);
+            const titles = [...v.controlsPanel.querySelectorAll('.radiance-ref-title')].map((t) => t.firstChild.textContent.trim());
+            const parade = v.controlsPanel.querySelector('.radiance-grade-parade canvas');
+            const px = parade.getContext('2d').getImageData(0, 0, parade.width, parade.height).data;
+            let lit = 0;
+            for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 60) lit++;
+            return { first: titles[0], second: titles[1], transform: titles.includes('COLOR TRANSFORM'),
+                lit, chain: v.controlsPanel.querySelector('.radiance-grade-colour-text')?.textContent };
+        });
+        assert.equal(r.first, 'COLOR WHEELS');
+        assert.equal(r.second, 'EXPOSURE');
+        assert.equal(r.transform, false, 'colour management is in the Project colour sheet, not the Grade tab');
+        assert.ok(r.lit > 100, `the parade drew nothing (${r.lit} lit pixels)`);
+        assert.match(r.chain, / → /);
     } finally { await page.close(); }
 });

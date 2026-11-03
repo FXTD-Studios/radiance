@@ -353,6 +353,15 @@ are the results.
   controls of its own and opened on Scopes, so it looked like Inspect; QC was
   one panel tab. Both are now part of Inspect (Inspector, Scopes, Analysis,
   QC), and a graph saved in either opens there.
+- **Grade for a colorist.** The Grade tab opens on a live RGB parade and the
+  colour wheels, then Exposure; the colour set-up is one line under the
+  parade. Input space, Output Transform and the OCIO config moved to a
+  Project colour sheet (Color > Project Colour…, or the button in the Grade
+  tab; Esc or Done closes it), since they are set once per project, not per
+  shot.
+- **A neutral surround.** The viewer's greys have no colour cast, blue marks
+  state only, and amber is the only warning colour: the peak badge is grey
+  until part of the frame is above the display, then amber, never red.
 - **Picking a view, or a custom curve, takes the display back from a loaded
   OCIO config.** The config's transform stayed on the renderer, so the
   picture kept the config's view while the View select named another.

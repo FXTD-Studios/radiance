@@ -81,7 +81,7 @@ export const KEYMAP = Object.freeze([
     { id: 'panel.curves', keys: [], label: 'Curves', menu: 'Color', group: 'grade' },
     { id: 'panel.masks', keys: [{ code: 'Digit3', alt: true }], label: 'Masks & Qualifiers', help: 'Panel: Masks & Qualifiers', section: 'Panel', menu: 'Color', group: 'grade' },
     { id: 'panel.presets', keys: [], label: 'Grade Presets', menu: 'Color', group: 'grade' },
-    { id: 'panel.ocio', keys: [], label: 'OCIO Config…', menu: 'Color', group: 'grade' },
+    { id: 'panel.ocio', keys: [], label: 'Project Colour…', menu: 'Color', group: 'grade' },
     { id: 'grade.exposureUp', keys: [{ code: 'NumpadAdd' }], label: 'Grade exposure +¼', section: 'Grade' },
     { id: 'grade.exposureDown', keys: [{ code: 'NumpadSubtract' }], label: 'Grade exposure −¼', section: 'Grade' },
     { id: 'view.falseColor', keys: [{ code: 'KeyE' }], label: 'False Color', help: 'False colour (exposure)', section: 'Analysis', menu: 'Color', group: 'overlay' },
