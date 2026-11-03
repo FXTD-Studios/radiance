@@ -362,6 +362,18 @@ are the results.
 - **A neutral surround.** The viewer's greys have no colour cast, blue marks
   state only, and amber is the only warning colour: the peak badge is grey
   until part of the frame is above the display, then amber, never red.
+- **A quieter header and status line.** The header keeps Export, Hide Panel
+  and settings; the format, aspect, colour and engine badges are gone (the
+  file line already says it), and HDR Heatmap is in the Color menu. The
+  status line shows position, value, the colour chain, zoom and the peak; the
+  bit-depth note shows only for a proxy, and the false-colour legend row only
+  while False Color is on.
+- **Viewer gain and gamma sit beside View**, marked viewer only: neither is in
+  the render or any export.
+- **The peak readout is measured against the display you chose.** On an SDR
+  view it gives the share of the frame above SDR white; on an HDR view, the
+  share above the display peak (1000 nits unless the view names one). Amber
+  from 0.1%, and a click turns on False Color.
 - **Picking a view, or a custom curve, takes the display back from a loaded
   OCIO config.** The config's transform stayed on the renderer, so the
   picture kept the config's view while the View select named another.
