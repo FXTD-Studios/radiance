@@ -3873,7 +3873,7 @@ class RadianceViewer {
             return [wrap, inp];
         };
         const evLim = RadianceViewer.VIEW_EXPOSURE_LIMIT;
-        const [evWrap, evInp] = mkNum('f/', `Viewer exposure in stops, ±${evLim} (not rendered out). Alt+click resets.`,
+        const [evWrap, evInp] = mkNum('EV', `Viewer exposure in stops, ±${evLim} (not rendered out). Alt+click resets.`,
             [-evLim, evLim], 0.5, 0, () => this.viewExposure,
             (v, o) => { if (o?.live) { this.viewExposure = v; this.render(); } else this.setViewExposure(v); },
             (v) => v.toFixed(1));

@@ -148,6 +148,12 @@ else is fixes. Read the upgrade notes before moving a production setup.
   They sit in `workflows/` as `api_*.json`, so ComfyUI's Templates menu lists them
   (it reads only the top level of `workflows/`), and the README lists the two
   kinds separately.
+- **The Workflow Library ships its official cards.** Every API workflow and
+  the local ones have a card in `workflows/official/API/` and
+  `workflows/official/Local/` (.rad v3: the same graph as the JSON in
+  `workflows/`, a cover, and the title, kicker and tags the Library shows), so
+  a clean install opens a full Library instead of an empty one. A test keeps
+  each card's graph equal to its JSON.
 - **Removed `workflows/official/wan22_t2v_hdr_universal.json`.** It described
   v3.1.2 with retired checkpoints and the Templates menu could not reach it;
   `wan22_hdr_shot_plates.json` is the WAN 2.2 workflow. Video workflow notes
@@ -384,7 +390,8 @@ are the results.
 - **The peak readout is measured against the display you chose.** On an SDR
   view it gives the share of the frame above SDR white; on an HDR view, the
   share above the display peak (1000 nits unless the view names one). Amber
-  from 0.1%, and a click turns on False Color.
+  from 0.1%, and a click turns on False Color. The viewer exposure box reads
+  EV (it was labelled f/).
 - **Inspect opens on Scopes.** Waveform, parade, vectorscope and the last QC
   run sit in a 2 x 2 (the histogram is under Show), with a 10-bit | % | Nits
   switch above them (Nits only for a PQ or HLG view) and a probe row under
