@@ -157,7 +157,11 @@ class TestSampler:
         assert (kw["cfg"], kw["steps"]) == (3.5, 50)
 
     @pytest.mark.parametrize("unet, expected", [(BASE_FILE, (3.5, 50)), (SD_FILE, (1.0, 16)),
-                                                ("flux3_image_klein_sd_bf16.safetensors", (1.0, 16))])
+                                                ("flux3_image_klein_sd_bf16.safetensors", (1.0, 16)),
+                                                ("flux3-image-klein-bf16.safetensors", (1.0, 16)),
+                                                ("flux3-image-klein-base-int8-convrot.safetensors", (3.5, 50)),
+                                                ("klein-base/flux3-image-klein-bf16.safetensors", (1.0, 16)),
+                                                ("klein-base\\flux3-image-klein-bf16.safetensors", (1.0, 16))])
     def test_file_name_decides_when_the_model_does_not_say(self, unet, expected):
         meta = json.dumps({"arch": "flux3", "unet_file": unet})
         _, kw = _auto(None, meta=meta)
@@ -170,7 +174,7 @@ class TestSampler:
     def test_flux2_klein_rule_does_not_touch_flux3(self):
         from radiance.sampler_utils import refine_distillation_from_meta
         assert refine_distillation_from_meta("flux3", BASE_FILE) is None
-        assert refine_distillation_from_meta("flux2-klein", "flux-2-klein-4b.safetensors") == {"guidance": 1.0, "steps": 4}
+        assert refine_distillation_from_meta("flux2-klein", "flux-2-klein-4b.safetensors") == {"cfg": 1.0, "steps": 4}
 
 
 # ── Resolution ──────────────────────────────────────────────────────────────

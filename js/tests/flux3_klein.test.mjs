@@ -28,6 +28,11 @@ const BASE_BF16 = 'flux3_image_klein_bf16.safetensors';
 const SD_BF16 = 'flux3_image_klein_sd_bf16.safetensors';
 const BASE_INT8 = 'flux3_image_klein_int8_convrot.safetensors';
 const SD_INT8 = 'flux3_image_klein_sd_int8_convrot.safetensors';
+// BFL's current names: plain is distilled, -base- is the base.
+const NEW_BASE_BF16 = 'flux3-image-klein-base-bf16.safetensors';
+const NEW_SD_BF16 = 'flux3-image-klein-bf16.safetensors';
+const NEW_BASE_INT8 = 'flux3-image-klein-base-int8-convrot.safetensors';
+const NEW_SD_INT8 = 'flux3-image-klein-int8-convrot.safetensors';
 const TE_BF16 = 'qwen3vl_4b_bf16.safetensors';
 const TE_INT8 = 'qwen3vl_4b_int8_convrot.safetensors';
 const PUP = 'qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors';
@@ -40,6 +45,14 @@ test('Flux.3 Klein picks the FLUX 3 transformer, Qwen3-VL-4B and the Flux.2 VAE'
     assert.equal(loaderCtx.unetMatch(c, [KLEIN2]), null);
     assert.equal(loaderCtx.find(c.vae_hints, ['ae.safetensors', 'flux2-vae.safetensors']), 'flux2-vae.safetensors');
     assert.deepEqual([...loaderCtx.slots['Flux.3 Klein']], ['llm_encoder']);
+});
+
+test('Flux.3 Klein picks the base before the distilled file of the same precision, Low VRAM the distilled', () => {
+    const c = loaderCtx.presets['Flux.3 Klein'];
+    assert.equal(loaderCtx.unetMatch(c, [NEW_SD_BF16, NEW_BASE_BF16]), NEW_BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [SD_BF16, BASE_BF16]), BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [NEW_SD_INT8, NEW_BASE_INT8]), NEW_BASE_INT8);
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.3 Klein (Low VRAM)'], [NEW_BASE_INT8, NEW_SD_INT8]), NEW_SD_INT8);
 });
 
 test('the text encoder is never the prompt upsampler or a Qwen3 file of Flux.2 Klein', () => {
@@ -144,6 +157,16 @@ test('the Flux.2 presets no longer grab a FLUX 3 Klein file through their bare "
     assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.2'], [SD_INT8, KLEIN2]), KLEIN2);
 });
 
+test('Flux.2 picks each Klein Base before the distilled file of its size, Low VRAM the distilled', () => {
+    const c = loaderCtx.presets['Flux.2'];
+    const k9 = 'flux-2-klein-9b.safetensors', base9 = 'flux-2-klein-base-9b.safetensors';
+    const k9fp8 = 'flux-2-klein-9b-fp8.safetensors', base9fp8 = 'flux-2-klein-base-9b-fp8.safetensors';
+    assert.equal(loaderCtx.unetMatch(c, [k9, base9]), base9);
+    assert.equal(loaderCtx.unetMatch(c, [k9fp8, base9fp8]), base9fp8);
+    assert.equal(loaderCtx.unetMatch(c, [base9, 'flux2-dev.safetensors']), 'flux2-dev.safetensors', 'Dev stays first');
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.2 (Low VRAM)'], [base9fp8, k9fp8]), k9fp8);
+});
+
 // ── Sampler ────────────────────────────────────────────────────────────────
 
 function samplerDefaults(preset, unet) {
@@ -182,7 +205,23 @@ test('a FLUX 3 step-distilled file drives it to 16 steps at cfg 1', () => {
 test('a FLUX 3 file under a Flux.2 preset is FLUX 3, not Flux.2 Klein', () => {
     assert.deepEqual(samplerDefaults('Flux.2', SD_INT8), ['flux3', 16, 1.0, 0.0]);
     // Flux.2 Klein itself is unchanged.
-    assert.deepEqual(samplerDefaults('Flux.2', 'flux-2-klein-base-4b.safetensors'), ['flux2-klein', 50, 1.0, 4.0]);
+    assert.deepEqual(samplerDefaults('Flux.2', 'flux-2-klein-base-4b.safetensors'), ['flux2-klein', 50, 4.0, 0.0]);
+});
+
+test("BFL's current file names: plain is distilled, -base- is the base, in the Loader and the Sampler", () => {
+    const c = loaderCtx.presets['Flux.3 Klein'];
+    assert.equal(loaderCtx.unetMatch(c, [KLEIN2, NEW_SD_BF16]), NEW_SD_BF16);
+    assert.equal(loaderCtx.unetMatch(c, [KLEIN2, NEW_BASE_BF16]), NEW_BASE_BF16);
+    assert.equal(loaderCtx.unetMatch(loaderCtx.presets['Flux.3 Klein (Low VRAM)'],
+        [NEW_SD_BF16, NEW_BASE_INT8, NEW_SD_INT8]), NEW_SD_INT8);
+    for (const preset of ['Flux.2', 'Flux.2 (Low VRAM)']) {
+        assert.equal(loaderCtx.unetMatch(loaderCtx.presets[preset], [NEW_SD_BF16, NEW_BASE_BF16]), null, preset);
+    }
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_SD_BF16), ['flux3', 16, 1.0, 0.0]);
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', NEW_BASE_BF16), ['flux3', 50, 3.5, 0.0]);
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', BASE_BF16), ['flux3', 50, 3.5, 0.0], 'the first plain name was the base');
+    assert.deepEqual(samplerDefaults('Flux.3 Klein', `klein-base\\${NEW_SD_BF16}`), ['flux3', 16, 1.0, 0.0],
+        'a folder name does not count');
 });
 
 // ── Resolution and Prompt mirrors ──────────────────────────────────────────

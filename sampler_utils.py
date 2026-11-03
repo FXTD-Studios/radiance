@@ -87,12 +87,12 @@ MODEL_TYPES = [
 VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi", "minimax",
                      "hunyuan_video_15", "kandinsky5"}
 
-# ALBABIT-FIX: flux2/flux2-klein embed guidance like flux. lumina2 and z_image
+# ALBABIT-FIX: flux2 embeds guidance like flux. lumina2 and z_image
 # are not here: their official templates run a plain KSampler cfg (4) with no
 # guidance-embed node (see CFG_GUIDED_MODELS).
 # 3.5: LongCat-Image is a Flux transformer and its official template drives it
 # through FluxGuidance (4.0) like Flux.1, with cfg held at 4 under CFGNorm.
-GUIDANCE_EMBED_MODELS = {"flux", "flux2", "flux2-klein", "ltxv", "longcat_image"}
+GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image"}
 
 # ALBABIT-FIX: "sd35" renamed "sd3.5" (the Loader/detect.py name). lumina2,
 # z_image and wan_ti2v run a real KSampler cfg with no guidance-embed node in
@@ -103,6 +103,10 @@ CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3",
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
                      "hidream", "omnigen2", "kandinsky5", "kandinsky5_image",
                      "qwen_image21",  # ALBABIT-FIX: same evidence, its template's KSampler cfg
+                     # ALBABIT-FIX: Flux.2 Klein has no guidance_in either: BFL's
+                     # guidance_scale 4.0 for Base is a real cfg (diffusers' Klein
+                     # pipeline), as is the CFGGuider of its official templates.
+                     "flux2-klein",
                      # FLUX 3 Image Klein: no guidance embedding (the DiT has no
                      # guidance_in). Base runs a real cfg 3.5, the distilled flow
                      # map cfg 1 (MODEL_DEFAULTS / refine_flux3_from_model).
@@ -126,8 +130,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
     # ALBABIT-FIX: guidance 4.0 per BFL's example code, steps 20 per Comfy-Org's
     # Flux.2 Dev/Klein templates. Klein's entry is the fallback without
-    # model_meta: Base (4.0) and distilled (~1.0) differ only by file name, which
-    # refine_distillation_from_meta() reads.
+    # model_meta: Base (cfg 4.0) and distilled (cfg 1.0) differ only by file name,
+    # which refine_distillation_from_meta() reads.
     "flux2": {
         "cfg": 1.0,
         "scheduler": "simple",
@@ -139,7 +143,7 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "flux2-klein": {
         "cfg": 1.0,
         "scheduler": "simple",
-        "guidance": 4.0,
+        "guidance": 0.0,
         "shift": 1.0,
         "sampler": "euler",
         "steps": 20,
@@ -720,7 +724,11 @@ FLUX3_DISTILLED: Dict[str, Any] = {"cfg": 1.0, "steps": 16}
 def _flux3_name_is_distilled(name: str) -> bool:
     """BFL names the step-distilled files ``flux3_image_klein_sd_*``."""
     name = name.lower()
-    return "_sd_" in name or "_sd." in name or "distill" in name
+    # ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
+    # model and flux3-image-klein-base-* the base, while the old plain
+    # flux3_image_klein_* was the base. Both spellings stay recognised.
+    return ("_sd_" in name or "_sd." in name or "distill" in name
+            or ("flux3-image-klein" in name and "-base" not in name))
 
 
 def refine_flux3_from_model(model) -> Optional[Dict[str, Any]]:
@@ -762,7 +770,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
                 return {"cfg": 1.0, "steps": int(match.group(1))}
     if not unet_file:
         return None
-    name = unet_file.lower()
+    # ALBABIT-FIX: the file's own name, not its folder: a "klein-base/" folder made
+    # a distilled file read as the base.
+    name = re.split(r"[\\/]", unet_file)[-1].lower()
     if detected_type == "flux3":
         return FLUX3_DISTILLED if _flux3_name_is_distilled(name) else None
     # ALBABIT-FIX: the LTX 2.3 / 2.5 Distilled models run at cfg 1 in both passes; the
@@ -771,7 +781,7 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
         return {"cfg": 1.0}
     if detected_type == "flux2-klein":
         is_distilled = "base" not in name
-        return {"guidance": 1.0, "steps": 4} if is_distilled else {"guidance": 4.0, "steps": 50}
+        return {"cfg": 1.0, "steps": 4} if is_distilled else {"cfg": 4.0, "steps": 50}
     if detected_type == "flux" and "schnell" in name:
         return {"guidance": 0.0, "steps": 4}
     if detected_type == "flux" and "krea" in name:

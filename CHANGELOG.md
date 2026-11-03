@@ -187,6 +187,9 @@ else is fixes. Read the upgrade notes before moving a production setup.
     its keys. Files: the FLUX 3 transformer (`diffusion_models`), Qwen3-VL-4B
     (`text_encoders`, loaded as CLIPType FLUX3) and the Flux.2 VAE. The
     weights are gated on Hugging Face and are not downloaded by the Loader.
+    BFL's current file names (`flux3-image-klein-*` distilled,
+    `flux3-image-klein-base-*` base) and its first ones (`flux3_image_klein_sd_*`
+    distilled, `flux3_image_klein_*` base) are both recognised.
   - **Sampler:** base runs 50 steps at cfg 3.5, distilled 16 steps at cfg 1,
     euler / simple (the official templates and BFL's reference). Base and
     distilled are told apart from the weights (the distilled model's flow-map

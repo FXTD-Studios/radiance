@@ -1,7 +1,8 @@
 """Tests for sampler_utils.py model_meta parsing / distillation refinement."""
 import json
 
-from radiance.sampler_utils import parse_model_meta, refine_distillation_from_meta
+from radiance.sampler_utils import (CFG_GUIDED_MODELS, GUIDANCE_EMBED_MODELS, parse_model_meta,
+                                    refine_distillation_from_meta)
 
 
 class TestParseModelMeta:
@@ -29,15 +30,20 @@ class TestRefineDistillationFromMeta:
 
     def test_klein_base_variant(self):
         result = refine_distillation_from_meta("flux2-klein", "flux-2-klein-base-4b.safetensors")
-        assert result == {"guidance": 4.0, "steps": 50}
+        assert result == {"cfg": 4.0, "steps": 50}
 
     def test_klein_distilled_variant(self):
         result = refine_distillation_from_meta("flux2-klein", "flux-2-klein-9b.safetensors")
-        assert result == {"guidance": 1.0, "steps": 4}
+        assert result == {"cfg": 1.0, "steps": 4}
+
+    def test_klein_runs_a_real_cfg(self):
+        # The Klein DiT has no guidance_in: a flux_guidance value would be ignored.
+        assert "flux2-klein" in CFG_GUIDED_MODELS
+        assert "flux2-klein" not in GUIDANCE_EMBED_MODELS
 
     def test_klein_base_case_insensitive(self):
         result = refine_distillation_from_meta("flux2-klein", "FLUX-2-KLEIN-BASE-9B-FP8.safetensors")
-        assert result == {"guidance": 4.0, "steps": 50}
+        assert result == {"cfg": 4.0, "steps": 50}
 
     def test_flux2_dev_not_affected(self):
         # Flux.2 Dev has no distilled counterpart -- always None, MODEL_DEFAULTS'

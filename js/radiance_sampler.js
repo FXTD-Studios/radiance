@@ -327,10 +327,10 @@ function fillLtxGuidanceSettings(node) {
 // Model taxonomy — mirrors sampler_utils.py so the UI folds the same way the
 // backend resolves models. GUIDANCE_EMBED models use flux_guidance; CFG_GUIDED
 // models drive denoising with plain CFG and ignore the guidance-embed widgets.
-// ALBABIT-FIX: "sd35" renamed "sd3.5". flux2/flux2-klein embed guidance like
-// flux; lumina2 and z_image run a plain KSampler cfg in their official templates.
+// ALBABIT-FIX: "sd35" renamed "sd3.5". flux2 embeds guidance like flux;
+// lumina2 and z_image run a plain KSampler cfg in their official templates.
 // tests/test_sampler_js_mirror.py keeps these sets equal to sampler_utils.py's.
-const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "flux2-klein", "ltxv", "longcat_image"]);
+const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "ltxv", "longcat_image"]);
 // ALBABIT-FIX: "sd15" renamed "sd1.5". lumina2, z_image and wan_ti2v run a real
 // KSampler cfg with no guidance-embed node in their official workflows.
 const CFG_GUIDED_MODELS = new Set([
@@ -338,7 +338,9 @@ const CFG_GUIDED_MODELS = new Set([
     "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
-    "flux3",
+    // ALBABIT-FIX: Flux.2 Klein has no guidance_in: Base runs a real cfg 4
+    // (BFL's guidance_scale), as in sampler_utils.py.
+    "flux2-klein", "flux3",
 ]);
 const LTX_MODEL_TYPES = new Set(["ltxv", "ltxav"]);
 
@@ -615,17 +617,18 @@ function applyFolding(node) {
     //  - flux_shift (flow-match shift) is a no-op for SDXL/SD1.5 (ddpm noise
     //    schedule, no flow-matching) -- hidden for those, shown otherwise
     //    (including "auto"/unresolved, same show-by-default bias as guidance below).
-    //  - flux_guidance / profile only apply to guidance-embed models; CFG-guided
-    //    models (WAN, Hunyuan, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore them.
+    //  - flux_guidance only applies to guidance-embed models; CFG-guided
+    //    models (WAN, Hunyuan, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore it.
     const usesGuidanceEmbed =
         GUIDANCE_EMBED_MODELS.has(effectiveModel) ||
         (effectiveModel === "auto" && !CFG_GUIDED_MODELS.has(effectiveModel));
     const usesFlowShift = effectiveModel !== "sdxl" && effectiveModel !== "sd1.5";
     if (!usesFlowShift) hiddenNames.add("flux_shift");
-    if (!usesGuidanceEmbed) {
-        hiddenNames.add("flux_guidance");
-        hiddenNames.add("flux_guidance_profile");
-    }
+    if (!usesGuidanceEmbed) hiddenNames.add("flux_guidance");
+    // ALBABIT-FIX: the Dynamic profile ramps a CFG model's cfg too (the backend's
+    // is_dynamic_cfg, cfg above 1 only, as its tooltip says): shown for those.
+    const usesDynamicCfg = CFG_GUIDED_MODELS.has(effectiveModel) && Number(find("cfg")?.value) > 1;
+    if (!usesGuidanceEmbed && !usesDynamicCfg) hiddenNames.add("flux_guidance_profile");
 
     // 3.5b. PAG / AYS: narrow architecture support (verified against
     // sampler_utils.py's actual hook conditions, not just naming) -- hidden
@@ -634,11 +637,17 @@ function applyFolding(node) {
     if (!AYS_SUPPORTED_MODELS.has(effectiveModel)) hiddenNames.add("ays_schedule");
 
     // 3.5c. Guidance rescale only has an effect when cfg > 1.0 (nodes_sampler.py
-    // gates it on that exact condition) -- moot for guidance-embed models,
-    // whose cfg is pinned at 1.0 by design.
-    // ALBABIT-FIX: gated on the live cfg too: LongCat embeds guidance and still
-    // runs a real cfg (4), where the rescale does apply.
-    if (usesGuidanceEmbed && Number(find("cfg")?.value) <= 1) hiddenNames.add("guidance_rescale_phi");
+    // gates it on that exact condition).
+    // ALBABIT-FIX: gated on the live cfg alone, whatever the model: LongCat embeds
+    // guidance and still runs a real cfg (4), while distilled models (Flux.3 and
+    // Flux.2 Klein, Z-Image Turbo, LTX Distilled) run cfg 1, where it does nothing.
+    // Under LTX-AV's STG or modality guidance the backend rescales at cfg 1 too.
+    const [stg, , modality] = ltxGuidance === "Custom"
+        ? LTX_GUIDANCE_SETTINGS.map(name => Number(find(name)?.value))
+        : LTX_GUIDANCE_RECIPES[ltxGuidance] ?? LTX_GUIDANCE_RECIPES.Off;
+    const ltxGuided = effectiveModel === "ltxav" && (stg > 0 || Math.abs(modality - 1) > 1e-9);
+    // ALBABIT-FIX: while the model is unknown, the backend may still raise cfg from the weights.
+    if (effectiveModel !== "auto" && Number(find("cfg")?.value) <= 1 && !ltxGuided) hiddenNames.add("guidance_rescale_phi");
 
     // 3.5c-2. MiniMax H3's reference pipeline uses BasicGuider, which has no
     // cfg input at all. Unlike guidance-embed models (flux_guidance stands
@@ -869,8 +878,8 @@ function updatePresetDivergenceMarkers(node) {
     if (changed) node.setDirtyCanvas(true, true);
 }
 
-// ALBABIT-FIX: Flux.2 Klein Base (~50 steps, guidance 4.0) and distilled (4
-// steps, ~1.0) share one architecture; only the file name tells them apart.
+// ALBABIT-FIX: Flux.2 Klein Base (~50 steps, cfg 4.0) and distilled (4
+// steps, cfg 1.0) share one architecture; only the file name tells them apart.
 // With model_meta wired to a Loader, its unet_name is read live, and
 // the derived widgets get "🧲" (the Loader's convention), not "✎".
 const LINKED_MARKER = " 🧲";
@@ -939,16 +948,21 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
         }
     }
     if (!filename) return null;
-    const f = filename.toLowerCase();
+    // ALBABIT-FIX: the file's own name, not its folder, as in Python.
+    const f = filename.toLowerCase().split(/[\\/]/).pop();
     // FLUX 3 Image Klein: BFL names the step-distilled files flux3_image_klein_sd_*.
+    // ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
+    // model and flux3-image-klein-base-* the base, while the old plain
+    // flux3_image_klein_* was the base. Both spellings stay recognised.
     // Mirrors refine_distillation_from_meta; at run time the weights decide
     // (refine_flux3_from_model) and onExecuted shows what was used.
     if (detectedType === "flux3") {
-        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")) ? { cfg: 1.0, steps: 16 } : null;
+        return (f.includes("_sd_") || f.includes("_sd.") || f.includes("distill")
+            || (f.includes("flux3-image-klein") && !f.includes("-base"))) ? { cfg: 1.0, steps: 16 } : null;
     }
     // Flux.2 Klein only: a FLUX 3 Klein file has "klein" in its name too.
     if (f.includes("klein") && !/flux[-_.]?3/.test(f)) {
-        return f.includes("base") ? { flux_guidance: 4.0, steps: 50 } : { flux_guidance: 1.0, steps: 4 };
+        return f.includes("base") ? { cfg: 4.0, steps: 50 } : { cfg: 1.0, steps: 4 };
     }
     if (f.includes("schnell")) return { flux_guidance: 0.0, steps: 4 };
     if (f.includes("krea")) return { flux_guidance: 4.5 };
@@ -996,7 +1010,7 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // workflow templates.
     flux:          { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 3.5, steps: 20 },
     flux2:         { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
-    "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 4.0, steps: 20 },
+    "flux2-klein": { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 20 },
     // FLUX 3 Image Klein base (image_flux3_klein_t2i.json); the step-distilled
     // file is refined to cfg 1, 16 steps by _deriveDistillationOverride.
     flux3:         { cfg: 3.5, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 50 },
