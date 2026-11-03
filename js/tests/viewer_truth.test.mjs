@@ -454,6 +454,7 @@ if (!skip) {
                 });
                 const grade = document.createElement('div'); document.body.appendChild(grade);
                 v._renderReferenceGrade?.(grade);
+                v._renderColourSettings?.(grade);   // the input space is in the Project colour sheet
                 const opts = [...grade.querySelectorAll('select')].flatMap((s) => [...s.options].map((o) => o.textContent));
                 const out = { header: v._proColor?.textContent, inspector: kv, gradeOptions: opts,
                     html: insp.textContent + ' ' + grade.textContent };
