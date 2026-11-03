@@ -114,30 +114,31 @@ class RadianceViewer {
      * M18: the one place the Advanced viewer's colours and type sizes are
      * set. The CSS reads them as --radiance-* custom properties (see
      * _themeVars) and inline styles read this.theme, so a colour or size
-     * changes here and nowhere else. Neutral greys with a slight cool bias
-     * and one accent, the way Resolve, Nuke and RV dress a grading tool.
+     * changes here and nowhere else. True neutral greys, no colour cast
+     * next to the picture, and one blue used only for state; amber is the
+     * only warning colour. A tinted UI beside the image skews how it is judged.
      *
      * Every text colour is at least 4.5:1 against every surface it sits on
      * (raised controls included); viewer_polish.test.mjs measures it.
      */
     static THEME = {
-        bg: '#0b0d10',              // canvas surround
-        surface: '#111317',         // rail, panel body
-        surfaceRaised: '#171a1f',   // header, tab strip, bars
-        control: '#1e2228',         // inputs, buttons, readouts
-        controlHover: '#272c34',
-        panel: 'rgba(23, 26, 31, 0.96)',
-        panelBorder: '#2a2f37',
-        borderStrong: '#3b424d',
-        accent: '#00bdff',
-        accentSoft: 'rgba(0, 189, 255, 0.14)',
-        accentGlow: 'rgba(0, 189, 255, 0.25)',
-        text: '#e6e9ee',
-        textDim: '#a7afbb',         // labels
-        textMuted: '#8b94a1',       // shortcuts and secondary readouts
-        warn: '#f5a524',
-        error: '#ff6b6b',
-        ok: '#4ade80',
+        bg: '#161616',              // canvas surround: dark neutral, no cast
+        surface: '#1c1c1e',         // rail, panel body
+        surfaceRaised: '#202022',   // header, tab strip, bars
+        control: '#2c2c2e',         // inputs, buttons, readouts
+        controlHover: '#333336',
+        panel: 'rgba(32, 32, 34, 0.97)',
+        panelBorder: '#2f2f32',
+        borderStrong: '#48484a',
+        accent: '#4da3ff',          // state only: the selected tab, mode, toggle
+        accentSoft: 'rgba(77, 163, 255, 0.14)',
+        accentGlow: 'rgba(77, 163, 255, 0.22)',
+        text: '#e8e8ea',
+        textDim: '#bcbcc1',         // labels
+        textMuted: '#aeaeb3',       // shortcuts and secondary readouts
+        warn: '#ff9f0a',
+        error: '#ff6961',
+        ok: '#5ad27a',
         font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
         mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
         // 12 px for every label and value; 11 px only for uppercase,
@@ -471,7 +472,7 @@ class RadianceViewer {
                 .radiance-pro-chip {
                     padding: 3px 7px;
                     border-radius: 4px;
-                    border: 1px solid rgba(0, 189, 255, 0.35);
+                    border: 1px solid rgba(77, 163, 255, 0.35);
                     color: var(--radiance-accent);
                     background: var(--radiance-accent-soft);
                     font-size: var(--radiance-fs-heading);
@@ -517,7 +518,7 @@ class RadianceViewer {
                 .radiance-pro-actions button.is-active,
                 .radiance-pro-actions button[aria-expanded="true"].radiance-pro-settings-btn {
                     color: var(--radiance-accent);
-                    border-color: rgba(0, 189, 255, 0.45);
+                    border-color: rgba(77, 163, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-sidebar button:hover {
@@ -575,7 +576,7 @@ class RadianceViewer {
                 .radiance-settings-popover button[aria-pressed="true"],
                 .radiance-settings-popover button[aria-checked="true"] {
                     color: var(--radiance-accent);
-                    border-color: rgba(0, 189, 255, 0.45);
+                    border-color: rgba(77, 163, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-settings-popover button:disabled { opacity: .45; cursor: not-allowed; }
@@ -712,7 +713,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-viewer-bar button.is-active {
                     color: var(--radiance-accent);
-                    border-color: rgba(0, 189, 255, 0.45);
+                    border-color: rgba(77, 163, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-viewer-bar .radiance-pro-bar-label {
@@ -781,7 +782,7 @@ class RadianceViewer {
                     cursor: pointer;
                 }
                 .radiance-pro-sequence-controls button:hover {
-                    border-color: rgba(0, 189, 255, 0.45);
+                    border-color: rgba(77, 163, 255, 0.45);
                     background: var(--radiance-control-hover);
                 }
                 .radiance-pro-tool-btn,
@@ -857,11 +858,11 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     margin-top: -5px;
-                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
+                    box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.28);
                     transition: box-shadow 0.15s;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb:hover {
-                    box-shadow: 0 0 0 4px rgba(0, 189, 255, 0.38);
+                    box-shadow: 0 0 0 4px rgba(77, 163, 255, 0.38);
                 }
                 .radiance-pro-sequence-range::-moz-range-track {
                     height: 4px;
@@ -875,7 +876,7 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     border: none;
-                    box-shadow: 0 0 0 2px rgba(0, 189, 255, 0.28);
+                    box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.28);
                 }
                 .radiance-pro-sequence-range::-moz-range-progress {
                     background: var(--radiance-accent);
@@ -937,7 +938,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-thumb.is-active .radiance-pro-thumb-frame {
                     border-color: var(--radiance-accent);
-                    box-shadow: 0 0 0 1px rgba(0, 189, 255, 0.45);
+                    box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.45);
                 }
                 .radiance-pro-thumb canvas,
                 .radiance-pro-thumb img {
@@ -1022,7 +1023,7 @@ class RadianceViewer {
                     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
                 }
                 .help-group h3 {
-                    font-size: 11px; color: #00a8ff; text-transform: uppercase;
+                    font-size: 11px; color: #4da3ff; text-transform: uppercase;
                     letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(0, 168, 255, 0.2);
                     padding-bottom: 4px;
                 }
@@ -1585,7 +1586,7 @@ class RadianceViewer {
             if (this._analysisLabel) {
                 this._analysisLabel.textContent = 'PICK NEUTRAL POINT...';
                 this._analysisLabel.style.display = 'block';
-                this._analysisLabel.style.background = '#00a8ff';
+                this._analysisLabel.style.background = '#4da3ff';
                 this._analysisLabel.style.color = '#fff';
             }
 
@@ -1979,10 +1980,9 @@ class RadianceViewer {
         this.hdrPeakInfo.textContent = `⬆ ${nitStr}  ·  ${ev} EV  ·  ${clp}% clip`;
         this.hdrPeakInfo.style.display = '';
 
-        // Colorize: orange < 1k nit, amber 1-4k, red > 4k
-        let c = '#f97316';
-        if (nit > 4000) c = '#ef4444';
-        else if (nit > 1000) c = '#f59e0b';
+        // Amber when part of the frame is above what the display shows, grey
+        // otherwise: one warning colour, never red beside the picture.
+        const c = stats.clippedPct >= 0.1 ? this.theme.warn : this.theme.textMuted;
         this.hdrPeakInfo.style.color = c;
         this.hdrPeakInfo.style.background  = `${c}18`;
         this.hdrPeakInfo.style.borderColor = `${c}40`;
@@ -2368,7 +2368,7 @@ class RadianceViewer {
         if (existing) existing.remove();
 
         const colors = {
-            info: "#00a8ff",
+            info: "#4da3ff",
             success: "#4cd964",
             error: "#ff6b6b",
             warn: "#ffb020",
@@ -2639,7 +2639,7 @@ class RadianceViewer {
         this._syncPanelButton?.();
         this._renderReferenceRightHUD?.();
         this._syncRail?.();
-        if (tabId === 'scopes') requestAnimationFrame(() => this._updateReferenceScopes?.());
+        if (tabId === 'scopes' || tabId === 'grade') requestAnimationFrame(() => this._updateReferenceScopes?.());
     }
 
     /** Close the open menu-bar dropdown, if any. */
@@ -2724,17 +2724,17 @@ class RadianceViewer {
             .radiance-mode-switch button.has-hint::after { content: ''; display: inline-block; width: 6px; height: 6px;
                 border-radius: 50%; background: #f5a524; margin-left: 5px; vertical-align: middle; }
             .radiance-mode-switch button:focus-visible, .radiance-simple-bar button:focus-visible,
-            .radiance-simple-bar input:focus-visible { outline: 2px solid #39aaff; outline-offset: 1px; }
+            .radiance-simple-bar input:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
             .radiance-simple-bar { display: none; flex: 0 0 auto; align-items: center; gap: 10px;
                 padding: 6px 10px; background: #0d1117; border-top: 1px solid rgba(255,255,255,.08);
                 font: 11px var(--radiance-font-ui); color: rgba(232,238,247,.8); min-width: 0; }
             .radiance-mode-simple .radiance-simple-bar { display: flex; }
             .radiance-simple-bar .rsb-group { display: flex; gap: 2px; padding: 2px; border-radius: 6px;
                 background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10); flex-shrink: 0; }
-            .radiance-simple-bar .rsb-play { width: 34px; background: #39aaff; color: #071019; }
-            .radiance-simple-bar .rsb-play.is-active { background: #39aaff; color: #071019; }
+            .radiance-simple-bar .rsb-play { width: 34px; background: #4da3ff; color: #071019; }
+            .radiance-simple-bar .rsb-play.is-active { background: #4da3ff; color: #071019; }
             .radiance-simple-bar .rsb-frame { font-family: var(--radiance-font-mono); min-width: 64px; }
-            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #39aaff; }
+            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #4da3ff; }
             .radiance-simple-bar .radiance-cache-marks { flex: 1 1 120px; min-width: 60px; }
             .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
             .radiance-cache-marks > input { position: relative; }
@@ -4165,7 +4165,7 @@ class RadianceViewer {
                     endFrame: total > 0 ? total - 1 : 0,
                     offset: 0,
                     name: clipName,
-                    color: '#00bdff'
+                    color: '#4da3ff'
                 }
             ];
             this._lastSegmentsTotal = total;
@@ -4431,7 +4431,7 @@ class RadianceViewer {
                 if (!hoverCard) {
                     hoverCard = document.createElement('div');
                     hoverCard.id = 'radiance-timeline-hover';
-                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(0,189,255,0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
+                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(77, 163, 255, 0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
 
                     const pCanvas = document.createElement('canvas');
                     pCanvas.width = 120;
@@ -4439,7 +4439,7 @@ class RadianceViewer {
                     pCanvas.style.cssText = 'border-radius:4px; border:1px solid rgba(255,255,255,0.1);';
 
                     const pFrameText = document.createElement('span');
-                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#00bdff;';
+                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#4da3ff;';
 
                     const pTimecode = document.createElement('span');
                     pTimecode.style.cssText = 'font:8px var(--radiance-mono, monospace); color:rgba(255,255,255,0.6);';
@@ -5282,7 +5282,7 @@ class RadianceViewer {
 
         const dvQuality = document.createElement('input');
         dvQuality.type = 'range'; dvQuality.min = '0'; dvQuality.max = '51'; dvQuality.value = '18';
-        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #00a8ff;`;
+        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #4da3ff;`;
         addRow('Quality (CRF)', dvQuality);
 
         // HDR10 mastering display (SMPTE ST 2086), written only into PQ H.265:
@@ -5319,7 +5319,7 @@ class RadianceViewer {
             wrap.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 9px; color: #aaa; font-weight: 600; text-transform: uppercase;`;
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = def;
-            cb.style.cssText = `accent-color: #00a8ff;`;
+            cb.style.cssText = `accent-color: #4da3ff;`;
             wrap.appendChild(cb);
             wrap.appendChild(document.createTextNode(label));
             return { wrap, cb };
@@ -5381,9 +5381,9 @@ class RadianceViewer {
         dvRenderBtn.dataset.dv = 'render';
         dvRenderBtn.textContent = '◎ RENDER NOW';
         dvRenderBtn.title = 'Render these settings now';
-        dvRenderBtn.style.cssText = `background: #00a8ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
+        dvRenderBtn.style.cssText = `background: #4da3ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
         dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
-        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#00a8ff';
+        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#4da3ff';
 
         dvSubmitRow.appendChild(dvRenderBtn);
 
@@ -5413,14 +5413,14 @@ class RadianceViewer {
         const dvProgressLabel = document.createElement('div');
 
         dvProgressLabel.dataset.dv = 'progress';
-        dvProgressLabel.style.cssText = `font-size: 9px; color: #00a8ff; font-weight: bold; text-transform: uppercase;`;
+        dvProgressLabel.style.cssText = `font-size: 9px; color: #4da3ff; font-weight: bold; text-transform: uppercase;`;
         dvProgressLabel.textContent = 'READY TO EXPORT';
 
         const dvProgressTrack = document.createElement('div');
         dvProgressTrack.style.cssText = `width: 100%; height: 2px; background: #1a1e24; border-radius: 1px; overflow: hidden;`;
 
         const dvProgressBar = document.createElement('div');
-        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #00a8ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);`;
+        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #4da3ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);`;
 
         dvProgressTrack.appendChild(dvProgressBar);
         dvProgressContainer.appendChild(dvProgressLabel);
@@ -5613,7 +5613,7 @@ class RadianceViewer {
         const runJob = async (job) => {
             const { payload, name } = job;
             if (!this._deliverQueueRunning) dvStatus.replaceChildren();   // a queue keeps every job's lines
-            dvProgressBar.style.background = '#00a8ff';
+            dvProgressBar.style.background = '#4da3ff';
             dvProgressContainer.style.display = 'flex';
             dvProgressBar.style.width = '0%';
             dvProgressLabel.textContent = 'Initializing Export Pipeline...';
@@ -5711,7 +5711,7 @@ class RadianceViewer {
 
         // ── Render queue: snapshots of settings + grade, rendered one by one ──
         const STATUS_TEXT = { queued: 'Queued', rendering: 'Rendering…', success: 'Done', partial: 'Done with warnings', failed: 'Failed', skipped: 'Stopped' };
-        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#00a8ff', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
+        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#4da3ff', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
         const renderQueue = () => {
             dvQueueList.replaceChildren();
             const jobs = this._deliverQueue;
@@ -5923,9 +5923,9 @@ class RadianceViewer {
             btn.textContent = name;
             btn.style.cssText = `
                 font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
-                color: ${active ? '#00a8ff' : '#555'}; text-transform: uppercase;
+                color: ${active ? '#4da3ff' : '#555'}; text-transform: uppercase;
                 cursor: pointer; padding: 4px 8px;
-                border-bottom: 2px solid ${active ? '#00a8ff' : 'transparent'};
+                border-bottom: 2px solid ${active ? '#4da3ff' : 'transparent'};
                 transition: 0.2s;
             `;
             return btn;
@@ -6073,7 +6073,7 @@ class RadianceViewer {
 
         const scRunBtn = document.createElement('button');
         scRunBtn.textContent = '▶ RUN AUTOMATION';
-        scRunBtn.style.cssText = `background: rgba(0, 168, 255, 0.1); color: #00a8ff; border: 1px solid rgba(0, 168, 255, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
+        scRunBtn.style.cssText = `background: rgba(0, 168, 255, 0.1); color: #4da3ff; border: 1px solid rgba(0, 168, 255, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
 
         scToolbar.appendChild(scModeSelect);
         scToolbar.appendChild(scSaveBtn);
@@ -6095,7 +6095,7 @@ class RadianceViewer {
         let activeTab = 'term';
         tabTerm.onclick = () => {
             activeTab = 'term';
-            tabTerm.style.color = '#00a8ff'; tabTerm.style.borderColor = '#00a8ff';
+            tabTerm.style.color = '#4da3ff'; tabTerm.style.borderColor = '#4da3ff';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'block';
             this._termInputRow.style.display = 'flex';
@@ -6115,7 +6115,7 @@ class RadianceViewer {
         };
         tabDeliver.onclick = () => {
             activeTab = 'deliver';
-            tabDeliver.style.color = '#00a8ff'; tabDeliver.style.borderColor = '#00a8ff';
+            tabDeliver.style.color = '#4da3ff'; tabDeliver.style.borderColor = '#4da3ff';
             tabTerm.style.color = '#555'; tabTerm.style.borderColor = 'transparent';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'none';
@@ -6479,7 +6479,7 @@ class RadianceViewer {
 
         const colors = {
             system: '#3d6060',
-            info: '#00a8ff',
+            info: '#4da3ff',
             warn: '#ff9f43',
             error: '#ff4757',
             cmd: '#2ed573',
@@ -8802,7 +8802,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'panel.qc': this._openPanel('qc'); break;
             case 'panel.curves': this._openPanel('inspector', 'COLOR CURVES'); break;
             case 'panel.presets': this._openPanel('grade', 'PRESETS'); break;
-            case 'panel.ocio': this._openPanel('grade', 'COLOR TRANSFORM'); break;
+            case 'panel.ocio': this.openColourSettings(); break;
             case 'grade.exposureUp': this.adjustEV(0.25); break;
             case 'grade.exposureDown': this.adjustEV(-0.25); break;
             // Scopes over the picture
@@ -8837,6 +8837,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             case 'window.fullscreen': this.toggleFullscreen(); break;
             case 'general.run': this.runWorkflow(); break;
             case 'general.escape':
+                if (this.closeColourSettings()) break;
                 if (this.showHelp) this.toggleHelp();
                 else if (this.isFullscreen) this.exitFullscreen();
                 else return false;
@@ -9772,9 +9773,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._syncCompareUI();
         if (!this._compareBtnEl) return;
         const on = this.compareMode === 'wipe';
-        this._compareBtnEl.style.borderColor  = on ? '#00a8ff' : 'rgba(255,255,255,0.15)';
+        this._compareBtnEl.style.borderColor  = on ? '#4da3ff' : 'rgba(255,255,255,0.15)';
         this._compareBtnEl.style.background   = on ? 'rgba(0,168,255,0.15)' : 'rgba(255,255,255,0.05)';
-        this._compareBtnEl.style.color        = on ? '#00a8ff' : '#ccc';
+        this._compareBtnEl.style.color        = on ? '#4da3ff' : '#ccc';
         this._syncViewerBarBtns();
     }
 
@@ -9929,7 +9930,7 @@ self.onmessage = async ({ data: { id, url } }) => {
      * playback they come at most about six times a second.
      */
     _scheduleReferenceScopeUpdate() {
-        if (this._referenceRightTab !== 'scopes' || !this._referenceScopeCanvases) return;
+        if (!['scopes', 'grade'].includes(this._referenceRightTab) || !this._referenceScopeCanvases) return;
         if (this._referenceScopeRAF || this._referenceScopeTimer) return;   // one is already coming
         // C2: the scopes read every pixel now, so they refresh at most every
         // SCOPE_MIN_INTERVAL_MS (about six times a second while playing). A
@@ -13494,12 +13495,12 @@ self.onmessage = async ({ data: { id, url } }) => {
                 border-radius: 3px; overflow: hidden; cursor: pointer;
                 border: 1.5px solid ${
                     isCut    ? '#ff000088' :
-                    isActive ? '#00a8ff' :
+                    isActive ? '#4da3ff' :
                                'rgba(255,255,255,0.09)'
                 };
                 box-shadow: ${
                     isCut    ? '0 0 6px #ff000066' :
-                    isActive ? '0 0 6px #00a8ff66' : 'none'
+                    isActive ? '0 0 6px #4da3ff66' : 'none'
                 };
                 position: relative; background: #111;
                 transition: border-color 0.12s, box-shadow 0.12s;
@@ -13555,7 +13556,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             badge.style.cssText = `
                 position: absolute; bottom: 1px; right: 2px;
                 font-size: 6px; font-family: monospace;
-                color: ${isActive ? '#00a8ff' : 'rgba(255,255,255,0.3)'};
+                color: ${isActive ? '#4da3ff' : 'rgba(255,255,255,0.3)'};
                 pointer-events: none; line-height: 1;
             `;
             cell.appendChild(badge);
@@ -13567,10 +13568,10 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const frameIdx = ci * step;
                         const isNowActive = (frameIdx === this.currentFrame);
                         const nowCut = cutFrames.has(frameIdx);
-                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#00a8ff' : 'rgba(255,255,255,0.09)';
-                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #00a8ff66' : 'none';
+                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#4da3ff' : 'rgba(255,255,255,0.09)';
+                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #4da3ff66' : 'none';
                         const b = c.querySelector('span:last-child');
-                        if (b) b.style.color = isNowActive ? '#00a8ff' : 'rgba(255,255,255,0.3)';
+                        if (b) b.style.color = isNowActive ? '#4da3ff' : 'rgba(255,255,255,0.3)';
                     });
                 }
             };
@@ -13607,8 +13608,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else { this._applyCompareToRenderer(); this.render(); }
         this._termLog?.('info', `[Pin Frame] Frame ${this.currentFrame + 1} pinned as B.`);
         if (this._pinFrameBtn) {
-            this._pinFrameBtn.style.borderColor = '#00a8ff';
-            this._pinFrameBtn.style.color = '#00a8ff';
+            this._pinFrameBtn.style.borderColor = '#4da3ff';
+            this._pinFrameBtn.style.color = '#4da3ff';
             this._pinFrameBtn.title = `Pinned: Frame ${this.currentFrame + 1}, click again to release`;
         }
     }
@@ -14854,7 +14855,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-search:focus { border-color: var(--radiance-accent); }
                 .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 52px; min-height:28px; align-items:center; padding:0 8px; border-radius:4px; border:1px solid transparent; color:var(--radiance-text); font-size:var(--radiance-fs-body); transition: background 0.15s; }
                 .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.02); }
-                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(0,189,255,.35); color: var(--radiance-accent); }
+                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(77, 163, 255, .35); color: var(--radiance-accent); }
                 .radiance-ref-channel:not(.is-disabled) { cursor:pointer; }
                 .radiance-ref-channel:not(.is-disabled):hover { background:var(--radiance-control-hover); }
                 .radiance-ref-channel.is-disabled { color:var(--radiance-text-muted); }
@@ -14987,6 +14988,21 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-depth-preview.is-empty { aspect-ratio:auto; height:auto; padding:8px 10px; margin:6px 0 8px; color:var(--radiance-text-dim); background:var(--radiance-surface-raised); font-size:var(--radiance-fs-body); line-height:1.4; }
                 .radiance-ref-depth-preview.is-empty::after { content:none; }
                 .radiance-ref-scope-canvas { width:100%; height:200px; display:block; }
+                .radiance-grade-parade { margin-bottom:10px; }
+                .radiance-grade-parade .radiance-ref-scope-canvas { height:120px; }
+                .radiance-grade-colour { display:flex; align-items:center; gap:8px; margin:0 0 14px; font-size:var(--radiance-fs-body); color:var(--radiance-text-dim); }
+                .radiance-grade-colour-btn { flex:0 0 auto; height:26px; padding:0 10px; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-control); color:var(--radiance-text); font:inherit; cursor:pointer; }
+                .radiance-grade-colour-btn:hover { background:var(--radiance-control-hover); }
+                .radiance-grade-colour-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+                .radiance-colour-sheet-back { position:absolute; inset:0; z-index:20500; display:flex; align-items:flex-start; justify-content:center; padding-top:64px; background:rgba(0,0,0,.55); }
+                .radiance-colour-sheet { width:min(640px, calc(100% - 48px)); max-height:calc(100% - 96px); display:flex; flex-direction:column; box-sizing:border-box; border-radius:12px; border:1px solid var(--radiance-border-strong); background:var(--radiance-surface-raised); color:var(--radiance-text); box-shadow:0 30px 80px rgba(0,0,0,.6); font-family:var(--radiance-font-ui); }
+                .radiance-colour-sheet-head { padding:20px 24px 8px; }
+                .radiance-colour-sheet-title { font-size:16px; font-weight:600; }
+                .radiance-colour-sheet-sub { margin-top:4px; color:var(--radiance-text-dim); font-size:var(--radiance-fs-body); }
+                .radiance-colour-sheet-body { padding:4px 24px; overflow:auto; min-height:0; }
+                .radiance-colour-sheet-chain { margin:8px 24px 0; padding:10px 12px; border-radius:8px; background:var(--radiance-control); font-size:var(--radiance-fs-body); }
+                .radiance-colour-sheet-foot { display:flex; justify-content:flex-end; padding:14px 24px 18px; }
+                .radiance-colour-sheet-done { height:32px; padding:0 18px; border-radius:7px; border:0; background:#0a6ad8; color:#fff; font-weight:600; cursor:pointer; }
                 .radiance-ref-scope-box.is-square .radiance-ref-scope-canvas { height:auto; aspect-ratio:1; }
                 @container (max-width: 460px) {
                     .radiance-ref-body { display:grid; grid-template-columns:1fr; }
@@ -15054,7 +15070,8 @@ self.onmessage = async ({ data: { id, url } }) => {
                 this._renderReferenceInspector(col);
                 this._renderReferenceGradeSummary(col);
             }
-            this._lastRenderContent = render;
+            // The Project colour sheet shows the same state: redraw it with the panel.
+            this._lastRenderContent = () => { render(); if (this._colourSheet) this._renderColourSheetBody(); };
         };
 
         // In Alt+1 to Alt+7 order (radiance_keymap.js).
@@ -15436,7 +15453,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const channelMap = [
             { ch: 'RGB', label: 'Y', color: '#e0e0e0', bg: 'rgba(255,255,255,0.12)' },
-            { ch: 'R', label: 'R', color: '#ff4444', bg: 'rgba(255,68,68,0.2)' },
+            { ch: 'R', label: 'R', color: '#ff6961', bg: 'rgba(255,68,68,0.2)' },
             { ch: 'G', label: 'G', color: '#44cc44', bg: 'rgba(68,204,68,0.2)' },
             { ch: 'B', label: 'B', color: '#4488ff', bg: 'rgba(68,136,255,0.2)' }
         ];
@@ -15608,10 +15625,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
     }
 
-    _renderReferenceGrade(parent) {
-        // Controls register here so adjustEV, undo and the eyedropper can move
-        // them without a rebuild.
-        this._gradeControls = new Map();
+    /**
+     * Project colour: the input space, the output transform and the OCIO
+     * config, set once. A colorist sets these per project, not per shot, so
+     * they live in a sheet (Project colour…), not at the top of the Grade tab.
+     */
+    _renderColourSettings(parent) {
         const transform = this._renderReferenceSection(parent, 'COLOR TRANSFORM',
             () => this._resetGradeFields(RadianceViewer.GRADE_SECTIONS.transform));
         const field = (label, options, value, onChange) => {
@@ -15679,6 +15698,111 @@ self.onmessage = async ({ data: { id, url } }) => {
         ocio.style.marginTop = '10px';
         transform.appendChild(ocio);
         this.renderOcioSection(ocio);
+        return transform;
+    }
+
+    /** The Project colour sheet over the viewer. Esc, Done or a click outside closes it. */
+    openColourSettings() {
+        this.closeColourSettings();
+        const back = document.createElement('div');
+        back.className = 'radiance-colour-sheet-back';
+        const sheet = document.createElement('div');
+        sheet.className = 'radiance-colour-sheet';
+        sheet.setAttribute('role', 'dialog');
+        sheet.setAttribute('aria-modal', 'true');
+        sheet.setAttribute('aria-label', 'Project colour');
+        const head = document.createElement('div');
+        head.className = 'radiance-colour-sheet-head';
+        const title = document.createElement('div');
+        title.className = 'radiance-colour-sheet-title';
+        title.textContent = 'Project colour';
+        const sub = document.createElement('div');
+        sub.className = 'radiance-colour-sheet-sub';
+        sub.textContent = 'Set once for the project: the source, the view and the display every Viewer, scope and export follows.';
+        head.append(title, sub);
+        const body = document.createElement('div');
+        body.className = 'radiance-colour-sheet-body';
+        const chain = document.createElement('div');
+        chain.className = 'radiance-colour-sheet-chain';
+        const foot = document.createElement('div');
+        foot.className = 'radiance-colour-sheet-foot';
+        const done = document.createElement('button');
+        done.type = 'button';
+        done.className = 'radiance-colour-sheet-done';
+        done.textContent = 'Done';
+        done.onclick = () => this.closeColourSettings();
+        foot.appendChild(done);
+        sheet.append(head, body, chain, foot);
+        back.appendChild(sheet);
+        back.addEventListener('pointerdown', (e) => { if (e.target === back) this.closeColourSettings(); });
+        sheet.addEventListener('keydown', (e) => {
+            e.stopPropagation();                       // typing in the sheet is not a viewer shortcut
+            if (e.key === 'Escape') { e.preventDefault(); this.closeColourSettings(); }
+        });
+        this.container.appendChild(back);
+        this._colourSheet = back;
+        this._colourSheetBody = body;
+        this._colourSheetChain = chain;
+        this._renderColourSheetBody();
+        done.focus();
+    }
+
+    /** Rebuild the sheet's controls (the OCIO section redraws itself through here). */
+    _renderColourSheetBody() {
+        if (!this._colourSheetBody) return;
+        this._colourSheetBody.innerHTML = '';
+        this._renderColourSettings(this._colourSheetBody);
+        this._refreshDisplayChain?.();
+    }
+
+    closeColourSettings() {
+        if (!this._colourSheet) return false;
+        this._colourSheet.remove();
+        this._colourSheet = this._colourSheetBody = this._colourSheetChain = null;
+        this._gradeOutputSelect = null;
+        this._lastRenderContent?.();
+        return true;
+    }
+
+    _renderReferenceGrade(parent) {
+        // Controls register here so adjustEV, undo and the eyedropper can move
+        // them without a rebuild.
+        this._gradeControls = new Map();
+
+        // A parade beside the grade: a colorist reads it while moving the wheels.
+        const paradeBox = document.createElement('div');
+        paradeBox.className = 'radiance-ref-scope-box radiance-grade-parade';
+        paradeBox.dataset.scope = 'parade';
+        const paradeHead = document.createElement('div');
+        paradeHead.className = 'radiance-ref-scope-head';
+        const paradeTitle = document.createElement('span');
+        paradeTitle.textContent = 'PARADE';
+        paradeHead.appendChild(paradeTitle);
+        const parade = document.createElement('canvas');
+        parade.className = 'radiance-ref-scope-canvas';
+        parade.width = 512; parade.height = 160;
+        parade.dataset.scopeMode = 'parade';
+        parade.setAttribute('aria-label', 'RGB parade of the graded frame');
+        paradeBox.append(paradeHead, parade);
+        parent.appendChild(paradeBox);
+        this._referenceScopeCanvases = { parade };
+        requestAnimationFrame(() => this._updateReferenceScopes?.());
+
+        // The colour set-up in one line, with the sheet a click away.
+        const colourRow = document.createElement('div');
+        colourRow.className = 'radiance-grade-colour';
+        const colourText = document.createElement('span');
+        colourText.className = 'radiance-grade-colour-text';
+        colourText.textContent = this._displayChainLabel?.() || '';
+        const colourBtn = document.createElement('button');
+        colourBtn.type = 'button';
+        colourBtn.className = 'radiance-grade-colour-btn';
+        colourBtn.textContent = 'Project colour…';
+        colourBtn.title = 'Source, view, display and OCIO config: set once for the project';
+        colourBtn.onclick = () => this.openColourSettings();
+        colourRow.append(colourText, colourBtn);
+        parent.appendChild(colourRow);
+        this._gradeColourText = colourText;
 
         const S = RadianceViewer.GRADE_SECTIONS;
         const exposure = this._renderReferenceSection(parent, 'EXPOSURE', () => this._resetGradeFields(S.exposure));
@@ -15731,6 +15855,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             get: () => this.colorBoost, set: v => { this.colorBoost = v; this.renderer?.setColorBoost?.(v); } });
 
         const wheels = this._renderReferenceSection(parent, 'COLOR WHEELS', () => this._resetGradeFields(S.wheels));
+        parent.insertBefore(wheels, exposure);   // the wheels open the Grade tab
         const wheelsGrid = document.createElement('div');
         wheelsGrid.className = 'radiance-ref-wheels';
         wheels.appendChild(wheelsGrid);
@@ -16231,6 +16356,8 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _refreshDisplayChain() {
+        if (this._gradeColourText?.isConnected) this._gradeColourText.textContent = this._displayChainLabel();
+        if (this._colourSheetChain) this._colourSheetChain.textContent = this._displayChainLabel();
         if (!this.colorspaceInfo) return;
         const c = this._displayChain();
         this.colorspaceInfo.textContent = this._displayChainLabel();
@@ -16357,7 +16484,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             title.textContent = label.toUpperCase();
             const state = document.createElement('span');
             state.textContent = this.renderer?.getPipelineInfo?.()?.api?.toUpperCase?.() || (this._gpuBackend || 'GPU').toUpperCase();
-            state.style.color = '#39aaff';
+            state.style.color = '#4da3ff';
             head.append(title, state);
             const canvas = document.createElement('canvas');
             canvas.className = 'radiance-ref-scope-canvas';
@@ -16970,7 +17097,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const evG = (g / 12).toFixed(2);
                 const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
-                printerEVBadge.style.color = '#00a8ff';
+                printerEVBadge.style.color = '#4da3ff';
             }
         };
         printerEVBadge.style.cssText = 'font-size: 8px; font-family: monospace; color: #555; letter-spacing: 0.04em;';
@@ -17389,7 +17516,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         presets.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
         const INACTIVE_PRESET = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#888;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
-        const ACTIVE_PRESET = `background:rgba(0,168,255,0.12);border:1px solid rgba(0,168,255,0.45);color:#00a8ff;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
+        const ACTIVE_PRESET = `background:rgba(0,168,255,0.12);border:1px solid rgba(0,168,255,0.45);color:#4da3ff;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
 
         // Track which grain preset is active via a module-level label key
         if (!this._activeFilmPreset) this._activeFilmPreset = 'No Grain';
@@ -20340,7 +20467,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         const ocioTitle = document.createElement('div');
         ocioTitle.innerHTML = `
-            <span style="color:#00a8ff; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
+            <span style="color:#4da3ff; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
                 OCIO Display Transform
             </span>`;
         ocioHeader.appendChild(ocioTitle);
@@ -20354,7 +20481,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         ocioBadge.style.cssText = `
             font-size: 8px; font-family: monospace; padding: 2px 6px; border-radius: 3px;
             background: ${ocioLoaded ? 'rgba(0,168,255,0.15)' : 'rgba(255,255,255,0.06)'};
-            color: ${ocioLoaded ? '#00a8ff' : '#555'};
+            color: ${ocioLoaded ? '#4da3ff' : '#555'};
             border: 1px solid ${ocioLoaded ? 'rgba(0,168,255,0.3)' : 'rgba(255,255,255,0.08)'};
         `;
         ocioHeader.appendChild(ocioBadge);
@@ -20365,7 +20492,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             const dtSel = document.createElement('select');
             dtSel.className = 'radiance-ocio-display-sel';
             dtSel.style.cssText = `
-                width: 100%; background: #0d0d14; color: #00a8ff;
+                width: 100%; background: #0d0d14; color: #4da3ff;
                 border: 1px solid rgba(0,168,255,0.25); border-radius: 5px;
                 padding: 6px 8px; font-size: 10px; font-family: monospace;
                 cursor: pointer; outline: none; margin-bottom: 6px;
@@ -20409,7 +20536,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const { display, view } = JSON.parse(val);
                         await this.ocioApplyDisplayView(display, view);
                         ocioActiveLbl.textContent = `▶ ${display} / ${view}`;
-                        ocioActiveLbl.style.color = '#00a8ff';
+                        ocioActiveLbl.style.color = '#4da3ff';
                     } catch (e) {
                         console.error('[OCIO]', e);
                     }
@@ -20423,7 +20550,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ? `▶ ${this._ocioActiveTransform}` : 'No active transform';
             ocioActiveLbl.style.cssText = `
                 font-size: 9px; font-family: monospace;
-                color: ${this._ocioActiveTransform ? '#00a8ff' : '#444'};
+                color: ${this._ocioActiveTransform ? '#4da3ff' : '#444'};
                 margin-bottom: 6px; padding-left: 2px;
             `;
             ocioGroup.appendChild(ocioActiveLbl);
@@ -20451,7 +20578,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             rebakeBtn.textContent = '⟳ Bake';
             rebakeBtn.style.cssText = `
                 font-size: 9px; padding: 3px 8px; background: rgba(0,168,255,0.1);
-                border: 1px solid rgba(0,168,255,0.3); color: #00a8ff;
+                border: 1px solid rgba(0,168,255,0.3); color: #4da3ff;
                 border-radius: 4px; cursor: pointer; flex-shrink: 0;
             `;
             rebakeBtn.onmouseenter = () => { rebakeBtn.style.background = 'rgba(0,168,255,0.2)'; };
@@ -20489,7 +20616,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             loadOcioBtn.textContent = '⤓ Load config.ocio';
             loadOcioBtn.style.cssText = `
                 width: 100%; padding: 6px; border: 1px solid rgba(0,168,255,0.25);
-                background: transparent; color: #00a8ff; border-radius: 5px;
+                background: transparent; color: #4da3ff; border-radius: 5px;
                 font-size: 9px; cursor: pointer; margin-top: 2px;
             `;
             const ocioFileInput = document.createElement('input');
@@ -22470,7 +22597,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 <span id="rad-term-clean" style="cursor:pointer;color:#e87;opacity:0.6;transition:opacity 0.2s;">[CLEAR OUTPUT]</span>
             </div>
             <div style="display:flex;gap:12px;align-items:center;">
-                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(0,168,255,0.5);text-decoration:none;" onmouseover="this.style.color='#00a8ff'" onmouseout="this.style.color='rgba(0,168,255,0.5)'">📖 DOCS</a>
+                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(0,168,255,0.5);text-decoration:none;" onmouseover="this.style.color='#4da3ff'" onmouseout="this.style.color='rgba(0,168,255,0.5)'">📖 DOCS</a>
                 <span id="rad-term-status">READY</span>
             </div>
         `;

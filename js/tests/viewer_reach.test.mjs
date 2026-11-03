@@ -307,20 +307,33 @@ test('the Scopes tab sets scale and levels, and the rail scope buttons pick the 
     } finally { await page.close(); }
 });
 
-test('the OCIO config loader lives in the Grade tab and the Color menu opens it', { skip }, async () => {
+test('the OCIO config loader lives in the Project colour sheet, and Color > Project Colour… opens it', { skip }, async () => {
     const page = await viewerPage(4);
     try {
         const r = await page.evaluate(async () => {
+            v._setReferenceTab('grade');
+            await __sleep(30);
+            const grade = v.controlsPanel;
+            const inGrade = [...grade.querySelectorAll('button')].some((b) => /LOAD CONFIG/.test(b.textContent));
+            const opener = [...grade.querySelectorAll('button')].find((b) => b.textContent === 'Project colour…');
             v._runKeyAction('panel.ocio');
             await __sleep(30);
-            const panel = v.controlsPanel;
-            return {
-                tab: v._referenceRightTab,
-                load: [...panel.querySelectorAll('button')].some((b) => /LOAD CONFIG/.test(b.textContent)),
-                presets: !!panel.querySelector('select[data-radiance-param="grade_preset"]'),
+            const sheet = v.container.querySelector('.radiance-colour-sheet');
+            const out = {
+                inGrade, opener: !!opener,
+                sheet: !!sheet, role: sheet?.getAttribute('role'),
+                load: [...(sheet?.querySelectorAll('button') || [])].some((b) => /LOAD CONFIG/.test(b.textContent)),
+                transform: !!sheet?.querySelector('select[data-radiance-param="output_transform"]'),
+                presets: !!grade.querySelector('select[data-radiance-param="grade_preset"]'),
             };
+            out.escClosed = v._runKeyAction('general.escape') !== false && !v.container.querySelector('.radiance-colour-sheet');
+            opener.click();
+            out.reopened = !!v.container.querySelector('.radiance-colour-sheet');
+            v.closeColourSettings();
+            return out;
         });
-        assert.deepEqual(r, { tab: 'grade', load: true, presets: true });
+        assert.deepEqual(r, { inGrade: false, opener: true, sheet: true, role: 'dialog', load: true, transform: true,
+            presets: true, escClosed: true, reopened: true });
         assert.deepEqual(page.errors, []);
     } finally { await page.close(); }
 });
