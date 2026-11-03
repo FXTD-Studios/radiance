@@ -272,7 +272,9 @@ Review each model's licence before use.
 
 ## Example workflows
 
-Drag a file onto the ComfyUI canvas to open it.
+Drag a file onto the ComfyUI canvas to open it. There are two kinds: **local** workflows run models on your own GPU (`workflows/`), and **API** workflows generate with a ComfyUI API node and do the HDR work locally (`workflows/api/`).
+
+### Local workflows
 
 | Workflow | What it does |
 |---|---|
@@ -291,40 +293,40 @@ Drag a file onto the ComfyUI canvas to open it.
 | [SDR remaster with AI fill](workflows/sdr_remaster_ai_fill.json) | SDR footage to an HDR remaster with RUDRA AI fill, CDL trim, EXR, HDR10 and SDR outputs (16 GB GPU) |
 | [Shot look match](workflows/shot_look_match.json) | Split a sequence at its cuts and match each shot to a reference look |
 
-### API workflows with RUDRA
+### API workflows
 
 Generate with a ComfyUI API (partner) node, then build an ACES 2.0 HDR master with RUDRA. Each one runs SDR → HDR Universal (RUDRA ACES 2) and has SDR → HDR AI Fill (RUDRA v3) ready but bypassed: select it and press Ctrl+B to rebuild large blown highlights. Image workflows save a 32-bit EXR with the master and its `rudra.reconstructed` channel; video workflows save an EXR sequence with a .wav at timecode and an HDR10 MP4. API nodes need a Comfy account and use API credits.
 
 | Image | What it does |
 |---|---|
-| [Nano Banana → HDR](workflows/api_nano_banana_hdr.json) | Gemini image, lifted to an ACES 2 HDR master |
-| [Seedream 5 → HDR](workflows/api_seedream_hdr.json) | ByteDance Seedream, lifted to an ACES 2 HDR master |
-| [GPT Image → HDR](workflows/api_gpt_image_hdr.json) | OpenAI GPT Image, lifted to an ACES 2 HDR master |
-| [FLUX 3 API → HDR](workflows/api_flux3_pro_hdr.json) | BFL FLUX 3 Image, lifted to an ACES 2 HDR master |
-| [Qwen Image 3 → HDR](workflows/api_qwen_image_hdr.json) | Qwen Image, lifted to an ACES 2 HDR master |
-| [Wan Image → HDR](workflows/api_wan_image_hdr.json) | Wan text to image, lifted to an ACES 2 HDR master |
-| [Ideogram V4 → HDR](workflows/api_ideogram_hdr.json) | Ideogram, lifted to an ACES 2 HDR master |
-| [Recraft V3 → HDR](workflows/api_recraft_hdr.json) | Recraft realistic image, lifted to an ACES 2 HDR master |
-| [Kling Image → HDR](workflows/api_kling_image_hdr.json) | Kling 3.0 Omni image, lifted to an ACES 2 HDR master |
-| [Grok Image → HDR](workflows/api_grok_image_hdr.json) | Grok Imagine, lifted to an ACES 2 HDR master |
-| [Luma UNI-1 → HDR](workflows/api_luma_image_hdr.json) | Luma image, lifted to an ACES 2 HDR master |
+| [Nano Banana → HDR](workflows/api/api_nano_banana_hdr.json) | Gemini image, lifted to an ACES 2 HDR master |
+| [Seedream 5 → HDR](workflows/api/api_seedream_hdr.json) | ByteDance Seedream, lifted to an ACES 2 HDR master |
+| [GPT Image → HDR](workflows/api/api_gpt_image_hdr.json) | OpenAI GPT Image, lifted to an ACES 2 HDR master |
+| [FLUX 3 API → HDR](workflows/api/api_flux3_pro_hdr.json) | BFL FLUX 3 Image, lifted to an ACES 2 HDR master |
+| [Qwen Image 3 → HDR](workflows/api/api_qwen_image_hdr.json) | Qwen Image, lifted to an ACES 2 HDR master |
+| [Wan Image → HDR](workflows/api/api_wan_image_hdr.json) | Wan text to image, lifted to an ACES 2 HDR master |
+| [Ideogram V4 → HDR](workflows/api/api_ideogram_hdr.json) | Ideogram, lifted to an ACES 2 HDR master |
+| [Recraft V3 → HDR](workflows/api/api_recraft_hdr.json) | Recraft realistic image, lifted to an ACES 2 HDR master |
+| [Kling Image → HDR](workflows/api/api_kling_image_hdr.json) | Kling 3.0 Omni image, lifted to an ACES 2 HDR master |
+| [Grok Image → HDR](workflows/api/api_grok_image_hdr.json) | Grok Imagine, lifted to an ACES 2 HDR master |
+| [Luma UNI-1 → HDR](workflows/api/api_luma_image_hdr.json) | Luma image, lifted to an ACES 2 HDR master |
 
 | Video | What it does |
 |---|---|
-| [Seedance 2.5 → HDR Video](workflows/api_seedance_hdr.json) | Text to video, each frame lifted with RUDRA |
-| [Nano Banana + Seedance → HDR](workflows/api_nano_banana_seedance_hdr.json) | A Nano Banana still animated by Seedance, then RUDRA |
-| [Wan 2.7 → HDR Video](workflows/api_wan_video_hdr.json) | Wan text to video, each frame lifted with RUDRA |
-| [Nano Banana + Wan 3 → HDR](workflows/api_nano_banana_wan3_hdr.json) | A Nano Banana still animated by Wan 3.0, then RUDRA |
-| [Veo 3 → HDR Video](workflows/api_veo3_hdr.json) | Google Veo, each frame lifted with RUDRA |
-| [Kling 3.0 → HDR Video](workflows/api_kling_video_hdr.json) | Kling Omni text to video, each frame lifted with RUDRA |
-| [MiniMax H3 → HDR Video](workflows/api_minimax_h3_hdr.json) | Hailuo H3 text to video, each frame lifted with RUDRA |
-| [Runway Gen-4 → HDR Video](workflows/api_runway_gen4_hdr.json) | Image to video from your still, then RUDRA |
-| [Luma Ray 3.2 → HDR Video](workflows/api_luma_ray_hdr.json) | Luma Ray text to video, each frame lifted with RUDRA |
-| [Vidu Q3 → HDR Video](workflows/api_vidu_q3_hdr.json) | Vidu text to video, each frame lifted with RUDRA |
-| [PixVerse V6 → HDR Video](workflows/api_pixverse_hdr.json) | PixVerse text to video, each frame lifted with RUDRA |
-| [LTX 2.5 API → HDR Video](workflows/api_ltx25_hdr.json) | LTX 2.5 text to video, each frame lifted with RUDRA |
-| [FLUX 3 Video → HDR Video](workflows/api_flux3_video_hdr.json) | BFL FLUX 3 text to video, each frame lifted with RUDRA |
-| [Grok Video → HDR Video](workflows/api_grok_video_hdr.json) | Grok Imagine video, each frame lifted with RUDRA |
+| [Seedance 2.5 → HDR Video](workflows/api/api_seedance_hdr.json) | Text to video, each frame lifted with RUDRA |
+| [Nano Banana + Seedance → HDR](workflows/api/api_nano_banana_seedance_hdr.json) | A Nano Banana still animated by Seedance, then RUDRA |
+| [Wan 2.7 → HDR Video](workflows/api/api_wan_video_hdr.json) | Wan text to video, each frame lifted with RUDRA |
+| [Nano Banana + Wan 3 → HDR](workflows/api/api_nano_banana_wan3_hdr.json) | A Nano Banana still animated by Wan 3.0, then RUDRA |
+| [Veo 3 → HDR Video](workflows/api/api_veo3_hdr.json) | Google Veo, each frame lifted with RUDRA |
+| [Kling 3.0 → HDR Video](workflows/api/api_kling_video_hdr.json) | Kling Omni text to video, each frame lifted with RUDRA |
+| [MiniMax H3 → HDR Video](workflows/api/api_minimax_h3_hdr.json) | Hailuo H3 text to video, each frame lifted with RUDRA |
+| [Runway Gen-4 → HDR Video](workflows/api/api_runway_gen4_hdr.json) | Image to video from your still, then RUDRA |
+| [Luma Ray 3.2 → HDR Video](workflows/api/api_luma_ray_hdr.json) | Luma Ray text to video, each frame lifted with RUDRA |
+| [Vidu Q3 → HDR Video](workflows/api/api_vidu_q3_hdr.json) | Vidu text to video, each frame lifted with RUDRA |
+| [PixVerse V6 → HDR Video](workflows/api/api_pixverse_hdr.json) | PixVerse text to video, each frame lifted with RUDRA |
+| [LTX 2.5 API → HDR Video](workflows/api/api_ltx25_hdr.json) | LTX 2.5 text to video, each frame lifted with RUDRA |
+| [FLUX 3 Video → HDR Video](workflows/api/api_flux3_video_hdr.json) | BFL FLUX 3 text to video, each frame lifted with RUDRA |
+| [Grok Video → HDR Video](workflows/api/api_grok_video_hdr.json) | Grok Imagine video, each frame lifted with RUDRA |
 
 ## Using the Viewer
 
