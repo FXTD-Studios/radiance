@@ -116,6 +116,18 @@ anything that fails.
       zooms; a pen (Wacom) pans and zooms like a mouse.
 - [ ] Masks tab: a power window limits the grade on screen and in an exported
       .cube preview; the qualifier's Pick colour selects the picked hue.
+- [ ] Color > Project Colour… opens the colour sheet; changing the View there changes
+      the picture, the Grade tab's colour line and the scopes. Esc, Done or a click
+      outside closes it.
+- [ ] On an HDR display with an HDR (PQ) view: the status-line peak reads "% above
+      1000 nits" (on SDR, "% above SDR white"); clicking it turns on False Color.
+      The Scopes tab offers Nits and the waveform's 1000-nit line sits where the
+      false colour changes.
+- [ ] Inspect opens on Scopes: waveform, parade, vectorscope and QC in a 2 x 2; the
+      probe row follows the pointer and its nits match the HDR display's readout.
+- [ ] Review: Grab still on two frames, then pick each from the B menu and wipe;
+      the stills look like the frames they came from. Release B keeps them; Clear
+      stills empties the menu.
 - [ ] Settings (⚙) > High contrast is readable on your monitor, and the tool
       rail (Window > Tool Rail) and panels read comfortably at your usual
       display scaling.
