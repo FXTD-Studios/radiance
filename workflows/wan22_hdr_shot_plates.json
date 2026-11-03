@@ -2950,10 +2950,10 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "WAN 2.2 -> HDR shot plates (based on official/wan22_t2v_hdr_universal)\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal runs the math path for video (Video Frames, adaptive knee, temporal smoothing): RUDRA's learned checkpoints are trained on stills, so multi-frame input skips them by design.\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode."
+        "WAN 2.2 -> HDR shot plates\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to run RUDRA ACES 2 on every frame as well (slower; frames are reconstructed one by one).\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode."
       ],
       "widgets_values_named": {
-        "text": "WAN 2.2 -> HDR shot plates (based on official/wan22_t2v_hdr_universal)\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal runs the math path for video (Video Frames, adaptive knee, temporal smoothing): RUDRA's learned checkpoints are trained on stills, so multi-frame input skips them by design.\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode."
+        "text": "WAN 2.2 -> HDR shot plates\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to run RUDRA ACES 2 on every frame as well (slower; frames are reconstructed one by one).\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode."
       },
       "color": "#432",
       "bgcolor": "#653"
