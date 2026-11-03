@@ -172,14 +172,16 @@ const PRESET_CONFIGS = {
     // ALBABIT-FIX: Dev and Klein in one preset, Auto-Detect tells them apart.
     // Quality-first (full precision, then fp8), as MiniMax H3 below; "Flux.2
     // (Low VRAM)" inverts it and never lists a full-precision file.
+    // ALBABIT-FIX: each Klein Base before the distilled file of its size (same
+    // seed: the braid asked for, fewer red patches); Low VRAM keeps the distilled.
     "Flux.2": {
         "unet_hints": [
             "flux2-dev.safetensors",
-            "flux-2-klein-9b.safetensors", "flux-2-klein-base-9b.safetensors",
-            "flux-2-klein-4b.safetensors", "flux-2-klein-base-4b.safetensors",
+            "flux-2-klein-base-9b.safetensors", "flux-2-klein-9b.safetensors",
+            "flux-2-klein-base-4b.safetensors", "flux-2-klein-4b.safetensors",
             "flux2_dev_fp8mixed.safetensors",
-            "flux-2-klein-9b-fp8.safetensors", "flux-2-klein-base-9b-fp8.safetensors",
-            "flux-2-klein-4b-fp8.safetensors", "flux-2-klein-base-4b-fp8.safetensors",
+            "flux-2-klein-base-9b-fp8.safetensors", "flux-2-klein-9b-fp8.safetensors",
+            "flux-2-klein-base-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors",
             "klein-9b-kv", "klein-base", "klein-9b", "klein-4b",
             "flux2-dev", "flux2_dev", "flux.2-dev",
             "flux2-klein", "flux2_klein", "flux.2-klein", "klein",
@@ -236,19 +238,26 @@ const PRESET_CONFIGS = {
         "offload_mode": "cpu_offload",
     },
     // FLUX 3 Image Klein (BFL's ComfyUI pack and the official templates). The
-    // step-distilled "_sd_" files first, the speed BFL ships by default; the
     // Sampler sets base or distilled from the loaded weights either way.
+    // ALBABIT-FIX: base before distilled here (same seed: even skin, the braid
+    // asked for, no red blotches); Low VRAM keeps the distilled first, as its
+    // CPU offload makes the base's 50 CFG steps far slower.
     // Quality-first: bf16, then int8_convrot, then nvfp4 (Blackwell). The
     // text-encoder hints never match the Qwen3.5-9B prompt upsampler.
     // ALBABIT-FIX: upsampler_hints pick that upsampler for the Loader's own
     // upsampler slot, in the same order (its smallest file is w4a8).
+    // ALBABIT-FIX: BFL's current names (flux3-image-klein-* distilled,
+    // flux3-image-klein-base-* base) beside the first ones.
     "Flux.3 Klein": {
         "unet_hints": [
-            "flux3_image_klein_sd_bf16.safetensors", "flux3_image_klein_bf16.safetensors",
-            "flux3_image_klein_sd_int8_convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
+            "flux3-image-klein-base-bf16.safetensors", "flux3_image_klein_bf16.safetensors",
+            "flux3-image-klein-bf16.safetensors", "flux3_image_klein_sd_bf16.safetensors",
+            "flux3-image-klein-base-int8-convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
             "flux3_image_klein_base_int8_convrot.safetensors",
-            "flux3_image_klein_sd_nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
-            "flux3_image_klein", "flux-3-image-klein", "flux3-klein", "flux3_klein",
+            "flux3-image-klein-int8-convrot.safetensors", "flux3_image_klein_sd_int8_convrot.safetensors",
+            "flux3-image-klein-base-nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
+            "flux3-image-klein-nvfp4.safetensors", "flux3_image_klein_sd_nvfp4.safetensors",
+            "flux3-image-klein", "flux3_image_klein", "flux-3-image-klein", "flux3-klein", "flux3_klein",
         ],
         "vae_hints":     ["flux2-vae", "flux2_vae", "flux2_ae"],
         "clip_hints":    {
@@ -266,9 +275,11 @@ const PRESET_CONFIGS = {
     },
     "Flux.3 Klein (Low VRAM)": {
         "unet_hints": [
-            "flux3_image_klein_sd_int8_convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
+            "flux3-image-klein-int8-convrot.safetensors", "flux3_image_klein_sd_int8_convrot.safetensors",
+            "flux3-image-klein-base-int8-convrot.safetensors", "flux3_image_klein_int8_convrot.safetensors",
             "flux3_image_klein_base_int8_convrot.safetensors",
-            "flux3_image_klein_sd_nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
+            "flux3-image-klein-nvfp4.safetensors", "flux3_image_klein_sd_nvfp4.safetensors",
+            "flux3-image-klein-base-nvfp4.safetensors", "flux3_image_klein_nvfp4.safetensors",
         ],
         "vae_hints":     ["flux2-vae", "flux2_vae", "flux2_ae"],
         "clip_hints":    {
