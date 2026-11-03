@@ -116,11 +116,11 @@ test('Review is the Simple layout and stores the old key', () => {
     assert.equal(v.node.properties.radiance_viewer_workspace, 'review');
 });
 
-test('Inspect uses the Advanced layout, opens the Inspector tab, and grows the node', () => {
+test('Inspect uses the Advanced layout, opens the Scopes tab, and grows the node', () => {
     const v = viewer();
     v.setWorkspace('inspect', { grow: true });
     assert.ok(!v._cls.has('radiance-mode-simple'));
-    assert.equal(v._referenceRightTab, 'inspector');
+    assert.equal(v._referenceRightTab, 'scopes');
     assert.ok(v.calls.includes('hud'), 'the right panel was not redrawn for the workspace');
     assert.equal(v.node.properties.radiance_viewer_mode, 'advanced');
     assert.deepEqual(v.node.size, [1180, 760]);
