@@ -174,6 +174,8 @@ class RadianceViewer {
     /** C2: the sidebar scopes refresh at most this often. */
     static SCOPE_MIN_INTERVAL_MS = 100;
     /** L3: the viewer f-stop runs ±this many stops, from the box, the keys and the code. */
+    /** Stills kept for the B menu (shelf slots 1..MAX_STILLS; slot 0 is the plain pin). */
+    static MAX_STILLS = 7;
     static VIEW_EXPOSURE_LIMIT = 16;
     /** L3: the viewer gamma's range. */
     static VIEW_GAMMA_RANGE = Object.freeze([0.1, 4]);
@@ -2774,6 +2776,19 @@ class RadianceViewer {
             .radiance-simple-bar .rsb-b { color: rgba(232,238,247,.55); white-space: nowrap;
                 overflow: hidden; text-overflow: ellipsis; max-width: 150px; min-width: 0; }
             .radiance-simple-bar .rsb-pin { border: 1px solid rgba(255,255,255,.14); }
+            .radiance-simple-bar button.rsb-b { cursor: pointer; }
+            .radiance-simple-bar button.rsb-b::after { content: ' \\2304'; opacity: .7; }
+            .radiance-b-menu { position: fixed; z-index: 100000; min-width: 220px; max-width: 320px; padding: 6px;
+                border-radius: 10px; background: #2a2a2d; border: 1px solid rgba(255,255,255,.10);
+                box-shadow: 0 18px 50px rgba(0,0,0,.55); font: 12px var(--radiance-font-ui); color: #e8e8ea; }
+            .radiance-b-menu .rbm-head { color: #aeaeb3; font-size: 11px; padding: 6px 8px 4px; }
+            .radiance-b-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent;
+                color: inherit; font: inherit; text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+            .radiance-b-menu button:hover:not(:disabled), .radiance-b-menu button:focus-visible { background: #3a3a3c; outline: none; }
+            .radiance-b-menu button.is-current { box-shadow: inset 2px 0 0 #4da3ff; }
+            .radiance-b-menu button:disabled { opacity: .45; cursor: default; }
+            .radiance-b-menu img { width: 48px; height: 27px; object-fit: cover; border-radius: 3px; flex: 0 0 48px; background: #111; }
+            .radiance-b-menu .rbm-sep { height: 1px; margin: 4px 2px; background: rgba(255,255,255,.08); }
             .radiance-simple-bar button:disabled { opacity: .35; cursor: default; }
         `;
         document.head.appendChild(st);
@@ -2930,11 +2945,17 @@ class RadianceViewer {
             () => this.setDifference({ domain: this.diffSpec.domain === 'scene-linear' ? 'display' : 'scene-linear' }), 'rsb-diffdomain');
         cmp.append(this._sbDiffGain, this._sbDiffSigned, this._sbDiffDomain);
 
-        this._sbBLabel = document.createElement('span');
+        // B is a version you choose: the compare_image input, or a still you
+        // grabbed. The label opens the list; Grab still adds this frame to it.
+        this._sbBLabel = document.createElement('button');
+        this._sbBLabel.type = 'button';
         this._sbBLabel.className = 'rsb-b';
-        this._sbPin = btn('Pin A as B', 'Keep this frame as B (survives a new run)', () => {
-            if (this.compareSource === 'pinned') this.releaseReference();
-            else { this.pinReference(); if (this.compareMode === 'none') this.setCompareMode('wipe'); else this.render(); }
+        this._sbBLabel.setAttribute('aria-haspopup', 'menu');
+        this._sbBLabel.onclick = () => this.toggleBMenu();
+        this._sbPin = btn('Grab still', 'Keep this frame, as shown, as a still and compare against it (survives a new run)', () => {
+            if (!this.grabReviewStill()) return;
+            if (this.compareMode === 'none') this.setCompareMode('wipe');
+            else { this._applyCompareToRenderer?.(); this.render(); }
             this._syncCompareUI();
         }, 'rsb-pin');
         // How B sits on A when their sizes differ: pixel for pixel and
@@ -3070,11 +3091,14 @@ class RadianceViewer {
             b.setAttribute('aria-pressed', String(active));
         });
         if (this._sbBLabel) {
-            this._sbBLabel.textContent = this.compareSource === 'pinned'
+            const still = this.compareSource === 'pinned' ? this._stills?.find((x) => x.slot === this._pinnedSlot) : null;
+            this._sbBLabel.textContent = still ? `B: still ${still.n}`
+                : this.compareSource === 'pinned'
                 ? `B: frame ${(this._pinnedFrame ?? 0) + 1} (pinned)`
                 : this.compareSource === 'input' || this.frameCompareImages?.length ? 'B: compare_image'
                 : 'B: none yet';
-            this._sbBLabel.title = this.compareSource === 'pinned'
+            this._sbBLabel.title = still ? `B is still ${still.n}, grabbed from frame ${still.frame + 1}; it stays through new runs`
+                : this.compareSource === 'pinned'
                 ? 'B is a still of A you pinned; it stays through new runs'
                 : this.frameCompareImages?.length ? "B is the node's compare_image input, following the playhead"
                 : 'Connect compare_image, or pin a frame of A as B';
@@ -3097,9 +3121,12 @@ class RadianceViewer {
             this._sbBFit.disabled = this.compareSource !== 'input';
         }
         if (this._sbPin) {
-            this._sbPin.textContent = this.compareSource === 'pinned' ? 'Release B' : 'Pin A as B';
             this._sbPin.disabled = !this.image && !this.renderer?.textures?.image;
+            const n = this._stills?.length || 0;
+            this._sbPin.title = 'Keep this frame, as shown, as a still and compare against it (survives a new run)'
+                + (n ? `. ${n} still${n === 1 ? '' : 's'} kept; pick one from the B menu` : '');
         }
+        if (this._sbBLabel?.tagName === 'BUTTON') this._sbBLabel.title += '. Click to choose B';
     }
 
     /**
@@ -9755,9 +9782,11 @@ self.onmessage = async ({ data: { id, url } }) => {
      * compare_image until released. The still is read from the GL frame at
      * image resolution with compare off, so it lines up with A at any zoom.
      */
-    pinReference() {
+    pinReference({ slot: shelf = 0 } = {}) {
         const r = this.renderer;
         if (r?.grabReferenceStill && r.textures?.image) {
+            // Slot 0 is the plain pin; grabbed stills keep slots 1 and up.
+            if ('activeShelfIndex' in r) r.activeShelfIndex = shelf;
             const keep = this.compareMode;
             this.compareMode = 'none';
             r.setWipe?.(0.5, false);
@@ -9774,16 +9803,171 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this.compareSource = 'pinned';
         this._pinnedFrame = this.currentFrame || 0;
+        this._pinnedSlot = shelf;
         this._pinImplicit = false;           // setCompareMode marks its own pins
         this._syncCompareUI();
         return true;
+    }
+
+    /** Stills need the WebGL shelf, which keeps their pixels; WebGPU has none yet. */
+    _canKeepStills() {
+        return typeof this.renderer?._uploadShelfTexture === 'function' && !!this.renderer?.textures?.image;
+    }
+
+    /**
+     * Grab this frame, as displayed, as a still and make it B. Up to
+     * MAX_STILLS are kept (the oldest goes after that) and listed in the B
+     * menu. Without the WebGL shelf it pins the frame as before.
+     */
+    grabReviewStill() {
+        if (!this._canKeepStills()) return this.pinReference();
+        const MAX = RadianceViewer.MAX_STILLS;
+        this._stills = this._stills || [];
+        const used = new Set(this._stills.map((x) => x.slot));
+        let slot = 1;
+        while (used.has(slot) && slot <= MAX) slot++;
+        if (slot > MAX) { slot = this._stills.shift().slot; }
+        if (!this.pinReference({ slot }) || !this.renderer.referenceShelf?.[slot]) return false;
+        this._stillCount = (this._stillCount || 0) + 1;
+        this._stills.push({ slot, n: this._stillCount, frame: this.currentFrame || 0,
+            thumb: this._stillThumb(slot), at: Date.now() });
+        this._syncCompareUI();
+        return true;
+    }
+
+    _stillThumb(slot) {
+        const s = this.renderer?._shelfStills?.get?.(slot);
+        if (!s) return '';
+        try {
+            const full = document.createElement('canvas');
+            full.width = s.w; full.height = s.h;
+            full.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(s.data.buffer, s.data.byteOffset, s.data.byteLength), s.w, s.h), 0, 0);
+            const t = document.createElement('canvas');
+            t.width = 96; t.height = Math.max(1, Math.round(96 * s.h / s.w));
+            t.getContext('2d').drawImage(full, 0, 0, t.width, t.height);
+            return t.toDataURL('image/jpeg', 0.8);
+        } catch { return ''; }
+    }
+
+    /** Make a kept still B. */
+    useStillAsB(slot) {
+        const still = this._stills?.find((x) => x.slot === slot);
+        const r = this.renderer;
+        if (!still || !r?.referenceShelf?.[slot]) return false;
+        r.swapReferenceShelf(slot);
+        this.compareSource = 'pinned';
+        this._pinnedFrame = still.frame;
+        this._pinnedSlot = slot;
+        this._pinImplicit = false;
+        if (this.compareMode === 'none') this.setCompareMode('wipe');
+        else { this._applyCompareToRenderer?.(); this.render(); }
+        this._syncCompareUI();
+        return true;
+    }
+
+    /** Use the compare_image input as B again (a kept still stays in the list). */
+    useInputAsB() {
+        if (this.compareSource === 'pinned') this.releaseReference();
+        this._syncCompareUI();
+    }
+
+    /** Forget every kept still. */
+    clearStills() {
+        const pinnedStill = this.compareSource === 'pinned' && this._pinnedSlot > 0;
+        const r = this.renderer;
+        const slots = (this._stills || []).map((x) => x.slot);
+        this._stills = [];
+        if (pinnedStill) this.releaseReference();
+        if (this.compareSource !== 'pinned') r?.clearReferenceShelf?.();
+        else if (r?.referenceShelf) {
+            // B is the plain pin (slot 0): free the stills' slots only.
+            for (const k of slots) {
+                if (r.referenceShelf[k]) r.gl?.deleteTexture?.(r.referenceShelf[k]);
+                r.referenceShelf[k] = null;
+                r._shelfStills?.delete?.(k);
+            }
+        }
+        this._syncCompareUI();
+    }
+
+    /** The B menu on the Review bar: the input, the kept stills, Grab still, Release. */
+    toggleBMenu() {
+        if (this._bMenu) { this.closeBMenu(); return; }
+        const anchor = this._sbBLabel;
+        if (!anchor) return;
+        const menu = document.createElement('div');
+        menu.className = 'radiance-b-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', 'Compare against');
+        const head = (t) => { const h = document.createElement('div'); h.className = 'rbm-head'; h.textContent = t; menu.appendChild(h); };
+        const sep = () => { const d = document.createElement('div'); d.className = 'rbm-sep'; menu.appendChild(d); };
+        const item = (label, onPick, { current = false, disabled = false, thumb = '', title = '', key = '' } = {}) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('role', 'menuitem');
+            if (key) b.dataset.b = key;
+            if (thumb) { const im = document.createElement('img'); im.src = thumb; im.alt = ''; b.appendChild(im); }
+            b.appendChild(document.createTextNode(label));
+            b.classList.toggle('is-current', current);
+            b.disabled = disabled;
+            if (title) b.title = title;
+            b.onclick = () => { this.closeBMenu(); onPick(); };
+            menu.appendChild(b);
+            return b;
+        };
+        head('Compare against');
+        const hasInput = !!this.frameCompareImages?.length;
+        item(hasInput ? 'compare_image input' : 'compare_image (not connected)', () => this.useInputAsB(),
+            { key: 'input', current: this.compareSource !== 'pinned' && hasInput, disabled: !hasInput,
+              title: hasInput ? "The node's compare_image, following the playhead" : 'Connect compare_image on the node' });
+        if (this.compareSource === 'pinned' && !(this._pinnedSlot > 0)) {
+            item(`Frame ${(this._pinnedFrame ?? 0) + 1} (pinned)`, () => {}, { key: 'pin', current: true });
+        }
+        const stills = this._stills || [];
+        if (stills.length) {
+            sep(); head('Stills');
+            stills.slice().reverse().forEach((x) => item(`Still ${x.n} · frame ${x.frame + 1}`, () => this.useStillAsB(x.slot),
+                { key: `still-${x.slot}`, thumb: x.thumb, current: this.compareSource === 'pinned' && this._pinnedSlot === x.slot }));
+        }
+        sep();
+        item('Grab still (this frame)', () => { this._sbPin?.click(); }, { key: 'grab',
+            disabled: !this.image && !this.renderer?.textures?.image,
+            title: this._canKeepStills() || !this.renderer ? '' : 'This renderer keeps one pinned frame; WebGL keeps a list of stills' });
+        if (this.compareSource === 'pinned') item('Release B', () => this.releaseReference(), { key: 'release' });
+        if (stills.length) item('Clear stills', () => this.clearStills(), { key: 'clear' });
+        document.body.appendChild(menu);
+        const a = anchor.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(window.innerWidth - m.width - 8, a.left))}px`;
+        menu.style.top = `${a.top - m.height - 6 >= 8 ? a.top - m.height - 6 : a.bottom + 6}px`;
+        this._bMenu = menu;
+        anchor.setAttribute('aria-expanded', 'true');
+        const onDown = (e) => { if (!menu.contains(e.target) && e.target !== anchor) this.closeBMenu(); };
+        const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); this.closeBMenu(); anchor.focus(); } };
+        document.addEventListener('pointerdown', onDown, true);
+        document.addEventListener('keydown', onKey, true);
+        this._bMenuOff = () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onKey, true); };
+        menu.querySelector('button:not(:disabled)')?.focus();
+    }
+
+    closeBMenu() {
+        this._bMenuOff?.(); this._bMenuOff = null;
+        this._bMenu?.remove(); this._bMenu = null;
+        this._sbBLabel?.setAttribute('aria-expanded', 'false');
     }
 
     /** Forget the pinned still, leaving the compare mode to the caller. */
     _dropPin() {
         this.compareSource = null;
         this._pinImplicit = false;
-        this.renderer?.clearReferenceShelf?.();
+        const r = this.renderer;
+        if (this._stills?.length && r) {
+            // Kept stills stay on the shelf for the B menu; B just stops using them.
+            r.textures && (r.textures.reference = null);
+            r.wipeRefEnabled = false;
+        } else {
+            r?.clearReferenceShelf?.();
+        }
         this.compareImage = null;
         if (this.frameCompareImages?.length) this._updateCompareForFrame(this.currentFrame || 0, true);
     }
@@ -10350,7 +10534,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** Rebuild the QC tab when it is the one showing. */
     _refreshQCPanel() {
-        if (this.uiMode === 'advanced' && this._referenceRightTab === 'qc') this._renderReferenceRightHUD?.();
+        if (this.uiMode === 'advanced' && (this._referenceRightTab === 'qc'
+            || (this._referenceRightTab === 'scopes' && this.workspace === 'inspect'))) this._renderReferenceRightHUD?.();
     }
 
     /**
@@ -11727,6 +11912,13 @@ self.onmessage = async ({ data: { id, url } }) => {
 
             // Store probe for multi-probe display (Sprint 4)
             this._lastProbe = { imgX, imgY, dispStr, linStr, hex, isHDRPick };
+            if (this._scopeProbeCells?.root?.isConnected) {
+                this._scopeProbeLast = { x: imgX, y: imgY, lin: [linR, linG, linB], disp: [r, g, b], hdr: isHDRPick };
+                if (!this._scopeProbeQueued) {
+                    this._scopeProbeQueued = true;
+                    requestAnimationFrame(() => { this._scopeProbeQueued = false; this._paintScopeProbe(this._scopeProbeLast); });
+                }
+            }
 
             // Feed the Probe panel. Sampled through _probeSampleOne rather than
             // reused from the values above, because the panel's Source/Rendered
@@ -15015,6 +15207,29 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-depth-preview canvas,
                 .radiance-ref-depth-preview img { width:100%; height:100%; display:block; object-fit:cover; filter:contrast(1.15); }
                 .radiance-ref-scopes-grid { display:flex; flex-direction:column; gap:12px; }
+                .radiance-ref-scopes-grid.is-quad { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+                .radiance-ref-scopes-grid.is-quad .radiance-ref-scope-canvas { height:auto; aspect-ratio:4/3; }
+                .radiance-scope-scale { display:inline-flex; padding:2px; border-radius:7px; background:var(--radiance-control); margin-bottom:8px; }
+                .radiance-scope-scale button { border:0; background:transparent; color:var(--radiance-text-dim); padding:4px 10px; border-radius:5px; font:inherit; font-size:var(--radiance-fs-body); cursor:pointer; }
+                .radiance-scope-scale button.is-active { background:var(--radiance-border-strong); color:var(--radiance-text); }
+                .radiance-scope-scale button:disabled { opacity:.45; cursor:default; }
+                .radiance-scope-qc { display:flex; flex-direction:column; }
+                .radiance-scope-qc-list { flex:1; display:flex; flex-direction:column; gap:5px; padding:8px 10px; font-size:var(--radiance-fs-body); }
+                .radiance-scope-qc-line { display:grid; grid-template-columns:8px minmax(0,1fr) auto; gap:8px; align-items:center; }
+                .radiance-scope-qc-line .dot { width:8px; height:8px; border-radius:50%; background:var(--radiance-text-muted); }
+                .radiance-scope-qc-line .dot.is-ok { background:var(--radiance-ok); }
+                .radiance-scope-qc-line .dot.is-warn { background:var(--radiance-warn); }
+                .radiance-scope-qc-line .dot.is-error { background:var(--radiance-error); }
+                .radiance-scope-qc-line .value { color:var(--radiance-text-dim); font-family:var(--radiance-font-mono, monospace); }
+                .radiance-scope-qc-empty { color:var(--radiance-text-dim); line-height:1.45; }
+                .radiance-scope-qc-actions { display:flex; gap:6px; padding:0 10px 10px; }
+                .radiance-scope-qc-actions button { flex:1; height:28px; border:0; border-radius:6px; background:var(--radiance-control); color:var(--radiance-text); font:inherit; cursor:pointer; }
+                .radiance-scope-qc-actions button:hover:not(:disabled) { background:var(--radiance-control-hover); }
+                .radiance-scope-qc-actions button:disabled { opacity:.45; cursor:default; }
+                .radiance-scope-probe { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; margin-top:8px; border-radius:6px; overflow:hidden; background:var(--radiance-panel-border); }
+                .radiance-scope-probe .cell { background:var(--radiance-surface-raised); padding:8px 10px; display:flex; flex-direction:column; gap:3px; min-width:0; }
+                .radiance-scope-probe .label { color:var(--radiance-text-muted); font-size:var(--radiance-fs-small, 11px); }
+                .radiance-scope-probe .value { font-family:var(--radiance-font-mono, monospace); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
                 .radiance-ref-scope-box { min-width:0; border-radius:6px; border:1px solid var(--radiance-panel-border); background:var(--radiance-bg); overflow:hidden; }
                 .radiance-ref-scope-head { height:28px; display:flex; align-items:center; justify-content:space-between; padding:0 10px; border-bottom:1px solid var(--radiance-panel-border); color:var(--radiance-text); font:700 var(--radiance-fs-heading)/1 var(--radiance-font-mono, monospace); letter-spacing:.8px; text-transform:uppercase; }
                 .radiance-ref-search::placeholder { color:var(--radiance-text-muted); }
@@ -16499,10 +16714,15 @@ self.onmessage = async ({ data: { id, url } }) => {
             : `${desc.label} · ${desc.levels}. ${desc.detail}`;
         opts.appendChild(note);
 
+        // Inspect reads the frame: three scopes and the QC result in a 2 x 2,
+        // the probe under them. Color keeps the stack, histogram first.
+        const quad = this.workspace === 'inspect';
         const section = this._renderReferenceSection(parent, 'SCOPES');
+        section.appendChild(this._renderScopeScaleSwitch());
         const scopes = document.createElement('div');
-        scopes.className = 'radiance-ref-scopes-grid';
+        scopes.className = `radiance-ref-scopes-grid${quad && show === 'all' ? ' is-quad' : ''}`;
         section.appendChild(scopes);
+        if (quad) parent.insertBefore(section, opts);   // the picture reading first, its options after
 
         this._referenceScopeCanvases = {};
         [
@@ -16510,7 +16730,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             ['waveform', 'Waveform', false],
             ['parade', 'Parade', false],
             ['vectorscope', 'Vectorscope', true],
-        ].filter(([mode]) => show === 'all' || show === mode).forEach(([mode, label, square]) => {
+        ].filter(([mode]) => (show === 'all' ? !(quad && mode === 'histogram') : show === mode)).forEach(([mode, label, square]) => {
             const box = document.createElement('div');
             box.className = `radiance-ref-scope-box ${square ? 'is-square' : ''}`;
             box.dataset.scope = mode;
@@ -16531,7 +16751,154 @@ self.onmessage = async ({ data: { id, url } }) => {
             scopes.appendChild(box);
             this._referenceScopeCanvases[mode] = canvas;
         });
+        if (quad && show === 'all') scopes.appendChild(this._renderScopeQCCard());
+        if (quad) section.appendChild(this._renderScopeProbeRow());
         requestAnimationFrame(() => this._updateReferenceScopes());
+    }
+
+    /**
+     * 10-bit | % | Nits, the three scales a colourist switches between. Nits
+     * reads PQ or HLG code values, so it is only offered when the view is PQ
+     * or HLG; the Scale select under Scope options has the rest (12-bit, mV).
+     */
+    _renderScopeScaleSwitch() {
+        const enc = this._activeDisplayEncoding();
+        const nitsId = enc === 'hlg' ? 'nits-hlg' : 'nits-pq';
+        const cur = this.scopeScale || 'cv10';
+        const wrap = document.createElement('div');
+        wrap.className = 'radiance-scope-scale';
+        wrap.setAttribute('role', 'group');
+        wrap.setAttribute('aria-label', 'Scope scale');
+        [['cv10', '10-bit', '10-bit code values'], ['percent', '%', 'Percent of the code range'],
+         [nitsId, 'Nits', enc === 'sdr' ? 'Nits read PQ or HLG code values: choose an HDR view first'
+            : `Light on the display, in cd/m² (${enc === 'hlg' ? 'HLG' : 'ST.2084'})`]].forEach(([id, label, tip]) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.title = tip;
+            b.dataset.scale = id;
+            const on = id === cur || (label === 'Nits' && /^nits-/.test(cur) && enc !== 'sdr');
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', String(on));
+            b.disabled = label === 'Nits' && enc === 'sdr';
+            b.addEventListener('click', () => {
+                this.scopeScale = id;
+                try { localStorage.setItem('radiance_scope_scale', id); } catch { /* storage is optional */ }
+                this._renderReferenceRightHUD();
+                this.updateScopes();
+            });
+            wrap.appendChild(b);
+        });
+        return wrap;
+    }
+
+    /** The last QC run as the fourth scope in Inspect: one line a check, a dot for its status. */
+    _renderScopeQCCard() {
+        const LABELS = { nan_inf: 'NaN / Inf', over_range: 'Over range', under_range: 'Below 0',
+            alpha_range: 'Alpha range', alpha_premultiplied: 'Premultiplied alpha', flicker: 'Flicker' };
+        const DOT = { PASS: 'ok', WARN: 'warn', FAIL: 'error' };
+        const box = document.createElement('div');
+        box.className = 'radiance-ref-scope-box radiance-scope-qc';
+        box.dataset.scope = 'qc';
+        const head = document.createElement('div');
+        head.className = 'radiance-ref-scope-head';
+        const title = document.createElement('span');
+        title.textContent = 'QC';
+        const state = document.createElement('span');
+        const rep = this._qcReport;
+        state.textContent = this._qcRunning ? 'running'
+            : rep ? `${rep.frames.analysed}/${rep.frames.total} frames${rep.complete ? '' : ', stopped'}` : 'not run';
+        head.append(title, state);
+        box.appendChild(head);
+        const list = document.createElement('div');
+        list.className = 'radiance-scope-qc-list';
+        if (rep) {
+            for (const c of rep.checks) {
+                const line = document.createElement('div');
+                line.className = 'radiance-scope-qc-line';
+                line.dataset.check = c.id;
+                line.dataset.status = c.status;
+                const dot = document.createElement('span');
+                dot.className = `dot is-${DOT[c.status] || 'muted'}`;
+                const name = document.createElement('span');
+                name.className = 'name';
+                name.textContent = LABELS[c.id] || c.id;
+                const val = document.createElement('span');
+                val.className = 'value';
+                const n = Array.isArray(c.frames) ? c.frames.length : 0;
+                val.textContent = c.status === 'PASS' ? 'none'
+                    : n ? `${n} frame${n === 1 ? '' : 's'}` : String(c.status).toLowerCase().replace('_', ' ');
+                line.title = [c.status, c.reason, c.metric].filter(Boolean).join('\n');
+                line.append(dot, name, val);
+                list.appendChild(line);
+            }
+        } else {
+            const none = document.createElement('div');
+            none.className = 'radiance-scope-qc-empty';
+            none.textContent = this._qcRunning ? (this._sbQC?.textContent || 'QC running')
+                : 'Measures every frame: NaN, range, alpha and flicker, on the float data.';
+            list.appendChild(none);
+        }
+        box.appendChild(list);
+        const row = document.createElement('div');
+        row.className = 'radiance-scope-qc-actions';
+        const run = document.createElement('button');
+        run.type = 'button';
+        run.className = 'radiance-scope-qc-run';
+        run.textContent = this._qcRunning ? 'Stop' : (rep ? 'Run again' : 'Run QC');
+        run.addEventListener('click', () => this.runQC());
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'radiance-scope-qc-more';
+        more.textContent = 'Details';
+        more.title = 'Every check, the flagged frames and the report';
+        more.disabled = !rep;
+        more.addEventListener('click', () => this._setReferenceTab('qc'));
+        row.append(run, more);
+        box.appendChild(row);
+        return box;
+    }
+
+    /**
+     * Under the scopes in Inspect: the pixel under the pointer as scene
+     * linear, as light (nits at 203 cd/m² reference white, and stops from
+     * 18% grey), as it lands on the display, and where it is.
+     */
+    _renderScopeProbeRow() {
+        const row = document.createElement('div');
+        row.className = 'radiance-scope-probe';
+        const cells = {};
+        [['linear', 'Scene linear'], ['light', 'Luminance'], ['display', 'On display (8-bit)'], ['where', 'Pixel']].forEach(([k, label]) => {
+            const c = document.createElement('div');
+            c.className = 'cell';
+            c.dataset.probe = k;
+            const l = document.createElement('div');
+            l.className = 'label';
+            l.textContent = label;
+            const v = document.createElement('div');
+            v.className = 'value';
+            v.textContent = '—';
+            c.append(l, v);
+            row.appendChild(c);
+            cells[k] = { label: l, value: v };
+        });
+        this._scopeProbeCells = { root: row, ...cells };
+        if (this._scopeProbeLast) this._paintScopeProbe(this._scopeProbeLast);
+        return row;
+    }
+
+    _paintScopeProbe(p) {
+        const c = this._scopeProbeCells;
+        if (!c?.root?.isConnected) return;
+        if (!p) { ['linear', 'light', 'display', 'where'].forEach((k) => { c[k].value.textContent = '—'; }); return; }
+        const f = (x) => (Math.abs(x) >= 100 ? x.toFixed(1) : x.toFixed(3));
+        c.linear.label.textContent = p.hdr ? 'Scene linear' : 'Linear (from 8-bit)';
+        c.linear.value.textContent = `${f(p.lin[0])}  ${f(p.lin[1])}  ${f(p.lin[2])}`;
+        const y = _probeLuminance(p.lin[0], p.lin[1], p.lin[2]);
+        const st = Math.log2(Math.max(1e-6, y) / 0.18);
+        c.light.value.textContent = `${Math.round(_probeNits(y))} nits  ·  ${st >= 0 ? '+' : ''}${st.toFixed(1)} st`;
+        c.display.value.textContent = `${p.disp[0]}  ${p.disp[1]}  ${p.disp[2]}`;
+        c.where.value.textContent = `${p.x}, ${p.y}  ·  f${(this.currentFrame || 0) + 1}`;
     }
 
     _drawReferenceScopeEmpty(canvas, label = 'NO SIGNAL') {
@@ -24361,6 +24728,8 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     destroy() {
         this._destroyed = true;
+        this.closeBMenu?.();
+        this._stills = null;
         // Chromium can keep a <select> reachable from a native root after the
         // page drops it (form-control tracking). Through its parent chain that
         // held the whole panel, every handler in it and so this viewer: a
