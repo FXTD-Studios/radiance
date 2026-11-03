@@ -961,6 +961,11 @@ class RadianceViewer {
                     color: var(--radiance-text-dim);
                     border-top: 1px solid var(--radiance-panel-border);
                 }
+                .radiance-pro-infobar:not(.has-legend) { display: none; }   /* only for the False Color key */
+                .radiance-pro-peak { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent;
+                    padding: 0 2px; font: inherit; color: var(--radiance-text-dim); cursor: pointer; white-space: nowrap; }
+                .radiance-pro-peak::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+                .radiance-pro-peak:hover { color: var(--radiance-text); }
                 .radiance-pro-infobar {
                     flex: 0 0 24px;
                     position: relative;
@@ -1768,6 +1773,9 @@ class RadianceViewer {
                     ? '#60a5fa' : this.theme.textDim;
 
         this.bitDepthInfo.textContent = `${inputLabel}  ${pipeLabel}`;
+        // Shown only when it is a warning: an 8-bit proxy instead of the float
+        // source. Otherwise Tools > Pipeline Bit Depth (Alt+B) has it.
+        this.bitDepthInfo.style.display = isProxy ? '' : 'none';
         this.bitDepthInfo.style.color = dominantColor;
         this.bitDepthInfo.style.background = `${dominantColor}15`;
         this.bitDepthInfo.style.border = `1px solid ${dominantColor}35`;
@@ -1801,7 +1809,7 @@ class RadianceViewer {
         }
 
         const { p1, p10, p50, p90, p99, p999, meanLuma, clippedPct, negativePct,
-            clippedRPct, clippedGPct, clippedBPct } = raw;
+            clippedRPct, clippedGPct, clippedBPct, above1000Pct } = raw;
         // From the lowest NON-ZERO percentile. A frame whose darkest 1% is
         // true black has p1 = 0, and the old formula then gave up and said
         // 0.0 EV for a frame running from black to 41.6.
@@ -1820,7 +1828,7 @@ class RadianceViewer {
         this._hdrZoneStats = {
             p1, p10, p50, p90, p99, p999,
             meanLuma, clippedPct, negativePct,
-            clippedRPct, clippedGPct, clippedBPct,
+            clippedRPct, clippedGPct, clippedBPct, above1000Pct,
             evRange, nitPeak,
             shadowCeiling, midCeiling,
             shadowEV : -(Math.max(0, Math.log2(Math.max(p50, 1e-6) / Math.max(shadowCeiling, 1e-6)) + 1.5)),
@@ -1849,7 +1857,7 @@ class RadianceViewer {
         const f = new Float32Array(1);
         const u = new Uint32Array(f.buffer);
         let samples = 0, nonPositive = 0, negative = 0, sum = 0;
-        let clipped = 0, clippedR = 0, clippedG = 0, clippedB = 0;
+        let clipped = 0, clippedR = 0, clippedG = 0, clippedB = 0, above1000 = 0;
         for (let i = 0; i < n; i += step) {
             const base = i * ch;
             const r = (table ? table[values[base]] : values[base]) || 0;
@@ -1859,6 +1867,7 @@ class RadianceViewer {
             samples++;
             sum += y;
             if (y > 1.0) clipped++;
+            if (y > 1000 / 203) above1000++;      // brighter than a 1000-nit HDR display
             if (r > 1.0) clippedR++;
             if (g > 1.0) clippedG++;
             if (b > 1.0) clippedB++;
@@ -1892,6 +1901,7 @@ class RadianceViewer {
             p1NonZero: percentile(1, positives, 0),
             meanLuma: sum / samples,
             clippedPct: (clipped / samples) * 100,
+            above1000Pct: (above1000 / samples) * 100,
             negativePct: (negative / samples) * 100,
             clippedRPct: (clippedR / samples) * 100,
             clippedGPct: (clippedG / samples) * 100,
@@ -1961,6 +1971,15 @@ class RadianceViewer {
         return v; // BMD or unknown — treat as linear
     }
 
+    /** The peak of the display the view targets: 1000 nits for an HDR view, else 100. */
+    _displayPeakNits() {
+        const c = this._displayChain?.();
+        const text = `${c?.display || ''} ${c?.view || ''}`;
+        const m = /(\d{3,5})\s*nits/i.exec(text);
+        if (m) return +m[1];
+        return /PQ|HLG|ST\.?2084|HDR/i.test(text) ? 1000 : 100;
+    }
+
     _updateHDRPeakBadge() {
         if (!this.hdrPeakInfo) return;
         const stats = this._hdrZoneStats;
@@ -1976,16 +1995,27 @@ class RadianceViewer {
         else             nitStr = `${Math.round(nit)} nit (BT.2408)`;
 
         const ev = stats.evRange.toFixed(1);
-        const clp = stats.clippedPct.toFixed(1);
-        this.hdrPeakInfo.textContent = `⬆ ${nitStr}  ·  ${ev} EV  ·  ${clp}% clip`;
+        // What the chosen display cannot show as it is. An HDR view (PQ, HLG)
+        // stops at its 1000 nits. An SDR view puts diffuse white (scene 1.0,
+        // 203 nits by BT.2408) at its white, so everything above it is rolled
+        // off. The figure says where to look, not that the master is clipped.
+        const peak = this._displayPeakNits();
+        const hdrView = peak >= 1000;
+        const above = (hdrView ? stats.above1000Pct : stats.clippedPct) ?? 0;
+        const where = hdrView ? `above ${peak} nits` : 'above SDR white';
+        this.hdrPeakInfo.textContent = `Peak ${nitStr}  ·  ${ev} EV  ·  ${above.toFixed(1)}% ${where}`;
+        this.hdrPeakInfo.title = `Scene-linear peak, p99.9 × 203 cd/m² (BT.2408 reference white).\n`
+            + (hdrView
+                ? `${above.toFixed(1)}% of the frame is brighter than this ${peak}-nit HDR view shows.\n`
+                : `${above.toFixed(1)}% of the frame is above diffuse white (scene 1.0, 203 nits): this SDR view rolls it off.\n`)
+            + 'Click for False Color.';
         this.hdrPeakInfo.style.display = '';
 
         // Amber when part of the frame is above what the display shows, grey
         // otherwise: one warning colour, never red beside the picture.
-        const c = stats.clippedPct >= 0.1 ? this.theme.warn : this.theme.textMuted;
+        const c = above >= 0.1 ? this.theme.warn : this.theme.textMuted;
         this.hdrPeakInfo.style.color = c;
-        this.hdrPeakInfo.style.background  = `${c}18`;
-        this.hdrPeakInfo.style.borderColor = `${c}40`;
+
     }
 
     // ── v4.3: Per-frame Histogram Sparklines ─────────────────────────────────
@@ -3306,6 +3336,10 @@ class RadianceViewer {
         this._engineBadge.textContent = 'GPU: —';
         [this._proFileName, this._proChip, this._proResolution, this._proAspect, this._proFps, this._proColor, this._proDepth, this._engineBadge]
             .forEach(el => meta.appendChild(el));
+        // One quiet line: name, size, rate, depth. The format chip, aspect, source
+        // tag (the status line names the chain) and GPU badge (Settings) are kept
+        // for their readers but not shown.
+        [this._proChip, this._proAspect, this._proColor, this._engineBadge].forEach((el) => { el.style.display = 'none'; });
         bar.appendChild(meta);
 
         const actions = document.createElement('div');
@@ -3320,8 +3354,10 @@ class RadianceViewer {
             actions.appendChild(btn);
             return btn;
         };
-        action('Snapshot', 'Snapshot', () => this.showExportMenu?.({ target: actions }));
-        this._hdrHeatmapBtn = action('HDR', 'HDR heatmap: scene luminance in nits', () => this.toggleHDRHeatmap());
+        action('Export', 'Export: snapshot, EXR, grade (.cdl / .cube) and Deliver', () => this.showExportMenu?.({ target: actions }));
+        // The HDR heatmap is an overlay like False Color and Zebra: Color > HDR
+        // Heatmap. Its button is kept off the header; toggleHDRHeatmap still syncs it.
+        this._hdrHeatmapBtn = document.createElement('button');
         this._hdrHeatmapBtn.setAttribute('aria-pressed', 'false');
         // M18: hiding the panel is its own button. It used to be the gear,
         // labelled Settings.
@@ -3820,8 +3856,14 @@ class RadianceViewer {
             (v, o) => { if (o?.live) { this.viewGamma = v; this.render(); } else this.setViewGamma(v); },
             (v) => v.toFixed(2));
         this._viewEvInput = evInp; this._viewGammaInput = gInp;
-        left.appendChild(evWrap);
-        left.appendChild(gWrap);
+        // Viewer-only gain and gamma sit with the View they adjust, away from the
+        // grade: nothing here is rendered out.
+        evWrap.title = 'Viewer exposure (stops). Viewer only: not in the render or any export';
+        gWrap.title = 'Viewer gamma. Viewer only: not in the render or any export';
+        evWrap.classList.add('radiance-vb-viewer-adjust');
+        gWrap.classList.add('radiance-vb-viewer-adjust');
+        left.insertBefore(gWrap, fpsSelect);
+        left.insertBefore(evWrap, gWrap);
         if (this.displayP3Capable) {
             const dispSel = document.createElement('select');
             dispSel.title = 'Monitor the ACES view targets. Display P3 uses ACES 2.0 SDR (P3 D65) '
@@ -5051,18 +5093,19 @@ class RadianceViewer {
 
         this.colorspaceInfo = document.createElement('span');
         this.colorspaceInfo.textContent = 'sRGB / HDR';
-        this.colorspaceInfo.style.color = t.accent;
+        this.colorspaceInfo.style.color = t.textDim;
         // The whole display chain: long with an OCIO view, so it shortens with an ellipsis.
         this.colorspaceInfo.style.cssText += 'min-width:0;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         this.statusBar.appendChild(this.colorspaceInfo);
 
         this.dimensionInfo = document.createElement('span');
         this.dimensionInfo.textContent = '—×—';
+        this.dimensionInfo.style.display = 'none';   // the header shows the size
         this.statusBar.appendChild(this.dimensionInfo);
 
         this.zoomInfo = document.createElement('span');
         this.zoomInfo.textContent = '100%';
-        this.zoomInfo.style.color = t.accent;
+        this.zoomInfo.style.color = t.textDim;
         this.statusBar.appendChild(this.zoomInfo);
 
         // v4.1: Pipeline precision indicator — shows full INPUT → PIPELINE chain
@@ -5082,22 +5125,14 @@ class RadianceViewer {
         this.bitDepthInfo.addEventListener('click', () => this._cyclePipelinePrecision());
         this.statusBar.appendChild(this.bitDepthInfo);
 
-        // v4.2: HDR peak nit / EV badge — shows scene-linear peak estimation
-        this.hdrPeakInfo = document.createElement('span');
+        // v4.2: HDR peak nit / EV readout. Plain text, grey or amber; a click
+        // turns False Color on to show where the frame is above the display.
+        this.hdrPeakInfo = document.createElement('button');
+        this.hdrPeakInfo.type = 'button';
+        this.hdrPeakInfo.className = 'radiance-pro-peak';
         this.hdrPeakInfo.textContent = '';
-        this.hdrPeakInfo.style.cssText = `
-            padding: 1px 8px;
-            border-radius: 3px;
-            font-weight: 700;
-            font-size: var(--radiance-fs-heading);
-            letter-spacing: 0.6px;
-            display: none;
-            cursor: default;
-            user-select: none;
-            color: #f97316;
-            background: rgba(249,115,22,0.12);
-            border: 1px solid rgba(249,115,22,0.3);
-        `;
+        this.hdrPeakInfo.style.display = 'none';
+        this.hdrPeakInfo.onclick = () => this._runKeyAction?.('view.falseColor');
         this.hdrPeakInfo.title = 'Scene-linear peak luminance estimate (p99.9 × 203 cd/m²)';
         this.statusBar.appendChild(this.hdrPeakInfo);
 
@@ -11744,6 +11779,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // Toggle Legend visibility
         if (this.fcLegend) {
             this.fcLegend.style.display = this.falseColor ? 'flex' : 'none';
+            this.bottomInfoBar?.classList.toggle('has-legend', !!this.falseColor);
         }
 
     }
