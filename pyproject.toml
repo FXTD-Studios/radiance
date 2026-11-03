@@ -177,7 +177,6 @@ radiance = [
     # project data (keep local; not shipped in the package)" -- the package-data
     # globs just did not agree with it.
     "workflows/*.json",
-    "workflows/official/*.json",
     "workflows/TEMPLATES/*.json",
     "workflows/TEMPLATES/*.rad",
     "scripts/training/train_temporal_rudra.py",
