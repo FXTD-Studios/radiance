@@ -375,9 +375,9 @@ test('the timeline has no tool that only redraws itself, and Ref Wipe shows B', 
     } finally { await page.close(); }
 });
 
-// ── L3: the viewer bar f/ and gamma boxes ──────────────────────────────────
+// ── L3: the viewer bar EV and gamma boxes ──────────────────────────────────
 
-test('f/ and gamma clamp to their ranges and a double-click selects the text', { skip }, async () => {
+test('EV and gamma clamp to their ranges and a double-click selects the text', { skip }, async () => {
     const page = await viewerPage(4);
     try {
         const ev = await page.evaluate(() => v._viewEvInput.getBoundingClientRect().toJSON());
