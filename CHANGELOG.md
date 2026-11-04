@@ -152,8 +152,10 @@ else is fixes. Read the upgrade notes before moving a production setup.
   new, workflows, the Viewer, backdrops, gizmos, where to learn more), each
   page with one thing to try; after an update it opens one What's new page.
   It waits for ComfyUI's own first-run dialog to close. "Don't show at
-  startup" (also Settings > Radiance > Welcome) turns it off, and
-  Help > Radiance Tour opens it any time.
+  startup" (also Settings > Radiance > Welcome) turns it off, and Radiance
+  Tour opens it any time: in the ◎ Radiance menu at the top (with Project
+  Manager, Workflow Library and Assets), in Help, and in the canvas
+  right-click ◎ Radiance Studio menu.
 - **Project Manager node:** its fallback buttons opened a broken address
   (`${_EXT_BASE}` was in plain quotes); they open the Manager, Library and
   Assets again, as do the Studio node's.

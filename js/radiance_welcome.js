@@ -355,7 +355,7 @@ const PAGES = {
                 a.append(s, svg(OUT)); box.appendChild(a);
             });
             f.appendChild(box);
-            f.appendChild(el("p", "rw-note", "Open this tour again from Help > Radiance Tour."));
+            f.appendChild(el("p", "rw-note", "Open this tour again from the \u25CE Radiance menu at the top, or Help > Radiance Tour."));
             return f;
         },
     },

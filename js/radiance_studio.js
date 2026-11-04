@@ -122,6 +122,10 @@ app.registerExtension({
                     }
                 }
             },
+            {
+                content: "Radiance Tour",
+                callback: () => window.radianceWelcome?.open("tour"),
+            },
         ];
 
         if (selectedNodes.length === 0) {
