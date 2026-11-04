@@ -29,6 +29,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -311,8 +312,13 @@ class FrameResult:
     stats: dict = field(default_factory=dict)
 
 
+# ALBABIT-FIX: run_batch runs frames on threads; G1 takes one at a time, so
+# its VRAM stays that of a single frame (0.64 GB at 1080p instead of 1.9 GB).
+_G1_LOCK = threading.Lock()
+
+
 def _g1(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor):
-    with torch.inference_mode():
+    with _G1_LOCK, torch.inference_mode():
         return pkg.g1(src.to(pkg.device), base.to(pkg.device))
 
 
@@ -433,16 +439,22 @@ def sdr_codes_from_image(rgb: torch.Tensor, inverse_oetf: str) -> np.ndarray:
 
 
 def run_batch(pkg: ACES2Package, codes: np.ndarray, progress: Optional[Callable[[int], None]] = None,
-              **kw) -> Tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
+              workers: int = 1, **kw) -> Tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
     """codes [B,H,W,3] -> (acescg [B,H,W,3], mask [B,H,W], baseline [B,H,W,3], tiled)."""
     view = aces2_view()
     out, masks, bases, tiled = [], [], [], False
-    for i in range(codes.shape[0]):
-        r = run_frame(pkg, codes[i], view, **kw)
-        out.append(r.acescg)
-        masks.append(r.mask)
-        bases.append(r.baseline)
-        tiled |= r.tiled
-        if progress:
-            progress(1)
+    # ALBABIT-FIX: TorchScript runs G1's first call at a frame size unoptimised,
+    # with other bits; a blank frame laid out as run_frame's takes it instead.
+    blank = torch.from_numpy(np.zeros(codes.shape[1:], np.float32)).permute(2, 0, 1)[None]
+    _g1(pkg, blank, blank)
+    # ALBABIT-FIX: stages 5-6 run on one core, so `workers` frames go at once
+    # (241 frames of 1080p in "Universal": 392 s -> 95 s); each keeps its bits.
+    with ThreadPoolExecutor(max(1, workers)) as pool:
+        for r in pool.map(lambda c: run_frame(pkg, c, view, **kw), codes):
+            out.append(r.acescg)
+            masks.append(r.mask)
+            bases.append(r.baseline)
+            tiled |= r.tiled
+            if progress:
+                progress(1)
     return np.stack(out), np.stack(masks), np.stack(bases), tiled

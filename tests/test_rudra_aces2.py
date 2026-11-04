@@ -245,6 +245,14 @@ def _img():
     return torch.from_numpy(np.rint(x * 255) / 255).float()
 
 
+def test_frames_at_once_give_the_same_bits(fake_package):
+    m = _mod()
+    codes = np.concatenate([np.roll(_img().numpy(), k, axis=2) for k in range(5)])
+    one = m.run_batch(fake_package, codes)
+    many = m.run_batch(fake_package, codes, workers=3)
+    assert all(np.array_equal(a, b) for a, b in zip(one[:3], many[:3]))
+
+
 def test_universal_runs_aces2_and_reports_it(fake_package):
     uu = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     m = _mod()
