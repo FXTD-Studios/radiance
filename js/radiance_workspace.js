@@ -516,13 +516,13 @@ app.registerExtension({
 
             // Keep the Project Manager dashboard separate from the workflow library.
             this.addWidget("button", "◎ PROJECT MANAGER", "launch_project_manager", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+                window.showRadianceDashboard(`${_EXT_BASE}/project_manager_dashboard.html`, "Radiance Project Manager");
             });
             this.addWidget("button", "WORKFLOW LIBRARY", "launch_dashboard", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+                window.showRadianceDashboard(`${_EXT_BASE}/workspace_dashboard.html`, "Radiance Workflow Library");
             });
             this.addWidget("button", "◎ ASSETS", "launch_assets", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/assets_dashboard.html", "Radiance Assets");
+                window.showRadianceDashboard(`${_EXT_BASE}/assets_dashboard.html`, "Radiance Assets");
             });
             this.addWidget("button", "QUICK SAVE", "quick_save", () => this.saveToLibrary());
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());

@@ -148,6 +148,15 @@ else is fixes. Read the upgrade notes before moving a production setup.
   They sit in `workflows/` as `api_*.json`, so ComfyUI's Templates menu lists them
   (it reads only the top level of `workflows/`), and the README lists the two
   kinds separately.
+- **A welcome tour.** On first install Radiance opens a six-page tour (what's
+  new, workflows, the Viewer, backdrops, gizmos, where to learn more), each
+  page with one thing to try; after an update it opens one What's new page.
+  It waits for ComfyUI's own first-run dialog to close. "Don't show at
+  startup" (also Settings > Radiance > Welcome) turns it off, and
+  Help > Radiance Tour opens it any time.
+- **Project Manager node:** its fallback buttons opened a broken address
+  (`${_EXT_BASE}` was in plain quotes); they open the Manager, Library and
+  Assets again, as do the Studio node's.
 - **A loaded graph opens the viewer the way it was saved.** Loading a graph
   switched the viewer to Advanced without rebuilding its panel, so it showed
   all seven tabs on Inspector (the 3.x layout) and ignored the saved
