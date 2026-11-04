@@ -267,6 +267,24 @@ def test_a_frame_too_big_for_the_gpu_is_tiled(fake_package, monkeypatch):
     assert tiled
 
 
+def test_the_warm_up_takes_the_odd_first_call(fake_package, monkeypatch):
+    """TorchScript's first G1 call at a frame size runs unoptimised, with other bits."""
+    m = _mod()
+    g1, shapes = fake_package.g1, []
+
+    def odd_first_call(src, base):
+        shapes.append(tuple(src.shape))
+        out = g1(src, base)
+        return tuple(t + 0.01 for t in out) if len(shapes) == 1 else out
+
+    monkeypatch.setattr(fake_package, "g1", odd_first_call)
+    codes = np.concatenate([np.roll(_img().numpy(), k, axis=2) for k in range(3)])
+    first = m.run_batch(fake_package, codes, workers=2)
+    again = m.run_batch(fake_package, codes, workers=2)
+    assert shapes[0] == (1, 3, 24, 32)
+    assert all(np.array_equal(a, b) for a, b in zip(first[:3], again[:3]))
+
+
 def test_universal_runs_aces2_and_reports_it(fake_package):
     uu = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     m = _mod()
