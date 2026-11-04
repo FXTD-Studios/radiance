@@ -38,6 +38,7 @@ in 3.5.0.
 from __future__ import annotations
 
 import logging
+import os
 from typing import List, Optional
 
 import torch
@@ -381,8 +382,13 @@ class _RudraRecoveryCore:
         device = comfy.model_management.get_torch_device()
         pkg = load_aces2_package(str(package_path), device=device)
         codes = sdr_codes_from_image(rgb, inverse_oetf)
+        # ALBABIT-FIX: one frame in RUDRA's CPU stages per 4 cores, as many as
+        # half the free RAM holds (about 350 bytes a pixel each, 0.7 GB at 1080p).
+        free = comfy.model_management.get_free_memory(torch.device("cpu"))
+        workers = min((os.cpu_count() or 1) // 4, int(free // 2 // (350 * codes.shape[1] * codes.shape[2])))
         master, mask, baseline, tiled = run_batch(
-            pkg, codes, progress=(lambda k: progress.update(k)) if progress is not None else None)
+            pkg, codes, progress=(lambda k: progress.update(k)) if progress is not None else None,
+            workers=workers)
         hs = float(min(max(highlight_strength, 0.0), 1.0))
         for i in range(master.shape[0]):
             master[i] = apply_trims(master[i], baseline[i], mask[i], strength=float(strength),
