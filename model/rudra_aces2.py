@@ -445,14 +445,15 @@ def run_batch(pkg: ACES2Package, codes: np.ndarray, progress: Optional[Callable[
     view = aces2_view()
     out, masks, bases, tiled = [], [], [], False
     # ALBABIT-FIX: TorchScript runs G1's first call at a frame size unoptimised,
-    # with other bits; a blank frame laid out as run_frame's takes it instead
-    # (a frame too big for the GPU skips it: run_frame tiles that one).
+    # with other bits; a blank frame laid out as run_frame's takes it instead.
+    # Frames too big for the GPU are tiled one at a time, in order, as before.
     blank = torch.from_numpy(np.zeros(codes.shape[1:], np.float32)).permute(2, 0, 1)[None]
     try:
         _g1(pkg, blank, blank)
     except RuntimeError as exc:
         if "out of memory" not in str(exc).lower():
             raise
+        workers = 1
     # ALBABIT-FIX: stages 5-6 run on one core, so `workers` frames go at once
     # (241 frames of 1080p in "Universal": 392 s -> 95 s); each keeps its bits.
     with ThreadPoolExecutor(max(1, workers)) as pool:
