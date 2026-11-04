@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Launcher so the Radiance dashboards are reachable without adding the
 // Project Manager node. Adds a ◎ button to ComfyUI's action bar that opens a
-// small menu — Project Manager / Workflow Library / Assets — via the in-canvas
+// small menu — Project Manager / Workflow Library / Assets / Radiance Tour — via the in-canvas
 // overlay (window.showRadianceDashboard, defined by radiance_workspace.js).
 // To revert: delete this file.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ function buildMenu() {
         background: "#111114", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px",
         padding: "6px", display: "none", boxShadow: "0 24px 60px -30px rgba(0,0,0,0.9)",
     });
-    const item = (icon, label, file, title) => {
+    const item = (icon, label, file, title, run = null) => {
         const b = document.createElement("button");
         b.innerHTML = `<span style="color:${GOLD};width:16px;display:inline-block;">${icon}</span>${label}`;
         Object.assign(b.style, {
@@ -45,12 +45,20 @@ function buildMenu() {
         });
         b.onmouseenter = () => { b.style.background = "rgba(255,255,255,0.05)"; };
         b.onmouseleave = () => { b.style.background = "none"; };
-        b.onclick = () => { menu.style.display = "none"; openDash(file, title); };
+        b.type = "button";
+        b.onclick = () => { menu.style.display = "none"; if (run) run(); else openDash(file, title); };
         return b;
     };
     menu.appendChild(item("◎", "Project Manager", "project_manager_dashboard.html", "Radiance Project Manager"));
     menu.appendChild(item("▤", "Workflow Library", "workspace_dashboard.html", "Radiance Workflow Library"));
     menu.appendChild(item("▦", "Assets", "assets_dashboard.html", "Radiance Assets"));
+    // The welcome tour (radiance_welcome.js), also under Help > Radiance Tour.
+    const sep = document.createElement("div");
+    Object.assign(sep.style, { height: "1px", margin: "4px 6px", background: "rgba(255,255,255,0.08)" });
+    menu.appendChild(sep);
+    const tour = item("✦", "Radiance Tour", null, null, () => window.radianceWelcome?.open("tour"));
+    tour.dataset.radianceMenu = "tour";
+    menu.appendChild(tour);
 
     document.addEventListener("click", () => { menu.style.display = "none"; });
     document.body.appendChild(menu);
