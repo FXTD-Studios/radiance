@@ -106,9 +106,9 @@ app.registerExtension({
                 content: "Open Project Manager",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+                        window.showRadianceDashboard(`${_EXT_BASE}/project_manager_dashboard.html`, "Radiance Project Manager");
                     } else {
-                        window.open("${_EXT_BASE}/project_manager_dashboard.html", "_blank");
+                        window.open(`${_EXT_BASE}/project_manager_dashboard.html`, "_blank");
                     }
                 }
             },
@@ -116,9 +116,9 @@ app.registerExtension({
                 content: "Open Workflow Library",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+                        window.showRadianceDashboard(`${_EXT_BASE}/workspace_dashboard.html`, "Radiance Workflow Library");
                     } else {
-                        window.open("${_EXT_BASE}/workspace_dashboard.html", "_blank");
+                        window.open(`${_EXT_BASE}/workspace_dashboard.html`, "_blank");
                     }
                 }
             },
