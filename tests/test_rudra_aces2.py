@@ -253,6 +253,20 @@ def test_frames_at_once_give_the_same_bits(fake_package):
     assert all(np.array_equal(a, b) for a, b in zip(one[:3], many[:3]))
 
 
+def test_a_frame_too_big_for_the_gpu_is_tiled(fake_package, monkeypatch):
+    m = _mod()
+    g1 = fake_package.g1
+
+    def small_only(src, base):
+        if src.shape[-2] * src.shape[-1] > 256:
+            raise RuntimeError("CUDA out of memory")
+        return g1(src, base)
+
+    monkeypatch.setattr(fake_package, "g1", small_only)
+    *_, tiled = m.run_batch(fake_package, _img().numpy(), workers=2, tile=16, overlap=4)
+    assert tiled
+
+
 def test_universal_runs_aces2_and_reports_it(fake_package):
     uu = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     m = _mod()
