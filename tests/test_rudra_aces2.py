@@ -245,6 +245,46 @@ def _img():
     return torch.from_numpy(np.rint(x * 255) / 255).float()
 
 
+def test_frames_at_once_give_the_same_bits(fake_package):
+    m = _mod()
+    codes = np.concatenate([np.roll(_img().numpy(), k, axis=2) for k in range(5)])
+    one = m.run_batch(fake_package, codes)
+    many = m.run_batch(fake_package, codes, workers=3)
+    assert all(np.array_equal(a, b) for a, b in zip(one[:3], many[:3]))
+
+
+def test_a_frame_too_big_for_the_gpu_is_tiled(fake_package, monkeypatch):
+    m = _mod()
+    g1 = fake_package.g1
+
+    def small_only(src, base):
+        if src.shape[-2] * src.shape[-1] > 256:
+            raise RuntimeError("CUDA out of memory")
+        return g1(src, base)
+
+    monkeypatch.setattr(fake_package, "g1", small_only)
+    *_, tiled = m.run_batch(fake_package, _img().numpy(), workers=2, tile=16, overlap=4)
+    assert tiled
+
+
+def test_the_warm_up_takes_the_odd_first_call(fake_package, monkeypatch):
+    """TorchScript's first G1 call at a frame size runs unoptimised, with other bits."""
+    m = _mod()
+    g1, shapes = fake_package.g1, []
+
+    def odd_first_call(src, base):
+        shapes.append(tuple(src.shape))
+        out = g1(src, base)
+        return tuple(t + 0.01 for t in out) if len(shapes) == 1 else out
+
+    monkeypatch.setattr(fake_package, "g1", odd_first_call)
+    codes = np.concatenate([np.roll(_img().numpy(), k, axis=2) for k in range(3)])
+    first = m.run_batch(fake_package, codes, workers=2)
+    again = m.run_batch(fake_package, codes, workers=2)
+    assert shapes[0] == (1, 3, 24, 32)
+    assert all(np.array_equal(a, b) for a, b in zip(first[:3], again[:3]))
+
+
 def test_universal_runs_aces2_and_reports_it(fake_package):
     uu = importlib.import_module("radiance.nodes.hdr.uplift_universal")
     m = _mod()
