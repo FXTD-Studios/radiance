@@ -312,14 +312,15 @@ class FrameResult:
     stats: dict = field(default_factory=dict)
 
 
-# ALBABIT-FIX: run_batch runs frames on threads; G1 takes one at a time, so
-# its VRAM stays that of a single frame (0.64 GB at 1080p instead of 1.9 GB).
+# ALBABIT-FIX: run_batch runs frames on threads; G1 takes one at a time and
+# hands its outputs back on the CPU, so VRAM stays that of a single frame
+# (0.64 GB at 1080p, 1.9 GB without the lock).
 _G1_LOCK = threading.Lock()
 
 
 def _g1(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor):
     with _G1_LOCK, torch.inference_mode():
-        return pkg.g1(src.to(pkg.device), base.to(pkg.device))
+        return tuple(t.float().cpu() for t in pkg.g1(src.to(pkg.device), base.to(pkg.device)))
 
 
 def _g1_tiled(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor, tile: int, overlap: int):
@@ -335,7 +336,7 @@ def _g1_tiled(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor, tile: in
             res = _g1(pkg, src[..., ya:yb, xa:xb], base[..., ya:yb, xa:xb])
             ye, xe = min(h, y0 + step), min(w, x0 + step)
             for o, r in zip(outs, res):
-                o[..., y0:ye, x0:xe] = r[..., y0 - ya:ye - ya, x0 - xa:xe - xa].float().cpu()
+                o[..., y0:ye, x0:xe] = r[..., y0 - ya:ye - ya, x0 - xa:xe - xa]
     return tuple(outs)
 
 
@@ -350,7 +351,7 @@ def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2Vie
     b = torch.from_numpy(baseline).permute(2, 0, 1)[None]
     tiled = False
     try:
-        rs, hl, full, weight = (t.float().cpu() for t in _g1(pkg, x, b))          # stage 2
+        rs, hl, full, weight = _g1(pkg, x, b)                                     # stage 2
     except RuntimeError as exc:
         if "out of memory" not in str(exc).lower():
             raise
@@ -444,9 +445,14 @@ def run_batch(pkg: ACES2Package, codes: np.ndarray, progress: Optional[Callable[
     view = aces2_view()
     out, masks, bases, tiled = [], [], [], False
     # ALBABIT-FIX: TorchScript runs G1's first call at a frame size unoptimised,
-    # with other bits; a blank frame laid out as run_frame's takes it instead.
+    # with other bits; a blank frame laid out as run_frame's takes it instead
+    # (a frame too big for the GPU skips it: run_frame tiles that one).
     blank = torch.from_numpy(np.zeros(codes.shape[1:], np.float32)).permute(2, 0, 1)[None]
-    _g1(pkg, blank, blank)
+    try:
+        _g1(pkg, blank, blank)
+    except RuntimeError as exc:
+        if "out of memory" not in str(exc).lower():
+            raise
     # ALBABIT-FIX: stages 5-6 run on one core, so `workers` frames go at once
     # (241 frames of 1080p in "Universal": 392 s -> 95 s); each keeps its bits.
     with ThreadPoolExecutor(max(1, workers)) as pool:
