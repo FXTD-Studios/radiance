@@ -54,3 +54,21 @@ def test_every_api_workflow_has_a_card():
     api = {p.stem for p in WORKFLOWS.glob("api_*.json")}
     cards = {p.stem for p in (WORKFLOWS / "official" / "API").glob("*.rad")}
     assert api == cards
+
+
+def test_shipped_viewers_open_in_review_unless_they_have_room_for_color():
+    """
+    A 620 x 540 Viewer node in Color gave the picture a strip beside a 520 px
+    panel: the shipped workflows looked broken. They open in Review; only a
+    Viewer sized for Color (1180 px and wider) opens there.
+    """
+    for path in sorted(WORKFLOWS.glob("*.json")):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        for node in doc.get("nodes", []):
+            if node.get("type") != "RadianceViewer":
+                continue
+            props = node.get("properties") or {}
+            wide = (node.get("size") or [0])[0] >= 1180
+            want = ("advanced", "color") if wide else ("simple", "review")
+            got = (props.get("radiance_viewer_mode"), props.get("radiance_viewer_workspace"))
+            assert got == want, f"{path.name}: Viewer {node.get('id')} opens as {got}, expected {want}"

@@ -2838,7 +2838,8 @@ class RadianceViewer {
         const ws = _workspaceById(id);
         if (!ws || !ws.available) return;
         this.workspace = ws.id;
-        this.setUIMode(ws.layout, { persist, grow });
+        this._inSetWorkspace = true;
+        try { this.setUIMode(ws.layout, { persist, grow }); } finally { this._inSetWorkspace = false; }
         if (ws.layout === 'advanced') this._setReferenceTab(tab || ws.tab || 'inspector');
     }
 
@@ -2859,8 +2860,17 @@ class RadianceViewer {
             const [w, h] = this.node.size;
             if (w < 1180 || h < 760) this.node.setSize?.([Math.max(w, 1180), Math.max(h, 760)]);
         }
+        const wasMode = this.uiMode;
         this.uiMode = mode;
         this.container.classList.toggle('radiance-mode-simple', mode === 'simple');
+        // The panel was built for the old layout (Simple shows every tab):
+        // entering Advanced on its own (a loaded graph, a direct call) rebuilds
+        // it with this workspace's tabs, on its first one. setWorkspace picks
+        // the tab itself right after.
+        if (mode === 'advanced' && wasMode !== 'advanced' && !this._inSetWorkspace && this.controlsPanel) {
+            this._referenceRightTab = this._visibleReferenceTab(_workspaceById(this.workspace)?.tab || 'inspector');
+            this._renderReferenceRightHUD?.();
+        }
         if (persist && this.node) {
             this.node.properties = this.node.properties || {};
             this.node.properties.radiance_viewer_mode = mode;
@@ -25117,7 +25127,10 @@ app.registerExtension({
             // saved before the switch existed open the way they looked then,
             // in Advanced (a converted Lite Viewer carries 'simple').
             const saved = info?.properties?.radiance_viewer_mode;
-            this.radianceViewer?.setUIMode?.(saved || 'advanced');
+            // ...and in the workspace it was saved in (Inspect came back as Color).
+            const where = _resolveSavedMode({ ...(info?.properties || {}), radiance_viewer_mode: saved || 'advanced' });
+            if (this.radianceViewer?.setWorkspace) this.radianceViewer.setWorkspace(where.workspace);
+            else this.radianceViewer?.setUIMode?.(saved || 'advanced');
             // The grade the workflow was saved with (written by _persistGrade
             // and onSerialize). It used to be lost on every reload.
             const grade = info?.properties?.radiance_grade;

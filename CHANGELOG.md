@@ -148,6 +148,15 @@ else is fixes. Read the upgrade notes before moving a production setup.
   They sit in `workflows/` as `api_*.json`, so ComfyUI's Templates menu lists them
   (it reads only the top level of `workflows/`), and the README lists the two
   kinds separately.
+- **A loaded graph opens the viewer the way it was saved.** Loading a graph
+  switched the viewer to Advanced without rebuilding its panel, so it showed
+  all seven tabs on Inspector (the 3.x layout) and ignored the saved
+  workspace. It now opens in the saved workspace with that workspace's tabs;
+  a graph saved before workspaces existed opens in Color.
+- **Shipped workflows open the viewer in Review.** In a 620 x 540 node, Color
+  left the picture a strip beside the 520 px panel. Review gives the node to
+  the picture; Color, Inspect and Review are one click away. The Starter's
+  large viewer stays in Color.
 - **The Workflow Library ships its official cards.** Every API workflow and
   the local ones have a card in `workflows/official/API/` and
   `workflows/official/Local/` (.rad v3: the same graph as the JSON in

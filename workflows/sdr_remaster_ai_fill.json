@@ -2409,8 +2409,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "advanced",
-        "radiance_viewer_workspace": "color"
+        "radiance_viewer_mode": "simple",
+        "radiance_viewer_workspace": "review"
       },
       "widgets_values": [
         false,
@@ -2632,8 +2632,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "advanced",
-        "radiance_viewer_workspace": "color"
+        "radiance_viewer_mode": "simple",
+        "radiance_viewer_workspace": "review"
       },
       "widgets_values": [
         false,
