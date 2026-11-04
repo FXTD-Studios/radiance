@@ -136,3 +136,34 @@ test('Grab still keeps versions for B; the B menu picks one, Release keeps them,
         assert.equal(r.afterAll, null);
     } finally { await page.close(); }
 });
+
+test('a loaded graph opens the viewer in its saved workspace, with that workspace\'s tabs', { skip }, async () => {
+    const page = await session.open();
+    try {
+        const r = await page.evaluate(async () => {
+            const tabs = (v) => [...v.controlsPanel.querySelectorAll('.radiance-ref-tab')].map((b) => b.dataset.tabId);
+            const out = {};
+            // A graph saved in Inspect.
+            const a = new FakeNode(); a.onNodeCreated(); await __sleep(100);
+            a.onConfigure({ properties: { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'inspect' } });
+            await __sleep(100);
+            out.inspect = { ws: a.radianceViewer.workspace, tab: a.radianceViewer._referenceRightTab, tabs: tabs(a.radianceViewer) };
+            // A graph saved before workspaces existed: Advanced, so Color.
+            const b = new FakeNode(); b.onNodeCreated(); await __sleep(100);
+            b.onConfigure({ properties: {} });
+            await __sleep(100);
+            out.old = { ws: b.radianceViewer.workspace, tab: b.radianceViewer._referenceRightTab, tabs: tabs(b.radianceViewer) };
+            // A shipped workflow: Review.
+            const c = new FakeNode(); c.onNodeCreated(); await __sleep(100);
+            c.onConfigure({ properties: { radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'review' } });
+            out.review = { ui: c.radianceViewer.uiMode, ws: c.radianceViewer.workspace };
+            [a, b, c].forEach((n) => __remove(n));
+            return out;
+        });
+        assert.deepEqual(page.errors, []);
+        assert.deepEqual(r.inspect, { ws: 'inspect', tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis', 'qc'] });
+        assert.deepEqual(r.old, { ws: 'color', tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'] },
+            'the panel kept the Simple layout\'s seven tabs, on Inspector');
+        assert.deepEqual(r.review, { ui: 'simple', ws: 'review' });
+    } finally { await page.close(); }
+});
