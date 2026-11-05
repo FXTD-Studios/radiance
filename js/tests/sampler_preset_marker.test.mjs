@@ -20,6 +20,8 @@ function samplerContext() {
         _isSdTurboActive = () => false;
         globalThis.markers = updatePresetDivergenceMarkers;
         globalThis.metaDefaults = updateModelMetaDefaults;
+        globalThis.applyPreset = applyPreset;
+        globalThis.presetNames = Object.keys(PRESET_CONFIGS);
     `, context);
     return context;
 }
@@ -109,4 +111,14 @@ test('leaving Auto clears the magnet, then the preset pencil takes over', () => 
     node.widgets[1].value = 4.0;
     poll(context, node, 3);
     assert.equal(node.widgets[1].label, 'cfg ✎');
+});
+
+test('picking a preset keeps the seed and its control mode', () => {
+    const context = samplerContext();
+    for (const name of context.presetNames) {
+        const node = ltxNode(name, 1.0);
+        node.widgets.push({ name: 'seed', value: 14 }, { name: 'control_after_generate', value: 'randomize' });
+        context.applyPreset(node, name);
+        assert.deepEqual(node.widgets.slice(-2).map(w => w.value), [14, 'randomize'], name);
+    }
 });
