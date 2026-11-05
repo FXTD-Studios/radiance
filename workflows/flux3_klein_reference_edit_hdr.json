@@ -336,9 +336,7 @@
         "auto_download": true,
         "model_shift": 0,
         "upsampler": "None"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -679,9 +677,7 @@
         "upsampler_seed": 0,
         "control_after_generate": "randomize",
         "layout": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -962,9 +958,7 @@
         "duration_seconds": 5,
         "video_frames": 81,
         "frame_rate": 24
-      },
-      "color": "#1c223c",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1648,9 +1642,7 @@
         "› Export Preset": null,
         "› Import Preset": null,
         "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -1931,9 +1923,7 @@
         "hdr_scale_factor": 1,
         "decode_mode": "Auto (Recommended)",
         "hdr_peak_nits": 1000
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -2222,9 +2212,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,
@@ -2512,9 +2500,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 8,
@@ -2872,9 +2858,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 9,
@@ -3183,9 +3167,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 10,
@@ -3325,9 +3307,7 @@
         "creative_white_scale": 1,
         "gamut_compress_strength": 1,
         "engine": "Auto"
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 11,
@@ -3636,9 +3616,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 12,
@@ -3859,9 +3837,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 13,

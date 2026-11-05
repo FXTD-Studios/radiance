@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { DISCIPLINES } from "./radiance_palette.js";
 
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
@@ -17,30 +18,23 @@ const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
 //  BACKDROP COLOR PALETTE (Nuke-style, desaturated for professional look)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ComfyUI's own group colours (LGraphCanvas.node_colors groupcolor), so a
+// backdrop looks the same with or without Radiance.
 const BACKDROP_COLORS = {
-    "Gray": "#3a3a3a",
-    "Dark": "#1a1a1a",
-    "Red": "#5a2a2a",
-    "Orange": "#5a3a1a",
-    "Yellow": "#5a5a2a",
-    "Green": "#2a5a2a",
-    "Cyan": "#2a5a5a",
-    "Blue": "#2a2a5a",
-    "Purple": "#3a2a5a",
-    "Magenta": "#5a2a5a",
+    "Red": "#A88",
+    "Brown": "#b06634",
+    "Green": "#8A8",
+    "Blue": "#88A",
+    "Pale blue": "#3f789e",
+    "Cyan": "#8AA",
+    "Purple": "#a1309b",
+    "Yellow": "#b58b2a",
+    "Black": "#444",
 };
 
-// Quick presets: labeled backdrops with semantic colors
-const BACKDROP_PRESETS = [
-    { label: "Generation", color: "Purple", icon: "◎" },
-    { label: "Conditioning", color: "Orange", icon: "◎" },
-    { label: "Post-Processing", color: "Cyan", icon: "◎" },
-    { label: "IO", color: "Blue", icon: "◎" },
-    { label: "Upscale", color: "Green", icon: "◎" },
-    { label: "Debug", color: "Red", icon: "◎" },
-    { label: "Depth / Masks", color: "Gray", icon: "◎" },
-    { label: "LoRA / Models", color: "Magenta", icon: "◎" },
-];
+// Quick presets: the shared colour code (radiance_palette.js).
+const BACKDROP_PRESETS = ["generate", "hdr", "color", "sdr", "vfx", "upscale", "io", "review", "optional"]
+    .map((k) => ({ label: DISCIPLINES[k].label, colorValue: DISCIPLINES[k].group, icon: "◎" }));
 
 function promptRadianceStudio(titleText, message, defaultValue = "", confirmLabel = "Create") {
     return new Promise((resolve) => {
@@ -166,7 +160,7 @@ app.registerExtension({
                                     // No prompt — instant gray
                                     {
                                         content: "Quick (no title)",
-                                        callback: () => createBackdrop(graph, selectedNodes, "", BACKDROP_COLORS.Gray),
+                                        callback: () => createBackdrop(graph, selectedNodes, "", BACKDROP_COLORS.Black),
                                     },
                                 ]
                             }
@@ -177,7 +171,7 @@ app.registerExtension({
                             submenu: {
                                 options: BACKDROP_PRESETS.map(preset => ({
                                     content: `${preset.icon} ${preset.label}`,
-                                    callback: () => createBackdrop(graph, selectedNodes, preset.label, BACKDROP_COLORS[preset.color]),
+                                    callback: () => createBackdrop(graph, selectedNodes, preset.label, preset.colorValue),
                                 }))
                             }
                         },
@@ -242,7 +236,7 @@ function createBackdrop(graph, nodes, title, color) {
     group.title = title || "";
     group.pos = [minX, minY];
     group.size = [width, height];
-    group.color = color || BACKDROP_COLORS.Gray;
+    group.color = color || BACKDROP_COLORS.Black;
     group.font_size = title ? 24 : 16;
 
     graph.add(group);

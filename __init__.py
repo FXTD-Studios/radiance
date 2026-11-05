@@ -179,6 +179,9 @@ _configure_ocio()
 
 _LOAD_RESULT = _load_comfyui_nodes()
 NODE_CLASS_MAPPINGS = _LOAD_RESULT.class_mappings
+# 4.0: nodes the audit retired are hidden from the menu; saved graphs still load.
+from .nodes.deprecations import apply_deprecations as _apply_deprecations  # noqa: E402
+_apply_deprecations(NODE_CLASS_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS = _LOAD_RESULT.display_name_mappings
 
 __version__ = VERSION

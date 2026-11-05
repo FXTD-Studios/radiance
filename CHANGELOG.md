@@ -10,6 +10,22 @@ bridge needs signed requests, and three controls that did nothing now work. Ever
 else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Upgrade notes
+- **37 nodes are deprecated.** They are hidden from the node menu (109 nodes
+  show), and a saved graph that uses one still opens and runs; each one's
+  description says what to use instead. They are the manual SDR → HDR chain
+  from before RUDRA and the HDR LoRA chain (no HDR LoRA was published), the
+  older all-in-one video family, wrappers that other nodes replaced (DPX Read
+  and Write, HDR Analysis, Split View, HDR Monitor, ACES Transform and more),
+  and Relight Engine and Camera Sync. The list and the replacements are in
+  `nodes/deprecations.py`; the nodes go in a later release.
+- **Colours.** Radiance colours only its own nodes, from their category; other
+  packs' and ComfyUI's nodes keep their own colours, and node colours are no
+  longer saved into workflows (an old saved theme colour is replaced on load).
+  Groups use ComfyUI's own colours, one code for Smart Backdrop, the Studio
+  presets and the shipped workflows: blue generation, yellow HDR / RUDRA,
+  green SDR output, cyan colour, brown VFX, purple optional (bypassed), black
+  I/O and review. Radiance's own group drawing is off by default (Settings >
+  Radiance > Backdrops).
 
 - **ComfyUI 0.40.0 or newer** (`requires-comfyui = ">=0.40.0"`). The Prompt,
   Write, Loader and Sampler gained inputs in the middle of their widget lists,
@@ -148,6 +164,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   They sit in `workflows/` as `api_*.json`, so ComfyUI's Templates menu lists them
   (it reads only the top level of `workflows/`), and the README lists the two
   kinds separately.
+- **Smart Backdrop reads each node's category:** Read and Write make an
+  Inputs / Outputs backdrop (it was a grey "Backdrop"), the Prompt counts as
+  generation (it counted as HDR, for "Encoder" in its name), and a selection
+  that is mostly bypassed makes an Optional one. Native nodes count too.
+- **Lock Backdrop works with Nodes 2.0:** a selected backdrop has a lock
+  button in the selection toolbar (and Lock / Unlock in the canvas menu, for
+  the backdrop under the pointer or selected). Hold Ctrl, Shift or Alt to
+  select a locked one.
 - **A welcome tour.** On first install Radiance opens a six-page tour (what's
   new, workflows, the Viewer, backdrops, gizmos, where to learn more), each
   page with one thing to try; after an update it opens one What's new page.

@@ -7,25 +7,62 @@ Every node in the menu, by section: what it does, every input with its type, def
 | Section | Nodes | What is in it |
 | :--- | ---: | :--- |
 | [Core](core.md) | 1 | Manager, workspace, resolution, and everyday Radiance utilities. |
-| [Load & Save](load-save.md) | 5 | Readers, writers, EXR, image, video, and file exchange. |
+| [Load & Save](load-save.md) | 3 | Readers, writers, EXR, image, video, and file exchange. |
 | [Generate](generate.md) | 13 | Samplers, loaders, prompts, LoRA, regional conditioning, and denoise. |
 | [Color](color.md) | 18 | White balance, CDL, curves, LUTs, OCIO, grades, and color checks. |
-| [HDR](hdr.md) | 37 | HDR uplift, ACES, tone mapping, analysis, encoding, and delivery. |
-| [VFX](vfx.md) | 30 | Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts. |
-| [Video](video.md) | 14 | Text-to-video, image-to-video, temporal generation, and video HDR. |
+| [HDR](hdr.md) | 18 | HDR uplift, ACES, tone mapping, analysis, encoding, and delivery. |
+| [VFX](vfx.md) | 28 | Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts. |
+| [Video](video.md) | 3 | Text-to-video, image-to-video, temporal generation, and video HDR. |
 | [Upscale](upscale.md) | 10 | AI upscaling, repair, enhancement, and restoration. |
-| [Review](review.md) | 11 | Viewer, scopes, preview servers, contact sheets, and QC. |
-| [Pipeline](pipeline.md) | 7 | DCC bridges, metadata, audio, project handoff, and studio integration. |
+| [Review](review.md) | 9 | Viewer, scopes, preview servers, contact sheets, and QC. |
+| [Pipeline](pipeline.md) | 6 | DCC bridges, metadata, audio, project handoff, and studio integration. |
 
-146 nodes in the menu.
+109 nodes in the menu.
 
 ## Retired nodes
 
 Hidden from the menu. They still load so saved graphs open; the changelog says what replaces each.
 
 - ACES 2.0 Output Transform (Legacy) (`RadianceACES2OutputTransform`)
+- ACES Transform (`RadianceACESTransform`)
+- Camera Sync (`RadianceCameraSync`)
+- ColorSpace Info (`RadianceColorSpaceInfo`)
 - Control (`RadianceControlApply`)
+- DPX Read (`RadianceDigitalCinemaRead`)
+- DPX Write (`RadianceDigitalCinemaWrite`)
+- Float32 Convert (`RadianceFloat32Convert`)
+- GPU Tensor Ops (`RadianceGPUTensorOps`)
+- HDR Analysis (`RadianceHDRAnalysis`)
+- HDR Auto Log Select (`RadianceHDRAutoLogSelect`)
+- HDR Blend Validator (`RadianceHDRBlendValidator`)
+- HDR Color Pipeline (`RadianceHDRColorPipeline`)
+- HDR Expand Dynamic Range (`RadianceHDRExpandDynamicRange`)
+- HDR Highlight Composite (`RadianceHDRHighlightComposite`)
+- HDR LoRA Apply (`RadianceHDRLoRAApply`)
+- HDR LoRA Loader (`RadianceHDRLoRALoader`)
+- HDR Monitor (`RadianceHDRMonitor`)
+- HDR Per-Channel Denorm (`RadianceHDRPerChannelDenorm`)
+- HDR Per-Channel Norm (`RadianceHDRPerChannelNorm`)
+- HDR Synthesis Engine (`RadianceHDRSynthesisEngine`)
+- Highlight Synthesis (`RadianceHighlightSynthesis`)
+- I2V Pipeline (`RadianceI2VPipeline`)
+- Linear Check (`RadianceLinearCheck`)
+- Luminance Guidance (`RadianceLuminanceGuidance`)
 - Multipass Extract (Legacy) (`RadianceMultipassMaster`)
 - Project Manager (`RadianceWorkspace`)
 - Read Image (`RadianceImageLoader`)
+- Relight Engine (`RadianceRelightEngine`)
+- SDR → HDR Expand (`RadianceSDRtoHDRExpand`)
+- SDR → HDR Prepare (`RadianceSDRToHDRPrepare`)
+- Split View (`RadianceSplitView`)
+- T2V Pipeline (`RadianceT2VPipeline`)
+- Video Assembler (`RadianceVideoAssembler`)
+- Video Batch Decode (`RadianceVideoBatchDecode`)
+- Video Export (`RadianceVideoExport`)
+- Video HDR Conditioner (`RadianceVideoHDRConditioner`)
+- Video HDR Decode (`RadianceVideoHDRDecode`)
+- Video Latent Noise (`RadianceVideoLatentNoise`)
 - Video Loader (`RadianceVideoLoader`)
+- Video Model Info (`RadianceVideoModelInfo`)
+- Video Prompt Builder (`RadianceVideoPromptBuilder`)
+- Video Sampler (`RadianceVideoSampler`)

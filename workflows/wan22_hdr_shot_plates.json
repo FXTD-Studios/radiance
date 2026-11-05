@@ -58,9 +58,7 @@
       "widgets_values_named": {
         "unet_name": "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
         "weight_dtype": "default"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -116,9 +114,7 @@
       "widgets_values_named": {
         "unet_name": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
         "weight_dtype": "default"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -187,9 +183,7 @@
         "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
         "type": "wan",
         "device": "default"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -234,9 +228,7 @@
       ],
       "widgets_values_named": {
         "vae_name": "wan_2.1_vae.safetensors"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -288,9 +280,7 @@
       ],
       "widgets_values_named": {
         "text": "Golden hour city street after rain, low sun flaring between buildings, wet asphalt with bright specular reflections, neon signs, cinematic, shallow depth of field, smooth dolly forward"
-      },
-      "color": "#202026",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -342,9 +332,7 @@
       ],
       "widgets_values_named": {
         "text": "blurry, low quality, watermark, text, jpeg artifacts, flicker, overexposed flat highlights"
-      },
-      "color": "#202026",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,
@@ -422,9 +410,7 @@
         "height": 704,
         "length": 81,
         "batch_size": 1
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 8,
@@ -583,9 +569,7 @@
         "start_at_step": 0,
         "end_at_step": 10,
         "return_with_leftover_noise": "enable"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 9,
@@ -744,9 +728,7 @@
         "start_at_step": 10,
         "end_at_step": 10000,
         "return_with_leftover_noise": "disable"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 10,
@@ -789,9 +771,7 @@
       ],
       "properties": {
         "Node name for S&R": "VAEDecode"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 11,
@@ -1150,9 +1130,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 12,
@@ -1461,9 +1439,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 13,
@@ -1772,9 +1748,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 14,
@@ -1915,9 +1889,7 @@
         "creative_white_scale": 1,
         "gamut_compress_strength": 1,
         "engine": "Auto"
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 15,
@@ -2226,9 +2198,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 16,
@@ -2326,9 +2296,7 @@
         "max_cols": 9,
         "label_frames": true,
         "background": "Black"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 17,
@@ -2637,9 +2605,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 18,
@@ -2860,9 +2826,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 24,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 19,

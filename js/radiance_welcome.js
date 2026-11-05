@@ -266,7 +266,7 @@ const PAGES = {
     },
     backdrops: {
         kicker: "BACKDROPS", title: "Keep a graph readable",
-        lead: "A backdrop is a titled frame behind a group of nodes. Radiance names and colours it from what is inside.",
+        lead: "A backdrop is a titled frame behind a group of nodes. Radiance names and colours it from what is inside, in ComfyUI's own group colours.",
         art() {
             const f = document.createDocumentFragment();
             const frame = el("div", "rw-back-frame");
@@ -282,7 +282,7 @@ const PAGES = {
             frame.append(head, area);
             f.appendChild(frame);
             const chips = el("div"); chips.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:320px";
-            [["HDR", "#b38600"], ["Color", "#008c9e"], ["VFX", "#009f4d"], ["Generate", "#0066cc"], ["Film", "#8c30e8"]].forEach(([t, c]) => {
+            [["Generation", "#3f789e"], ["HDR", "#b58b2a"], ["Colour", "#8AA"], ["VFX", "#b06634"], ["Optional", "#a1309b"]].forEach(([t, c]) => {
                 const d = el("span", "rw-dot"); const i = el("i"); i.style.background = c; d.append(i, document.createTextNode(t)); chips.appendChild(d);
             });
             f.appendChild(chips);
@@ -293,7 +293,7 @@ const PAGES = {
             f.appendChild(items([
                 { mark: "1", text: "Select the nodes that belong together." },
                 { mark: "2", text: "Right-click the canvas and choose ◎ Create Smart Backdrop. With nothing selected it is an empty one at the pointer." },
-                { mark: "3", text: "Right-click again to lock it, so it stays put while you move nodes inside it." },
+                { mark: "3", text: "Select it and press the lock in the bar above it, so it stays put while you move the nodes inside." },
             ], true));
             const a = el("div", "rw-actions");
             a.appendChild(softButton("Show me on the canvas", () => {
