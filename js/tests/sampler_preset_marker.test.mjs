@@ -74,15 +74,20 @@ test('Auto on LTX 2.5 Dev follows the 30-step LowRes preset, audio_cfg included'
 
 test('Auto on an LTX Distilled file follows the Distilled presets, 8 steps then 3', () => {
     const context = samplerContext();
-    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors' }] });`, context);
-    for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
-        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
-        const node = ltxNode('Auto', 3.0);
-        node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
-        context.metaDefaults(node);
-        const value = (name) => node.widgets.find(w => w.name === name).value;
-        assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
-            [steps, 1.0, 'euler_ancestral', 'linear_quadratic', denoise]);
+    // Lightricks' templates: euler on 2.3, euler_ancestral on 2.5.
+    for (const [file, sampler] of [['ltx-2.3-22b-distilled-1.1.safetensors', 'euler'],
+                                   ['ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors', 'euler_ancestral']]) {
+        vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: '${file}' }] });`, context);
+        for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
+            vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+            const node = ltxNode('Auto', 3.0);
+            node.widgets[2].value = 'dpmpp_2m';
+            node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
+            context.metaDefaults(node);
+            const value = (name) => node.widgets.find(w => w.name === name).value;
+            assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
+                [steps, 1.0, sampler, 'linear_quadratic', denoise], file);
+        }
     }
 });
 
