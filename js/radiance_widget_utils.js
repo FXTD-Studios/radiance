@@ -132,15 +132,25 @@ export function loaderModelType(loaderNode) {
 
 // ALBABIT-FIX: writes newValue unless the user changed the widget since the
 // last write (_radAutoValue), so a later Loader change still applies. Before
-// any write (fresh node, or right after a named preset) it always writes.
-export function syncAutoValue(widget, newValue) {
-    if (!widget || newValue === undefined) {
-        if (widget) widget._radAutoValue = undefined;
+// any write (fresh node, or right after a named preset) it always writes. A
+// user's change is kept in node.properties, so it survives a reload or a tab switch.
+export function syncAutoValue(node, widget, newValue) {
+    if (!widget) return false;
+    const kept = node.properties?.radiance_auto_values;
+    if (newValue === undefined) {
+        widget._radAutoValue = undefined;
+        if (kept) delete kept[widget.name];
         return false;
     }
+    widget._radAutoValue ??= kept?.[widget.name];
     const userTouched = widget._radAutoValue !== undefined && widget.value !== widget._radAutoValue;
     widget._radAutoValue = newValue;
-    if (userTouched || widget.value === newValue) return false;
+    if (userTouched) {
+        ((node.properties ??= {}).radiance_auto_values ??= {})[widget.name] = newValue;
+        return false;
+    }
+    if (kept) delete kept[widget.name];
+    if (widget.value === newValue) return false;
     widget.value = newValue;
     return true;
 }

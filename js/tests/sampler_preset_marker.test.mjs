@@ -107,6 +107,26 @@ test('Auto takes the LTX stage schedule and guidance too', () => {
     }
 });
 
+test('a sampler changed under Auto survives a reload; one never changed follows Auto', () => {
+    const context = samplerContext();
+    const node = ltxNode('Auto', 3.0);
+    context.metaDefaults(node);
+    node.widgets[2].value = 'euler_cfg_pp';
+    context.metaDefaults(node);
+    // A reload or a tab switch rebuilds the node from its saved values and properties.
+    const reloaded = ltxNode('Auto', 3.0);
+    reloaded.widgets[2].value = 'euler_cfg_pp';
+    reloaded.properties = JSON.parse(JSON.stringify(node.properties));
+    poll(context, reloaded, 2);
+    assert.equal(reloaded.widgets[2].value, 'euler_cfg_pp');
+    assert.equal(reloaded.widgets[2].label, 'sampler ✎');
+    // Saved by an older default the user never touched: Auto still updates it.
+    const stale = ltxNode('Auto', 3.0);
+    stale.widgets[2].value = 'euler_ancestral';
+    context.metaDefaults(stale);
+    assert.equal(stale.widgets[2].value, 'euler');
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);
