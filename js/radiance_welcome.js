@@ -207,7 +207,7 @@ const PAGES = {
             return items([
                 { mark: "HDR", title: "RUDRA ACES 2: SDR to HDR with nothing to set up", text: "Any 8-bit image or video becomes a scene-linear ACES 2.0 master. The model downloads on first run (3 MB)." },
                 { mark: "VW", title: "A new Viewer: Review, Color and Inspect", text: "Picture first, a Project colour sheet, scopes in nits and stills to compare against." },
-                { mark: "39", title: "39 workflows, 25 of them API", text: "Nano Banana, Seedance, Veo, Kling and more, each lifted to HDR with RUDRA." },
+                { mark: "44", title: "44 workflows, 25 of them API", text: "Nano Banana, Seedance, Veo, Kling and more, each lifted to HDR with RUDRA." },
                 { mark: "F3", title: "FLUX 3 Klein and Prompt tabs", text: "A new image model, and one Prompt node that holds several prompts." },
             ]);
         },

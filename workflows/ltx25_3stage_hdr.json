@@ -85,9 +85,7 @@
       "widgets_values_named": {
         "strength": 1,
         "bypass": false
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 287,
@@ -144,9 +142,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 103,
@@ -279,9 +275,7 @@
         "resize_type.height": 1088,
         "resize_type.crop": "center",
         "scale_method": "lanczos"
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 322,
@@ -334,9 +328,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 307,
@@ -390,9 +382,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 278,
@@ -443,9 +433,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 281,
@@ -499,9 +487,7 @@
       ],
       "widgets_values_named": {
         "sigmas": "0.85, 0.725, 0.421875, 0.0"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 309,
@@ -554,9 +540,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 289,
@@ -620,9 +604,7 @@
       ],
       "widgets_values_named": {
         "img_compression": 18
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 305,
@@ -706,9 +688,7 @@
         "frames_number": 97,
         "frame_rate": 25,
         "batch_size": 1
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 296,
@@ -793,9 +773,7 @@
       "widgets_values_named": {
         "strength": 0.7,
         "bypass": false
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 304,
@@ -871,9 +849,7 @@
       ],
       "widgets_values_named": {
         "frame_rate": 24
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 297,
@@ -928,9 +904,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 389,
@@ -1038,9 +1012,7 @@
         "color_space": "sRGB",
         "chroma_subsampling": "auto",
         "codec": "none"
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 302,
@@ -1098,9 +1070,7 @@
       ],
       "widgets_values_named": {
         "value": true
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 270,
@@ -1183,15 +1153,13 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "Ref_img.png",
+        "example.png",
         "image"
       ],
       "widgets_values_named": {
-        "image": "Ref_img.png",
+        "image": "example.png",
         "upload": "image"
-      },
-      "color": "#1c223c",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 411,
@@ -1628,9 +1596,7 @@
         "auto_download": false,
         "model_shift": 0,
         "upsampler": "None"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 475,
@@ -1736,9 +1702,7 @@
         "overlap": 64,
         "temporal_size": 4096,
         "temporal_overlap": 4
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 476,
@@ -1848,9 +1812,7 @@
         "color_space": "sRGB",
         "chroma_subsampling": "auto",
         "codec": "none"
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 477,
@@ -1933,9 +1895,7 @@
         "format": "auto",
         "format.codec": "auto",
         "codec": "auto"
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 478,
@@ -1989,9 +1949,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 522,
@@ -2037,9 +1995,7 @@
       "title": "Float to Int",
       "properties": {
         "Node name for S&R": "ComfyNumberConvert"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 523,
@@ -2422,9 +2378,7 @@
         "duration_seconds": 10.04,
         "video_frames": 241,
         "frame_rate": 24
-      },
-      "color": "#1c223c",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 535,
@@ -2751,9 +2705,7 @@
         "upsampler_seed": 0,
         "control_after_generate": "randomize",
         "layout": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 536,
@@ -3036,9 +2988,7 @@
         "hdr_scale_factor": 1,
         "decode_mode": "Sampler (SDR-safe)",
         "hdr_peak_nits": 1000
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 538,
@@ -3722,9 +3672,7 @@
         "› Export Preset": null,
         "› Import Preset": null,
         "preset_info": "LTX 2.5 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0)."
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 539,
@@ -4408,9 +4356,7 @@
         "› Export Preset": null,
         "› Import Preset": null,
         "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 546,
@@ -4507,9 +4453,7 @@
         "invert": false,
         "blur_edges": 0,
         "use_gpu": true
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 550,
@@ -4867,9 +4811,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 552,
@@ -5442,9 +5384,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 553,
@@ -5517,9 +5457,7 @@
       ],
       "widgets_values_named": {
         "expression": "a*4"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 554,
@@ -5592,9 +5530,7 @@
       ],
       "widgets_values_named": {
         "expression": "a*4"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 555,
@@ -5904,9 +5840,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 561,
@@ -5951,9 +5885,7 @@
         "secondTabWidth": 65
       },
       "widgets_values": [],
-      "widgets_values_named": {},
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {}
     },
     {
       "id": 573,
@@ -6263,9 +6195,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 574,
@@ -6575,9 +6505,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 575,
@@ -6742,9 +6670,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 584,
@@ -6827,9 +6753,7 @@
       "widgets_values_named": {
         "strength": 1,
         "bypass": false
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 585,
@@ -6880,9 +6804,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 586,
@@ -6936,9 +6858,7 @@
       ],
       "widgets_values_named": {
         "sigmas": "0.85, 0.725, 0.421875, 0.0"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 587,
@@ -7622,9 +7542,7 @@
         "› Export Preset": null,
         "› Import Preset": null,
         "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 588,
@@ -7677,9 +7595,7 @@
         "secondTabText": "Send Back",
         "secondTabOffset": 80,
         "secondTabWidth": 65
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 589,
@@ -7820,15 +7736,13 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "Ref_img_end.png",
+        "example.png",
         "image"
       ],
       "widgets_values_named": {
-        "image": "Ref_img_end.png",
+        "image": "example.png",
         "upload": "image"
-      },
-      "color": "#1c223c",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 601,
@@ -7961,9 +7875,7 @@
         "resize_type.height": 1088,
         "resize_type.crop": "center",
         "scale_method": "lanczos"
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 603,
@@ -8025,9 +7937,7 @@
       ],
       "widgets_values_named": {
         "img_compression": 18
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 604,
@@ -8145,9 +8055,7 @@
       "widgets_values_named": {
         "frame_idx": -1,
         "strength": 0.7
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 605,
@@ -8212,9 +8120,7 @@
       ],
       "properties": {
         "Node name for S&R": "LTXVCropGuides"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 606,
@@ -8520,9 +8426,7 @@
         "fill_package": "",
         "allow_download": true,
         "keep_loaded": false
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 607,
@@ -8630,9 +8534,7 @@
       ],
       "widgets_values_named": {
         "string": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     }
   ],
   "links": [
@@ -10007,9 +9909,7 @@
               "case_insensitive": true,
               "multiline": false,
               "dotall": false
-            },
-            "color": "#282830",
-            "bgcolor": "#141419"
+            }
           },
           {
             "id": 590,
@@ -10068,9 +9968,7 @@
             ],
             "widgets_values_named": {
               "switch": false
-            },
-            "color": "#282830",
-            "bgcolor": "#141419"
+            }
           },
           {
             "id": 581,
@@ -10129,9 +10027,7 @@
             ],
             "widgets_values_named": {
               "switch": false
-            },
-            "color": "#282830",
-            "bgcolor": "#141419"
+            }
           }
         ],
         "groups": [],

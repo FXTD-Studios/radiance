@@ -27,7 +27,7 @@ export const WHATS_NEW = Object.freeze([
         items: [
             'RUDRA ACES 2: SDR to HDR with nothing to set up, and several frames at once on long clips.',
             'A new Viewer: Review, Color and Inspect, with a Project colour sheet and scopes in nits.',
-            '39 workflows, 25 of them API, each in the Templates menu and with a card in the Workflow Library.',
+            '44 workflows, 25 of them API, each in the Templates menu and with a card in the Workflow Library.',
             'FLUX 3 Klein, and one Prompt node that holds several prompts.',
         ],
     },
