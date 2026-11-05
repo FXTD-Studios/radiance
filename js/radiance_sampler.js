@@ -84,66 +84,52 @@ const PRESET_CONFIGS = {
         denoise: 1.0, flux_shift: 2.37, flux_guidance: 0.0,
         description: "LTX-V standard — shift=2.37 per spec.",
     },
-    // ALBABIT-FIX: the LTX presets use seed 1, like the node default (seed 0
-    // breaks Qwen-Image 2.1 edits), so every seed default reads the same.
     // ALBABIT-FIX: audio_cfg 3 on LTX 2.3 LowRes, which sets its diction. On 2.5 the
     // audio at cfg 3 lost its ambience (silent background behind the voice): 1 there.
     "▶ LTX 2.3 LowRes (20 steps)": {
-        steps: 20, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 3.0, sampler: "euler",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
+        steps: 20, cfg: 3.0, audio_cfg: 3.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "simple", // ALBABIT-FIX: simple matches LTXVScheduler linspace base; beta was incorrect
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 LowRes. Optimal settings for 720p base generation.",
     },
     "▶ LTX 2.3 HighRes (40 steps)": {
         // ALBABIT-FIX: cfg=1 matches old Radiance and skips the negative-prompt forward pass
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple", // ALBABIT-FIX: idem
+        steps: 40, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "simple", // ALBABIT-FIX: idem
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
     // ALBABIT-FIX: the Distilled models follow Lightricks' templates: cfg 1, no extra
-    // guidance, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
+    // guidance, euler on 2.3, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
     // exactly, and denoise 0.375 keeps its last 3 steps (0.909375, 0.725, 0.421875, 0).
     "▶ LTX 2.3 Distilled LowRes (8 steps)": {
-        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        steps: 8, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "linear_quadratic",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
     },
     "▶ LTX 2.3 Distilled HighRes (3 steps)": {
-        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        steps: 3, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "linear_quadratic",
         scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.3 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). Lightricks' 2.3 T2V template starts at 0.85 instead, through a ManualSigmas node on sigmas_override.",
@@ -154,57 +140,45 @@ const PRESET_CONFIGS = {
     // ALBABIT-FIX: Modality + STG (early) with rescale 0.45 won on 3 seeds of 4
     // (lip-sync, sounds that follow the action); STG to the end hardened the skin.
     "▶ LTX 2.5 LowRes (30 steps)": {
-        steps: 30, start_step: 0, end_step: 0, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
+        steps: 30, cfg: 3.0, audio_cfg: 1.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "simple",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 3.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.45, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Modality + STG (early)", stg_scale: 1.0, stg_end: 0.5, modality_scale: 3.0,
         description: "LTX 2.5 (Dev) LowRes. 30-step base generation, audio_cfg 1 keeps the ambience under the voice; ltx_guidance couples sound and picture (lip-sync).",
     },
     "▶ LTX 2.5 HighRes (40 steps)": {
-        steps: 40, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "simple",
+        steps: 40, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
+        sampler_mode: "Standard", scheduler: "simple",
         scheduler_mode: "Manual", denoise: 0.45, flux_shift: 6.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 (Dev) HighRes upscale. With a ManualSigmas node on sigmas_override, \"0.85, 0.725, 0.421875, 0.0\" keeps the LowRes face.",
     },
     "▶ LTX 2.5 Distilled LowRes (8 steps)": {
-        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        steps: 8, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", scheduler: "linear_quadratic",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 Distilled LowRes. Lightricks' 8-step recipe at cfg 1: linear_quadratic gives their exact sigmas (1.0 to 0.421875, then 0).",
     },
     "▶ LTX 2.5 Distilled HighRes (3 steps)": {
-        steps: 3, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
-        sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
+        steps: 3, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        sampler_mode: "Standard", scheduler: "linear_quadratic",
         scheduler_mode: "Manual", denoise: 0.375, flux_shift: 1.0,
-        flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
-        return_with_leftover_noise: false, seed: 1, control_after_generate: "fixed",
+        flux_guidance: 0.0, flux_guidance_profile: "Static",
         pag_scale: 0.0, model_type: "ltxav", sigma_blend_steps: 0, ays_schedule: false,
         guidance_rescale_phi: 0.0, noise_type: "Gaussian",
-        conditioning_clip_target: "Auto",
-        tile_mode: false, refiner_start_step: 0, latent_format: "",
         terminal_sigma_to_zero: true, force_exact_steps: true,
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). The ComfyUI 2.5 T2V and I2V templates start at 0.85 instead, through a ManualSigmas node on sigmas_override.",
@@ -1180,7 +1154,7 @@ function updateModelMetaDefaults(node) {
 
     let changed = false;
     for (const [widget, derivedVal] of pairs) {
-        if (syncAutoValue(widget, derivedVal)) changed = true;
+        if (syncAutoValue(node, widget, derivedVal)) changed = true;
         const linked = derivedVal !== undefined;
         const inSync = linked && widget && widget.value === derivedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
@@ -1188,11 +1162,11 @@ function updateModelMetaDefaults(node) {
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
     if (sdTurboActive) {
-        syncAutoValue(schedulerW, undefined); // no value to track or force, a link only
+        syncAutoValue(node, schedulerW, undefined); // no value to track or force, a link only
         if (_markLinkedWidget(schedulerW, true, true)) changed = true;
     } else {
         const schedulerDefault = ltxavStage?.scheduler ?? modelDefaults?.scheduler;
-        if (syncAutoValue(schedulerW, schedulerDefault)) changed = true;
+        if (syncAutoValue(node, schedulerW, schedulerDefault)) changed = true;
         const linked = schedulerDefault !== undefined;
         const inSync = linked && schedulerW && schedulerW.value === schedulerDefault;
         if (_markLinkedWidget(schedulerW, linked, inSync)) changed = true;

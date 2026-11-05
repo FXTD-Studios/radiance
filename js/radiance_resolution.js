@@ -255,8 +255,11 @@ function syncModelTypeFromLoader(node) {
     const modelTypeW = node.widgets?.find(w => w.name === "model_type");
     const linked = MODEL_TYPE_BY_ARCH_JS[loaderModelType(modelMetaSourceNode(node))];
     // ALBABIT-FIX: "Manual" follows the Loader, as at execution: never a choice to keep.
-    if (modelTypeW?.value === "Manual") modelTypeW._radAutoValue = undefined;
-    const synced = syncAutoValue(modelTypeW, linked);
+    if (modelTypeW?.value === "Manual") {
+        modelTypeW._radAutoValue = undefined;
+        delete node.properties?.radiance_auto_values?.model_type;
+    }
+    const synced = syncAutoValue(node, modelTypeW, linked);
     if (synced) modelTypeW.callback?.call(modelTypeW, modelTypeW.value);
     const marker = linked === undefined ? "" : modelTypeW?.value === linked ? " 🧲" : " ✎";
     return _setLabelMarker(modelTypeW, !!marker, marker) || synced;
