@@ -10,6 +10,31 @@ bridge needs signed requests, and three controls that did nothing now work. Ever
 else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Upgrade notes
+- **SDR → HDR Auto no longer uses the RUDRA 3.x models** (RUDRA 1.0.3's
+  rule: their weights are non-commercial). Auto runs RUDRA ACES 2 (Apache
+  2.0); if it cannot run, Universal falls back to deterministic expansion
+  and says why in its report, and Recover stops with the reason. Auto never
+  downloads the 3.x models. A graph that wants them chooses Direct Pixel or
+  Temporal (Universal) or Pixel / Temporal (Recover); "Legacy RUDRA" graphs
+  keep the pixel model. RUDRA ACES 2 is labelled a preview, as RUDRA labels
+  it: in RUDRA's last test it beat the plain ACES 2.0 inverse at -3 and +3 EV
+  but not yet at 0 EV, so compare before delivery.
+- **37 nodes are deprecated.** They are hidden from the node menu (109 nodes
+  show), and a saved graph that uses one still opens and runs; each one's
+  description says what to use instead. They are the manual SDR → HDR chain
+  from before RUDRA and the HDR LoRA chain (no HDR LoRA was published), the
+  older all-in-one video family, wrappers that other nodes replaced (DPX Read
+  and Write, HDR Analysis, Split View, HDR Monitor, ACES Transform and more),
+  and Relight Engine and Camera Sync. The list and the replacements are in
+  `nodes/deprecations.py`; the nodes go in a later release.
+- **Colours.** Radiance colours only its own nodes, from their category; other
+  packs' and ComfyUI's nodes keep their own colours, and node colours are no
+  longer saved into workflows (an old saved theme colour is replaced on load).
+  Groups use ComfyUI's own colours, one code for Smart Backdrop, the Studio
+  presets and the shipped workflows: blue generation, yellow HDR / RUDRA,
+  green SDR output, cyan colour, brown VFX, purple optional (bypassed), black
+  I/O and review. Radiance's own group drawing is off by default (Settings >
+  Radiance > Backdrops).
 
 - **ComfyUI 0.40.0 or newer** (`requires-comfyui = ">=0.40.0"`). The Prompt,
   Write, Loader and Sampler gained inputs in the middle of their widget lists,
@@ -137,6 +162,23 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Added
 
+- **RUDRA 1.1.0's stages in RUDRA ACES 2** (SDR → HDR Universal and Recover):
+  the highlight ceiling (nothing in the master is brighter than the ACES 2.0
+  view's inverse of display white, about 128 in ACEScg; always on, as in
+  RUDRA), the highlight / shadow bands (`aces2_bands`, `aces2_tau_high`
+  254, `aces2_tau_low` 5: the model's result only there, the exact plain
+  inverse between) and Clean shadows (`aces2_clean_shadows`, edge-preserving
+  denoise of source codes 40 and below). Bands and Clean shadows are off by
+  default; the inputs are appended, so saved graphs are unchanged. Universal's
+  report gives the pixels capped, constrained and still off and, apart from
+  those, the pixels where the ACES 2.0 view itself cannot hold the source
+  (its plain inverse is off there too).
+- **ACES Metadata File beside ACES EXRs** (Write, `aces_amf`, off by
+  default): an AMF v2.0, as RUDRA writes, one per sequence or image, naming
+  the ACES 2.0 SDR Rec.709 output transform and, for ACEScg, the ACEScg to
+  ACES2065-1 input transform. RUDRA's document byte for byte for the same
+  request, and valid against the Academy's schema (vendored for the tests).
+
 - **API workflows with RUDRA** (25): one per provider's current image or
   video API node: Nano Banana 2.1, Seedream 5, GPT Image 2.5, FLUX 3, Qwen
   Image 3, Wan, Ideogram V4, Recraft V3, Kling 3.0, Grok, Luma UNI-1 for images;
@@ -157,6 +199,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   and AI Fill are ready but bypassed. `t2i_i2i_hdr.json` runs the still-image
   models in one file: text to image, edit with up to two references, or image
   to image, into an SDR PNG and an HDR EXR master.
+- **Smart Backdrop reads each node's category:** Read and Write make an
+  Inputs / Outputs backdrop (it was a grey "Backdrop"), the Prompt counts as
+  generation (it counted as HDR, for "Encoder" in its name), and a selection
+  that is mostly bypassed makes an Optional one. Native nodes count too.
+- **Lock Backdrop works with Nodes 2.0:** a selected backdrop has a lock
+  button in the selection toolbar (and Lock / Unlock in the canvas menu, for
+  the backdrop under the pointer or selected). Hold Ctrl, Shift or Alt to
+  select a locked one.
 - **A welcome tour.** On first install Radiance opens a six-page tour (what's
   new, workflows, the Viewer, backdrops, gizmos, where to learn more), each
   page with one thing to try; after an update it opens one What's new page.
@@ -177,6 +227,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   left the picture a strip beside the 520 px panel. Review gives the node to
   the picture; Color, Inspect and Review are one click away. The Starter's
   large viewer stays in Color.
+- **The Starter has a Library card** like the other workflows, and a test
+  checks that every shipped workflow has one.
 - **The Workflow Library ships its official cards.** Every API workflow and
   the local ones have a card in `workflows/official/API/` and
   `workflows/official/Local/` (.rad v3: the same graph as the JSON in

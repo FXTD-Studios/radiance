@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { BODY, DISCIPLINES, disciplineForCategory, OLD_THEME_HEADERS, OLD_THEME_BODIES } from "./radiance_palette.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Apple Pro Palette Design System
@@ -35,119 +36,6 @@ const COLORS = {
 })();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Apple Matte Metallic Header Finishes
-// ─────────────────────────────────────────────────────────────────────────────
-const CATEGORY_COLORS = {
-    "CustomTool":{ header: "#0e3452" },   // Matte Ocean Blue / Neon Blue
-    "HDR":       { header: "#3c2020" },   // Matte Rose Gold
-    "Color":     { header: "#2e3a3a" },   // Matte Alpine Green / Teal
-    "Film":      { header: "#221834" },   // Matte Deep Violet
-    "VFX":       { header: "#122c1e" },   // Matte Forest Green
-    "Gen":       { header: "#182238" },   // Matte Midnight Blue (alias for Generate)
-    "Generate":  { header: "#182238" },   // Matte Midnight Blue
-    "IO":        { header: "#3e3e4a" },   // Matte Silver / Platinum
-    "Pipeline":  { header: "#282830" },   // Matte Space Gray
-    "Training":  { header: "#3a1515" },   // Matte Dark Cherry
-    "Image":     { header: "#1c223c" },   // Matte Indigo Blue
-    "Upscale":   { header: "#1c223c" },   // alias for Image
-    "AI":        { header: "#2a153c" },   // Matte Lavender Violet
-    "Analysis":  { header: "#202026" },   // Matte Charcoal
-    "Monitor":   { header: "#202026" },   // alias for Analysis
-    "Utilities": { header: "#202026" },   // alias for Analysis
-    "Video":     { header: "#3e3e4a" },   // Matte Silver / Platinum
-    "Default":   { header: "#282830" },   // Matte Space Gray
-};
-
-/**
- * Resolve the discipline section from a ComfyUI category string, mapping
- * standard third-party categories to coordinated dark headers.
- */
-function resolvePalette(categoryStr, cls) {
-    if (!categoryStr) return cls ? paletteFromClass(cls) : CATEGORY_COLORS["Default"];
-    
-    const cat = categoryStr.toLowerCase();
-    
-    // 1. Resolve Radiance specific namespaces
-    if (cat.includes("radiance")) {
-        const m = categoryStr.match(/Radiance\/(?:◎\s*)?([^/]+)/i);
-        if (m) {
-            const key = m[1].trim();
-            if (CATEGORY_COLORS[key]) return CATEGORY_COLORS[key];
-        }
-    }
-    
-    // 2. Resolve & Skin standard ComfyUI / third-party categories cohesively
-    if (cat.includes("loader") || cat.includes("io") || cat.includes("load") || cat.includes("save")) {
-        return CATEGORY_COLORS["IO"];
-    }
-    if (cat.includes("sampling") || cat.includes("sampler") || cat.includes("generate") || cat.includes("model")) {
-        return CATEGORY_COLORS["Generate"];
-    }
-    if (cat.includes("conditioning") || cat.includes("clip") || cat.includes("prompt") || cat.includes("embeddings")) {
-        return CATEGORY_COLORS["HDR"];
-    }
-    if (cat.includes("latent") || cat.includes("noise") || cat.includes("mask") || cat.includes("composite")) {
-        return CATEGORY_COLORS["VFX"];
-    }
-    if (cat.includes("image") || cat.includes("upscale") || cat.includes("postprocess") || cat.includes("transform")) {
-        return CATEGORY_COLORS["Image"];
-    }
-    if (cat.includes("color") || cat.includes("lut") || cat.includes("grading") || cat.includes("ocio") || cat.includes("style")) {
-        return CATEGORY_COLORS["Color"];
-    }
-    if (cat.includes("film") || cat.includes("effect") || cat.includes("filter") || cat.includes("grain")) {
-        return CATEGORY_COLORS["Film"];
-    }
-    if (cat.includes("workflow") || cat.includes("pipeline") || cat.includes("utils") || cat.includes("utility") || cat.includes("tool")) {
-        return CATEGORY_COLORS["Pipeline"];
-    }
-    
-    // Default premium charcoal header for everything else
-    return CATEGORY_COLORS["Default"];
-}
-
-/**
- * Heuristic palette from class name — used while node.category hasn't
- * populated yet (i.e. during the nodeCreated callback).
- */
-function paletteFromClass(cls) {
-    if (!cls) return CATEGORY_COLORS["Default"];
-    if (cls.includes("HDR") || cls.includes("Turbo") || cls.includes("Encoder"))
-        return CATEGORY_COLORS["HDR"];
-    if (cls.includes("Color") || cls.includes("Grade") || cls.includes("Curves") ||
-        cls.includes("ACES")  || cls.includes("WhiteBalance") || cls.includes("OCIO") ||
-        cls.includes("ColorSpace") || cls.includes("Scopes") || cls.includes("CDL"))
-        return CATEGORY_COLORS["Color"];
-    if (cls.includes("Film")  || cls.includes("Grain") || cls.includes("Optic") ||
-        cls.includes("Aesthetic") || cls.includes("Camera"))
-        return CATEGORY_COLORS["Film"];
-    if (cls.includes("Depth") || cls.includes("Overlay") || cls.includes("Composite") ||
-        cls.includes("Temporal") || cls.includes("Denoise") || cls.includes("Motion") ||
-        cls.includes("Multipass") || cls.includes("Mask"))
-        return CATEGORY_COLORS["VFX"];
-    if (cls.includes("Loader") || cls.includes("Sampler") || cls.includes("Prompt") ||
-        cls.includes("Lora")   || cls.includes("LoRA")    || cls.includes("VAE")    ||
-        cls.includes("ControlNet") || cls.includes("Regional") || cls.includes("Studio"))
-        return CATEGORY_COLORS["Generate"];
-    if (cls.includes("IO")    || cls.includes("EXR")   || cls.includes("Video") ||
-        cls.includes("NDI")   || cls.includes("RenderQueue"))
-        return CATEGORY_COLORS["IO"];
-    if (cls.includes("Nuke")  || cls.includes("Resolve") || cls.includes("Workspace") ||
-        cls.includes("Layout") || cls.includes("Queue")  || cls.includes("Mastering") ||
-        cls.includes("Metadata"))
-        return CATEGORY_COLORS["Pipeline"];
-    if (cls.includes("Train") || cls.includes("SDRDeg") || cls.includes("TurboTrain"))
-        return CATEGORY_COLORS["Training"];
-    if (cls.includes("Image") || cls.includes("Resolution") || cls.includes("Upscale") ||
-        cls.includes("Panorama"))
-        return CATEGORY_COLORS["Image"];
-    if (cls.includes("DNA")   || cls.includes("Engine") || cls.includes("Text") ||
-        cls.includes("Vitals") || cls.includes("QC"))
-        return CATEGORY_COLORS["Utilities"];
-    return CATEGORY_COLORS["Default"];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Extension registration
 // ─────────────────────────────────────────────────────────────────────────────
 app.registerExtension({
@@ -156,8 +44,8 @@ app.registerExtension({
     async init() {
         // Apply beautiful Apple Pro dark space-gray styling to window.LiteGraph
         if (window.LiteGraph) {
-            LiteGraph.NODE_DEFAULT_BGCOLOR = COLORS.BODY;      // Apple space-gray body
-            LiteGraph.NODE_DEFAULT_COLOR   = "#282830";        // Apple default space-gray header
+            // Node colours are not set here: Radiance colours only its own nodes
+            // (beforeRegisterNodeDef below); ComfyUI's and other packs' keep theirs.
             LiteGraph.NODE_DEFAULT_SHAPE   = 2;                // Perfect rounded corners
 
             // Sophisticated Apple-style text & border glows
@@ -293,18 +181,36 @@ app.registerExtension({
         document.head.appendChild(style);
     },
 
-    async nodeCreated(node) {
-        const cls = node.comfyClass || "";
-
-        // ── Skin ALL nodes globally to adopt the Apple Pro finish! ───────────
-        const palette = node.category
-            ? resolvePalette(node.category, cls)
-            : paletteFromClass(cls);
-
-        node.color   = palette.header;  // Coordinated Matte Metallic Header
-        node.bgcolor = COLORS.BODY;     // Space-Gray body — completely unified
-
-        if (node.graph) node.setDirtyCanvas(true, true);
+    // Radiance nodes only, from their category (radiance_palette.js). The
+    // colour is a default, not data: it is left out of saved workflows, and an
+    // old theme colour a workflow saved is replaced by the current one.
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        const d = DISCIPLINES[disciplineForCategory(nodeData?.category)];
+        if (!d) return;
+        const header = d.header;
+        const oldHeaders = new Set([...OLD_THEME_HEADERS, ...Object.values(DISCIPLINES).map((x) => x.header)]);
+        const oldBodies = new Set(OLD_THEME_BODIES);
+        const created = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const r = created?.apply(this, arguments);
+            if (!this.color) this.color = header;
+            if (!this.bgcolor) this.bgcolor = BODY;
+            return r;
+        };
+        const configure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function (info) {
+            const r = configure?.apply(this, arguments);
+            if (!info?.color || oldHeaders.has(String(info.color).toLowerCase())) this.color = header;
+            if (!info?.bgcolor || oldBodies.has(String(info.bgcolor).toLowerCase())) this.bgcolor = BODY;
+            return r;
+        };
+        const serialize = nodeType.prototype.onSerialize;
+        nodeType.prototype.onSerialize = function (o) {
+            const r = serialize?.apply(this, arguments);
+            if (o && o.color === header) delete o.color;
+            if (o && o.bgcolor === BODY) delete o.bgcolor;
+            return r;
+        };
     },
 });
 

@@ -294,9 +294,120 @@ def constrain_colour(source, prediction, baseline, weight, view, include_fully_c
             break
         alpha[active] = alpha[active] * .5 if step < 8 else 0
         result[active] = baseline[active] + alpha[active, None] * (prediction[active] - baseline[active])
-    return result, {"support_pixels": int(support.sum()),
-                    "changed_pixels": int((support & (alpha < 1)).sum()),
-                    "baseline_fallback_pixels": int((support & (alpha == 0)).sum())}
+    stats = {"support_pixels": int(support.sum()),
+             "changed_pixels": int((support & (alpha < 1)).sum()),
+             "baseline_fallback_pixels": int((support & (alpha == 0)).sum()),
+             "remaining_display_errors": 0, "inverse_limit_pixels": 0}
+    # RUDRA 1.1.0: of the pixels still more than one code off, those where the
+    # plain ACES inverse is off too (near-white tinted codes such as 253,255,255,
+    # which the ACES 2.0 view sends to white) are the view's limit, not the
+    # reconstruction's.
+    idx = np.flatnonzero(support)
+    if idx.size:
+        err = np.abs(view.forward(result.reshape(-1, 3)[idx]) - source.reshape(-1, 3)[idx]).max(-1) * 255
+        failing = idx[err > 1]
+        if failing.size:
+            base_err = np.abs(view.forward(baseline.reshape(-1, 3)[failing])
+                              - source.reshape(-1, 3)[failing]).max(-1) * 255
+            stats["inverse_limit_pixels"] = int((base_err > 1).sum())
+            stats["remaining_display_errors"] = int((base_err <= 1).sum())
+    return result, stats
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  RUDRA 1.1.0 stages (native/core/src/aces_v2.cpp): the highlight ceiling, the
+#  user's highlight / shadow bands and Clean shadows
+# ─────────────────────────────────────────────────────────────────────────────
+
+def inverse_white_luma(view: "ACES2View") -> float:
+    """AP1 luminance of the view's inverse of display white (1, 1, 1): RUDRA's
+    highlight ceiling (about 128 in ACEScg for ACES 2.0 SDR 100 nits)."""
+    w = view.inverse(np.ones((1, 1, 3), np.float32)).reshape(3).astype(np.float64)
+    return float(w @ LUMA_AP1)
+
+
+def cap_luminance(rgb: np.ndarray, luma_max: float) -> Tuple[np.ndarray, int]:
+    """Scale every pixel brighter than ``luma_max`` (AP1 luminance) down to it,
+    hue kept. Returns (capped copy, pixels capped)."""
+    if not luma_max > 0:
+        return rgb, 0
+    y = rgb.astype(np.float64) @ LUMA_AP1
+    over = y > luma_max
+    if not over.any():
+        return rgb, 0
+    out = rgb.copy()
+    out[over] = (rgb[over].astype(np.float64) * (luma_max / y[over])[:, None]).astype(rgb.dtype)
+    return out, int(over.sum())
+
+
+BAND_RAMP_CODES = 2
+
+
+def user_band_weight(top: np.ndarray, tau_high: int = 254, tau_low: int = 5) -> np.ndarray:
+    """1 where the source's brightest channel (``top``, 0..1) is at or above
+    ``tau_high`` or at or below ``tau_low`` (8-bit codes), 0 in between, with a
+    smoothstep over 2 codes. tau_high 256 keeps no highlights, tau_low -1 no shadows."""
+    code = np.asarray(top, np.float32) * 255.0
+    ramp = float(BAND_RAMP_CODES)
+    hi = np.zeros_like(code)
+    lo = np.zeros_like(code)
+    if tau_high <= 255:
+        t = np.clip((code - (tau_high - ramp)) / ramp, 0.0, 1.0)
+        hi = t * t * (3.0 - 2.0 * t)
+    if tau_low >= 0:
+        t = np.clip((code - tau_low) / ramp, 0.0, 1.0)
+        lo = 1.0 - t * t * (3.0 - 2.0 * t)
+    return np.maximum(hi, lo).astype(np.float32)
+
+
+def apply_user_band(prediction: np.ndarray, baseline: np.ndarray, source: np.ndarray,
+                    tau_high: int = 254, tau_low: int = 5) -> Tuple[np.ndarray, np.ndarray, dict]:
+    """The learned result only in the bands, the exact plain ACES inverse
+    between (which the ACES 2.0 view returns to the source pixel for pixel)."""
+    w = user_band_weight(source.max(-1), tau_high, tau_low)
+    out = baseline + w[..., None] * (prediction - baseline)
+    out = np.where((w >= 1.0)[..., None], prediction, np.where((w <= 0.0)[..., None], baseline, out))
+    stats = {"learned_pixels": int((w >= 1).sum()), "ramp_pixels": int(((w > 0) & (w < 1)).sum()),
+             "analytic_pixels": int((w <= 0).sum())}
+    return out.astype(np.float32), w, stats
+
+
+def clean_shadows(acescg: np.ndarray, source: np.ndarray, max_code: int = 40, radius: int = 3,
+                  range_stops: float = 0.25) -> Tuple[np.ndarray, int]:
+    """Edge-preserving denoise of the deep shadows: weight 1 where the source's
+    brightest channel is at or below ``max_code``, 0 from ``max_code + 8``; each
+    pixel there becomes a mean of its neighbours weighted by distance (sigma
+    radius / 2) and by the difference in log2 luminance (sigma range_stops).
+    Nothing is invented: only what the neighbourhood holds."""
+    h, w_ = acescg.shape[:2]
+    t = np.clip((source.max(-1) * 255.0 - float(max_code)) / 8.0, 0.0, 1.0)
+    weight = 1.0 - t * t * (3.0 - 2.0 * t)
+    active = weight > 0
+    if not active.any():
+        return acescg, 0
+    rgb = acescg.astype(np.float64)
+    logy = np.log2(np.maximum(rgb @ LUMA_AP1, 1e-9))
+    ss = 2.0 * (0.5 * radius) ** 2
+    rs = 2.0 * range_stops * range_stops
+    acc = np.zeros_like(rgb)
+    wsum = np.zeros((h, w_), np.float64)
+    pad = radius
+    rgb_p = np.pad(rgb, ((pad, pad), (pad, pad), (0, 0)))
+    logy_p = np.pad(logy, pad)
+    valid_p = np.pad(np.ones((h, w_), bool), pad)
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            ys, xs = pad + dy, pad + dx
+            nb = rgb_p[ys:ys + h, xs:xs + w_]
+            ok = valid_p[ys:ys + h, xs:xs + w_]
+            d = logy_p[ys:ys + h, xs:xs + w_] - logy
+            k = np.exp(-float(dx * dx + dy * dy) / ss) * np.exp(-(d * d) / rs) * ok
+            acc += k[..., None] * nb
+            wsum += k
+    mean = acc / np.maximum(wsum, 1e-300)[..., None]
+    out = rgb + weight[..., None] * (mean - rgb)
+    out = np.where(active[..., None], out, rgb)
+    return out.astype(np.float32), int(active.sum())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,11 +453,20 @@ def _g1_tiled(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor, tile: in
 
 def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2View] = None,
               smoothing: bool = True, constrain: bool = True, tile: int = 1024,
-              overlap: int = 128) -> FrameResult:
-    """The full staged pipeline on one H x W x 3 frame of display codes in [0, 1]."""
+              overlap: int = 128, band: Optional[dict] = None,
+              clean: Optional[dict] = None, ceiling: bool = True) -> FrameResult:
+    """The full staged pipeline on one H x W x 3 frame of display codes in [0, 1].
+
+    RUDRA 1.1.0 additions: the highlight ceiling (on: nothing brighter than the
+    inverse of display white), ``band`` ({"tau_high", "tau_low"}: the learned
+    result only in highlights and shadows) and ``clean`` ({"max_code",
+    "radius", "range_stops"}: Clean shadows). Both off by default."""
     view = view or aces2_view()
     src = np.ascontiguousarray(np.clip(source_hwc, 0.0, 1.0), np.float32)
     baseline = view.inverse(src)                                                 # stage 1
+    limit = inverse_white_luma(view) if ceiling else 0.0
+    if ceiling:
+        baseline, _ = cap_luminance(baseline, limit)
     x = torch.from_numpy(src).permute(2, 0, 1)[None]
     b = torch.from_numpy(baseline).permute(2, 0, 1)[None]
     tiled = False
@@ -362,6 +482,8 @@ def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2Vie
         tiled = True
     restored_source = rs[0].permute(1, 2, 0).numpy()
     restored = view.inverse(np.clip(restored_source, 0.0, 1.0))                  # stage 3
+    if ceiling:
+        restored, _ = cap_luminance(restored, limit)
     with torch.inference_mode():
         composed, mask = staged_compose(x, b, torch.from_numpy(restored).permute(2, 0, 1)[None],
                                         hl, full, weight)                         # stage 4
@@ -371,13 +493,26 @@ def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2Vie
         sm = pkg.smoothing
         out, _ = smooth_clipped(out, src, sigma=float(sm["sigma"]), ramp=float(sm["ramp"]),
                                 start=float(sm.get("start", 0.0)), mode=sm.get("mode", "hybrid"))
+    mask_np = mask[0, 0].numpy().astype(np.float32)
+    extra = {}
+    if band:                                                                    # stage 5b
+        out, bw, extra["band"] = apply_user_band(out, baseline, src, int(band.get("tau_high", 254)),
+                                                 int(band.get("tau_low", 5)))
+        mask_np = mask_np * bw                       # the analytic band was not reconstructed
+    if clean:
+        out, extra["clean_shadow_pixels"] = clean_shadows(
+            out, src, int(clean.get("max_code", 40)), int(clean.get("radius", 3)),
+            float(clean.get("range_stops", 0.25)))
+    if ceiling:
+        out, extra["ceiling_pixels"] = cap_luminance(out, limit)
     if constrain:                                                               # stage 6
         out, stats = constrain_colour(src, out, baseline, weight[0, 0].numpy(), view,
                                       include_fully_clipped=True,
                                       forbid_new_negative_y=pkg.forbid_new_negative_y)
     if not np.isfinite(out).all():
         raise ValueError("RUDRA ACES 2 produced non-finite values")
-    return FrameResult(out.astype(np.float32), mask[0, 0].numpy().astype(np.float32),     # stage 7
+    stats.update(extra)
+    return FrameResult(out.astype(np.float32), mask_np,                         # stage 7
                        baseline.astype(np.float32), tiled, stats)
 
 
@@ -440,8 +575,10 @@ def sdr_codes_from_image(rgb: torch.Tensor, inverse_oetf: str) -> np.ndarray:
 
 
 def run_batch(pkg: ACES2Package, codes: np.ndarray, progress: Optional[Callable[[int], None]] = None,
-              workers: int = 1, **kw) -> Tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
-    """codes [B,H,W,3] -> (acescg [B,H,W,3], mask [B,H,W], baseline [B,H,W,3], tiled)."""
+              workers: int = 1, stats: Optional[list] = None,
+              **kw) -> Tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
+    """codes [B,H,W,3] -> (acescg [B,H,W,3], mask [B,H,W], baseline [B,H,W,3], tiled).
+    ``stats``, when a list, receives each frame's stage statistics in order."""
     view = aces2_view()
     out, masks, bases, tiled = [], [], [], False
     # ALBABIT-FIX: TorchScript runs G1's first call at a frame size unoptimised,
@@ -462,6 +599,8 @@ def run_batch(pkg: ACES2Package, codes: np.ndarray, progress: Optional[Callable[
             masks.append(r.mask)
             bases.append(r.baseline)
             tiled |= r.tiled
+            if stats is not None:
+                stats.append(r.stats)
             if progress:
                 progress(1)
     return np.stack(out), np.stack(masks), np.stack(bases), tiled

@@ -873,6 +873,16 @@ class RadianceWrite:
                     "A relative path is under ComfyUI's output folder; quotes from \"Copy as path\" are fine."
                 ),
             }),
+            "aces_amf": ("BOOLEAN", {
+                "default": False,
+                "tooltip": (
+                    "EXR in ACEScg or ACES2065-1 only: also write an ACES Metadata File (AMF v2.0) "
+                    "beside the master, as RUDRA does: one per sequence (named after it, frames as "
+                    "####) or per image. It names the ACES 2.0 SDR Rec.709 output transform and, for "
+                    "ACEScg, the ACEScg to ACES2065-1 input transform, so grading and review tools "
+                    "open the master in the right ACES pipeline."
+                ),
+            }),
         }, "hidden": {
             "prompt":        "PROMPT",
             "extra_pnginfo": "EXTRA_PNGINFO",
@@ -947,6 +957,7 @@ class RadianceWrite:
         audio_codec:    str   = "Auto",
         write_audio:    bool  = False,
         audio_path:     str   = "",
+        aces_amf:       bool  = False,
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -991,6 +1002,7 @@ class RadianceWrite:
             audio_codec=audio_codec,
             write_audio=write_audio,
             audio_path=audio_path,
+            aces_amf=aces_amf,
         )
         return _with_history(res, t0, receipt)
 

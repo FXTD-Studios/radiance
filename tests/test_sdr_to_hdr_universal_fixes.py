@@ -84,9 +84,8 @@ def test_row_quantile_handles_oversized_rows():
 # checkpoint with the path widget left blank -- the default -- was never used.
 
 @pytest.mark.parametrize("backend,ckpt", [
-    ("Auto", ""),             # the stock defaults
-    ("Auto", "/tmp/x.pt"),
-    ("Direct Pixel", ""),
+    ("Direct Pixel", ""),     # the stock path widget
+    ("Direct Pixel", "/tmp/x.pt"),
 ])
 def test_direct_pixel_runs_when_checkpoint_is_discoverable(node, monkeypatch, backend, ckpt):
     calls = {"n": 0}
@@ -147,7 +146,7 @@ def test_pixels_outside_recovery_mask_are_bit_exact(node, fake_rudra):
     # 0.98 clipping threshold -- i.e. genuinely outside the recovery mask.
     vals = torch.tensor([0.90, 0.95, 0.9664, 0.970, 0.975, 0.979])
     img = vals.view(1, 1, -1, 1).expand(1, 1, 6, 3).contiguous()
-    kw = dict(BASE_KW, highlight_threshold=0.98, shadow_threshold=0.001)
+    kw = dict(BASE_KW, highlight_threshold=0.98, shadow_threshold=0.001, learned_backend="Direct Pixel")
 
     base, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=0.0, **kw)
     out, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=1.0, pixel_recovery_mode="all", **kw)
@@ -160,7 +159,7 @@ def test_peak_is_still_enforced_after_removing_the_second_limiter(node, fake_rud
     fake_rudra(rec_value=1000.0)
     img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(1, 8, 8, 3).contiguous()
     out, _, _, _, _, report, _ = node.convert(
-        image=img, rudra_blend=1.0, pixel_recovery_mode="all",
+        image=img, rudra_blend=1.0, pixel_recovery_mode="all", learned_backend="Direct Pixel",
         **dict(BASE_KW, peak_nits=200.0, shoulder_gamma=1.0))
     assert "learned recovery: applied" in report
     assert float(mod._luma(out).max()) <= 2.0 + 1e-5
@@ -286,9 +285,10 @@ def test_pixel_model_runs_on_comfys_device_and_reports_progress(monkeypatch):
 
 
 @pytest.mark.parametrize("installed", [False, True])
-def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypatch, fake_rudra, installed):
-    """No temporal model is published; Auto used to try one on every clip and
-    log "Temporal RUDRA unavailable" each time."""
+def test_auto_never_tries_the_rudra_3x_models(node, monkeypatch, fake_rudra, installed):
+    """RUDRA 1.0.3's licence rule: the RUDRA 3.x models (non-commercial
+    weights) run only when chosen by name. Auto never tries the temporal or
+    the pixel model, even installed, and the report says how to choose them."""
     fake_rudra()
     tried = []
 
@@ -301,9 +301,14 @@ def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypat
     monkeypatch.setattr(mod.RadianceSDRToHDRUniversal, "_temporal_reconstruct", staticmethod(fake_temporal))
 
     img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(5, 8, 8, 3).contiguous()
-    node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
-                 rudra_blend=1.0, **BASE_KW)
-    assert tried == ([True] if installed else [])
+    monkeypatch.setattr(mod, "_aces2_available", lambda p="": False)
+    calls = {"n": 0}
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr",
+                        lambda srgb, **k: calls.__setitem__("n", calls["n"] + 1) or srgb[..., :3])
+    out = node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
+                       rudra_blend=1.0, **BASE_KW)
+    assert tried == [] and calls["n"] == 0
+    assert "Direct Pixel or Temporal" in out[5] and "NOT APPLIED" in out[5]
 
 
 class _RecordedProgress:

@@ -130,9 +130,7 @@
         "generate_audio": true,
         "seed": 0,
         "control_after_generate": "randomize"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -200,9 +198,7 @@
       ],
       "properties": {
         "Node name for S&R": "GetVideoComponents"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -560,9 +556,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -868,9 +862,7 @@
         "fill_package": "",
         "allow_download": true,
         "keep_loaded": true
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -1091,9 +1083,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -1403,9 +1393,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,
@@ -1715,9 +1703,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 8,
@@ -1874,7 +1860,7 @@
         440.0000000000001,
         1538
       ],
-      "color": "#8f5f3f",
+      "color": "#b58b2a",
       "flags": {}
     },
     {

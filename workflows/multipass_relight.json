@@ -457,9 +457,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -1050,9 +1048,7 @@
         "seed": 0,
         "control_after_generate": "fixed",
         "batch_is_sequence": true
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -1262,9 +1258,7 @@
         "frame_index": 1001,
         "exr_layout": "Single-part multilayer",
         "custom_metadata": ""
-      },
-      "color": "#3e3e4a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1830,9 +1824,7 @@
         "depth_near_is_white": true,
         "mix_with_beauty": 0,
         "output_premultiplied": false
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -2114,9 +2106,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,

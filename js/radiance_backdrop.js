@@ -7,23 +7,14 @@
  */
 
 import { app } from "../../scripts/app.js";
+import { DISCIPLINES, DEFAULT_GROUP, dominantDiscipline } from "./radiance_palette.js";
 
 // ─── Constants & Palette Tokens ──────────────────────────────────────────────
 const ACCENT_BLUE = "#00a8ff";
 
-const RADIANCE_PALETTE = {
-    HDR:       "#b38600", // warm amber-gold
-    Color:     "#008c9e", // vibrant teal-cyan
-    Film:      "#8c30e8", // rich purple-violet
-    VFX:       "#009f4d", // vibrant forest-green
-    Generate:  "#0066cc", // deep navy-blue
-    IO:        "#009999", // bright teal
-    Pipeline:  "#5c6b73", // neutral slate
-    Training:  "#cc0029", // crimson
-    Image:     "#4361ee", // indigo
-    Utilities: "#4a5568", // charcoal
-    Default:   "#3a4b5c"  // classic Radiance slate
-};
+// Group colours: radiance_palette.js (ComfyUI's own group palette, one code
+// shared by Smart Backdrop, the Studio presets and the shipped workflows).
+const RADIANCE_PALETTE = { Default: DEFAULT_GROUP };
 
 // Background glass fill
 const GLASS_FILL = "rgba(15, 15, 20, 0.45)";
@@ -99,74 +90,22 @@ function promptBackdropTitle(defaultValue = "") {
 // Dominant Discipline & Title Heuristics
 // ─────────────────────────────────────────────────────────────────────────────
 
-function analyzeDominantDiscipline(nodes) {
-    const counts = {
-        HDR: 0, Color: 0, Film: 0, VFX: 0, Generate: 0,
-        IO: 0, Pipeline: 0, Training: 0, Image: 0, Utilities: 0
-    };
-
-    nodes.forEach(node => {
-        const cls = (node.comfyClass || node.type || "").toUpperCase();
-        
-        if (cls.includes("HDR") || cls.includes("TURBO") || cls.includes("ENCODER"))
-            counts.HDR++;
-        else if (cls.includes("COLOR") || cls.includes("GRADE") || cls.includes("CURVES") ||
-                 cls.includes("ACES")  || cls.includes("WHITEBALANCE") || cls.includes("OCIO") ||
-                 cls.includes("COLORSPACE") || cls.includes("SCOPES") || cls.includes("CDL"))
-            counts.Color++;
-        else if (cls.includes("FILM")  || cls.includes("GRAIN") || cls.includes("OPTIC") ||
-                 cls.includes("AESTHETIC") || cls.includes("CAMERA"))
-            counts.Film++;
-        else if (cls.includes("DEPTH") || cls.includes("OVERLAY") || cls.includes("COMPOSITE") ||
-                 cls.includes("TEMPORAL") || cls.includes("DENOISE") || cls.includes("MOTION") ||
-                 cls.includes("MULTIPASS") || cls.includes("MASK"))
-            counts.VFX++;
-        else if (cls.includes("LOADER") || cls.includes("SAMPLER") || cls.includes("PROMPT") ||
-                 cls.includes("LORA")   || cls.includes("VAE")     || cls.includes("CONTROLNET") ||
-                 cls.includes("REGIONAL") || cls.includes("STUDIO"))
-            counts.Generate++;
-        else if (cls.includes("IO")    || cls.includes("EXR")   || cls.includes("VIDEO") ||
-                 cls.includes("NDI")   || cls.includes("RENDERQUEUE"))
-            counts.IO++;
-        else if (cls.includes("NUKE")  || cls.includes("RESOLVE") || cls.includes("WORKSPACE") ||
-                 cls.includes("LAYOUT") || cls.includes("QUEUE")  || cls.includes("MASTERING") ||
-                 cls.includes("METADATA"))
-            counts.Pipeline++;
-        else if (cls.includes("TRAIN") || cls.includes("SDRDEG") || cls.includes("TURBOTRAIN"))
-            counts.Training++;
-        else if (cls.includes("IMAGE") || cls.includes("RESOLUTION") || cls.includes("UPSCALE") ||
-                 cls.includes("PANORAMA"))
-            counts.Image++;
-        else if (cls.includes("DNA")   || cls.includes("ENGINE") || cls.includes("TEXT") ||
-                 cls.includes("VITALS") || cls.includes("QC"))
-            counts.Utilities++;
-    });
-
-    let maxVal = 0;
-    let dominant = "Default";
-    for (const [key, val] of Object.entries(counts)) {
-        if (val > maxVal) {
-            maxVal = val;
-            dominant = key;
-        }
-    }
-    return dominant;
+/** A node's category: its ComfyUI node definition, read from the class. */
+function nodeCategory(node) {
+    const c = node?.constructor;
+    return c?.category || c?.nodeData?.category || node?.category || "";
 }
 
-function getSuggestedTitle(discipline) {
-    switch (discipline) {
-        case "HDR":       return "◎ HDR Processing";
-        case "Color":     return "◎ Color Grading";
-        case "Film":      return "◎ Film Emulation";
-        case "VFX":       return "◎ VFX Compositing";
-        case "Generate":  return "◎ AI Generation";
-        case "IO":        return "◎ Inputs / Outputs";
-        case "Pipeline":  return "◎ Pipeline Infrastructure";
-        case "Training":  return "◎ Network Training";
-        case "Image":     return "◎ Image Processing";
-        case "Utilities": return "◎ Utility Operations";
-        default:          return "◎ Backdrop";
-    }
+/**
+ * What a backdrop around these nodes is: from each node's category (Read and
+ * Write are Load & Save, the Prompt is Generate), and Optional when most of
+ * them are bypassed.
+ */
+function backdropFor(nodes) {
+    const bypassed = nodes.filter((n) => n.mode === 4).length;
+    if (nodes.length && bypassed * 2 > nodes.length) return DISCIPLINES.optional;
+    const d = dominantDiscipline(nodes.map(nodeCategory));
+    return d ? DISCIPLINES[d] : null;
 }
 
 
@@ -213,9 +152,9 @@ function createSmartBackdrop(selectedNodes) {
         size = [maxX - minX + (padding * 2), maxY - minY + padding + headerPadding];
 
         // 2. Perform dynamic snapping & auto-naming
-        const dominant = analyzeDominantDiscipline(selectedNodes);
-        color = RADIANCE_PALETTE[dominant];
-        title = getSuggestedTitle(dominant);
+        const kind = backdropFor(selectedNodes);
+        color = kind ? kind.group : DEFAULT_GROUP;
+        title = kind ? kind.title : "◎ Backdrop";
     } else {
         // 3. Fallback: Create empty backdrop at mouse position
         const mouseCanvas = app.canvas.convertCanvasToOffset(app.canvas.last_mouse_position);
@@ -242,8 +181,97 @@ function createSmartBackdrop(selectedNodes) {
 // EXTENSION BOOTSTRAP: EVENT PATCHES & OVERRIDES (Warning-Free API)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Group style and locking ─────────────────────────────────────────────────
+const STYLE_ID = "Radiance.Backdrop.Style";
+
+/**
+ * Radiance's own group drawing is off unless the setting turns it on: with it
+ * off, groups are ComfyUI's, so a workflow looks the same with or without
+ * Radiance. The old escape hatches still turn it off.
+ */
+function radianceGroupStyleOn() {
+    if (window.RADIANCE_DISABLE_GROUP_STYLE) return false;
+    try { if (localStorage.getItem("radiance.disableGroupStyle") === "1") return false; } catch { /* storage blocked */ }
+    try { return app.extensionManager?.setting?.get?.(STYLE_ID) === true; } catch { return false; }
+}
+
+/** A small lock after a locked group's title, on ComfyUI's own group drawing. */
+function drawLockMark(group, args) {
+    if (!group?.properties?.locked) return;
+    const ctx = [...args].find((a) => a && typeof a.fillText === "function");
+    if (!ctx) return;
+    ctx.save();
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.fillText("\u{1F512}", group.pos[0] + group.size[0] - 8, group.pos[1] + 18);
+    ctx.restore();
+}
+
+function isGroup(item) {
+    if (!item) return false;
+    if (window.LGraphGroup && item instanceof window.LGraphGroup) return true;
+    // A group from another copy of LiteGraph: groups are what the graph lists as groups.
+    return (app.graph?._groups || app.graph?.groups || []).includes(item);
+}
+
+/** The groups a person has selected (the frontend keeps groups in selectedItems). */
+function selectedGroups() {
+    const c = app.canvas;
+    const items = c?.selectedItems ? [...c.selectedItems] : [];
+    const out = items.filter(isGroup);
+    if (c?.selected_group && !out.includes(c.selected_group)) out.push(c.selected_group);
+    return out;
+}
+
+function setLocked(groups, locked) {
+    for (const g of groups) { g.properties ??= {}; g.properties.locked = locked; }
+    app.graph?.change?.();
+    app.canvas?.setDirty(true, true);
+}
+
+/** Lock the selected backdrops, or unlock them if they are all locked already. */
+function toggleSelectedLock() {
+    const groups = selectedGroups();
+    if (!groups.length) return false;
+    const allLocked = groups.every((g) => g.properties?.locked);
+    setLocked(groups, !allLocked);
+    return true;
+}
+
 app.registerExtension({
     name: "FXTD.Radiance.Backdrop",
+    settings: [
+        {
+            id: STYLE_ID,
+            category: ["Radiance", "Backdrops", "Style"],
+            name: "Draw groups in the Radiance style (dark glass, monospace title)",
+            tooltip: "Off: groups look as ComfyUI draws them, the same with or without Radiance.",
+            type: "boolean",
+            defaultValue: false,
+            onChange: () => app.canvas?.setDirty?.(true, true),
+        },
+    ],
+    commands: [
+        {
+            id: "Radiance.Backdrop.ToggleLock",
+            label: "Lock / Unlock Backdrop",
+            tooltip: "Lock a backdrop so it stays put while you move the nodes inside it",
+            icon: "pi pi-lock",
+            function: () => toggleSelectedLock(),
+        },
+        {
+            id: "Radiance.Backdrop.CreateSmart",
+            label: "Create Smart Backdrop",
+            icon: "pi pi-th-large",
+            function: () => createSmartBackdrop(Object.values(app.canvas?.selected_nodes || {})),
+        },
+    ],
+    // A selected group gets a lock button in the selection toolbox, with
+    // Nodes 2.0 on or off (its group menu has no room for extensions).
+    getSelectionToolboxCommands(item) {
+        return isGroup(item) ? ["Radiance.Backdrop.ToggleLock"] : [];
+    },
 
     // Modern ComfyUI Canvas Context Menu Hook (Warning-Free API)
     getCanvasMenuItems(canvas) {
@@ -262,11 +290,12 @@ app.registerExtension({
             }
         });
 
-        // ── Option B: Lock Backdrop context commands (for Unlocked groups under mouse) ──
-        const unlockedGroups = (app.graph._groups || []).filter(g => {
-            const isLocked = g.properties?.locked ?? false;
-            return !isLocked && isPointInGroup(g, cx, cy);
-        });
+        // ── Option B: Lock Backdrop context commands (unlocked groups under the
+        // pointer or selected: with Nodes 2.0 a right-click on a group opens its
+        // own menu, so a selected group is locked from the empty canvas) ──
+        const groupsHere = (app.graph._groups || app.graph.groups || []).filter(g => isPointInGroup(g, cx, cy));
+        for (const g of selectedGroups()) if (!groupsHere.includes(g)) groupsHere.push(g);
+        const unlockedGroups = groupsHere.filter(g => !(g.properties?.locked ?? false));
 
         if (unlockedGroups.length > 0) {
             unlockedGroups.forEach(g => {
@@ -282,10 +311,7 @@ app.registerExtension({
         }
 
         // ── Option C: Unlock Backdrop context commands (for Locked click-transparent groups under mouse) ──
-        const lockedGroups = (app.graph._groups || []).filter(g => {
-            const isLocked = g.properties?.locked ?? false;
-            return isLocked && isPointInGroup(g, cx, cy);
-        });
+        const lockedGroups = groupsHere.filter(g => g.properties?.locked ?? false);
 
         if (lockedGroups.length > 0) {
             lockedGroups.forEach(g => {
@@ -317,9 +343,10 @@ app.registerExtension({
         LGraphGroup.prototype.draw = function() {
             // Escape hatch: lets a user or another pack opt out of Radiance's
             // group styling without uninstalling.
-            if (window.RADIANCE_DISABLE_GROUP_STYLE ||
-                localStorage.getItem("radiance.disableGroupStyle") === "1") {
-                return origGroupDraw ? origGroupDraw.apply(this, arguments) : undefined;
+            if (!radianceGroupStyleOn()) {
+                const out = origGroupDraw ? origGroupDraw.apply(this, arguments) : undefined;
+                drawLockMark(this, arguments);
+                return out;
             }
             // Bulletproof context and canvas argument resolution (supports all LiteGraph versions)
             let ctx = null;

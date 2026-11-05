@@ -328,9 +328,7 @@
         "upsampler_seed": 0,
         "control_after_generate": "randomize",
         "layout": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 18,
@@ -1082,9 +1080,7 @@
         "› Export Preset": null,
         "› Import Preset": null,
         "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -1416,9 +1412,7 @@
         "auto_download": false,
         "model_shift": 0,
         "upsampler": "None"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 37,
@@ -1701,9 +1695,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 22,
@@ -1924,9 +1916,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 23,
@@ -2025,9 +2015,7 @@
         "invert": false,
         "blur_edges": 0,
         "use_gpu": true
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 35,
@@ -2310,9 +2298,7 @@
         "hdr_scale_factor": 1,
         "decode_mode": "Direct HDR",
         "hdr_peak_nits": 1000
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 36,
@@ -2593,9 +2579,7 @@
         "duration_seconds": 5,
         "video_frames": 81,
         "frame_rate": 24
-      },
-      "color": "#1c223c",
-      "bgcolor": "#141419"
+      }
     }
   ],
   "links": [
@@ -2722,7 +2706,7 @@
         1687.5076085307358,
         1815.5155964585574
       ],
-      "color": "#3a2a5a",
+      "color": "#3f789e",
       "flags": {}
     },
     {
@@ -2734,7 +2718,7 @@
         481.625,
         1129.1664984533145
       ],
-      "color": "#5a3a1a",
+      "color": "#3f789e",
       "flags": {}
     }
   ],

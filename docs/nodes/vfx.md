@@ -4,13 +4,12 @@
 
 Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 
-30 nodes. [All sections](README.md)
+28 nodes. [All sections](README.md)
 
 - [Aberration](#aberration)
 - [Anamorphic Streaks](#anamorphic-streaks)
 - [Bit-Depth Degrade](#bit-depth-degrade)
 - [Blend Composite](#blend-composite)
-- [Camera Sync](#camera-sync)
 - [Compression Artifacts](#compression-artifacts)
 - [Defocus](#defocus)
 - [Depth](#depth)
@@ -26,7 +25,6 @@ Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 - [Multipass Composite](#multipass-composite)
 - [Multipass Estimate](#multipass-estimate)
 - [Multipass Relight](#multipass-relight)
-- [Relight Engine](#relight-engine)
 - [Rolling Shutter](#rolling-shutter)
 - [SAM Multi-Mask Picker](#sam-multi-mask-picker)
 - [Scene Cut Detect](#scene-cut-detect)
@@ -135,29 +133,6 @@ Composite two images using Normal, Add, Screen, Multiply, Overlay, Soft Light, D
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
-
-## Camera Sync
-
-`RadianceCameraSync`
-
-Read a JSON camera (focal length, f-stop, shutter, transform) for the optical nodes.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `camera_data` | string | `{}` | multi-line text | JSON camera data: {"focal_length": 35.0, "f_stop": 2.8, "shutter_angle": 180.0, "transform": [...]} or {"frames": [ ... ]} |
-| `frame_offset` | int | 0 | -10000 to 10000, step 1 | Index into a "frames" list (animated camera). Ignored for a single camera. |
-| `camera_file` (optional) | string |  |  | Path to a .json camera file. Takes precedence over camera_data. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `camera` | RADIANCE_CAMERA |
-| `focal_length` | FLOAT |
-| `f_stop` | FLOAT |
-| `shutter_angle` | INT |
 
 ## Compression Artifacts
 
@@ -598,36 +573,6 @@ Relights a CG or estimated plate from its albedo and normal passes with one dire
 | `lighting` | IMAGE |
 | `alpha` | IMAGE |
 | `relight_info` | STRING |
-
-## Relight Engine
-
-`RadianceRelightEngine`
-
-Add a directional light (Lambert + Blinn-Phong) to an image from its normal map.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to light. The lighting pass is added on top of it, not multiplied by an albedo. |
-| `normal_map` | IMAGE |  |  | Normal map encoded 0 to 1 (RGB = XYZ x 0.5 + 0.5). Resized to the image if the sizes differ. |
-| `light_dir_x` | float | 1 | -2 to 2, step 0.01 | Light direction X component. Normalized internally — sets the horizontal angle of the synthetic light. |
-| `light_dir_y` | float | 1 | -2 to 2, step 0.01 | Light direction Y component. Positive = light from above. |
-| `light_dir_z` | float | 1 | -2 to 2, step 0.01 | Light direction Z component. Positive = light in front of surface. |
-| `light_color_r` | float | 1 | 0 to 2, step 0.01 | Red component of the synthetic light color. Values > 1.0 produce HDR emission. |
-| `light_color_g` | float | 1 | 0 to 2, step 0.01 | Green component of the synthetic light color. |
-| `light_color_b` | float | 1 | 0 to 2, step 0.01 | Blue component of the synthetic light color. |
-| `diffuse_intensity` | float | 1 | 0 to 10, step 0.01 | Lambertian diffuse reflection strength. Controls broad, soft illumination. |
-| `specular_intensity` | float | 0.5 | 0 to 10, step 0.01 | Specular highlight strength. Higher values produce brighter, more visible glints. |
-| `specular_roughness` | float | 0.1 | 0.01 to 1, step 0.01 | Surface roughness for Blinn-Phong specular. Low = sharp glints (metallic), high = soft broad highlights (matte). |
-| `camera` (optional) | RADIANCE_CAMERA |  |  | Optional camera. Only the position in its transform is used, as the viewpoint for the specular term relative to a -1 to 1 image plane. Without it a viewer at z = 2 is assumed. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `lighting_pass_only` | IMAGE |
 
 ## Rolling Shutter
 

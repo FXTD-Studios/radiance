@@ -4,18 +4,16 @@
 
 Viewer, scopes, preview servers, contact sheets, and QC.
 
-11 nodes. [All sections](README.md)
+9 nodes. [All sections](README.md)
 
 - [Burn-In](#burn-in)
 - [Contact Sheet](#contact-sheet)
 - [False Color Monitor](#false-color-monitor)
 - [Flipbook GIF](#flipbook-gif)
 - [Focus Peaking](#focus-peaking)
-- [HDR Monitor](#hdr-monitor)
 - [Policy Guard](#policy-guard)
 - [Preview Server](#preview-server)
 - [QC](#qc)
-- [Split View](#split-view)
 - [Viewer](#viewer)
 
 ## Burn-In
@@ -137,32 +135,6 @@ Overlay focus-peaking highlights on edges for sharpness assessment.
 | `passthrough` | IMAGE |
 | `focus_peak` | IMAGE |
 
-## HDR Monitor
-
-`RadianceHDRMonitor`
-
-HDR monitor / preview node. SDR tone-map or direct PQ/HLG display encoding. Wire in parallel — does not affect your HDR pipeline.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Scene-linear HDR, 1.0 = reference white (203 nits for the PQ and HLG modes). Negatives are clipped. |
-| `mode` | choice | `Preview (SDR)` | `Preview (SDR)`, `Rec.2100 PQ`, `Rec.2100 HLG` | Preview (SDR): tone-map to 0 to 1 for a normal monitor. Rec.2100 PQ / HLG: encode the signal for an HDR display (no gamut conversion). |
-| `operator` (optional) | choice | `ACES (Narkowicz)` | `ACES (Narkowicz)`, `Filmic (Hejl-Burgess)`, `Reinhard Extended`, `Exposure + Gamma` | [Preview (SDR)] Tone-mapping operator. |
-| `exposure` (optional) | float | 0 | -6 to 6, step 0.1 | [Preview (SDR)] EV offset applied before tone mapping. |
-| `saturation` (optional) | float | 1 | 0 to 2, step 0.05 | [Preview (SDR)] Post-tonemap saturation scale. |
-| `gamma` (optional) | float | 2.2 | 1 to 3, step 0.05 | [Preview (SDR)] Display gamma, applied as a pure 1/gamma power. 2.2 approximates sRGB, 2.4 matches BT.1886. |
-| `reinhard_white` (optional) | float | 4 | 0.5 to 100, step 0.5 | [Preview (SDR) / Reinhard Extended] White point. |
-| `peak_nits` (optional) | float | 1000 | 100 to 10000, step 100 | [Rec.2100 PQ] Mastering display peak luminance in nits. |
-| `gamma_correct_sdr` (optional) | boolean | on |  | [Preview (SDR)] Apply the 1/gamma display encoding after tone mapping. Applies to every preview operator, including Exposure + Gamma. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `preview` | IMAGE |
-
 ## Policy Guard
 
 `RadiancePolicyGuard`
@@ -257,27 +229,6 @@ Run technical QC on an image or sequence (crushed blacks, clipped whites, out-of
 | `text_report` | STRING |
 | `json_report` | STRING |
 | `status` | STRING |
-
-## Split View
-
-`RadianceSplitView`
-
-Side-by-side or wipe comparison between two images or versions.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image_a` | IMAGE |  |  | Original / reference image. Alpha is ignored; the comparison is RGB. |
-| `image_b` | IMAGE |  |  | Processed / graded image. Alpha is ignored. |
-| `mode` | choice | `wipe_h` | `wipe_h`, `wipe_v`, `side_by_side`, `diff` | wipe_h: A left, B right of a vertical line. wipe_v: A above, B below. side_by_side: left half of A beside right half of B (fixed 50% split). diff: \|A - B\| x 4, clipped to [0, 1]. |
-| `position` | float | 0.5 | 0 to 1, step 0.01 | Wipe line position as a fraction of width (wipe_h) or height (wipe_v): 0 = all B, 1 = all A. Unused in side_by_side and diff. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `comparison` | IMAGE |
 
 ## Viewer
 
