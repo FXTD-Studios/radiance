@@ -168,6 +168,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   left the picture a strip beside the 520 px panel. Review gives the node to
   the picture; Color, Inspect and Review are one click away. The Starter's
   large viewer stays in Color.
+- **The Starter has a Library card** like the other workflows, and a test
+  checks that every shipped workflow has one.
 - **The Workflow Library ships its official cards.** Every API workflow and
   the local ones have a card in `workflows/official/API/` and
   `workflows/official/Local/` (.rad v3: the same graph as the JSON in

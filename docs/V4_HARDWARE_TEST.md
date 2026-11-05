@@ -128,6 +128,10 @@ anything that fails.
 - [ ] Review: Grab still on two frames, then pick each from the B menu and wipe;
       the stills look like the frames they came from. Release B keeps them; Clear
       stills empties the menu.
+- [ ] Welcome tour: on a ComfyUI that never ran Radiance 4, the tour opens once ComfyUI's
+      template browser is closed; its buttons work (Load the Starter, Open the Workflow
+      Library); it does not open again after a restart; the ◎ Radiance menu and
+      Help > Radiance Tour open it; "Don't show at startup" sticks after a restart.
 - [ ] Settings (⚙) > High contrast is readable on your monitor, and the tool
       rail (Window > Tool Rail) and panels read comfortably at your usual
       display scaling.
