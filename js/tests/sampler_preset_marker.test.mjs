@@ -20,6 +20,8 @@ function samplerContext() {
         _isSdTurboActive = () => false;
         globalThis.markers = updatePresetDivergenceMarkers;
         globalThis.metaDefaults = updateModelMetaDefaults;
+        globalThis.applyPreset = applyPreset;
+        globalThis.presetNames = Object.keys(PRESET_CONFIGS);
     `, context);
     return context;
 }
@@ -72,15 +74,20 @@ test('Auto on LTX 2.5 Dev follows the 30-step LowRes preset, audio_cfg included'
 
 test('Auto on an LTX Distilled file follows the Distilled presets, 8 steps then 3', () => {
     const context = samplerContext();
-    vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: 'ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors' }] });`, context);
-    for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
-        vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
-        const node = ltxNode('Auto', 3.0);
-        node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
-        context.metaDefaults(node);
-        const value = (name) => node.widgets.find(w => w.name === name).value;
-        assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
-            [steps, 1.0, 'euler_ancestral', 'linear_quadratic', denoise]);
+    // Lightricks' templates: euler on 2.3, euler_ancestral on 2.5.
+    for (const [file, sampler] of [['ltx-2.3-22b-distilled-1.1.safetensors', 'euler'],
+                                   ['ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors', 'euler_ancestral']]) {
+        vm.runInContext(`_findModelMetaSourceNode = () => ({ widgets: [{ name: 'unet_name', value: '${file}' }] });`, context);
+        for (const [highRes, steps, denoise] of [[false, 8, 1.0], [true, 3, 0.375]]) {
+            vm.runInContext(`_isLtxAvHighResStage = () => ${highRes};`, context);
+            const node = ltxNode('Auto', 3.0);
+            node.widgets[2].value = 'dpmpp_2m';
+            node.widgets.push({ name: 'scheduler', value: 'simple' }, { name: 'denoise', value: 1.0 });
+            context.metaDefaults(node);
+            const value = (name) => node.widgets.find(w => w.name === name).value;
+            assert.deepEqual([value('steps'), value('cfg'), value('sampler'), value('scheduler'), value('denoise')],
+                [steps, 1.0, sampler, 'linear_quadratic', denoise], file);
+        }
     }
 });
 
@@ -100,6 +107,26 @@ test('Auto takes the LTX stage schedule and guidance too', () => {
     }
 });
 
+test('a sampler changed under Auto survives a reload; one never changed follows Auto', () => {
+    const context = samplerContext();
+    const node = ltxNode('Auto', 3.0);
+    context.metaDefaults(node);
+    node.widgets[2].value = 'euler_cfg_pp';
+    context.metaDefaults(node);
+    // A reload or a tab switch rebuilds the node from its saved values and properties.
+    const reloaded = ltxNode('Auto', 3.0);
+    reloaded.widgets[2].value = 'euler_cfg_pp';
+    reloaded.properties = JSON.parse(JSON.stringify(node.properties));
+    poll(context, reloaded, 2);
+    assert.equal(reloaded.widgets[2].value, 'euler_cfg_pp');
+    assert.equal(reloaded.widgets[2].label, 'sampler ✎');
+    // Saved by an older default the user never touched: Auto still updates it.
+    const stale = ltxNode('Auto', 3.0);
+    stale.widgets[2].value = 'euler_ancestral';
+    context.metaDefaults(stale);
+    assert.equal(stale.widgets[2].value, 'euler');
+});
+
 test('leaving Auto clears the magnet, then the preset pencil takes over', () => {
     const context = samplerContext();
     const node = ltxNode('Auto', 3.0);
@@ -109,4 +136,16 @@ test('leaving Auto clears the magnet, then the preset pencil takes over', () => 
     node.widgets[1].value = 4.0;
     poll(context, node, 3);
     assert.equal(node.widgets[1].label, 'cfg ✎');
+});
+
+test('picking a preset keeps the seed and the workflow settings', () => {
+    const context = samplerContext();
+    const kept = { seed: 14, control_after_generate: 'randomize', start_step: 4, end_step: 12, add_noise: false,
+        return_with_leftover_noise: true, tile_mode: true, refiner_start_step: 6 };
+    for (const name of context.presetNames) {
+        const node = ltxNode(name, 1.0);
+        for (const [key, value] of Object.entries(kept)) node.widgets.push({ name: key, value });
+        context.applyPreset(node, name);
+        assert.deepEqual(Object.fromEntries(node.widgets.slice(4).map(w => [w.name, w.value])), kept, name);
+    }
 });
