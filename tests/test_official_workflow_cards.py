@@ -56,6 +56,12 @@ def test_every_api_workflow_has_a_card():
     assert api == cards
 
 
+def test_every_local_workflow_has_a_card():
+    local = {p.stem for p in WORKFLOWS.glob("*.json") if not p.name.startswith("api_")}
+    cards = {p.stem for p in (WORKFLOWS / "official" / "Local").glob("*.rad")}
+    assert local == cards, f"without a card: {sorted(local - cards)}; card without a workflow: {sorted(cards - local)}"
+
+
 def test_shipped_viewers_open_in_review_unless_they_have_room_for_color():
     """
     A 620 x 540 Viewer node in Color gave the picture a strip beside a 520 px
