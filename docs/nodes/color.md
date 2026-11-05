@@ -79,9 +79,9 @@ Bakes Radiance grading math into the image tensor permanently.
 | `exposure` | float | 0 | -10 to 10, step 0.01 | Exposure in stops, baked into the output: RGB is multiplied by 2^exposure before every other control. |
 | `offset` | float | 0 | -1 to 1, step 0.001 | Additive brightness lift applied after exposure. Shifts all tones uniformly. |
 | `lift` | float | 0 | -1 to 1, step 0.001 | Shadow lift (black point raise). Raises the darkest values without affecting highlights. |
-| `gamma` | float | 1 | 0.01 to 4, step 0.01 | Mid-tone power curve, applied as x^(1/gamma) to positive values. Values > 1.0 brighten, < 1.0 darken the midtones. |
+| `gamma` | float | 1 | 0.01 to 4, step 0.01 | Mid-tone power curve, applied as x^(1/gamma) to positive values. Values > 1.0 brighten, &lt; 1.0 darken the midtones. |
 | `gain` | float | 1 | 0 to 10, step 0.01 | RGB multiplier (slope), applied after lift. 1.0 = no change. |
-| `contrast` | float | 1 | 0 to 4, step 0.01 | Linear contrast around pivot: (x - pivot) x contrast + pivot, per channel. Not an S-curve, so values can go negative or above 1.0. |
+| `contrast` | float | 1 | 0 to 4, step 0.01 | Contrast as a power curve about the pivot: pivot x (x / pivot)^contrast, per channel, the same maths as the Viewer. Negative values pass through unchanged; 1.0 is neutral. |
 | `pivot` | float | 0.18 | 0 to 1, step 0.01 | Value left unchanged by contrast. 0.18 = 18% grey in linear light. |
 | `shadows` | float | 0 | -1 to 1, step 0.01 | Shadow brightness, no tint: RGB is scaled by 1 + 0.5 x shadows x (1 - luma)^2. Positive brightens dark areas, negative darkens them. |
 | `highlights` | float | 0 | -1 to 1, step 0.01 | Highlight brightness, no tint: RGB is scaled by 1 + 0.5 x highlights x luma^2 (luma clipped to 1). Positive brightens bright areas, negative darkens them. |
@@ -197,10 +197,10 @@ Professional 32-bit color correction with exposure, contrast, saturation, gamma,
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Input image to color correct. Processed in 32-bit float precision. |
 | `exposure` | float | 0 | -10 to 10, step 0.1 | Exposure adjustment in stops. +1 = double brightness, -1 = half brightness. |
-| `contrast` | float | 1 | 0 to 4, step 0.05 | Contrast multiplier around mid-gray (0.18 in linear). >1 = more contrast, <1 = less. |
+| `contrast` | float | 1 | 0 to 4, step 0.05 | Contrast multiplier around mid-gray (0.18 in linear). >1 = more contrast, &lt;1 = less. |
 | `brightness` | float | 0 | -1 to 1, step 0.01 | Additive brightness offset. Applied last so it works in the final output space. |
 | `saturation` | float | 1 | 0 to 3, step 0.05 | Color saturation. 0 = grayscale, 1 = original, >1 = boosted. |
-| `gamma` (optional) | float | 1 | 0.1 to 4, step 0.01 | Gamma correction: values are raised to 1/gamma. >1 = brighten midtones, <1 = darken. Sign-preserving for HDR. |
+| `gamma` (optional) | float | 1 | 0.1 to 4, step 0.01 | Gamma correction: values are raised to 1/gamma. >1 = brighten midtones, &lt;1 = darken. Sign-preserving for HDR. |
 | `lift_r` (optional) | float | 0 | -0.5 to 0.5, step 0.01 | Value added to the red channel at every level, applied first, so exposure and gain then scale it. A flat offset, not a shadow-weighted lift. |
 | `lift_g` (optional) | float | 0 | -0.5 to 0.5, step 0.01 | Value added to the green channel at every level, applied first, so exposure and gain then scale it. A flat offset, not a shadow-weighted lift. |
 | `lift_b` (optional) | float | 0 | -0.5 to 0.5, step 0.01 | Value added to the blue channel at every level, applied first, so exposure and gain then scale it. A flat offset, not a shadow-weighted lift. |
@@ -335,7 +335,7 @@ GPU-accelerated color space conversion (sRGB, ACEScg, ACEScct, Rec.2020, DCI-P3)
 | `target_space` | choice | `ACEScg` | `sRGB`, `Linear_sRGB`, `ACEScg`, `ACEScct`, `ACES2065-1`, `Rec709`, `Rec2020`, `DCI-P3`, `Display_P3`, `DaVinci Wide Gamut`, and 2 more | Encoding of the output. sRGB and Rec709 get the sRGB curve and ACEScct its log curve; every other option is written linear with those primaries. |
 | `exposure` (optional) | float | 0 | -10 to 10, step 0.01 | Exposure adjustment in stops (EV) |
 | `gamma_adjust` (optional) | float | 1 | 0.1 to 5, step 0.01 | Gamma adjustment (1.0 = no change) |
-| `chromatic_adaptation` (optional) | choice | `Bradford` | `Bradford`, `Von Kries`, `XYZ Scaling`, `None` | Chromatic adaptation method. NOTE: the D60<->D65 adaptation is already baked into the precomputed FAST_MATRICES this node converts with (Bradford), so changing this does not currently alter the output. Kept for workflow compatibility; selecting a non-Bradford method logs a warning. |
+| `chromatic_adaptation` (optional) | choice | `Bradford` | `Bradford`, `Von Kries`, `XYZ Scaling`, `None` | Chromatic adaptation method. NOTE: the D60&lt;->D65 adaptation is already baked into the precomputed FAST_MATRICES this node converts with (Bradford), so changing this does not currently alter the output. Kept for workflow compatibility; selecting a non-Bradford method logs a warning. |
 | `use_gpu` (optional) | boolean | on |  | Run the effect on GPU via CUDA/MPS. Falls back to CPU if unavailable. |
 
 **Outputs**

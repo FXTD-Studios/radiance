@@ -74,6 +74,12 @@ bug_report_reply_draft.md
 gpu_acceptance_report.md
 *.docx
 
+# ── Website-docs build output ───────────────────────────────────────────────
+# Generated from docs/ for the website; not needed by ComfyUI at runtime.
+website-docs/
+radiance-website-docs.zip
+*.zip
+
 # ── Local project data ──────────────────────────────────────────────────────
 # The starter graph and TEMPLATES/ ship; anything else under workflows/ is the
 # user's own shot work. A wheel built on a working machine once shipped the

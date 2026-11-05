@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import {
     applyLift, applyGain, applyOffset, applyGamma, applyGammaChannel,
     applyContrast, applyContrastChannel, applySaturation, gradePixel,
-    luminance, GAMMA_FLOOR, CONTRAST_MIN, CONTRAST_MAX, GLSL, WGSL,
+    luminance, GAMMA_FLOOR, CONTRAST_MIN, CONTRAST_MAX, PIVOT_DEFAULT, GLSL, WGSL,
 } from '../radiance_grade.js';
 
 const JS = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,12 +27,28 @@ const closeAll = (a, b, eps = 1e-12) => a.every((v, i) => close(v, b[i], eps));
 
 // ── contrast ────────────────────────────────────────────────────────────────
 
-test('contrast is linear about the pivot, not a power curve', () => {
-    // The exact case that separates the two shipped formulas. The WebGPU CPU
-    // path used the power form, so a scope reading through it disagreed with
-    // the picture on screen.
-    assert.equal(applyContrastChannel(0.25, 2, 0.5), 0.0);
-    assert.equal(0.5 * Math.pow(0.25 / 0.5, 2), 0.125);
+test('contrast is a power curve about the pivot', () => {
+    // pivot * (c / pivot)^k. In linear light that spreads every stop around the
+    // pivot by the same factor; the linear form it replaced sent grey and black
+    // negative at contrast 2.
+    assert.ok(close(applyContrastChannel(0.25, 2, 0.5), 0.125));
+    // One stop over the pivot becomes k stops over it.
+    for (const k of [0.5, 1.2, 2]) {
+        assert.ok(close(Math.log2(applyContrastChannel(0.36, k, 0.18) / 0.18), k, 1e-12));
+        assert.ok(close(Math.log2(applyContrastChannel(0.09, k, 0.18) / 0.18), -k, 1e-12));
+    }
+    // Black stays black instead of going negative.
+    assert.equal(applyContrastChannel(0, 2, 0.18), 0);
+});
+
+test('contrast pivots on 18% grey by default', () => {
+    // The viewer pivoted on 0.5, a stop above mid grey in linear light, so
+    // contrast 1.2 dropped 18% grey by 0.63 stop. The node-side grade uses 0.18.
+    assert.equal(PIVOT_DEFAULT, 0.18);
+    for (const k of [0.5, 1.2, 1.5, 2]) {
+        assert.ok(close(applyContrastChannel(0.18, k), 0.18, 1e-15), `grey moved at k=${k}`);
+        assert.ok(close(gradePixel([0.18, 0.18, 0.18], { contrast: k })[1], 0.18, 1e-15));
+    }
 });
 
 test('contrast leaves the pivot fixed', () => {
@@ -41,8 +57,18 @@ test('contrast leaves the pivot fixed', () => {
     }
 });
 
-test('contrast at 1.0 is the identity', () => {
-    for (const c of [0, 0.18, 0.5, 1, 4]) assert.ok(close(applyContrastChannel(c, 1, 0.5), c));
+test('contrast at 1.0 is exactly the identity', () => {
+    // Exact, not close: a neutral slider must not move a single bit.
+    for (const c of [0, 0.18, 0.3, 0.5, 1, 4, 1e-7, -0.25]) {
+        assert.equal(applyContrastChannel(c, 1, 0.18), c);
+        assert.equal(applyContrastChannel(c, 1, 0.5), c);
+    }
+});
+
+test('contrast passes negatives through unchanged', () => {
+    // pow() of a negative is NaN; scene-linear carries negatives after a
+    // matrix conversion.
+    for (const k of [0, 0.5, 2, 5]) assert.equal(applyContrastChannel(-0.2, k, 0.18), -0.2);
 });
 
 test('contrast is clamped, and clamped everywhere', () => {
@@ -192,7 +218,11 @@ test('both shaders are emitted from this module', () => {
 test('both CPU paths call this module rather than repeating it', () => {
     assert.match(read('radiance_webgpu.js'), /px = gradeLift\(/,
         'the WebGPU CPU readback must use the shared functions');
-    assert.match(read('radiance_viewer.js'), /_gradePixel\(\[r, g, b\]/,
+    // The exports: the viewer calls the one exporter module, and that module
+    // grades every lattice point with gradePixelFull from here.
+    assert.match(read('radiance_viewer.js'), /_buildCubeLUT\(this\._gradeExportState\(\)/,
+        'the .cube export must go through radiance_grade_export.js');
+    assert.match(read('radiance_grade_export.js'), /gradePixelFull\(src, state/,
         'the .cube export must use the shared grade');
 });
 

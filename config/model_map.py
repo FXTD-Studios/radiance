@@ -639,6 +639,25 @@ MODEL_VAE_CONFIG: dict[str, dict] = {
         "clip_slots":          ["qwen3_4b"],
         "notes":               "Flux.2 Klein — 128ch latent (post pixel-shuffle), 16x -> 4 upsample stages.",
     },
+    # FLUX 3 Image Klein (5.6B): the Flux.2 VAE, so the latent figures are
+    # Flux.2's. Its text conditioning is eight Qwen3-VL-4B layers stacked
+    # (8 x 2560 = 20480 wide), padded to a multiple of 80 tokens, not 512.
+    # The exact key keeps resolve_model_vae_config off the "flux" (16ch)
+    # entry, which "flux3" contains as a substring.
+    "flux3": {
+        "latent_channels":     128,
+        "scale_factor":        0.3611,
+        "log_curve":           "ARRI LogC4",
+        "compression_ratio":   0.50,
+        "norm_center":         3.0,
+        "vae_spatial_factor":  16,
+        "vae_temporal_factor": 1,
+        "noise_schedule":      "flow",
+        "text_embed_seq_len":  80,
+        "text_embed_hidden":   20480,
+        "clip_slots":          ["qwen3vl_4b"],
+        "notes":               "FLUX 3 Image Klein — Flux.2 VAE (128ch, 16x), Qwen3-VL-4B text encoder.",
+    },
     # ALBABIT-FIX: Cosmos (16ch, T5XXL-old encoder) and Mochi (12ch, T5XXL encoder)
     "cosmos": {
         "latent_channels":     16,
@@ -1024,11 +1043,10 @@ def get_model_vae_param(model_hint: str, param: str, default=None):
     return cfg.get(param, default)
 
 
-# ALBABIT-FIX: each preset only carries model_type/weight_dtype/clip_dtype,
-# the only fields _apply_preset_override() (nodes_loader.py) reads; hints
-# and CLIP slot layout live in js/radiance_loader.js instead. "default"
-# dtypes let ComfyUI's own VRAM-aware auto-selection apply. Keys stay
-# alphabetical ("Custom" pinned first) to match the dropdown order.
+# ALBABIT-FIX: each preset only carries model_type/weight_dtype/clip_dtype, the
+# only fields apply_checkpoint_preset() (loader_utils.py) reads; hints and CLIP
+# slots live in js/radiance_loader.js. "default" dtypes let ComfyUI's VRAM-aware
+# auto-selection apply. Keys alphabetical ("Custom" first) to match the dropdown.
 CHECKPOINT_PRESETS: dict = {
     "Custom": {},
     "AuraFlow": {
@@ -1051,11 +1069,9 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    # ALBABIT-FIX: Dev and Schnell merged -- both already shared this exact
-    # model_type/weight_dtype/clip_dtype, and are architecturally identical
-    # (unlike Flux.2 Klein); the Sampler's model_meta mechanism already tells
-    # them apart by filename for guidance/steps, so no reason to make the
-    # user pick manually here either.
+    # ALBABIT-FIX: Dev and Schnell merged: same model_type/dtypes and the same
+    # architecture (unlike Flux.2 Klein); the Sampler's model_meta already tells
+    # them apart by file name for guidance/steps.
     "Flux.1": {
         "model_type": "flux",
         "weight_dtype": "fp8_e4m3fn",
@@ -1082,6 +1098,20 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "fp8_e4m3fn",
     },
+    # FLUX 3 Image Klein, base and step-distilled in one preset: the Sampler
+    # tells them apart from the weights (the distilled DiT has a ref_time_in
+    # flow-map head). Low VRAM picks the int8 / nvfp4 files; it does not cast
+    # the text encoder, whose int8_convrot file is already quantised.
+    "Flux.3 Klein": {
+        "model_type": "flux3",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "Flux.3 Klein (Low VRAM)": {
+        "model_type": "flux3",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
     "HunyuanVideo": {
         "model_type": "hunyuan_video",
         "weight_dtype": "fp8_e4m3fn",
@@ -1101,7 +1131,10 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "fp8_e4m3fn",
         "clip_dtype": "default",
     },
-    "LTX Video 2.3": {
+    # ALBABIT-FIX: Dev and Distilled are separate presets: the Distilled models
+    # take another recipe (cfg 1, 8 + 3 steps). The Sampler's LTX presets and
+    # its Auto mode follow the file the Loader picks.
+    "LTX Video 2.3 Dev": {
         "model_type": "ltxav",
         # ALBABIT-FIX: ltx-2.3-22b-dev.safetensors is bf16-native; "fp16"
         # forced a bf16->fp16 cast with no VRAM benefit and overflow risk
@@ -1109,24 +1142,40 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    "LTX Video 2.3 (Low VRAM)": {
+    "LTX Video 2.3 Dev (Low VRAM)": {
         "model_type": "ltxav",
         "weight_dtype": "fp8_e4m3fn",
         "clip_dtype": "fp8_e4m3fn",
     },
-    # ALBABIT-FIX: LTX 2.5 reuses "ltxav" -- same 128ch latent format, confirmed
-    # from the transformer's patchify_proj.weight shape [4096, 128]. Detection
-    # is capability-based (recombine_audio_and_video_latents), not version-string
-    # based, so no new model_type is needed. See project_radiance_ltx25 memory.
-    "LTX Video 2.5": {
+    "LTX Video 2.3 Distilled": {
         "model_type": "ltxav",
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-    "LTX Video 2.5 (Low VRAM)": {
+    # ALBABIT-FIX: LTX 2.5 reuses "ltxav" -- same 128ch latent format, confirmed
+    # from the transformer's patchify_proj.weight shape [4096, 128]. Detection
+    # is capability-based (recombine_audio_and_video_latents), so no new model_type.
+    "LTX Video 2.5 Dev": {
         "model_type": "ltxav",
-        "weight_dtype": "fp8_e4m3fn",
-        "clip_dtype": "fp8_e4m3fn",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    # ALBABIT-FIX: "default" dtypes: the Low VRAM files (int8 convrot, nvfp4)
+    # already carry their quantization, as MiniMax H3's lighter files do.
+    "LTX Video 2.5 Dev (Low VRAM)": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "LTX Video 2.5 Distilled": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
+    },
+    "LTX Video 2.5 Distilled (Low VRAM)": {
+        "model_type": "ltxav",
+        "weight_dtype": "default",
+        "clip_dtype": "default",
     },
     # ALBABIT-FIX: both presets keep weight_dtype/clip_dtype at "default".
     # The size difference is a smaller checkpoint (unet_hints in
@@ -1203,11 +1252,9 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "fp16",
         "clip_dtype": "fp16",
     },
-    # ALBABIT-FIX: weight_dtype now "default" -- 1.3B is small enough that
-    # forcing fp8 for every user cost quality for no reason; comfy.sd
-    # auto-picks per the real loaded file's param count (same mechanism as
-    # LTX Video/Flux.2 above). See "Wan 2.1 (Low VRAM)" for the old forced-fp8
-    # behavior, still needed by 14B users on tight VRAM.
+    # ALBABIT-FIX: weight_dtype "default": 1.3B is small enough that forcing fp8
+    # cost quality for nothing; comfy.sd picks per the loaded file's size. "Wan
+    # 2.1 (Low VRAM)" keeps the forced fp8 that 14B users on tight VRAM need.
     "Wan 2.1": {
         "model_type": "wan",
         "weight_dtype": "default",
@@ -1246,36 +1293,4 @@ CHECKPOINT_PRESETS: dict = {
         "weight_dtype": "default",
         "clip_dtype": "default",
     },
-}
-
-# ALBABIT-FIX: presets for video-generation architectures — used to filter
-# the Loader's "preset" dropdown (RadianceVideoLoader shows these,
-# RadianceUnifiedLoader shows the rest).
-VIDEO_PRESET_NAMES: set = {
-    "CogVideoX",
-    "Cosmos World",
-    "HunyuanVideo",
-    "LTX Video",
-    "LTX Video (Low VRAM)",
-    "LTX Video 2.3",
-    "LTX Video 2.3 (Low VRAM)",
-    "LTX Video 2.5",
-    "LTX Video 2.5 (Low VRAM)",
-    "MiniMax H3",
-    "MiniMax H3 (Low VRAM)",
-    "Mochi",
-    "Wan 2.1",
-    "Wan 2.1 (Low VRAM)",
-    "Wan 2.2",
-    "Wan 2.2 (Low VRAM)",
-    "Wan 2.2 TI2V",
-}
-
-# ALBABIT-FIX: model_type analog of VIDEO_PRESET_NAMES — filters the
-# "model_type" dropdown (Custom/Auto-Detect) the same way "preset" is
-# filtered. "ltx" renamed to "ltxv" to match sampler_utils.py.
-VIDEO_MODEL_TYPES: set = {
-    "hunyuan_video", "wan", "wan_ti2v", "ltxv", "ltxav",
-    "cosmos", "cogvideox", "mochi", "minimax",
-    "hunyuan_video_15", "kandinsky5",
 }

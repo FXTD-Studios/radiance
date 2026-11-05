@@ -69,6 +69,50 @@ def safe_message(msg):
 RADIANCE_MAGIC = b"RCMD"
 RADIANCE_END = "\n__RADIANCE_END__\n"
 
+# ── Protocol 3: signed, timestamped, one use per nonce (E-11) ───────────────
+# Version 2 signed the command alone, so a captured frame could be sent again
+# and run again. Version 3 signs the timestamp and a random nonce with it; a
+# frame outside the clock window, or with a nonce already seen, is refused.
+#   MAGIC(4) VERSION(1)=3 SIG(32) TS_MS(8, LE) NONCE(16) LENGTH(4, LE) PAYLOAD
+#   SIG = HMAC-SHA256(token, b"RCMD3" + TS_MS + NONCE + PAYLOAD)
+#: Seconds a frame's timestamp may differ from this machine's clock.
+REPLAY_WINDOW_S = 60
+_SEEN_NONCES = {}
+_NONCE_LOCK = threading.Lock()
+#: Connections handled at once (one thread each); more are refused, not queued.
+MAX_CONNECTIONS = 8
+_CONN_SLOTS = threading.BoundedSemaphore(MAX_CONNECTIONS)
+
+
+def _v3_signature(token, ts_bytes, nonce, payload):
+    import hmac
+    import hashlib
+    return hmac.new(token.encode("utf-8"), b"RCMD3" + ts_bytes + nonce + payload, hashlib.sha256).digest()
+
+
+def _fresh_nonce(ts_ms, nonce, now=None):
+    """True once per nonce, and only for a timestamp inside the window."""
+    import time
+    now = time.time() if now is None else now
+    if abs(now - ts_ms / 1000.0) > REPLAY_WINDOW_S:
+        return False
+    with _NONCE_LOCK:
+        for n, until in list(_SEEN_NONCES.items()):
+            if until < now:
+                del _SEEN_NONCES[n]
+        if nonce in _SEEN_NONCES:
+            return False
+        _SEEN_NONCES[nonce] = now + 2 * REPLAY_WINDOW_S
+    return True
+
+
+def _first_frame_path(filepath, first_frame):
+    """The file a Read would load for its first frame: #### and %04d expanded."""
+    import re
+    path = re.sub(r"#+", lambda m: str(first_frame).zfill(len(m.group(0))), filepath)
+    path = re.sub(r"%0?(\d*)d", lambda m: str(first_frame).zfill(int(m.group(1) or 0)), path)
+    return path
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #                       COMMAND SANDBOX (Security)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -208,6 +252,15 @@ def _execute_structured_command(payload):
         color_space = str(payload.get("color_space", "linear"))
         connect_viewer = bool(payload.get("connect_viewer", True))
 
+        # E-04: the path is read on the Nuke machine. Saying "loaded" for a
+        # path that does not exist there hid a wrong mapping until someone
+        # looked at a black Read.
+        probe = _first_frame_path(filepath, first_frame)
+        if not os.path.exists(probe):
+            raise ValueError(f"load_exr: {probe} does not exist on the Nuke host "
+                             f"({nuke.NUKE_VERSION_STRING if hasattr(nuke, 'NUKE_VERSION_STRING') else 'Nuke'}); "
+                             "check the path mapping between the two machines")
+
         node = nuke.toNode(node_name)
         if node is None or node.Class() != "Read":
             node = nuke.createNode("Read", inpanel=False)
@@ -231,7 +284,17 @@ def _execute_structured_command(payload):
             viewer.setInput(0, node)
             nuke.frame(current_frame)
 
-        return f"{node_name}: loaded {filepath} [{first_frame}-{last_frame}]"
+        err = ""
+        try:
+            if node.hasError():
+                err = (node.error() if hasattr(node, "error") else "") or "the Read reports an error"
+        except Exception:  # nosec B110 - an older Nuke without hasError
+            pass
+        if err:
+            raise ValueError(f"load_exr: {node_name} could not read {filepath}: {err}")
+        first_knob = int(node["first"].value()) if "first" in node.knobs() else first_frame
+        last_knob = int(node["last"].value()) if "last" in node.knobs() else last_frame
+        return f"{node_name}: loaded {filepath} [{first_knob}-{last_knob}]"
 
     return None
 
@@ -271,18 +334,26 @@ def handle_client(conn):
             cmd_length = struct.unpack("<I", length_data)[0]
             sig_received = None
         elif version == 2:
-            # Read remaining 36 bytes (32 signature + 4 length) for Version 2
+            msg = ("ERROR: Protocol 2 is replayable and no longer accepted; update the sender "
+                   "(tools/nuke_connector.py speaks protocol 3)")
+            print(f"[Radiance Security] {msg}")
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
+        elif version == 3:
+            # 32 signature + 8 timestamp + 16 nonce + 4 length
             remaining_data = b""
-            while len(remaining_data) < 36:
-                chunk = conn.recv(36 - len(remaining_data))
+            while len(remaining_data) < 60:
+                chunk = conn.recv(60 - len(remaining_data))
                 if not chunk:
                     break
                 remaining_data += chunk
-            if len(remaining_data) < 36:
+            if len(remaining_data) < 60:
                 conn.sendall(("ERROR: Incomplete header" + RADIANCE_END).encode("utf-8"))
                 return
             sig_received = remaining_data[:32]
-            cmd_length = struct.unpack("<I", remaining_data[32:36])[0]
+            ts_bytes = remaining_data[32:40]
+            nonce = remaining_data[40:56]
+            cmd_length = struct.unpack("<I", remaining_data[56:60])[0]
         else:
             conn.sendall((f"ERROR: Unsupported protocol version: {version}" + RADIANCE_END).encode("utf-8"))
             return
@@ -311,21 +382,24 @@ def handle_client(conn):
             conn.sendall((msg + RADIANCE_END).encode("utf-8"))
             return
 
-        if version != 2 or not sig_received:
+        if version != 3 or not sig_received:
             msg = "ERROR: Authentication required — connection is unauthenticated."
             print(f"[Radiance Security] {msg}")
             conn.sendall((msg + RADIANCE_END).encode("utf-8"))
             return
 
-        # HMAC, not SHA256(token || command): the bare-hash construction was
-        # length-extendable and had no nonce, so any observed pair replayed.
+        # HMAC over the timestamp, the nonce and the exact payload bytes.
         import hmac
-        import hashlib
-        expected_sig = hmac.new(
-            DCC_AUTH_TOKEN.encode("utf-8"), command.encode("utf-8"), hashlib.sha256
-        ).digest()
+        expected_sig = _v3_signature(DCC_AUTH_TOKEN, ts_bytes, nonce, cmd_data)
         if not hmac.compare_digest(sig_received, expected_sig):
             msg = "ERROR: Authentication failed — Invalid security token signature."
+            print(f"[Radiance Security] {msg}")
+            conn.sendall((msg + RADIANCE_END).encode("utf-8"))
+            return
+        # Only after the signature: an unsigned frame must not burn nonces.
+        if not _fresh_nonce(struct.unpack("<Q", ts_bytes)[0], nonce):
+            msg = ("ERROR: Replay or stale command refused (timestamp outside "
+                   f"{REPLAY_WINDOW_S} s, or nonce already used); check both clocks")
             print(f"[Radiance Security] {msg}")
             conn.sendall((msg + RADIANCE_END).encode("utf-8"))
             return
@@ -390,7 +464,10 @@ def handle_client(conn):
             response = (
                 error_box[0]
                 if error_box[0]
-                else (result_box[0] if result_box[0] else "ERROR: Timeout")
+                else (result_box[0] if result_box[0] else
+                      # Not an error: the command is queued on Nuke's main
+                      # thread and usually still runs (the client says so).
+                      "PENDING: Nuke is busy; the command is queued and may still run")
             )
             conn.sendall((response + RADIANCE_END).encode("utf-8"))
 
@@ -400,6 +477,41 @@ def handle_client(conn):
             conn.sendall((f"ERROR: {e}" + RADIANCE_END).encode("utf-8"))
         except Exception:  # nosec B110
             pass
+    finally:
+        _close_gracefully(conn)
+
+
+def _refuse_busy(conn):
+    """Tell a sender over the connection cap to retry, then close cleanly."""
+    try:
+        conn.sendall(("ERROR: Too many connections; try again" + RADIANCE_END).encode("utf-8"))
+    except OSError:
+        pass
+    finally:
+        _close_gracefully(conn)
+
+
+def _close_gracefully(conn):
+    """Close after the reply is through.
+
+    A refusal is sent after only the 5-byte prefix is read; closing with the
+    rest of the frame unread makes the OS reset the connection, and the reset
+    can reach the sender before the reply does (seen on Windows as
+    ConnectionResetError instead of the protocol 2 upgrade message). So: stop
+    sending, read and drop what the sender still has in flight (bounded), then
+    close.
+    """
+    try:
+        conn.shutdown(socket.SHUT_WR)
+        conn.settimeout(0.5)
+        drained = 0
+        while drained < 2 * 1_048_576:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            drained += len(chunk)
+    except OSError:
+        pass
     finally:
         conn.close()
 
@@ -439,7 +551,23 @@ def start_radiance_server():
                 # don't block the accept loop. Previously a single slow client
                 # would prevent any second connection until it finished.
                 if nuke.GUI:
-                    t = threading.Thread(target=handle_client, args=(conn,), daemon=True)
+                    # E-11: at most MAX_CONNECTIONS threads; refuse the rest.
+                    if not _CONN_SLOTS.acquire(blocking=False):
+                        # Refused on a short thread of its own: the reply is
+                        # followed by a graceful close (the frame the sender is
+                        # still writing has to be read first, or Windows resets
+                        # the connection and the sender gets WinError 10053
+                        # instead of this message), and that wait must not
+                        # hold up the accept loop.
+                        threading.Thread(target=_refuse_busy, args=(conn,), daemon=True).start()
+                        continue
+
+                    def _run(c=conn):
+                        try:
+                            handle_client(c)
+                        finally:
+                            _CONN_SLOTS.release()
+                    t = threading.Thread(target=_run, daemon=True)
                     t.start()
                 else:
                     # Terminal Nuke has no GUI dispatcher; serialize node edits.

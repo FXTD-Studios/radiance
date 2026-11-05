@@ -24,12 +24,20 @@ const shown = (values) => Object.entries(context.visibility(values))
 
 test('an EXR sequence shows its compression and numbering, no video or display settings', () => {
     assert.deepEqual(shown({ format: 'SEQ │ EXR (32-bit float)', color_space: 'Linear (pass-through)' }),
-        ['color_space', 'exr_compression', 'frame_padding', 'start_frame']);
+        ['audio_section', 'color_space', 'exr_compression', 'frame_padding', 'start_frame', 'write_audio']);
+});
+
+test('write_audio shows the audio file settings of a sequence; a still has none', () => {
+    assert.deepEqual(shown({ format: 'SEQ │ EXR (16-bit half)', color_space: 'Linear (pass-through)', write_audio: true })
+        .filter((name) => name.startsWith('audio') || name === 'write_audio'),
+        ['audio_codec', 'audio_path', 'audio_section', 'audio_source', 'write_audio']);
+    assert.ok(!shown({ format: 'IMG │ EXR (16-bit half)', color_space: 'Linear (pass-through)', write_audio: true })
+        .some((name) => name.includes('audio')));
 });
 
 test('ProRes takes no CRF and no broadcast clamp; PQ shows the reference white', () => {
     assert.deepEqual(shown({ format: 'VID │ MOV (ProRes 4444)', color_space: 'PQ (HDR10 / ST.2084)' }),
-        ['audio_source', 'color_space', 'fps', 'hdr_reference_nits']);
+        ['audio_codec', 'audio_section', 'audio_source', 'color_space', 'fps', 'hdr_reference_nits']);
 });
 
 test('H.264 and H.265 show their CRF', () => {
@@ -47,5 +55,5 @@ test('an 8/16-bit still shows broadcast_safe, and quality only for JPEG and WEBP
 test('an OCIO colorspace replaces color_space and shows its config', () => {
     assert.deepEqual(shown({ format: 'SEQ │ EXR (16-bit half)', color_space: 'PQ (HDR10 / ST.2084)',
                              ocio_colorspace: 'ACEScct' }),
-        ['exr_compression', 'frame_padding', 'ocio_config', 'start_frame']);
+        ['audio_section', 'exr_compression', 'frame_padding', 'ocio_config', 'start_frame', 'write_audio']);
 });

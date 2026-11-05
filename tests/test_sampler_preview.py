@@ -15,23 +15,38 @@ ComfyUI's own preview:
      protocol wants (format, PIL.Image, max_size).  server.py's
      send_image_with_metadata() indexes image_data[2], so every previewed
      step raised IndexError server side.
-  4. disable_pbar was wired to a flag that was True whenever the widget
-     was not "None", so a failed previewer also killed Comfy's own bar.
+  4. disable_pbar was wired to the preview, so any preview (a failed one
+     too) switched off Comfy's console bar and its step count.
+
+Also covers "TAESD" fetching a missing decoder into models/vae_approx,
+previewing LTX-2 latents through taeltx2_3, which ComfyUI does not wire, and
+sending every latent frame of a video to the node's player.
 """
 
 from __future__ import annotations
 
+import base64
 import enum
 import inspect
+import io
+import os
+import re
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+import radiance.nodes.generate.sampler as sampler_mod
+from radiance.core.model_fetch import ModelFetchError
 from radiance.nodes.generate.sampler import (
     RadianceSamplerPro,
+    _TAESD_DECODERS,
+    _ensure_taesd_decoder,
     _make_phase_preview_callback,
     _resolve_latent_previewer,
+    _video_preview_frames,
 )
 
 
@@ -66,11 +81,48 @@ class _FakePreviewer:
         return (preview_format, f"<image {x0}>", 512)
 
 
-class _PreviewEnv:
-    """Installs fake `latent_preview` + `comfy.cli_args` modules."""
+class _LTXAV:
+    """Stands in for comfy.latent_formats.LTXAV."""
 
-    def __init__(self, previewer=None):
+    taesd_decoder_name = None
+
+
+class _FakeVAE:
+    """Stands in for comfy.sd.VAE built from a video TAE state dict."""
+
+    def __init__(self, sd):
+        self.sd = sd
+        self.first_stage_model = types.SimpleNamespace(show_progress_bar=True)
+
+
+class _FakeTAEHVPreviewer(_FakePreviewer):
+    def __init__(self, taesd):
+        super().__init__()
+        self.taesd = taesd
+
+
+class _FakeLatent2RGB:
+    """Stands in for latent_preview.Latent2RGBPreviewer."""
+
+    def __init__(self, factors, bias=None, reshape=None):
+        self.latent_rgb_factors = factors
+        self.latent_rgb_factors_bias = bias
+        self.latent_rgb_factors_reshape = reshape
+
+
+def _jpeg_size(url):
+    from PIL import Image
+
+    return Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).size
+
+
+class _PreviewEnv:
+    """Installs fake `latent_preview`, `comfy.cli_args`, `comfy.latent_formats`
+    and `comfy.sd` modules, and a decoder lookup that finds *decoder*."""
+
+    def __init__(self, previewer=None, decoder="/vae_approx/taef1_decoder.pth"):
         self.previewer = previewer
+        self._ensure = patch.object(sampler_mod, "_ensure_taesd_decoder", return_value=decoder)
         self.seen_methods = []
         self.get_previewer_args = []
         self.args = types.SimpleNamespace(
@@ -86,17 +138,29 @@ class _PreviewEnv:
     def __enter__(self):
         lp = types.ModuleType("latent_preview")
         lp.get_previewer = self._get_previewer
+        lp.TAEHVPreviewerImpl = _FakeTAEHVPreviewer
+        lp.Latent2RGBPreviewer = _FakeLatent2RGB
+        lp.MAX_PREVIEW_RESOLUTION = 512
 
         cli_args = types.ModuleType("comfy.cli_args")
         cli_args.args = self.args
         cli_args.LatentPreviewMethod = _LatentPreviewMethod
 
-        for name, mod in (("latent_preview", lp), ("comfy.cli_args", cli_args)):
+        latent_formats = types.ModuleType("comfy.latent_formats")
+        latent_formats.LTXAV = _LTXAV
+
+        sd = types.ModuleType("comfy.sd")
+        sd.VAE = _FakeVAE
+
+        for name, mod in (("latent_preview", lp), ("comfy.cli_args", cli_args),
+                          ("comfy.latent_formats", latent_formats), ("comfy.sd", sd)):
             self._saved[name] = sys.modules.get(name)
             sys.modules[name] = mod
+        self.ensure = self._ensure.start()
         return self
 
     def __exit__(self, *exc):
+        self._ensure.stop()
         for name, mod in self._saved.items():
             if mod is None:
                 sys.modules.pop(name, None)
@@ -105,7 +169,9 @@ class _PreviewEnv:
         return False
 
 
-def _fake_model(latent_format="LF"):
+def _fake_model(latent_format=None):
+    if latent_format is None:
+        latent_format = types.SimpleNamespace(taesd_decoder_name="taef1_decoder")
     model = MagicMock()
     model.load_device = "cuda:0"
     model.model.latent_format = latent_format
@@ -141,9 +207,10 @@ class TestResolveLatentPreviewer(unittest.TestCase):
         self.assertEqual(env.seen_methods, [_LatentPreviewMethod.Latent2RGB])
 
     def test_previewer_is_built_from_model_device_and_latent_format(self):
+        flux = types.SimpleNamespace(taesd_decoder_name="taef1_decoder")
         with _PreviewEnv(_FakePreviewer()) as env:
-            _resolve_latent_previewer(_fake_model("FLUX_LF"), "TAESD")
-        self.assertEqual(env.get_previewer_args, [("cuda:0", "FLUX_LF")])
+            _resolve_latent_previewer(_fake_model(flux), "TAESD")
+        self.assertEqual(env.get_previewer_args, [("cuda:0", flux)])
 
     def test_global_preview_method_is_restored(self):
         """Other nodes in the same prompt must not inherit the override."""
@@ -173,6 +240,63 @@ class TestResolveLatentPreviewer(unittest.TestCase):
         with _PreviewEnv(None):
             self.assertIsNone(_resolve_latent_previewer(_fake_model(), "TAESD"))
 
+    def test_taesd_fetches_the_decoder_before_comfy_loads_it(self):
+        with _PreviewEnv(_FakePreviewer()) as env:
+            _resolve_latent_previewer(_fake_model(), "TAESD")
+        env.ensure.assert_called_once_with("taef1_decoder")
+        self.assertEqual(env.seen_methods, [_LatentPreviewMethod.TAESD])
+
+    def test_latent2rgb_fetches_nothing(self):
+        with _PreviewEnv(_FakePreviewer()) as env:
+            _resolve_latent_previewer(_fake_model(), "Latent2RGB")
+        env.ensure.assert_not_called()
+
+    def test_a_model_without_a_decoder_previews_in_latent2rgb(self):
+        """Mochi, LTX-Video 0.9: get_previewer() warned on every run."""
+        mochi = types.SimpleNamespace(taesd_decoder_name=None)
+        with _PreviewEnv(_FakePreviewer()) as env:
+            _resolve_latent_previewer(_fake_model(mochi), "TAESD")
+        env.ensure.assert_not_called()
+        self.assertEqual(env.seen_methods, [_LatentPreviewMethod.Latent2RGB])
+
+    def test_a_decoder_that_could_not_be_fetched_previews_in_latent2rgb(self):
+        with _PreviewEnv(_FakePreviewer(), decoder=None) as env:
+            _resolve_latent_previewer(_fake_model(), "TAESD")
+        self.assertEqual(env.seen_methods, [_LatentPreviewMethod.Latent2RGB])
+
+    def test_the_console_names_the_decoder_in_use(self):
+        with _PreviewEnv(_FakePreviewer()), self.assertLogs(sampler_mod.logger, "INFO") as logs:
+            _resolve_latent_previewer(_fake_model(), "TAESD")
+        self.assertIn("[Radiance] Preview: TAESD (taef1_decoder.pth)", logs.output[-1])
+
+    def test_the_console_says_when_a_model_has_no_decoder(self):
+        mochi = types.SimpleNamespace(taesd_decoder_name=None)
+        with _PreviewEnv(_FakePreviewer()), self.assertLogs(sampler_mod.logger, "INFO") as logs:
+            _resolve_latent_previewer(_fake_model(mochi), "TAESD")
+        self.assertIn("[Radiance] Preview: Latent2RGB (no TAESD decoder for this model)", logs.output[-1])
+
+    def test_taesd_is_the_default(self):
+        required = RadianceSamplerPro.INPUT_TYPES()["required"]
+        self.assertEqual(required["preview_method"][1]["default"], "TAESD")
+
+    def test_ltx2_previews_through_taeltx2_3(self):
+        """ComfyUI gives LTX-2 latents no decoder name, so get_previewer()
+        could only fall back to Latent2RGB."""
+        with _PreviewEnv(_FakePreviewer(), decoder="/m/taeltx2_3.safetensors") as env, \
+                patch.object(sampler_mod.comfy.utils, "load_torch_file", return_value={"w": 1}, create=True) as load:
+            result = _resolve_latent_previewer(_fake_model(_LTXAV()), "TAESD")
+        env.ensure.assert_called_once_with("taeltx2_3")
+        load.assert_called_once_with("/m/taeltx2_3.safetensors")
+        self.assertIsInstance(result, _FakeTAEHVPreviewer)
+        self.assertEqual(result.taesd.sd, {"w": 1})
+        self.assertFalse(result.taesd.first_stage_model.show_progress_bar)
+        self.assertEqual(env.seen_methods, [])
+
+    def test_ltx2_without_its_decoder_falls_back_to_latent2rgb(self):
+        with _PreviewEnv(_FakePreviewer(), decoder=None) as env:
+            _resolve_latent_previewer(_fake_model(_LTXAV()), "TAESD")
+        self.assertEqual(env.seen_methods, [_LatentPreviewMethod.Latent2RGB])
+
     def test_nonexistent_taesd_symbol_is_no_longer_imported(self):
         """comfy.taesd.taesd has never exported TAESDDecoder, in 0.32 or 0.36."""
         import radiance.nodes.generate.sampler as sampler_mod
@@ -184,6 +308,83 @@ class TestResolveLatentPreviewer(unittest.TestCase):
             if "import" in line and "taesd" in line
         ]
         self.assertEqual(offenders, [])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  The decoder "TAESD" needs, fetched when it is missing
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEnsureTaesdDecoder(unittest.TestCase):
+
+    MODELS = os.path.abspath(os.path.join("ComfyUI", "models"))
+    OWN = os.path.join(MODELS, "vae_approx")
+    SHARED = os.path.abspath(os.path.join("StabilityMatrix", "Models", "ApproxVAE"))
+
+    def _folder_paths(self, files, folders=(OWN, SHARED)):
+        fp = types.SimpleNamespace(
+            models_dir=self.MODELS,
+            get_filename_list=MagicMock(return_value=files),
+            get_full_path=MagicMock(side_effect=lambda kind, name: f"/vae_approx/{name}"),
+            get_folder_paths=MagicMock(return_value=list(folders)),
+        )
+        return patch.object(sampler_mod, "folder_paths", fp)
+
+    def setUp(self):
+        sampler_mod._TAESD_FAILED.clear()
+
+    def tearDown(self):
+        sampler_mod._TAESD_FAILED.clear()
+
+    def test_a_decoder_already_installed_is_used_as_is(self):
+        """Whatever version the user put there: never replaced."""
+        with self._folder_paths(["taef1_decoder.safetensors"]), \
+                patch.object(sampler_mod, "fetch") as fetch:
+            path = _ensure_taesd_decoder("taef1_decoder")
+        self.assertEqual(path, "/vae_approx/taef1_decoder.safetensors")
+        fetch.assert_not_called()
+
+    def test_a_missing_decoder_goes_to_the_folder_the_user_added(self):
+        """Stability Matrix lists its shared ApproxVAE after ComfyUI's own folder."""
+        url, sha256, size = _TAESD_DECODERS["taeltx2_3"]
+        with self._folder_paths([]), \
+                patch.object(sampler_mod, "fetch", side_effect=lambda u, dest, **kw: dest) as fetch:
+            path = _ensure_taesd_decoder("taeltx2_3")
+        dest = os.path.join(self.SHARED, "taeltx2_3.safetensors")
+        self.assertEqual(path, dest)
+        fetch.assert_called_once_with(url, dest, sha256=sha256, size=size, label="Preview decoder taeltx2_3")
+
+    def test_without_an_added_folder_it_goes_to_comfyuis_own(self):
+        with self._folder_paths([], folders=(self.OWN,)), \
+                patch.object(sampler_mod, "fetch", side_effect=lambda u, dest, **kw: dest):
+            path = _ensure_taesd_decoder("taehv")
+        self.assertEqual(path, os.path.join(self.OWN, "taehv.safetensors"))
+
+    def test_a_failed_fetch_returns_none(self):
+        with self._folder_paths([]), \
+                patch.object(sampler_mod, "fetch", side_effect=ModelFetchError("offline")):
+            self.assertIsNone(_ensure_taesd_decoder("taehv"))
+
+    def test_a_failed_fetch_is_not_retried_until_restart(self):
+        """Offline, every run warned again, or waited on the network."""
+        with self._folder_paths([]), \
+                patch.object(sampler_mod, "fetch", side_effect=ModelFetchError("offline")) as fetch:
+            _ensure_taesd_decoder("taehv")
+            self.assertIsNone(_ensure_taesd_decoder("taehv"))
+        self.assertEqual(fetch.call_count, 1)
+        with self._folder_paths(["taehv.safetensors"]):
+            self.assertEqual(_ensure_taesd_decoder("taehv"), "/vae_approx/taehv.safetensors")
+
+    def test_an_unknown_decoder_is_not_fetched(self):
+        with self._folder_paths([]), patch.object(sampler_mod, "fetch") as fetch:
+            self.assertIsNone(_ensure_taesd_decoder("taemochi"))
+        fetch.assert_not_called()
+
+    def test_every_pin_names_its_file_a_commit_and_a_digest(self):
+        for name, (url, sha256, size) in _TAESD_DECODERS.items():
+            self.assertTrue(url.rsplit("/", 1)[1].startswith(name), name)
+            self.assertRegex(url, r"/[0-9a-f]{40}/", name)
+            self.assertTrue(re.fullmatch(r"[0-9a-f]{64}", sha256), name)
+            self.assertGreater(size, 1_000_000, name)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -250,6 +451,48 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
         self.assertEqual(pbar.updates, [(1, None, None)])
 
+    def test_a_video_latent_goes_to_the_node_player(self):
+        sent = []
+        server = types.ModuleType("server")
+        server.PromptServer = types.SimpleNamespace(instance=types.SimpleNamespace(
+            client_id="client", send_sync=lambda event, data, sid: sent.append((event, data, sid))))
+        pbar = _PbarRecorder()
+        with patch.dict(sys.modules, {"server": server}), \
+                patch.object(sampler_mod, "_video_preview_frames", return_value=["data:a", "data:b"]):
+            _make_phase_preview_callback(pbar, _FakePreviewer(), 0, "12:538", 3.0)(0, "latent", "x", 5)
+        self.assertEqual(sent, [("radiance.sampler.preview",
+                                 {"node": "12:538", "fps": 3.0, "frames": ["data:a", "data:b"]}, "client")])
+        self.assertEqual(pbar.updates, [(1, None, None)])
+
+    def test_the_loop_refreshes_near_5_percent_of_the_time_and_on_the_last_step(self):
+        """Every LTX 2.5 step cost 12 % of the sampling with a refresh each."""
+        sent = []
+        server = types.ModuleType("server")
+        server.PromptServer = types.SimpleNamespace(instance=types.SimpleNamespace(
+            client_id="client", send_sync=lambda event, data, sid: sent.append(data)))
+        previewer = _FakePreviewer()
+        pbar = _PbarRecorder()
+        # step 0 refreshes in 1 s (next at 20), step 1 at 5 waits, step 2 at 21
+        # refreshes, step 3 is the last one and refreshes anyway.
+        clock = [0.0, 1.0, 5.0, 21.0, 22.0, 23.0, 23.5]
+        with patch.dict(sys.modules, {"server": server}), \
+                patch.object(sampler_mod, "_video_preview_frames", return_value=["data:a"]), \
+                patch.object(sampler_mod.time, "perf_counter", side_effect=clock):
+            callback = _make_phase_preview_callback(pbar, previewer, 0, "538", 3.0)
+            for step in range(4):
+                callback(step, "latent", "x", 4)
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(previewer.calls, [])
+        self.assertEqual(pbar.updates, [(1, None, None), (2, None, None), (3, None, None), (4, None, None)])
+
+    def test_an_image_latent_keeps_its_preview_at_every_step(self):
+        previewer = _FakePreviewer()
+        with patch.object(sampler_mod, "_video_preview_frames", return_value=None):
+            callback = _make_phase_preview_callback(_PbarRecorder(), previewer, 0, "538", 24.0)
+            callback(0, "a", "x", 3)
+            callback(1, "b", "x", 3)
+        self.assertEqual(previewer.calls, [("JPEG", "a"), ("JPEG", "b")])
+
     def test_no_previewer_still_reports_progress(self):
         pbar = _PbarRecorder()
         callback = _make_phase_preview_callback(pbar, None, 0)
@@ -270,7 +513,59 @@ class TestPreviewCallbackPayload(unittest.TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Defect 4 — disable_pbar must not fire without a working previewer
+#  Every latent frame of a video, for the node's player
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestVideoPreviewFrames(unittest.TestCase):
+
+    @pytest.mark.real_torch
+    def test_an_image_latent_keeps_the_single_preview(self):
+        import torch
+
+        with _PreviewEnv():
+            self.assertIsNone(_video_preview_frames(_FakeLatent2RGB(torch.ones(3, 4)), torch.zeros(1, 4, 8, 8)))
+
+    @pytest.mark.real_torch
+    def test_latent2rgb_sends_every_latent_frame(self):
+        import torch
+
+        with _PreviewEnv():
+            urls = _video_preview_frames(_FakeLatent2RGB(torch.ones(3, 4)), torch.zeros(1, 4, 3, 6, 10))
+        self.assertEqual(len(urls), 3)
+        self.assertEqual(_jpeg_size(urls[0]), (10, 6))
+
+    @pytest.mark.real_torch
+    def test_taesd_decodes_about_2_mp_at_a_time_and_shrinks_the_frames(self):
+        """Four 1080p LTX frames per decode took 6 GB of VRAM mid-sampling."""
+        import torch
+
+        decoded = []
+
+        class _TAE:
+            def decode(self, x):
+                decoded.append(tuple(x.shape[:3]))
+                return torch.rand(x.shape[0], 1, x.shape[-2] * 32, x.shape[-1] * 32, 3)
+
+        with _PreviewEnv():
+            low = _video_preview_frames(_FakeTAEHVPreviewer(_TAE()), torch.zeros(1, 128, 6, 17, 30))
+            self.assertEqual(decoded, [(4, 128, 1), (2, 128, 1)])
+            decoded.clear()
+            high = _video_preview_frames(_FakeTAEHVPreviewer(_TAE()), torch.zeros(1, 128, 2, 34, 60))
+            self.assertEqual(decoded, [(1, 128, 1), (1, 128, 1)])
+        self.assertEqual(len(low), 6)
+        self.assertEqual(_jpeg_size(low[0]), (512, 290))
+        self.assertEqual(_jpeg_size(high[0]), (512, 290))
+
+    @pytest.mark.real_torch
+    def test_a_previewer_another_node_wrapped_keeps_its_own_preview(self):
+        import torch
+
+        with _PreviewEnv():
+            self.assertIsNone(_video_preview_frames(_FakePreviewer(), torch.zeros(1, 4, 3, 8, 8)))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Defect 4 — the preview must not switch off the console bar
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestProgressBarWiring(unittest.TestCase):
@@ -279,13 +574,11 @@ class TestProgressBarWiring(unittest.TestCase):
     def setUp(self):
         self.source = inspect.getsource(RadianceSamplerPro.sample)
 
-    def test_use_custom_preview_requires_a_previewer(self):
-        """It must be set inside the `previewer_ref is not None` branch only."""
+    def test_console_bar_follows_comfy_setting_only(self):
+        """Like ComfyUI's KSampler: on unless Comfy's progress bar is off."""
         self.assertIn("previewer_ref = _resolve_latent_previewer(", self.source)
-        before, _, after = self.source.partition("use_custom_preview = True")
-        self.assertIn("if previewer_ref is not None:", before)
-        # Nothing else may flip the flag on.
-        self.assertNotIn("use_custom_preview = True", after)
+        self.assertIn("disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED", self.source)
+        self.assertNotIn("use_custom_preview", self.source)
 
     def test_the_node_bar_exists_without_a_preview(self):
         """sample_custom only draws a console bar, so the node had no progress
@@ -294,6 +587,10 @@ class TestProgressBarWiring(unittest.TestCase):
         self.assertIn("pbar_ref = comfy.utils.ProgressBar(", before)
         self.assertNotIn("if pbar_ref is None:", self.source)
         self.assertIn("_make_phase_preview_callback(", self.source)
+
+    def test_the_player_gets_the_node_id_and_a_real_time_rate(self):
+        self.assertIn("phase_start_step, unique_id, preview_fps", self.source)
+        self.assertIn("24 / model.model.latent_format.temporal_downscale_ratio", self.source)
 
     def test_raw_latent_tuple_is_no_longer_sent(self):
         self.assertNotIn("total_steps, (x0,)", self.source)

@@ -194,7 +194,9 @@ def deliver(tmp_path, monkeypatch):
         async def json(self):
             return self.p
 
-    from tests.test_delivery_endpoints import IDENTITY_GRADE
+    # By module name, as pytest (rootdir-less tests/, prepend import mode)
+    # registers it: a 'tests' package elsewhere on sys.path shadowed 'tests.'.
+    from test_delivery_endpoints import IDENTITY_GRADE
 
     def run(frames, source, settings):
         key = f"p0-{len(list(root.rglob('*')))}-{id(frames)}"
@@ -264,7 +266,7 @@ def test_srgb_source_is_graded_in_linear_like_the_viewer(deliver):
 
 def _deliver_graded(deliver, grade):
     # deliver() uses IDENTITY_GRADE; patch it for this call.
-    import tests.test_delivery_endpoints as tde
+    import test_delivery_endpoints as tde
     saved = dict(tde.IDENTITY_GRADE)
     tde.IDENTITY_GRADE.update(grade)
     try:

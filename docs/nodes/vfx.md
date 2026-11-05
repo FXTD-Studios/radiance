@@ -4,13 +4,12 @@
 
 Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 
-31 nodes. [All sections](README.md)
+28 nodes. [All sections](README.md)
 
 - [Aberration](#aberration)
 - [Anamorphic Streaks](#anamorphic-streaks)
 - [Bit-Depth Degrade](#bit-depth-degrade)
 - [Blend Composite](#blend-composite)
-- [Camera Sync](#camera-sync)
 - [Compression Artifacts](#compression-artifacts)
 - [Defocus](#defocus)
 - [Depth](#depth)
@@ -26,8 +25,6 @@ Plate prep, masks, inpaint, depth, optics, motion, multipass, and scene cuts.
 - [Multipass Composite](#multipass-composite)
 - [Multipass Estimate](#multipass-estimate)
 - [Multipass Relight](#multipass-relight)
-- [Read Mask](#read-mask)
-- [Relight Engine](#relight-engine)
 - [Rolling Shutter](#rolling-shutter)
 - [SAM Multi-Mask Picker](#sam-multi-mask-picker)
 - [Scene Cut Detect](#scene-cut-detect)
@@ -104,7 +101,7 @@ Quantise an image to a lower bit depth, with optional dither, and output the err
 | `dither_mode` | choice | `triangular` | `none`, `triangular`, `floyd-steinberg` | none: plain rounding. triangular: random TPDF noise of +/-1 step before rounding. floyd-steinberg: error diffusion (the classic scan-line result, computed a diagonal at a time). |
 | `delta_gain` (optional) | float | 10 | 1 to 100, step 0.5 | Multiplier on the absolute error \|original - quantised\| for the delta_amplified output, clipped to 1. |
 | `banding_threshold` (optional) | float | 0.004 | 0.0005 to 0.05, step 0.0005 | Per-pixel error (0..1 units, largest channel) above which banding_mask is white. 0.004 is about one 8-bit code value. This flags quantisation error, not detected bands. |
-| `restore_from_quantized` (optional) | boolean | off |  | Currently has no effect: the node ignores this setting. |
+| `restore_from_quantized` (optional) | boolean | off |  | Dequantise the result: smooth it in 8 passes, each clamped back to the values the pixel could have come from (half a step around its code value; a step and a half with dither). Removes banding on smooth gradients; the other outputs and the metrics then measure the restored image. |
 
 **Outputs**
 
@@ -136,29 +133,6 @@ Composite two images using Normal, Add, Screen, Multiply, Overlay, Soft Light, D
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
-
-## Camera Sync
-
-`RadianceCameraSync`
-
-Read a JSON camera (focal length, f-stop, shutter, transform) for the optical nodes.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `camera_data` | string | `{}` | multi-line text | JSON camera data: {"focal_length": 35.0, "f_stop": 2.8, "shutter_angle": 180.0, "transform": [...]} or {"frames": [ ... ]} |
-| `frame_offset` | int | 0 | -10000 to 10000, step 1 | Index into a "frames" list (animated camera). Ignored for a single camera. |
-| `camera_file` (optional) | string |  |  | Path to a .json camera file. Takes precedence over camera_data. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `camera` | RADIANCE_CAMERA |
-| `focal_length` | FLOAT |
-| `f_stop` | FLOAT |
-| `shutter_angle` | INT |
 
 ## Compression Artifacts
 
@@ -341,7 +315,7 @@ Apply or remove lens distortion using Brown-Conrady coefficients.
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Image or sequence to distort or undistort. Pixels are only resampled (no colour change), so any encoding works. |
-| `k1` | float | 0 | -1 to 1, step 0.005 | Primary radial distortion. k1<0 = barrel, k1>0 = pincushion. |
+| `k1` | float | 0 | -1 to 1, step 0.005 | Primary radial distortion. k1&lt;0 = barrel, k1>0 = pincushion. |
 | `k2` | float | 0 | -1 to 1, step 0.005 | Secondary radial distortion. Affects extreme corners. Use sparingly. |
 | `scale` | float | 1 | 0.1 to 2, step 0.01 | Uniform scale applied after distortion. Use to crop black borders. |
 | `center_x` | float | 0.5 | 0 to 1, step 0.01 | Optical center X (0.5 = image center). |
@@ -600,55 +574,6 @@ Relights a CG or estimated plate from its albedo and normal passes with one dire
 | `alpha` | IMAGE |
 | `relight_info` | STRING |
 
-## Read Mask
-
-`RadianceLoadImageMask`
-
-Load an image with optional non-destructive mask override. If a companion '_radmask.png' file exists alongside the source image, its alpha channel is used as the mask instead of the image's own alpha. The Radiance mask editor frontend saves masks in this companion format.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | choice |  | files found in the matching models or input folder | Image file from the ComfyUI input folder, loaded as 8-bit sRGB (0-1). If '<name>_radmask.png' sits beside it, that file's alpha is the mask as-is; otherwise the image's own alpha is inverted, as in Load Image. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `mask` | MASK |
-
-## Relight Engine
-
-`RadianceRelightEngine`
-
-Add a directional light (Lambert + Blinn-Phong) to an image from its normal map.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to light. The lighting pass is added on top of it, not multiplied by an albedo. |
-| `normal_map` | IMAGE |  |  | Normal map encoded 0 to 1 (RGB = XYZ x 0.5 + 0.5). Resized to the image if the sizes differ. |
-| `light_dir_x` | float | 1 | -2 to 2, step 0.01 | Light direction X component. Normalized internally — sets the horizontal angle of the synthetic light. |
-| `light_dir_y` | float | 1 | -2 to 2, step 0.01 | Light direction Y component. Positive = light from above. |
-| `light_dir_z` | float | 1 | -2 to 2, step 0.01 | Light direction Z component. Positive = light in front of surface. |
-| `light_color_r` | float | 1 | 0 to 2, step 0.01 | Red component of the synthetic light color. Values > 1.0 produce HDR emission. |
-| `light_color_g` | float | 1 | 0 to 2, step 0.01 | Green component of the synthetic light color. |
-| `light_color_b` | float | 1 | 0 to 2, step 0.01 | Blue component of the synthetic light color. |
-| `diffuse_intensity` | float | 1 | 0 to 10, step 0.01 | Lambertian diffuse reflection strength. Controls broad, soft illumination. |
-| `specular_intensity` | float | 0.5 | 0 to 10, step 0.01 | Specular highlight strength. Higher values produce brighter, more visible glints. |
-| `specular_roughness` | float | 0.1 | 0.01 to 1, step 0.01 | Surface roughness for Blinn-Phong specular. Low = sharp glints (metallic), high = soft broad highlights (matte). |
-| `camera` (optional) | RADIANCE_CAMERA |  |  | Optional camera. Only the position in its transform is used, as the viewpoint for the specular term relative to a -1 to 1 image plane. Without it a viewer at z = 2 is assumed. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `lighting_pass_only` | IMAGE |
-
 ## Rolling Shutter
 
 `RadianceRollingShutter`
@@ -841,7 +766,7 @@ Write all passes inside the RADIANCE_PASSES bundle into a single-part multilayer
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `passes` | RADIANCE_PASSES |  |  | Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Pixel values are written as is, with no colour conversion. |
-| `filename_prefix` | string | `radiance_vfx_passes` |  | File name stem, not a path. Files are named <prefix>.<frame>.exr with a 4-digit padded frame number. |
+| `filename_prefix` | string | `radiance_vfx_passes` |  | File name stem, not a path. Files are named &lt;prefix>.&lt;frame>.exr with a 4-digit padded frame number. |
 | `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | EXR pixel type. Files containing depth, world_position, motion_vector or object_id passes are always written as 32-bit float. |
 | `compression` | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; lossy B44/B44A/DWAA/DWAB raise an error when data passes (depth, position, motion, object ID) are present. |
 | `output_path` (optional) | string |  |  | Output folder. Empty = ComfyUI output folder; a relative path is a subfolder of it; an absolute path is used as is. Created if missing. |

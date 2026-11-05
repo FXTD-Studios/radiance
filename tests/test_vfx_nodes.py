@@ -5,8 +5,6 @@ import os
 import shutil
 
 from radiance.nodes.vfx.masking import (
-    RadianceSAMModelLoader,
-    RadianceSAMGenerator,
     RadianceMultiMaskVisualPicker,
     RadianceLinearMatting,
 )
@@ -21,17 +19,15 @@ from radiance.nodes.vfx.inpaint import (
 )
 from radiance.nodes.vfx.mask_propagate import RadianceVideoMaskPropagator
 
-def test_sam_nodes_are_hidden_and_refuse_to_pretend():
-    # 3.5.0 ships no SAM runtime. The two nodes stay registered so saved
-    # graphs open, are hidden from the menu, and fail loudly on execution
-    # instead of returning discs drawn around the click points.
-    for cls in (RadianceSAMModelLoader, RadianceSAMGenerator):
-        assert getattr(cls, "DEPRECATED", False) is True
-    with pytest.raises(RuntimeError, match="does not ship a SAM runtime"):
-        RadianceSAMModelLoader().load("sam2.1_hiera_large.pt", "cpu", False, "float32")
-    with pytest.raises(RuntimeError, match="does not ship a SAM runtime"):
-        RadianceSAMGenerator().generate(
-            image=torch.ones((1, 8, 8, 3)), sam_model={}, points="[[4, 4]]", point_labels="[1]")
+def test_the_sam_placeholders_are_gone_in_4_0():
+    # 3.5 shipped no SAM runtime: the two nodes were hidden placeholders that
+    # only raised. KNOWN_ISSUES planned their removal in 4.0. Use a SAM2 node
+    # pack and feed its MASK into Radiance.
+    import radiance.nodes.vfx as vfx
+    import radiance.nodes.vfx.masking as masking
+    for key in ("RadianceSAMModelLoader", "RadianceSAMGenerator"):
+        assert key not in vfx.NODE_CLASS_MAPPINGS
+        assert not hasattr(masking, key)
 
 
 def test_linear_matting_lists_only_what_it_runs():

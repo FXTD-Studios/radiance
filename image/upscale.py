@@ -1822,8 +1822,13 @@ class RadianceAIUpscale:
     MODEL_URLS = {name: spec[0] for name, spec in MODEL_FILES.items()}
 
     def __init__(self):
+        self._last_download_error = None
         self.model = None
         self.current_model_name = None
+        # True when the last upscale() returned the bicubic fallback instead of
+        # running a model. The node's outputs cannot carry it, so callers that
+        # must not ship a resample as an AI upscale (Delivery) read it here.
+        self.used_fallback = False
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1913,16 +1918,26 @@ class RadianceAIUpscale:
     DESCRIPTION = "AI-powered upscaling using neural network models. Supports tiled processing for large images."
 
     def _download_model(self, model_name: str, target_path: str) -> bool:
-        """Fetch a pinned model file (see MODEL_FILES). True when it is installed."""
+        """Fetch a pinned model file (see MODEL_FILES). True when it is installed.
+
+        On failure the reason (a refusal or a download error) is kept in
+        `_last_download_error` for the node's status.
+        """
+        self._last_download_error = None
         if model_name not in self.MODEL_FILES:
             return False
         url, sha256, size = self.MODEL_FILES[model_name]
+        from radiance.core.consent import LEGACY_UPSCALE_OFFLINE_ENV
         from radiance.core.model_fetch import ModelFetchError, fetch
         try:
-            fetch(url, target_path, sha256=sha256, size=size, label=model_name)
+            # Until 4.0 this ignored the legacy RADIANCE_UPSCALE_OFFLINE=1
+            # opt-out that the rest of the upscale pack honours.
+            fetch(url, target_path, sha256=sha256, size=size, label=model_name,
+                  legacy_offline_env=LEGACY_UPSCALE_OFFLINE_ENV)
             return True
         except ModelFetchError as e:
             logger.error("%s", e)
+            self._last_download_error = str(e)
             return False
 
     def _load_supir_model(self, model_name: str, model_path: str, sdxl_model_name: str = ""):
@@ -2175,7 +2190,8 @@ class RadianceAIUpscale:
                     model_path = target_path
                 else:
                     why = ("auto_download is off" if not auto_download
-                           else "the download failed or downloads are turned off; see the log")
+                           else getattr(self, "_last_download_error", None)
+                           or "the download failed or downloads are turned off; see the log")
                     return (
                         None,
                         f"Model {model_name} not found and not downloaded: {why}. "
@@ -2240,7 +2256,8 @@ class RadianceAIUpscale:
 
     def _fallback_upscale(self, image, model_name):
         """Fallback to algorithmic upscale when AI model unavailable."""
-        logger.warning("Falling back to Lanczos upscale (AI model not loaded)")
+        self.used_fallback = True
+        logger.warning("Falling back to bicubic upscale (AI model not loaded)")
 
         # ── Validate input shape (must be BHWC) ──────────────────────────────
         if not isinstance(image, torch.Tensor) or image.dim() != 4:
@@ -2366,6 +2383,7 @@ class RadianceAIUpscale:
         clip=None,
     ):
         """Upscale image using AI model with tiled processing."""
+        self.used_fallback = False
 
         # Load model if needed
         if self.model is None or self.current_model_name != model_name:

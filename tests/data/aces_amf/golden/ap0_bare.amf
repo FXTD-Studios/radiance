@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aces:acesMetadataFile xmlns:aces="urn:ampas:aces:amf:v2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:cdl="urn:ASC:CDL:v1.01" version="2.0">
+    <aces:amfInfo>
+        <aces:description>RUDRA learned ACES 2.0 master</aces:description>
+        <aces:dateTime>
+            <aces:creationDateTime>2026-11-02T10:15:00Z</aces:creationDateTime>
+            <aces:modificationDateTime>2026-11-02T10:15:00Z</aces:modificationDateTime>
+        </aces:dateTime>
+        <aces:uuid>urn:uuid:11111111-2222-4333-8444-555555555555</aces:uuid>
+    </aces:amfInfo>
+    <aces:pipeline>
+        <aces:pipelineInfo>
+            <aces:dateTime>
+                <aces:creationDateTime>2026-11-02T10:15:00Z</aces:creationDateTime>
+                <aces:modificationDateTime>2026-11-02T10:15:00Z</aces:modificationDateTime>
+            </aces:dateTime>
+            <aces:uuid>urn:uuid:66666666-7777-4888-9999-aaaaaaaaaaaa</aces:uuid>
+            <aces:systemVersion>
+                <aces:majorVersion>2</aces:majorVersion>
+                <aces:minorVersion>0</aces:minorVersion>
+                <aces:patchVersion>0</aces:patchVersion>
+            </aces:systemVersion>
+        </aces:pipelineInfo>
+        <aces:outputTransform applied="false">
+            <aces:description>ACES 2.0 SDR 100 nits Rec.709 BT.1886: the view RUDRA's appearance constraint holds the master to</aces:description>
+            <aces:transformId>urn:ampas:aces:transformId:v2.0:Output.Academy.Rec709-D65_100nit_in_Rec709-D65_BT1886.a2.v1</aces:transformId>
+        </aces:outputTransform>
+    </aces:pipeline>
+</aces:acesMetadataFile>

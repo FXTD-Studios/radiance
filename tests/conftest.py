@@ -313,6 +313,7 @@ if "comfy_api" not in sys.modules:
     _io.String = _v3_type("String", "STRING", _V3StringInput)
     _io.Combo = _v3_type("Combo", "COMBO", _V3ComboInput)
     _io.Int = _v3_type("Int", "INT", _V3IntInput)
+    _io.Boolean = _v3_type("Boolean", "BOOLEAN")
     _io.Conditioning = _v3_type("Conditioning", "CONDITIONING")
     _io.Vae = _v3_type("Vae", "VAE")
     _io.Image = _v3_type("Image", "IMAGE")
@@ -686,6 +687,7 @@ def _make_comfy_stubs():
     # comfy.utils
     utils = types.ModuleType("comfy.utils")
     utils.ProgressBar = MagicMock()
+    utils.PROGRESS_BAR_ENABLED = True
     comfy.utils = utils
 
     # comfy.model_base
@@ -735,6 +737,17 @@ def _make_comfy_stubs():
     folder_paths.get_input_directory  = MagicMock(return_value="/tmp")
     folder_paths.get_output_directory = MagicMock(return_value="/tmp/comfy_output")
     folder_paths.filter_files_content_types = MagicMock(return_value=[])
+    folder_paths.get_temp_directory = MagicMock(return_value="/tmp/comfy_temp")
+
+    def _annotated_filepath(name):
+        # ALBABIT-FIX: as ComfyUI, " [output]" / " [input]" / " [temp]" names the folder, else None.
+        for tag, getter in (("[output]", "get_output_directory"), ("[input]", "get_input_directory"),
+                            ("[temp]", "get_temp_directory")):
+            if name.endswith(tag):
+                return name[:-len(tag) - 1], getattr(folder_paths, getter)()
+        return name, None
+
+    folder_paths.annotated_filepath = _annotated_filepath
     folder_paths.get_annotated_filepath = MagicMock(side_effect=lambda name: name)
     folder_paths.exists_annotated_filepath = MagicMock(return_value=True)
     folder_paths.models_dir = "/tmp/comfy_models"

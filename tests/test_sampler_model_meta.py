@@ -1,7 +1,8 @@
 """Tests for sampler_utils.py model_meta parsing / distillation refinement."""
 import json
 
-from radiance.sampler_utils import parse_model_meta, refine_distillation_from_meta
+from radiance.sampler_utils import (CFG_GUIDED_MODELS, GUIDANCE_EMBED_MODELS, parse_model_meta,
+                                    refine_distillation_from_meta)
 
 
 class TestParseModelMeta:
@@ -29,15 +30,20 @@ class TestRefineDistillationFromMeta:
 
     def test_klein_base_variant(self):
         result = refine_distillation_from_meta("flux2-klein", "flux-2-klein-base-4b.safetensors")
-        assert result == {"guidance": 4.0, "steps": 50}
+        assert result == {"cfg": 4.0, "steps": 50}
 
     def test_klein_distilled_variant(self):
         result = refine_distillation_from_meta("flux2-klein", "flux-2-klein-9b.safetensors")
-        assert result == {"guidance": 1.0, "steps": 4}
+        assert result == {"cfg": 1.0, "steps": 4}
+
+    def test_klein_runs_a_real_cfg(self):
+        # The Klein DiT has no guidance_in: a flux_guidance value would be ignored.
+        assert "flux2-klein" in CFG_GUIDED_MODELS
+        assert "flux2-klein" not in GUIDANCE_EMBED_MODELS
 
     def test_klein_base_case_insensitive(self):
         result = refine_distillation_from_meta("flux2-klein", "FLUX-2-KLEIN-BASE-9B-FP8.safetensors")
-        assert result == {"guidance": 4.0, "steps": 50}
+        assert result == {"cfg": 4.0, "steps": 50}
 
     def test_flux2_dev_not_affected(self):
         # Flux.2 Dev has no distilled counterpart -- always None, MODEL_DEFAULTS'
@@ -95,3 +101,31 @@ class TestRefineDistillationFromMeta:
     def test_sd35_medium_not_affected(self):
         # "turbo" substring absent -- SD3.5 Medium has no Turbo variant.
         assert refine_distillation_from_meta("sd3.5", "sd3.5_medium.safetensors") is None
+
+    def test_ltx_distilled_runs_at_cfg_1(self):
+        for f in ("ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"):
+            assert refine_distillation_from_meta("ltxav", f) == {"cfg": 1.0}
+
+    def test_ltx_dev_not_affected_even_with_the_distilled_lora(self):
+        # The Dev workflows add the distilled LoRA at a low strength and keep the Dev recipe.
+        assert refine_distillation_from_meta("ltxav", "ltx-2.3-22b-dev.safetensors",
+                                             ["ltx-2.3-22b-distilled-lora-384.safetensors"]) is None
+
+
+def _auto_ltx_cfg(unet, denoise):
+    from radiance.nodes.generate.sampler import RadianceSamplerPro
+    meta = json.dumps({"arch": "ltxav", "unet_file": unet, "loras": []})
+    _, kwargs, _ = RadianceSamplerPro()._configure_model_and_defaults(
+        None, "auto", "Auto", model_meta=meta, cfg=1.0, flux_guidance=3.5, steps=3, denoise=denoise,
+        sampler="euler", scheduler="simple", scheduler_mode="Manual")
+    return kwargs["cfg"]
+
+
+def test_auto_ltx_cfg_follows_the_stage():
+    # cfg 1 is the upscaled pass's (denoise below 1) and the Distilled model's own value:
+    # Auto used to raise it to 3, a negative pass on every step. Dev LowRes still gets 3.
+    dev, distilled = "ltx-2.5-22b-dev-transformer-bf16.safetensors", "ltx-2.3-22b-distilled-1.1.safetensors"
+    assert _auto_ltx_cfg(dev, 1.0) == 3.0
+    assert _auto_ltx_cfg(dev, 0.45) == 1.0
+    assert _auto_ltx_cfg(distilled, 1.0) == 1.0
+    assert _auto_ltx_cfg(distilled, 0.375) == 1.0

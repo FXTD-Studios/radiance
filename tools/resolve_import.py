@@ -56,6 +56,29 @@ def _resolve_app():
     return resolve, None
 
 
+def _count_present(paths: List[str], first: int, last: int, sequence_pattern: Optional[str]) -> int:
+    """How many of the files to import exist on this machine."""
+    if not sequence_pattern:
+        return sum(1 for p in paths if os.path.isfile(p))
+    import re
+    m = re.search(r"%0?(\d*)d", sequence_pattern)
+    count = 0
+    for f in range(first, last + 1):
+        name = (sequence_pattern[:m.start()] + str(f).zfill(int(m.group(1) or 0)) + sequence_pattern[m.end():]
+                if m else sequence_pattern)
+        count += os.path.isfile(name)
+    return count
+
+
+def _clip_frames(item) -> Optional[int]:
+    """The frame count Resolve gives the imported clip, or None if it will not say."""
+    try:
+        v = item.GetClipProperty("Frames")
+        return int(str(v).strip()) if str(v).strip() else None
+    except Exception:  # noqa: BLE001 - scripting API errors are opaque
+        return None
+
+
 def import_into_resolve(paths: List[str], first: int, last: int, sequence_pattern: Optional[str]) -> str:
     """Import the written files into the current project's Media Pool.
     Returns a status line; never raises."""
@@ -67,13 +90,27 @@ def import_into_resolve(paths: List[str], first: int, last: int, sequence_patter
         if project is None:
             return "not imported: no project is open in Resolve"
         pool = project.GetMediaPool()
+        # E-04: check on this machine what Resolve is about to read, and say
+        # what it took, instead of a bare "imported N clips".
+        expected = (last - first + 1) if sequence_pattern else len(paths)
+        on_disk = _count_present(paths, first, last, sequence_pattern)
+        if on_disk == 0:
+            where = sequence_pattern or (paths[0] if paths else "")
+            return f"not imported: none of the files exist here ({where})"
         if sequence_pattern:
             items = pool.ImportMedia([{"FilePath": sequence_pattern, "StartIndex": first, "EndIndex": last}])
         else:
             items = pool.ImportMedia(paths)
         if not items:
             return "not imported: Resolve refused the files (see its console)"
-        return f"imported {len(items)} clip(s) into '{project.GetName()}'"
+        frames = _clip_frames(items[0]) if sequence_pattern else None
+        detail = f"{on_disk}/{expected} file(s) on disk"
+        if frames is not None:
+            detail += f", Resolve reports {frames} frame(s)"
+            if frames != expected:
+                detail += f" (expected {expected})"
+        return (f"imported {len(items)} clip(s) into '{project.GetName()}' from "
+                f"{sequence_pattern or paths[0]}: {detail}")
     except Exception as e:  # noqa: BLE001 - scripting API errors are opaque
         return f"not imported: {e}"
 

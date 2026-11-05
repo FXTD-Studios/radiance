@@ -206,7 +206,9 @@ async function uploadFiles(files) {
     try {
         const res = await fetchJson(API.upload, { method: "POST", body: fd });
         await load();
-        showToast(`Imported ${(res.saved || []).length} file(s).`);
+        const renamed = Object.keys(res.renamed || {}).length;
+        showToast(`Imported ${(res.saved || []).length} file(s).`
+            + (renamed ? ` ${renamed} renamed to keep an existing file.` : ""));
     } catch (e) { showToast(e.message); }
 }
 

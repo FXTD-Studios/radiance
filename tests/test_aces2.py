@@ -651,6 +651,27 @@ class TestACES2ComplianceNode:
         report, _ = RadianceACES2Compliance().check(self._make(0.18), d, "SDR_sRGB")
         assert "finite_values" in report and "FAIL" in report
 
+    def test_output_type_chooses_the_reference(self):
+        """KNOWN_ISSUES listed output_type as a label; it picks the reference render."""
+        scene = torch.rand(1, 16, 16, 3) * 4.0
+        display, _ = RadianceACES2OutputTransformFull().transform(
+            scene, "ACEScg", "ACES 2.0 SDR (sRGB/Rec.709)", engine="OCIO reference")
+        _, sdr = RadianceACES2Compliance().check(scene, display, "SDR_sRGB")
+        report, pq = RadianceACES2Compliance().check(scene, display, "HDR_PQ_1000")
+        assert sdr == 4 and pq < sdr and "reference_match" in report
+
+    def test_peak_nits_is_a_header_label_only(self):
+        scene = torch.rand(1, 16, 16, 3) * 4.0
+        display, _ = RadianceACES2OutputTransformFull().transform(
+            scene, "ACEScg", "ACES 2.0 SDR (sRGB/Rec.709)", engine="OCIO reference")
+        r100, n100 = RadianceACES2Compliance().check(scene, display, "SDR_sRGB", peak_nits=100.0)
+        r4000, n4000 = RadianceACES2Compliance().check(scene, display, "SDR_sRGB", peak_nits=4000.0)
+        assert n100 == n4000
+        changed = [a for a, b in zip(r100.splitlines(), r4000.splitlines()) if a != b]
+        assert len(changed) == 1 and "100" in changed[0]
+        tip = RadianceACES2Compliance.INPUT_TYPES()["optional"]["peak_nits"][1]["tooltip"]
+        assert tip.startswith("Label only")
+
     def test_report_makes_no_specification_claim(self):
         report, pass_count = RadianceACES2Compliance().check(self._make(0.18), self._make(0.1), "SDR_sRGB")
         assert "S-2126" not in report

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Radiance</title>
+  <circle cx="256" cy="256" r="224" fill="none" stroke="#F5F2E9" stroke-width="16"/>
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#F5F2E9" stroke-width="32"/>
+  <circle cx="256" cy="256" r="76" fill="#FF9500"/>
+</svg>

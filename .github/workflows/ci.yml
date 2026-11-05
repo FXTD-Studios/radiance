@@ -150,7 +150,7 @@ jobs:
             "opencv-python-headless>=4.7" "tqdm>=4.66" \
             "OpenEXR>=3.2.0" \
             "OpenImageIO>=3.0.0" \
-            "opencolorio>=2.3.0" "colour-science>=0.4.4" \
+            "opencolorio>=2.5.0" "colour-science>=0.4.4" \
             "einops>=0.7.0" "safetensors>=0.4.0" \
             "huggingface-hub>=0.23" \
             "pytest>=7.4" "pytest-timeout>=2.1" "pytest-cov>=4.0" \
@@ -357,6 +357,41 @@ jobs:
 
       - name: Compile the emitted WGSL and compare against the JS
         run: node --test js/tests/grade_wgsl_gpu.test.mjs
+
+  # The viewer-truth, session, reach, polish and grade tests drive the real
+  # viewer in Chromium. On the plain js-test job they skip because Playwright is
+  # absent, so before this job nothing in CI ran them. Kept apart from gpu-test
+  # so a failure here does not hide the shader checks above. First run on CI:
+  # these files were written against a local browser, so expect to fix
+  # environment differences (Chromium path, fonts) once.
+  viewer-browser:
+    name: "Viewer: browser-driven tests"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright and Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Run the browser-driven viewer tests
+        run: >
+          node --test
+          js/tests/viewer_truth.test.mjs
+          js/tests/viewer_session.test.mjs
+          js/tests/viewer_reach.test.mjs
+          js/tests/viewer_polish.test.mjs
+          js/tests/grade_render.test.mjs
+          js/tests/grade_panel_dom.test.mjs
+          js/tests/viewer_color.test.mjs
+          js/tests/sequence_load.test.mjs
+          js/tests/panel_dom.test.mjs
+          js/tests/viewer_v4_browser.test.mjs
 
   # ── YAML / TOML lint ────────────────────────────────────────────────────────
   lint-config:

@@ -4,14 +4,13 @@
 
 DCC bridges, metadata, audio, project handoff, and studio integration.
 
-7 nodes. [All sections](README.md)
+6 nodes. [All sections](README.md)
 
 - [Audio Cut](#audio-cut)
 - [Audio Transcribe](#audio-transcribe)
 - [DCC Bridge](#dcc-bridge)
 - [Export to Nuke](#export-to-nuke)
 - [Export to Resolve](#export-to-resolve)
-- [Linear Check](#linear-check)
 - [NDI Sender](#ndi-sender)
 
 ## Audio Cut
@@ -153,27 +152,6 @@ Export the current image to a DaVinci Resolve media folder as 16-bit TIFF, 8-bit
 | :--- | :--- |
 | `status` | STRING |
 | `render_path` | STRING |
-
-## Linear Check
-
-`RadianceLinearCheck`
-
-Check that the shot metadata tags the image as scene-linear (Linear or ACEScg) before linear-only nodes. It reads the metadata tag only, not the pixel values.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image passed through unchanged. Its pixels are not inspected; only the shot metadata's colorspace tag is checked. |
-| `shot_metadata` | RADIANCE_SHOT |  |  | Shot metadata whose 'colorspace' tag is tested. Tags containing 'Linear', or exactly 'ACEScg', pass; anything else (or a missing tag, read as 'Unknown') fails. |
-| `action` | choice | `Log Warning` | `Log Warning`, `Strict Error`, `Ignore` | What to do when the tag is not linear: Log Warning writes to the console and continues, Strict Error stops the graph, Ignore does nothing. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `shot_metadata` | RADIANCE_SHOT |
 
 ## NDI Sender
 

@@ -53,6 +53,9 @@ def _slug(section: str) -> str:
 def _cell(text: Any) -> str:
     s = "" if text is None else str(text)
     s = s.replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip()
+    # ALBABIT-FIX: a "<word>" placeholder outside a code span reads as an HTML
+    # tag, which GitHub drops from the page.
+    s = "`".join(p if i % 2 else p.replace("<", "&lt;") for i, p in enumerate(s.split("`")))
     return re.sub(r"\s{2,}", " ", s)
 
 

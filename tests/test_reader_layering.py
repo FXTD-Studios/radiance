@@ -23,6 +23,7 @@ holds that line.
 import ast
 import pathlib
 import re
+import os
 import subprocess
 import sys
 
@@ -104,7 +105,8 @@ def test_the_engine_pulls_in_no_node_module_of_its_own():
         "assert callable(r.read_frames);"
         "print('ok')"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"})
     if r.returncode != 0 and "No module named 'torch'" in r.stderr:
         pytest.skip("torch is not importable in a bare interpreter here")
     assert r.returncode == 0, r.stderr[-2000:]
@@ -131,7 +133,8 @@ def test_the_engine_reads_a_file_without_comfyui(tmp_path):
         "assert float(img.max()) > 0.9, float(img.max());"
         "print('ok')"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"})
     # Third-party only. A bare `No module named` catch would also swallow
     # `No module named 'radiance'`, which is exactly how the writer's version
     # of this test spent every CI run reporting itself as skipped.
