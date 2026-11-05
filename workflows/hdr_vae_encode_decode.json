@@ -458,9 +458,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -522,9 +520,7 @@
       ],
       "widgets_values_named": {
         "vae_name": "sd_vae_ft_mse.safetensors"
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -806,9 +802,7 @@
         "hdr_mode": "Compress (Log)",
         "latent_sampling": "sample",
         "processing_mode": "sequential"
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1266,9 +1260,7 @@
         "hdr_scale_factor": 1,
         "decode_mode": "Auto (Recommended)",
         "hdr_peak_nits": 1000
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -1550,9 +1542,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -2011,9 +2001,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,

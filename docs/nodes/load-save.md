@@ -4,59 +4,11 @@
 
 Readers, writers, EXR, image, video, and file exchange.
 
-5 nodes. [All sections](README.md)
+3 nodes. [All sections](README.md)
 
-- [DPX Read](#dpx-read)
-- [DPX Write](#dpx-write)
 - [Read](#read)
 - [Write](#write)
 - [Write EXR](#write-exr)
-
-## DPX Read
-
-`RadianceDigitalCinemaRead`
-
-Read a video, image or frame sequence through the Read node, decoded to scene-linear, and output shot metadata (source info, colorspace, fps) for downstream pipeline nodes.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `source_path` | string |  |  | Video file, image, or frame sequence (e.g. shot.####.exr). Required: an empty path stops the graph. |
-| `read_mode` | choice | `Auto` | `Auto`, `Video`, `Sequence`, `EXR` | How to treat source_path. Auto detects from the path; EXR is handled exactly like Sequence. |
-| `start_frame` | int | 1 |  | Sequence: the frame number to start at (a number outside the range on disk falls back to the first frame). Video: the frame to start at counting from 1, so the default 1 is the clip's first frame. |
-| `frame_limit` | int | 0 |  | Maximum number of frames to read from start_frame. 0 reads to the end. |
-| `input_colorspace` | choice | `sRGB (Standard)` | `sRGB (Standard)`, `Auto / Linear (pass-through)`, `Rec.709 (BT.1886)`, `Rec.709 (camera OETF)`, `Rec.2020 (BT.2020 OETF)`, `P3-D65 (Gamma 2.6)`, `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | Transfer the source was encoded with. It is decoded to scene-linear; shot_metadata.colorspace records the result. |
-| `fps_override` | float | 0 |  | 0 = the source's own rate. Written to shot_metadata.fps. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `mask` | MASK |
-| `shot_metadata` | RADIANCE_SHOT |
-
-## DPX Write
-
-`RadianceDigitalCinemaWrite`
-
-Simplified writer kept for older pipelines: passes images, output_path, format and filename to the Write node with every other setting at its default, and returns a status string.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to write, passed to the Write node with its defaults (color_space Linear (pass-through), so values are written unchanged). |
-| `output_path` | string | `~/radiance_output` |  | Output path, as in the Write node. With filename empty it is the full stem (single images and video get the extension appended; sequences use it as a folder). |
-| `format` (optional) | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. IMG writes only the first frame of a batch; SEQ and VID write every frame. |
-| `filename` (optional) | string |  |  | Optional stem. When set, output_path is treated as a folder and the file is named &lt;filename>_v0001. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `status` | STRING |
 
 ## Read
 
