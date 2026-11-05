@@ -1154,7 +1154,7 @@ function updateModelMetaDefaults(node) {
 
     let changed = false;
     for (const [widget, derivedVal] of pairs) {
-        if (syncAutoValue(widget, derivedVal)) changed = true;
+        if (syncAutoValue(node, widget, derivedVal)) changed = true;
         const linked = derivedVal !== undefined;
         const inSync = linked && widget && widget.value === derivedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
@@ -1162,11 +1162,11 @@ function updateModelMetaDefaults(node) {
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
     if (sdTurboActive) {
-        syncAutoValue(schedulerW, undefined); // no value to track or force, a link only
+        syncAutoValue(node, schedulerW, undefined); // no value to track or force, a link only
         if (_markLinkedWidget(schedulerW, true, true)) changed = true;
     } else {
         const schedulerDefault = ltxavStage?.scheduler ?? modelDefaults?.scheduler;
-        if (syncAutoValue(schedulerW, schedulerDefault)) changed = true;
+        if (syncAutoValue(node, schedulerW, schedulerDefault)) changed = true;
         const linked = schedulerDefault !== undefined;
         const inSync = linked && schedulerW && schedulerW.value === schedulerDefault;
         if (_markLinkedWidget(schedulerW, linked, inSync)) changed = true;
