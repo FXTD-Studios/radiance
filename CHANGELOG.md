@@ -148,6 +148,15 @@ else is fixes. Read the upgrade notes before moving a production setup.
   They sit in `workflows/` as `api_*.json`, so ComfyUI's Templates menu lists them
   (it reads only the top level of `workflows/`), and the README lists the two
   kinds separately.
+- **Local workflows for LTX 2.3, LTX 2.5 and still images** (5), each with its
+  card in `workflows/official/Local/`. `ltx23_hdr.json` and `ltx25_hdr.json`
+  (two passes) and their `*_3stage_hdr.json` versions (two 2x upscales; the
+  LTX 2.3 one has a switch for its Detailer LoRA) turn text or an image into
+  video with sound, Dev or Distilled, then an EXR master through SDR → HDR
+  Universal (RUDRA ACES 2); keyframes, a low-res preview, HDR10 and SDR MP4s
+  and AI Fill are ready but bypassed. `t2i_i2i_hdr.json` runs the still-image
+  models in one file: text to image, edit with up to two references, or image
+  to image, into an SDR PNG and an HDR EXR master.
 - **A welcome tour.** On first install Radiance opens a six-page tour (what's
   new, workflows, the Viewer, backdrops, gizmos, where to learn more), each
   page with one thing to try; after an update it opens one What's new page.
