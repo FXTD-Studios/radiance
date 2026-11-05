@@ -292,6 +292,11 @@ Drag a file onto the ComfyUI canvas to open it. There are two kinds: **local** w
 | [WAN 2.2 HDR shot plates](workflows/wan22_hdr_shot_plates.json) | Text to video into an EXR plate sequence, HDR10 and SDR MP4s and a contact sheet |
 | [SDR remaster with AI fill](workflows/sdr_remaster_ai_fill.json) | SDR footage to an HDR remaster with RUDRA AI fill, CDL trim, EXR, HDR10 and SDR outputs (16 GB GPU) |
 | [Shot look match](workflows/shot_look_match.json) | Split a sequence at its cuts and match each shot to a reference look |
+| [Text to image, edit, image to image](workflows/t2i_i2i_hdr.json) | One workflow for still-image models (Flux.3 Klein, Flux.2, Qwen-Image, Z-Image): text to image, edit with up to two references, or image to image, into an SDR PNG and an HDR EXR master |
+| [LTX 2.3](workflows/ltx23_hdr.json) | Text or image to video with sound, Dev or Distilled, in two passes, into an EXR master with RUDRA ACES 2; keyframes, a low-res preview and HDR10 and SDR MP4s ready but bypassed |
+| [LTX 2.3 3-Stage](workflows/ltx23_3stage_hdr.json) | The same in three passes (two 2x upscales), with a switch for the Detailer LoRA |
+| [LTX 2.5](workflows/ltx25_hdr.json) | LTX 2.3's two-pass workflow for LTX 2.5 |
+| [LTX 2.5 3-Stage](workflows/ltx25_3stage_hdr.json) | The three-pass version for LTX 2.5 |
 
 ### API workflows
 
