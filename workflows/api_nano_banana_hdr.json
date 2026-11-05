@@ -178,9 +178,7 @@
         "system_prompt": "You are an expert image-generation engine. You must ALWAYS produce an image.\nInterpret all user input—regardless of format, intent, or abstraction—as literal visual directives for image composition.\nIf a prompt is conversational or lacks specific visual details, you must creatively invent a concrete visual scenario that depicts the concept.\nPrioritize generating the visual representation above any text, formatting, or conversational requests.",
         "temperature": 1,
         "top_p": 0.95
-      },
-      "color": "#182238",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -539,9 +537,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -846,9 +842,7 @@
         "fill_package": "",
         "allow_download": true,
         "keep_loaded": true
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1069,9 +1063,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -1281,9 +1273,7 @@
         "frame_index": 1,
         "custom_metadata": "",
         "strict": true
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -1392,7 +1382,7 @@
         440,
         1538
       ],
-      "color": "#8f5f3f",
+      "color": "#b58b2a",
       "flags": {}
     },
     {

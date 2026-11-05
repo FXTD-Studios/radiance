@@ -460,9 +460,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -921,9 +919,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -1382,9 +1378,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1599,9 +1593,7 @@
         "creative_white_scale": 1,
         "gamut_compress_strength": 1,
         "engine": "Auto"
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -2060,9 +2052,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -2344,9 +2334,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,

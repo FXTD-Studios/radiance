@@ -355,7 +355,8 @@ class TestRudraPath(unittest.TestCase):
         base, _, _, _, _, _, _ = self.node.convert(img, "None", 1000.0, "manual", 0.5, 1.6,
                                        0.0, "Linear", processing_mode="Expand")
         out, _, _, _, _, report, _ = self.node.convert(img, "None", 1000.0, "manual", 0.5, 1.6,
-                                      0.0, "Linear", processing_mode="Hybrid")
+                                      0.0, "Linear", processing_mode="Hybrid",
+                                      learned_backend="Direct Pixel")
         self.assertTrue(self.torch.allclose(out, base))
         self.assertIn("NOT APPLIED", report)
         self.assertIn("sdr2hdr_shadow_v1.safetensors", report)
@@ -369,7 +370,7 @@ class TestRudraPath(unittest.TestCase):
                                           0.0, "Linear", processing_mode="Expand")
         out, _, _, _, _, report, _ = self.node.convert(img, "None", 1000.0, "manual", 0.5, 1.6,
                                       0.0, "Linear", rudra_blend=1.0,
-                                      pixel_recovery_mode="all")
+                                      pixel_recovery_mode="all", learned_backend="Direct Pixel")
         self.assertIn("learned recovery: applied", report)
         clean_midtones = (img[..., 0] > 0.2) & (img[..., 0] < 0.8)
         recovery_regions = (img[..., 0] < 0.05) | (img[..., 0] > 0.98)
@@ -393,9 +394,11 @@ class TestRudraPath(unittest.TestCase):
         args = (self._img(), "None", 1000.0, "manual", 0.5, 1.6, 0.0, "Linear")
         expand, _, _, _, _, _, _ = self.node.convert(*args, processing_mode="Expand")
         recover, _, _, _, _, _, _ = self.node.convert(*args, processing_mode="Recover",
-                                                   pixel_recovery_mode="all")
+                                                   pixel_recovery_mode="all",
+                                                   learned_backend="Direct Pixel")
         hybrid, _, _, _, _, _, _ = self.node.convert(*args, processing_mode="Hybrid",
-                                                  pixel_recovery_mode="all")
+                                                  pixel_recovery_mode="all",
+                                                  learned_backend="Direct Pixel")
         self.assertFalse(torch.allclose(expand, recover))
         self.assertFalse(torch.allclose(recover, hybrid))
 
@@ -406,6 +409,7 @@ class TestRudraPath(unittest.TestCase):
         img = self._img()
         out, highlights, shadows, h_conf, s_conf, _ = recover.recover(
             img, "None", 1000.0, 0.98, 0.05, 1.0, 1.0, "Linear",
+            learned_backend="Pixel / Temporal",
         )
         clean = (highlights < 1e-6) & (shadows < 1e-6)
         affected = (highlights > 0.0) | (shadows > 0.0)
@@ -423,6 +427,7 @@ class TestRudraPath(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "could not run the learned path"):
             recover.recover(
                 self._img(), "None", 1000.0, 0.98, 0.05, 1.0, 1.0, "Linear",
+                learned_backend="Pixel / Temporal",
             )
 
     def test_recover_video_falls_back_to_pixel_model_without_temporal_checkpoint(self):
@@ -435,6 +440,7 @@ class TestRudraPath(unittest.TestCase):
             self._img().expand(5, 8, 8, 3).contiguous(), "None",
             1000.0, 0.98, 0.05, 1.0, 1.0, "Linear", batch_mode="Video Frames",
             temporal_checkpoint="/nonexistent/temporal.safetensors",
+            learned_backend="Pixel / Temporal",
         )
         self.assertEqual(called["n"], 1)
         self.assertEqual(out.shape[0], 5)
@@ -447,6 +453,7 @@ class TestRudraPath(unittest.TestCase):
                 self._img().expand(5, 8, 8, 3).contiguous(), "None",
                 1000.0, 0.98, 0.05, 1.0, 1.0, "Linear", batch_mode="Video Frames",
                 temporal_checkpoint="/nonexistent/temporal.safetensors",
+                learned_backend="Pixel / Temporal",
             )
 
     def test_rudra_output_respects_peak_nits(self):
@@ -454,7 +461,7 @@ class TestRudraPath(unittest.TestCase):
         self._install_pixel(1000.0)
         out, _, _, _, _, _, _ = self.node.convert(
             self._img(), "None", 200.0, "manual", 0.5, 1.0, 0.0,
-            "Linear", rudra_blend=1.0, pixel_recovery_mode="all",
+            "Linear", rudra_blend=1.0, pixel_recovery_mode="all", learned_backend="Direct Pixel",
         )
         self.assertLessEqual(float(self.mod._luma(out).max()), 2.0 + 1e-5)
 
@@ -482,7 +489,6 @@ class TestRudraPath(unittest.TestCase):
             return deterministic + 0.1, highlights * 0.8, shadows * 0.6
 
         self.node._temporal_reconstruct = temporal
-        # Auto tries the temporal model only when one is installed.
         original = self.mod.resolve_temporal_checkpoint
         self.mod.resolve_temporal_checkpoint = lambda p="": "t.pt"
         self.addCleanup(setattr, self.mod, "resolve_temporal_checkpoint", original)
@@ -490,7 +496,7 @@ class TestRudraPath(unittest.TestCase):
         out, _, _, h_conf, s_conf, _, _ = self.node.convert(
             video, "None", 1000.0, "manual", 0.5, 1.6, 0.0,
             "Linear", batch_mode="Video Frames", processing_mode="Hybrid",
-            temporal_window=7,
+            temporal_window=7, learned_backend="Temporal",
         )
         self.assertEqual(called["n"], 1)
         self.assertTrue(bool((out > 0.0).any()))

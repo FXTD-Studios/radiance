@@ -1702,11 +1702,14 @@ def write_frames(
     audio_codec:    str   = "Auto",
     write_audio:    bool  = False,
     audio_path:     str   = "",
+    aces_amf:       bool  = False,
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
 ):
     output_path = strip_path_quotes(output_path)
+    if aces_amf and receipt is None:
+        receipt = {}
     audio_source = _find_input_file(audio_source)
     if audio_source and not os.path.isfile(audio_source):
         log.warning("RadianceWrite: audio_source %r is not a file; it is ignored.", audio_source)
@@ -1835,6 +1838,8 @@ def write_frames(
             else:
                 log.warning("RadianceWrite: write_audio is on but no sound is connected (the 'audio' "
                             "input or audio_source); no audio file was written.")
+        if aces_amf and count:
+            _write_aces_amf(receipt, colour, overwrite)
         if receipt is not None:
             receipt.update({"format": format, "requested_frames": n, "written_frames": count,
                             "complete": count == (1 if format in _FMT_IMAGE else n),
@@ -2104,6 +2109,29 @@ def _dispatch_write(
 
 
 _RECEIPT_LOCK = threading.Lock()
+
+
+def _write_aces_amf(receipt: Dict[str, Any], colour: "OutputColour", overwrite: bool) -> Optional[Path]:
+    """An ACES Metadata File (AMF v2.0) beside an EXR master in ACEScg or
+    ACES2065-1, as RUDRA writes one. Anything else gets a warning, not a file."""
+    from .aces_amf import ACES_LABELS, amf_for_files
+    paths = [e["path"] for e in receipt.get("files", [])]
+    made = amf_for_files(paths, colour.label) if colour.encoding is not None else None
+    if made is None:
+        why = ("the AMF describes ACES EXR masters: choose an EXR format and color_space ACEScg or "
+               "ACES2065-1 (or working_space ACEScg / ACES2065-1 with Linear pass-through)"
+               if colour.label not in ACES_LABELS or colour.encoding is None
+               else "no EXR frames were written")
+        log.warning("RadianceWrite: aces_amf is on but no AMF was written: %s.", why)
+        receipt.setdefault("warnings", []).append(f"no AMF written: {why}")
+        return None
+    path, text = made
+    if not overwrite:
+        path = _unique_path(path)
+    path.write_text(text, encoding="utf-8")
+    _record(receipt, path, None, "ACES AMF v2.0")
+    log.info("RadianceWrite: AMF → %s", path)
+    return path
 
 
 @functools.wraps(_dispatch_write)

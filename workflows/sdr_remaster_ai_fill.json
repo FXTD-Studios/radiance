@@ -291,9 +291,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -651,9 +649,7 @@
         "aces2_strength": 1,
         "aces2_saturation": 1,
         "aces2_package": ""
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -959,9 +955,7 @@
         "fill_package": "",
         "allow_download": true,
         "keep_loaded": true
-      },
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -1127,9 +1121,7 @@
         "power_g": 1,
         "power_b": 1,
         "saturation": 1
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -1438,9 +1430,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -1749,9 +1739,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,
@@ -1891,9 +1879,7 @@
         "creative_white_scale": 1,
         "gamut_compress_strength": 1,
         "engine": "Auto"
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 8,
@@ -2202,9 +2188,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 9,
@@ -2425,9 +2409,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 10,
@@ -2648,9 +2630,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 11,
@@ -2686,9 +2666,7 @@
       ],
       "properties": {
         "Node name for S&R": "MaskToImage"
-      },
-      "color": "#122c1e",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 12,

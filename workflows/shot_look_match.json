@@ -291,9 +291,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 2,
@@ -581,9 +579,7 @@
         "upload": "image",
         "RELOAD": "reload",
         "video_preview": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 3,
@@ -670,9 +666,7 @@
         "cut_confidence": 0.5,
         "min_shot_frames": 12,
         "method": "combined"
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 4,
@@ -759,9 +753,7 @@
       "widgets_values_named": {
         "cut_data": "",
         "shot_index": 0
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 5,
@@ -824,9 +816,7 @@
       ],
       "widgets_values_named": {
         "strength": 1
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 6,
@@ -990,9 +980,7 @@
         "power_g": 1,
         "power_b": 1,
         "saturation": 1
-      },
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 7,
@@ -1201,9 +1189,7 @@
         "output_path": "",
         "filename_prefix": "qc_report",
         "export_format": "json"
-      },
-      "color": "#202026",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 8,
@@ -1512,9 +1498,7 @@
         "audio_source": "",
         "audio_codec": "Auto",
         "audio_path": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 9,
@@ -1735,9 +1719,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 10,
@@ -1958,9 +1940,7 @@
         "float_precision": "Half (16-bit)",
         "fps": 0,
         "viewer": ""
-      },
-      "color": "#282830",
-      "bgcolor": "#141419"
+      }
     },
     {
       "id": 11,
