@@ -118,12 +118,14 @@ test('leaving Auto clears the magnet, then the preset pencil takes over', () => 
     assert.equal(node.widgets[1].label, 'cfg ✎');
 });
 
-test('picking a preset keeps the seed and its control mode', () => {
+test('picking a preset keeps the seed and the workflow settings', () => {
     const context = samplerContext();
+    const kept = { seed: 14, control_after_generate: 'randomize', start_step: 4, end_step: 12, add_noise: false,
+        return_with_leftover_noise: true, tile_mode: true, refiner_start_step: 6 };
     for (const name of context.presetNames) {
         const node = ltxNode(name, 1.0);
-        node.widgets.push({ name: 'seed', value: 14 }, { name: 'control_after_generate', value: 'randomize' });
+        for (const [key, value] of Object.entries(kept)) node.widgets.push({ name: key, value });
         context.applyPreset(node, name);
-        assert.deepEqual(node.widgets.slice(-2).map(w => w.value), [14, 'randomize'], name);
+        assert.deepEqual(Object.fromEntries(node.widgets.slice(4).map(w => [w.name, w.value])), kept, name);
     }
 });
