@@ -91,6 +91,7 @@ def _write(tmp_path, fmt, colour, **kw):
     return receipt
 
 
+@pytest.mark.real_torch
 def test_write_puts_an_amf_beside_an_acescg_exr_sequence(tmp_path):
     pytest.importorskip("OpenEXR", reason="EXR writing")
     receipt = _write(tmp_path, "SEQ │ EXR (16-bit half)", "ACEScg", aces_amf=True)
@@ -99,12 +100,14 @@ def test_write_puts_an_amf_beside_an_acescg_exr_sequence(tmp_path):
     assert "min=\"1001\" max=\"1002\"" in amfs[0].read_text()
 
 
+@pytest.mark.real_torch
 def test_write_warns_instead_of_writing_an_amf_for_a_display_space(tmp_path):
     receipt = _write(tmp_path, "SEQ │ PNG (16-bit)", "sRGB", aces_amf=True)
     assert not list(tmp_path.rglob("*.amf"))
     assert any("no AMF written" in w for w in receipt.get("warnings", []))
 
 
+@pytest.mark.real_torch
 def test_write_writes_no_amf_by_default(tmp_path):
     _write(tmp_path, "SEQ │ PNG (16-bit)", "sRGB")
     assert not list(tmp_path.rglob("*.amf"))
