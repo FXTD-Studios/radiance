@@ -83,6 +83,7 @@ Write images or EXR sequences to disk with configurable format options.
 | `audio_source` (optional) | string |  |  | Path to an audio file, used instead of the 'audio' input (optional). It is converted to audio_codec and fitted to the picture's length. |
 | `audio_codec` (optional) | choice | `Auto` | `Auto`, `PCM 24-bit`, `PCM 32-bit float`, `FLAC 24-bit`, `AAC`, `MP3` | Audio of a video: • Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), AAC in an MP4. • PCM in an MP4 is read by few players. • FLAC cannot go in a MOV, which gets PCM 24-bit instead. • AAC is 256 kb/s, MP3 320 kb/s. A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3. |
 | `audio_path` (optional) | string |  |  | Sequences: where the audio file goes. • Empty: in the sequence's folder, named like the frames (shot_v0001.wav). • Otherwise a folder, or a file path (its extension follows audio_codec). A relative path is under ComfyUI's output folder; quotes from "Copy as path" are fine. |
+| `aces_amf` (optional) | boolean | off |  | EXR in ACEScg or ACES2065-1 only: also write an ACES Metadata File (AMF v2.0) beside the master, as RUDRA does: one per sequence (named after it, frames as ####) or per image. It names the ACES 2.0 SDR Rec.709 output transform and, for ACEScg, the ACEScg to ACES2065-1 input transform, so grading and review tools open the master in the right ACES pipeline. |
 
 Output node: writes or displays, no graph outputs.
 
