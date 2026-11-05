@@ -116,10 +116,10 @@ const PRESET_CONFIGS = {
         description: "High-Res upscale. Uses Euler by default. If using a LoRA, adjust denoise as needed.",
     },
     // ALBABIT-FIX: the Distilled models follow Lightricks' templates: cfg 1, no extra
-    // guidance, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
+    // guidance, euler on 2.3, 8 steps then 3. linear_quadratic over 8 steps gives their ManualSigmas
     // exactly, and denoise 0.375 keeps its last 3 steps (0.909375, 0.725, 0.421875, 0).
     "▶ LTX 2.3 Distilled LowRes (8 steps)": {
-        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler_ancestral",
+        steps: 8, start_step: 0, end_step: 0, cfg: 1.0, audio_cfg: 0.0, sampler: "euler",
         sampler_mode: "Standard", phase_split: 0.0, scheduler: "linear_quadratic",
         scheduler_mode: "Manual", denoise: 1.0, flux_shift: 1.0,
         flux_guidance: 0.0, flux_guidance_profile: "Static", add_noise: true,
