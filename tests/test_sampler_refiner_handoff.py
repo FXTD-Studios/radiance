@@ -16,9 +16,12 @@ def _stages(**kw):
     return base[-1], ref[0]
 
 
-def test_the_refiner_starts_where_a_shifted_base_stops():
+def test_both_stages_follow_the_shifted_schedule():
+    base, ref = _stages(flux_shift=1.0)
+    plain = torch.cat([base, ref[1:]])
+    expected = 2.0 * plain / (1.0 + plain)       # shift*s / (1 + (shift-1)*s) at shift 2
     base, ref = _stages(flux_shift=2.0)
-    assert torch.isclose(base[-1], ref[0]), (base, ref)
+    assert torch.allclose(torch.cat([base, ref[1:]]), expected), (base, ref)
 
 
 def test_the_refiner_keeps_the_supplied_sigmas():
