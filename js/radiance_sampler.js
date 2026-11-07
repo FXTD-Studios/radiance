@@ -940,6 +940,8 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     }
     if (f.includes("schnell")) return { flux_guidance: 0.0, steps: 4 };
     if (f.includes("krea")) return { flux_guidance: 4.5 };
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, FLUX.1 Kontext Dev at guidance 2.5.
+    if (detectedType === "flux" && f.includes("kontext")) return { flux_guidance: 2.5 };
     // ALBABIT-FIX: sampler verified against ComfyUI's own official SDXL Turbo
     // workflow (sdxlturbo_example.png) -- scheduler there is "SDTurboScheduler",
     // a dedicated node with no standard-scheduler equivalent, left unset.
