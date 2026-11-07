@@ -948,7 +948,8 @@ class RadianceSamplerPro:
                 ),
                 "scheduler": (comfy.samplers.KSampler.SCHEDULERS, {"tooltip": (
                     "ComfyUI noise schedule used to build the sigmas. Ignored when ays_schedule, "
-                    "sigmas_override or the SD/SDXL Turbo schedule is in use.")}),
+                    "sigmas_override or the SD/SDXL Turbo schedule is in use. On FLUX.2 and FLUX.2 Klein, "
+                    "\"simple\" is Flux2Scheduler's schedule: its shift follows the image size.")}),
                 "scheduler_mode": (
                     ["Manual", "Auto (Match Steps)"],
                     {"default": "Manual", "tooltip": (
@@ -1479,7 +1480,7 @@ class RadianceSamplerPro:
     def _prepare_sigmas(self, model, detected_type, steps, denoise, flux_shift,
                         scheduler, ays_schedule, terminal_sigma_to_zero,
                         force_exact_steps, sigmas_override, device,
-                        custom_ays_anchors=None, use_sd_turbo_schedule=False):
+                        custom_ays_anchors=None, use_sd_turbo_schedule=False, image_seq_len=None):
         if sigmas_override is not None:
             # ALBABIT-FIX: restore informational log when sigmas_override is active
             logger.info(
@@ -1533,6 +1534,7 @@ class RadianceSamplerPro:
                     sigmas = get_flux_sigmas(
                         model, scheduler, steps, denoise, flux_shift,
                         force_full=terminal_sigma_to_zero, force_exact=force_exact_steps,
+                        image_seq_len=image_seq_len,
                     )
             elif use_sd_turbo_schedule:
                 # ALBABIT-FIX: SD-Turbo/SDXL-Turbo's own discrete 10-timestep
@@ -1544,6 +1546,7 @@ class RadianceSamplerPro:
                 sigmas = get_flux_sigmas(
                     model, scheduler, steps, denoise, flux_shift,
                     force_full=terminal_sigma_to_zero, force_exact=force_exact_steps,
+                    image_seq_len=image_seq_len,
                 )
 
             sigmas = correct_sigma_end(sigmas)
@@ -1990,6 +1993,8 @@ class RadianceSamplerPro:
             force_exact_steps, sigmas_override, device,
             custom_ays_anchors=custom_ays_anchors,
             use_sd_turbo_schedule=use_sd_turbo_schedule,
+            image_seq_len=(latent_samples.shape[-2] * latent_samples.shape[-1]
+                           if detected_type in ("flux2", "flux2-klein") else None),
         )
         timings["prepare_sigmas"] = time.time() - t0
 
