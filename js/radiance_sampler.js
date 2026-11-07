@@ -183,10 +183,12 @@ const PRESET_CONFIGS = {
         ltx_guidance: "Off", stg_scale: 0.0, stg_end: 1.0, modality_scale: 1.0,
         description: "LTX 2.5 Distilled HighRes upscale. The last 3 steps of the same schedule (0.909375, 0.725, 0.421875, 0). The ComfyUI 2.5 T2V and I2V templates start at 0.85 instead, through a ManualSigmas node on sigmas_override.",
     },
+    // ALBABIT-FIX: HunyuanVideo 1.0's own guidance and shift, as in its template: flux_shift
+    // 7 added another 7 on top of the model's, and cfg 6 a second guidance pass.
     "▶ HunyuanVideo (30 steps)": {
-        steps: 30, cfg: 6.0, sampler: "euler", scheduler: "simple",
-        denoise: 1.0, flux_shift: 7.0, flux_guidance: 0.0,
-        description: "HunyuanVideo — shift=7, CFG=6.",
+        steps: 30, cfg: 1.0, sampler: "euler", scheduler: "simple",
+        denoise: 1.0, flux_shift: 1.0, flux_guidance: 6.0,
+        description: "HunyuanVideo 1.0: embedded guidance 6, no CFG; shift 7 is the model's own.",
     },
     // ALBABIT-FIX: matches the official T2V template's KSamplerSelect
     // (res_multistep) + BasicScheduler (simple, 20 steps). cfg=1.0 is inert
