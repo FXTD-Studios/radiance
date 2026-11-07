@@ -879,7 +879,7 @@ class RadianceSamplerPro:
                     "rescale, SDR anchor, windowing), so the loader's model is not modified.")}),
                 "positive": ("CONDITIONING", {"tooltip": (
                     "Prompt conditioning to steer toward. For guidance-embedded models (Flux, Flux.2, "
-                    "LTXV, LongCat) flux_guidance is written into it.")}),
+                    "LTXV, LongCat, HunyuanVideo 1.0) flux_guidance is written into it.")}),
                 "negative": ("CONDITIONING", {"tooltip": (
                     "Conditioning to steer away from. Only evaluated when cfg is above 1.0; at 1.0 "
                     "ComfyUI skips the negative pass.")}),
@@ -948,7 +948,8 @@ class RadianceSamplerPro:
                 ),
                 "scheduler": (comfy.samplers.KSampler.SCHEDULERS, {"tooltip": (
                     "ComfyUI noise schedule used to build the sigmas. Ignored when ays_schedule, "
-                    "sigmas_override or the SD/SDXL Turbo schedule is in use.")}),
+                    "sigmas_override or the SD/SDXL Turbo schedule is in use. On FLUX.2 and FLUX.2 Klein, "
+                    "\"simple\" is Flux2Scheduler's schedule: its shift follows the image size.")}),
                 "scheduler_mode": (
                     ["Manual", "Auto (Match Steps)"],
                     {"default": "Manual", "tooltip": (
@@ -975,9 +976,9 @@ class RadianceSamplerPro:
                     "FLOAT",
                     {"default": 3.5, "min": 0.0, "max": 20.0, "step": 0.1,
                      "tooltip": (
-                         "Embedded guidance written into the positive conditioning for Flux, Flux.2, LTXV and "
-                         "LongCat; ignored by other models. Auto/Custom replace 3.5 with the model default "
-                         "(for example 0 for Schnell).")},
+                         "Embedded guidance written into the positive conditioning for Flux, Flux.2, LTXV, "
+                         "LongCat and HunyuanVideo 1.0; ignored by other models. Auto/Custom replace 3.5 with "
+                         "the model default (for example 0 for Schnell, 6 for HunyuanVideo).")},
                 ),
                 "flux_guidance_profile": (
                     ["Static", "Dynamic (Creative Start/End)"],
@@ -1479,7 +1480,7 @@ class RadianceSamplerPro:
     def _prepare_sigmas(self, model, detected_type, steps, denoise, flux_shift,
                         scheduler, ays_schedule, terminal_sigma_to_zero,
                         force_exact_steps, sigmas_override, device,
-                        custom_ays_anchors=None, use_sd_turbo_schedule=False):
+                        custom_ays_anchors=None, use_sd_turbo_schedule=False, image_seq_len=None):
         if sigmas_override is not None:
             # ALBABIT-FIX: restore informational log when sigmas_override is active
             logger.info(
@@ -1533,6 +1534,7 @@ class RadianceSamplerPro:
                     sigmas = get_flux_sigmas(
                         model, scheduler, steps, denoise, flux_shift,
                         force_full=terminal_sigma_to_zero, force_exact=force_exact_steps,
+                        image_seq_len=image_seq_len,
                     )
             elif use_sd_turbo_schedule:
                 # ALBABIT-FIX: SD-Turbo/SDXL-Turbo's own discrete 10-timestep
@@ -1544,6 +1546,7 @@ class RadianceSamplerPro:
                 sigmas = get_flux_sigmas(
                     model, scheduler, steps, denoise, flux_shift,
                     force_full=terminal_sigma_to_zero, force_exact=force_exact_steps,
+                    image_seq_len=image_seq_len,
                 )
 
             sigmas = correct_sigma_end(sigmas)
@@ -1983,6 +1986,13 @@ class RadianceSamplerPro:
 
         timings["prepare_noise"] = time.time() - t0
 
+        # ALBABIT-FIX: FLUX.2's schedule follows the tokens each model call sees: the
+        # latent's H/16 x W/16, or one tile's in tile_mode.
+        image_seq_len = None
+        if detected_type in ("flux2", "flux2-klein"):
+            h, w = latent_samples.shape[-2:]
+            image_seq_len = min(h, tile_size) * min(w, tile_size) if tileable else h * w
+
         t0 = time.time()
         sigmas, target_total_steps = self._prepare_sigmas(
             model, detected_type, steps, denoise,
@@ -1990,6 +2000,7 @@ class RadianceSamplerPro:
             force_exact_steps, sigmas_override, device,
             custom_ays_anchors=custom_ays_anchors,
             use_sd_turbo_schedule=use_sd_turbo_schedule,
+            image_seq_len=image_seq_len,
         )
         timings["prepare_sigmas"] = time.time() - t0
 
@@ -2533,12 +2544,13 @@ class RadianceSamplerPro:
         # force_exact_steps is on. The write never produced a hit.
 
         def _get_base_sigmas(mdl, sched: str = scheduler) -> torch.Tensor:
-            if sched == scheduler and mdl is model:
+            # ALBABIT-FIX: sigmas_override is the whole schedule, a refiner's stage included.
+            if sigmas_override is not None or (sched == scheduler and mdl is model):
                 return sigmas
             return compute_base_sigmas(
-                mdl, sched, target_total_steps, scheduler, flux_shift, denoise, _sigma_cache,
+                mdl, sched, target_total_steps, flux_shift, denoise, _sigma_cache,
                 force_full_denoise=terminal_sigma_to_zero,
-                force_exact_steps=force_exact_steps
+                force_exact_steps=force_exact_steps, image_seq_len=image_seq_len
             )
 
         t0 = time.time()

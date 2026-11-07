@@ -48,3 +48,8 @@ test('Wan presets do not add another native shift', () => {
     assert.equal(presets['▶ WAN txt2vid (30 steps)'].flux_shift, 1);
     assert.equal(presets['▶ WAN img2vid (20 steps)'].flux_shift, 1);
 });
+
+test('the HunyuanVideo preset runs on its embedded guidance, without another shift', () => {
+    const preset = samplerContext('hunyuan_video').presets['▶ HunyuanVideo (30 steps)'];
+    assert.deepEqual([preset.cfg, preset.flux_guidance, preset.flux_shift], [1, 6, 1]);
+});
