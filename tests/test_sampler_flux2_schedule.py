@@ -46,5 +46,5 @@ def test_the_image_size_schedule_is_never_served_from_the_cache():
     model = FakeModelPatcher()
     with _patched(fake):
         for seq in (1024, 4096):
-            sampler_node.compute_base_sigmas(model, "simple", 8, "simple", 1.0, 1.0, cache, image_seq_len=seq)
+            sampler_node.compute_base_sigmas(model, "simple", 8, 1.0, 1.0, cache, image_seq_len=seq)
     assert calls == [1024, 4096]

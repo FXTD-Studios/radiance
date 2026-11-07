@@ -2544,10 +2544,11 @@ class RadianceSamplerPro:
         # force_exact_steps is on. The write never produced a hit.
 
         def _get_base_sigmas(mdl, sched: str = scheduler) -> torch.Tensor:
-            if sched == scheduler and mdl is model:
+            # ALBABIT-FIX: sigmas_override is the whole schedule, a refiner's stage included.
+            if sigmas_override is not None or (sched == scheduler and mdl is model):
                 return sigmas
             return compute_base_sigmas(
-                mdl, sched, target_total_steps, scheduler, flux_shift, denoise, _sigma_cache,
+                mdl, sched, target_total_steps, flux_shift, denoise, _sigma_cache,
                 force_full_denoise=terminal_sigma_to_zero,
                 force_exact_steps=force_exact_steps, image_seq_len=image_seq_len
             )

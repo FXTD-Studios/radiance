@@ -1025,7 +1025,6 @@ def compute_base_sigmas(
     model,
     scheduler_name: str,
     total_steps: int,
-    primary_scheduler: str,
     flux_shift: float,
     denoise: float,
     cache: SigmaCache,
@@ -1047,15 +1046,15 @@ def compute_base_sigmas(
         bs = cached
     else:
         ms = model.get_model_object("model_sampling")
-        bs = (nodes_flux.get_schedule(calc_steps, image_seq_len) if flux2
-              else comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps))
-
-        if flux_shift != 1.0 and scheduler_name != primary_scheduler:
-            bs = flux_shift_sigmas(bs, flux_shift)
-
-        bs = correct_sigma_end(bs)
+        bs = correct_sigma_end(nodes_flux.get_schedule(calc_steps, image_seq_len) if flux2
+                               else comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps))
         if not flux2:
             cache.put(model, scheduler_name, calc_steps, bs)
+
+    # ALBABIT-FIX: shifted like the primary schedule (get_flux_sigmas), a refiner on the same
+    # scheduler too, and after the cache, whose key does not hold flux_shift.
+    if flux_shift != 1.0:
+        bs = flux_shift_sigmas(bs, flux_shift)
 
     # ALBABIT-FIX: ALWAYS truncate the schedule based on denoise. 
     # force_full does NOT bypass truncation, it only forces the final value to 0.0 later
