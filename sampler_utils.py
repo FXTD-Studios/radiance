@@ -787,6 +787,10 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
         return {"guidance": 0.0, "steps": 4}
     if detected_type == "flux" and "krea" in name:
         return {"guidance": 4.5}
+    # ALBABIT-FIX: FLUX.1 Kontext Dev runs at guidance 2.5 (BFL's default and
+    # ComfyUI's flux_kontext_dev_basic template), not Flux.1 Dev's 3.5.
+    if detected_type == "flux" and "kontext" in name:
+        return {"guidance": 2.5}
     if detected_type == "sdxl" and "turbo" in name:
         return {"cfg": 1.0, "steps": 1, "sampler": "euler_ancestral"}
     # ALBABIT-FIX: cfg=1.6 (not the "pure" diffusers guidance_scale=0.0
