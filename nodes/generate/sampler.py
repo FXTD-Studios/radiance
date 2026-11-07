@@ -1986,6 +1986,13 @@ class RadianceSamplerPro:
 
         timings["prepare_noise"] = time.time() - t0
 
+        # ALBABIT-FIX: FLUX.2's schedule follows the tokens each model call sees: the
+        # latent's H/16 x W/16, or one tile's in tile_mode.
+        image_seq_len = None
+        if detected_type in ("flux2", "flux2-klein"):
+            h, w = latent_samples.shape[-2:]
+            image_seq_len = min(h, tile_size) * min(w, tile_size) if tileable else h * w
+
         t0 = time.time()
         sigmas, target_total_steps = self._prepare_sigmas(
             model, detected_type, steps, denoise,
@@ -1993,8 +2000,7 @@ class RadianceSamplerPro:
             force_exact_steps, sigmas_override, device,
             custom_ays_anchors=custom_ays_anchors,
             use_sd_turbo_schedule=use_sd_turbo_schedule,
-            image_seq_len=(latent_samples.shape[-2] * latent_samples.shape[-1]
-                           if detected_type in ("flux2", "flux2-klein") else None),
+            image_seq_len=image_seq_len,
         )
         timings["prepare_sigmas"] = time.time() - t0
 
@@ -2543,7 +2549,7 @@ class RadianceSamplerPro:
             return compute_base_sigmas(
                 mdl, sched, target_total_steps, scheduler, flux_shift, denoise, _sigma_cache,
                 force_full_denoise=terminal_sigma_to_zero,
-                force_exact_steps=force_exact_steps
+                force_exact_steps=force_exact_steps, image_seq_len=image_seq_len
             )
 
         t0 = time.time()

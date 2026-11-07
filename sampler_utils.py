@@ -1024,7 +1024,7 @@ def compute_base_sigmas(
     denoise: float,
     cache: SigmaCache,
     force_full_denoise: bool = False, 
-    force_exact_steps: bool = False, 
+    force_exact_steps: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     # ALBABIT-FIX: Properly define how many schedule steps to generate conceptually.
@@ -1033,18 +1033,23 @@ def compute_base_sigmas(
     else:
         calc_steps = total_steps
 
-    cached = cache.get(model, scheduler_name, calc_steps)
+    # ALBABIT-FIX: a FLUX.2 refiner takes over on the primary's image-size schedule
+    # (get_flux_sigmas), which the cache key cannot tell apart: never cached.
+    flux2 = image_seq_len is not None and scheduler_name == "simple"
+    cached = None if flux2 else cache.get(model, scheduler_name, calc_steps)
     if cached is not None:
         bs = cached
     else:
         ms = model.get_model_object("model_sampling")
-        bs = comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps)
+        bs = (nodes_flux.get_schedule(calc_steps, image_seq_len) if flux2
+              else comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps))
 
         if flux_shift != 1.0 and scheduler_name != primary_scheduler:
             bs = flux_shift_sigmas(bs, flux_shift)
 
         bs = correct_sigma_end(bs)
-        cache.put(model, scheduler_name, calc_steps, bs)
+        if not flux2:
+            cache.put(model, scheduler_name, calc_steps, bs)
 
     # ALBABIT-FIX: ALWAYS truncate the schedule based on denoise. 
     # force_full does NOT bypass truncation, it only forces the final value to 0.0 later
