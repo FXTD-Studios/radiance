@@ -304,11 +304,12 @@ function fillLtxGuidanceSettings(node) {
 // ALBABIT-FIX: "sd35" renamed "sd3.5". flux2 embeds guidance like flux;
 // lumina2 and z_image run a plain KSampler cfg in their official templates.
 // tests/test_sampler_js_mirror.py keeps these sets equal to sampler_utils.py's.
-const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "ltxv", "longcat_image"]);
+// ALBABIT-FIX: HunyuanVideo 1.0 is guidance-distilled (FluxGuidance 6, no CFG), as in sampler_utils.py.
+const GUIDANCE_EMBED_MODELS = new Set(["flux", "flux2", "ltxv", "longcat_image", "hunyuan_video"]);
 // ALBABIT-FIX: "sd15" renamed "sd1.5". lumina2, z_image and wan_ti2v run a real
 // KSampler cfg with no guidance-embed node in their official workflows.
 const CFG_GUIDED_MODELS = new Set([
-    "wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5",
+    "wan", "wan_ti2v", "sdxl", "sd1.5", "sd3", "sd3.5",
     "ltxav", "cogvideox", "lumina2", "z_image", "mochi",
     "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
     "hidream", "omnigen2", "kandinsky5", "kandinsky5_image", "qwen_image21",
@@ -592,7 +593,7 @@ function applyFolding(node) {
     //    schedule, no flow-matching) -- hidden for those, shown otherwise
     //    (including "auto"/unresolved, same show-by-default bias as guidance below).
     //  - flux_guidance only applies to guidance-embed models; CFG-guided
-    //    models (WAN, Hunyuan, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore it.
+    //    models (WAN, HunyuanVideo 1.5, SDXL, SD1.5/3/3.5, LTX-AV, CogVideoX) ignore it.
     const usesGuidanceEmbed =
         GUIDANCE_EMBED_MODELS.has(effectiveModel) ||
         (effectiveModel === "auto" && !CFG_GUIDED_MODELS.has(effectiveModel));
@@ -1026,7 +1027,7 @@ const MODEL_TYPE_SAMPLING_DEFAULTS = {
     // ALBABIT-FIX: steps=20, from the same official ComfyUI HunyuanVideo
     // workflow already used for shift/sampler/scheduler (Tencent's own CLI
     // README recommends 50 -- a divergence, not resolved here).
-    hunyuan_video: { cfg: 6.0, sampler: "euler",    scheduler: "simple",      guidance: 0.0, steps: 20 },
+    hunyuan_video: { cfg: 1.0, sampler: "euler",    scheduler: "simple",      guidance: 6.0, steps: 20 },
     // ALBABIT-FIX: official example workflow shows plain KSampler cfg=4, no
     // guidance-embed node -- cfg 1.0->4.0, sampler euler->res_multistep,
     // steps=25 added (matches the workflow; its own Note claims "36 steps"
