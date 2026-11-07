@@ -18,6 +18,7 @@ import comfy.samplers
 import comfy.sample
 import comfy.model_management
 import comfy.utils
+from comfy_extras import nodes_flux
 try:
     from .tensor_contract import ensure_4d, ensure_5d
 except (ImportError, ValueError):
@@ -1135,7 +1136,7 @@ def get_sd_turbo_sigmas(model, steps: int, denoise: float) -> torch.Tensor:
 
 def get_flux_sigmas(
     model, scheduler: str, steps: int, denoise: float, shift: float = 1.0,
-    force_full: bool = False, force_exact: bool = False,
+    force_full: bool = False, force_exact: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     if steps < 1:
@@ -1153,7 +1154,12 @@ def get_flux_sigmas(
     else:
         total_steps = steps
 
-    sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
+    # ALBABIT-FIX: FLUX.2's "simple" is Flux2Scheduler's schedule (BFL's), whose shift follows
+    # the image size: the model's own fixed shift only suits about 1 MP at 50 steps.
+    if image_seq_len is not None and scheduler == "simple":
+        sigmas = nodes_flux.get_schedule(total_steps, image_seq_len)
+    else:
+        sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
 
     if shift != 1.0:
         sigmas = flux_shift_sigmas(sigmas, shift)
