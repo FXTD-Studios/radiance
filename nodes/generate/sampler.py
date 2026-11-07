@@ -879,7 +879,7 @@ class RadianceSamplerPro:
                     "rescale, SDR anchor, windowing), so the loader's model is not modified.")}),
                 "positive": ("CONDITIONING", {"tooltip": (
                     "Prompt conditioning to steer toward. For guidance-embedded models (Flux, Flux.2, "
-                    "LTXV, LongCat) flux_guidance is written into it.")}),
+                    "LTXV, LongCat, HunyuanVideo 1.0) flux_guidance is written into it.")}),
                 "negative": ("CONDITIONING", {"tooltip": (
                     "Conditioning to steer away from. Only evaluated when cfg is above 1.0; at 1.0 "
                     "ComfyUI skips the negative pass.")}),
@@ -976,9 +976,9 @@ class RadianceSamplerPro:
                     "FLOAT",
                     {"default": 3.5, "min": 0.0, "max": 20.0, "step": 0.1,
                      "tooltip": (
-                         "Embedded guidance written into the positive conditioning for Flux, Flux.2, LTXV and "
-                         "LongCat; ignored by other models. Auto/Custom replace 3.5 with the model default "
-                         "(for example 0 for Schnell).")},
+                         "Embedded guidance written into the positive conditioning for Flux, Flux.2, LTXV, "
+                         "LongCat and HunyuanVideo 1.0; ignored by other models. Auto/Custom replace 3.5 with "
+                         "the model default (for example 0 for Schnell, 6 for HunyuanVideo).")},
                 ),
                 "flux_guidance_profile": (
                     ["Static", "Dynamic (Creative Start/End)"],

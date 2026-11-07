@@ -93,12 +93,14 @@ VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmo
 # guidance-embed node (see CFG_GUIDED_MODELS).
 # 3.5: LongCat-Image is a Flux transformer and its official template drives it
 # through FluxGuidance (4.0) like Flux.1, with cfg held at 4 under CFGNorm.
-GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image"}
+# ALBABIT-FIX: HunyuanVideo 1.0 is guidance-distilled: its template runs FluxGuidance 6
+# with no CFG, and ComfyUI applies 6 itself when no guidance is given.
+GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image", "hunyuan_video"}
 
 # ALBABIT-FIX: "sd35" renamed "sd3.5" (the Loader/detect.py name). lumina2,
 # z_image and wan_ti2v run a real KSampler cfg with no guidance-embed node in
 # their official workflows.
-CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
+CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
                      # 3.5: every one of these runs a plain KSampler / CFGGuider with
                      # a real cfg in its official Comfy-Org template.
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
@@ -250,16 +252,16 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps 20 from the official ComfyUI HunyuanVideo workflow, the
-    # source of this entry's other values. Tencent's README recommends 50.
+    # ALBABIT-FIX: the official ComfyUI HunyuanVideo workflow: 20 steps, FluxGuidance 6
+    # and no CFG (BasicGuider), shift 7. Tencent's README recommends 50 steps.
     "hunyuan_video": {
-        "cfg": 6.0,
+        "cfg": 1.0,
         "scheduler": "simple",
-        "guidance": 0.0,
+        "guidance": 6.0,
         "shift": 7.0,
         "sampler": "euler",
         "steps": 20,
-        "guidance_type": "cfg",
+        "guidance_type": "embedding",
     },
     # ALBABIT-FIX: Lumina2's official workflow runs a plain KSampler (cfg 4,
     # res_multistep, 25 steps) with no guidance-embed node, so this is classic
