@@ -243,6 +243,9 @@ const PRESET_CONFIGS = {
 // ALBABIT-FIX: the LTX 2.5 LowRes preset's former name, migrated on load so a
 // saved graph keeps its values and does not land on an invalid combo value.
 const LEGACY_LTX25_LOWRES = "[V] LTX 2.5 LowRes (20 steps)";
+// ALBABIT-FIX: the former HunyuanVideo preset's values, still in saved graphs; its
+// guidance 0 now reaches the model, so that exact trio takes the preset's values on load.
+const LEGACY_HUNYUAN = { cfg: 6, flux_guidance: 0, flux_shift: 7 };
 
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
@@ -1587,6 +1590,13 @@ app.registerExtension({
             const self = this;
             const loadedPresetW = self.widgets?.find(w => w.name === "preset");
             if (loadedPresetW?.value === LEGACY_LTX25_LOWRES) loadedPresetW.value = "[V] LTX 2.5 LowRes (30 steps)";
+            if (loadedPresetW?.value === "[V] HunyuanVideo (30 steps)") {
+                const ws = self.widgets.filter(w => w.name in LEGACY_HUNYUAN);
+                if (ws.every(w => w.value === LEGACY_HUNYUAN[w.name])) {
+                    const preset = getPresetConfig(loadedPresetW.value);
+                    for (const w of ws) w.value = preset[w.name];
+                }
+            }
             // ALBABIT-FIX: signal to the onNodeCreated timer that onConfigure ran,
             // so the timer skips and avoids a potential race with in-progress configuration.
             self._configuredByLoad = true;
