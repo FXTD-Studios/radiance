@@ -13,7 +13,9 @@ def _stages(**kw):
     base = [c["sigmas"] for c in rec.calls if c["model"].model is not refiner.model]
     ref = [c["sigmas"] for c in rec.calls if c["model"].model is refiner.model]
     assert base and ref, "the refiner never ran"
-    return base[-1], ref[0]
+    base, ref = base[-1], ref[0]
+    assert torch.isclose(base[-1], ref[0]), (base, ref)
+    return base, ref
 
 
 def test_both_stages_follow_the_shifted_schedule():
