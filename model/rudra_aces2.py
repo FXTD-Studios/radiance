@@ -1,7 +1,7 @@
 """RUDRA ACES 2: the learned ACES 2.0 SDR -> scene-linear reconstruction.
 
-Port of RUDRA 1.0.1's staged contract (``rudra_native_aces_v2_staged``, major
-2; ``tools/export_native_v2.py``, ``native/core/src/aces_v2.cpp``). The
+Port of RUDRA 1.2.3's staged contract (``rudra_native_aces_v2_staged``, major
+2, and major 3 with the lock; ``native/core/src/aces_v2.cpp``, ``aces_lock.cpp``). The
 network stage ("G1") is one TorchScript module; everything colour-managed is
 OpenColorIO's built-in ACES 2.0 CG config, exactly as the checkpoint pins it:
 
@@ -11,6 +11,7 @@ OpenColorIO's built-in ACES 2.0 CG config, exactly as the checkpoint pins it:
     4. compose                                              per-pixel arithmetic
     5. clipped smoothing (hybrid64)                         fully clipped interiors flat
     6. appearance constraint                                ACES 2.0 SDR view keeps every code within 1
+    6b. the lock (major 3)                                  recorded channels back on the dequantized source
     7. mask = weight where (weight > 0 and max source > 0.5) else 0
 
 ``source`` is display RGB codes in [0, 1], Rec.709 primaries, Rec.1886 (what an
@@ -42,6 +43,9 @@ logger = logging.getLogger("radiance.model.rudra_aces2")
 
 CONTRACT = "rudra_native_aces_v2_staged"
 CONTRACT_MAJOR = 2
+#: Major 3 (RUDRA 1.2.0, 8 Nov 2026): the same stages plus the lock (stage 6b),
+#: which a major-3 package requires. RUDRA ACES 2.0 is major 3.
+CONTRACT_MAJOR_LOCK = 3
 OCIO_CONFIG = "cg-config-v4.0.0_aces-v2.0_ocio-v2.5"
 OCIO_DISPLAY = "Rec.1886 Rec.709 - Display"
 OCIO_VIEW = "ACES 2.0 - SDR 100 nits (Rec.709)"
@@ -131,6 +135,7 @@ class ACES2Package:
     forbid_new_negative_y: bool
     smoothing: Optional[dict]
     identity: dict = field(default_factory=dict)
+    lock: Optional[dict] = None       # stage 6b, from the manifest (RUDRA ACES 2.0: lock_dqs050g)
 
 
 _PACKAGES: dict = {}
@@ -141,10 +146,36 @@ def resolve_aces2_package(explicit: str = "") -> Optional[Path]:
     return find_package(ACES2, explicit, PACKAGE_ENV)
 
 
+def lock_settings(m: dict) -> Optional[dict]:
+    """The lock a package was released with (stage 6b), or None (major 2, no lock).
+    Raises for a lock this build does not implement, as RUDRA's engine does."""
+    lk = m.get("lock")
+    if lk is None:
+        return None
+    target = lk.get("target", "dequant")
+    try:
+        out = {"strength": float(lk["strength"]), "target": target, "iters": int(lk.get("iters", 4)),
+               "dq_iters": int(lk.get("dq_iters", 200)), "dq_max_lap": float(lk.get("dq_max_lap", 1.5)),
+               "name": str(lk.get("name", ""))}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"package asks for a lock this build does not implement: {lk}") from exc
+    if (lk.get("mode", "lock") != "lock" or float(lk.get("band_codes", 0.0)) != 0.0
+            or target not in ("dequant", "source") or not 3 <= out["iters"] <= 6
+            or not 0.0 < out["strength"] <= 1.0 or out["dq_iters"] < 0 or not out["dq_max_lap"] > 0):
+        raise ValueError(f"package asks for a lock this build does not implement: {lk}")
+    return out
+
+
 def _check_manifest(m: dict) -> None:
-    if m.get("contract") != CONTRACT or int(m.get("contract_major", -1)) != CONTRACT_MAJOR:
-        raise ValueError(f"not a {CONTRACT} v{CONTRACT_MAJOR} package "
-                         f"(contract {m.get('contract')!r} v{m.get('contract_major')})")
+    major = int(m.get("contract_major", -1))
+    if m.get("contract") != CONTRACT or major not in (CONTRACT_MAJOR, CONTRACT_MAJOR_LOCK):
+        raise ValueError(f"not a {CONTRACT} v{CONTRACT_MAJOR} or v{CONTRACT_MAJOR_LOCK} package "
+                         f"(contract {m.get('contract')!r} v{m.get('contract_major')}): update Radiance")
+    has_lock = m.get("lock") is not None
+    if (major == CONTRACT_MAJOR_LOCK) != has_lock:
+        raise ValueError(f"package's lock and its contract version disagree (major {major} "
+                         f"{'with' if has_lock else 'without'} a lock)")
+    lock_settings(m)
     ocio_cfg = m.get("ocio", {})
     if ocio_cfg.get("config") != OCIO_CONFIG or ocio_cfg.get("view") != OCIO_VIEW \
             or ocio_cfg.get("display") != OCIO_DISPLAY:
@@ -166,7 +197,14 @@ def load_aces2_package(explicit: str = "", device: Optional[torch.device] = None
         from radiance.model.rudra_download import ACES2, download_package
         folder = download_package(ACES2)
     if folder is None:
+        from radiance.model.paths import radiance_model_dirs
         from radiance.model.rudra_download import ACES2
+        old = [d / ACES2.dirname for d in radiance_model_dirs() if (d / ACES2.dirname / "manifest.json").is_file()]
+        if old:
+            raise FileNotFoundError(
+                f"RUDRA ACES 2 in {old[0]} is an older package (1.0, the preview without the lock), which this "
+                f"Radiance replaces with 2.0. Allow the download (about 3 MB; RADIANCE_ALLOW_DOWNLOADS is off) or "
+                f"put 2.0's files from {ACES2.page_url} in that folder.")
         raise FileNotFoundError(
             f"RUDRA ACES 2 is not installed. Put its files ({', '.join(f for f, _, _ in ACES2.files)}) in "
             f"ComfyUI/models/radiance/{ACES2.name}/ (from {ACES2.page_url}) or set {PACKAGE_ENV}.")
@@ -187,7 +225,10 @@ def load_aces2_package(explicit: str = "", device: Optional[torch.device] = None
         folder=folder, manifest=manifest, g1=g1, device=device,
         forbid_new_negative_y=bool(ac.get("forbid_new_negative_y", False)),
         smoothing=manifest.get("clipped_smoothing"),
-        identity={"package": manifest.get("name", folder.name), "title": manifest.get("title", "RUDRA ACES 2"),
+        lock=lock_settings(manifest),
+        identity={"version": (manifest.get("provenance") or {}).get("version", ""),
+                  "lock": (lock_settings(manifest) or {}).get("name", ""),
+                  "package": manifest.get("name", folder.name), "title": manifest.get("title", "RUDRA ACES 2"),
                   "model_contract": manifest.get("model_contract", {}).get("id"),
                   "g1_sha256": digest, "checkpoint_sha256": manifest.get("checkpoint_sha256")},
     )
@@ -411,6 +452,198 @@ def clean_shadows(acescg: np.ndarray, source: np.ndarray, max_code: int = 40, ra
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Stage 6b, the lock (RUDRA 1.2.0; training/aces_partial_tighten.py, native
+#  core/aces_lock.cpp): RUDRA ACES 2.0 is released with it, registered arm
+#  lock_dqs050g (strength 0.5 toward the dequantized source, the appearance guard)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def partial_support(source: np.ndarray, weight: np.ndarray) -> np.ndarray:
+    """Pixels the lock may touch: reconstructed (weight > 0), bright (max > 0.5) and
+    not fully clipped (min below the clip)."""
+    source = np.asarray(source)
+    return (np.asarray(weight) > 0) & (source.max(-1) > .5) & (source.min(-1) < FULL_CLIP)
+
+
+def _lock_device() -> torch.device:
+    """Where the lock's float64 arithmetic runs: the GPU when there is one."""
+    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+def _smoothest_in_bins(codes: np.ndarray, lo: np.ndarray, hi: np.ndarray, iters: int) -> np.ndarray:
+    """Accelerated projected gradient on the squared Laplacian, kept inside [lo, hi]
+    (RUDRA's loop, float64). The 5-point Laplacian with scipy's 'reflect' border is a
+    1-pixel edge-replicated pad, so it runs as torch convolutions in float64, on the
+    GPU when there is one (200 iterations of a 1080p sky: 18 s in NumPy)."""
+    import torch.nn.functional as F
+    dev = _lock_device()
+
+    def lap(v):
+        p = F.pad(v, (1, 1, 1, 1), mode="replicate")
+        return (p[..., :-2, 1:-1] + p[..., 2:, 1:-1] + p[..., 1:-1, :-2] + p[..., 1:-1, 2:]
+                - 4.0 * p[..., 1:-1, 1:-1])
+
+    with torch.inference_mode():
+        to = lambda a: torch.from_numpy(np.ascontiguousarray(a.transpose(2, 0, 1)))[None].to(dev)  # noqa: E731
+        lo_t, hi_t = to(lo), to(hi)
+        u = to(codes)
+        y = u.clone()
+        t = 1.0
+        for _ in range(iters):   # ||Laplacian|| <= 8, so a 1/64 step on L^T L is nonexpansive
+            nu = torch.minimum(torch.maximum(y - lap(lap(y)) / 64.0, lo_t), hi_t)
+            nt = (1 + np.sqrt(1 + 4 * t * t)) / 2
+            y = nu + ((t - 1) / nt) * (nu - u)
+            u = nu
+            t = nt
+        return u[0].permute(1, 2, 0).cpu().numpy()
+
+
+def dequantize_recorded(source: np.ndarray, region: Optional[np.ndarray] = None, iters: int = 200,
+                        max_lap: float = 1.5, half_bin: float = 0.49,
+                        clip_ceiling: float = 4.0) -> Tuple[np.ndarray, np.ndarray]:
+    """The lock's target without the 8-bit rounding: per channel, the smoothest field
+    (least squared Laplacian, accelerated projected gradient) inside every recorded
+    code's bin (+-half_bin); a clipped sample is bounded below by the clip only. Used
+    where the content is smooth (mean |code Laplacian| over 5x5 <= max_lap) and the
+    channel is recorded, the source code elsewhere. -> (codes / 255 float64, used)."""
+    from scipy.ndimage import uniform_filter
+    src = np.asarray(source, np.float64)
+    if src.ndim != 3 or src.shape[-1] != 3 or not np.isfinite(src).all():
+        raise ValueError("finite HWC RGB source required")
+    out = src.copy()
+    used = np.zeros(src.shape, bool)
+    if region is not None:
+        region = np.asarray(region, bool)
+        if not region.any():
+            return out, used
+        ys, xs = np.nonzero(region)
+        m = 24
+        y0, y1 = max(int(ys.min()) - m, 0), min(int(ys.max()) + m + 1, src.shape[0])
+        x0, x1 = max(int(xs.min()) - m, 0), min(int(xs.max()) + m + 1, src.shape[1])
+    else:
+        y0, y1, x0, x1 = 0, src.shape[0], 0, src.shape[1]
+    codes = src[y0:y1, x0:x1] * 255.0
+    rec = codes < 254.5
+    lo = np.where(rec, codes - half_bin, 254.5)
+    hi = np.where(rec, codes + half_bin, 255.0 + clip_ceiling)
+    u = _smoothest_in_bins(codes, lo, hi, int(iters))
+    smooth = np.zeros_like(rec)
+    for c in range(3):
+        k = codes[..., c]
+        r = rec[..., c]
+        lap = np.zeros_like(k)
+        ok = np.zeros_like(r)
+        lap[1:-1, 1:-1] = k[:-2, 1:-1] + k[2:, 1:-1] + k[1:-1, :-2] + k[1:-1, 2:] - 4 * k[1:-1, 1:-1]
+        ok[1:-1, 1:-1] = r[1:-1, 1:-1] & r[:-2, 1:-1] & r[2:, 1:-1] & r[1:-1, :-2] & r[1:-1, 2:]
+        num = uniform_filter(np.abs(lap) * ok, 5, mode="nearest")
+        den = uniform_filter(ok.astype(np.float64), 5, mode="nearest")
+        smooth[..., c] = (den > 0.2) & (num <= max_lap * den)
+    use = rec & smooth
+    out[y0:y1, x0:x1] = np.where(use, u, codes) / 255.0
+    used[y0:y1, x0:x1] = use
+    return out, used
+
+
+def lock_observed(source: np.ndarray, constrained: np.ndarray, weight: np.ndarray, view,
+                  strength: float = 0.5, iters: int = 4, target: str = "dequant", dq_iters: int = 200,
+                  dq_max_lap: float = 1.5, band_codes: float = 0.0,
+                  eps: float = 2e-3) -> Tuple[np.ndarray, dict]:
+    """The lock on the appearance constraint's output (stage 6b).
+
+    In a partially clipped pixel the clipped channel shows 255 whatever the model
+    rebuilt, so the 0 EV error is all in the channels the camera recorded. Per pixel
+    this solves (Gauss-Newton, 3x3 Jacobian by finite differences, pseudo-inverse of
+    the recorded rows, in log x) for the smallest change that puts the recorded
+    channels' display back on the target (the dequantized source, or its codes), then
+    moves ``strength`` of the way there, geometric per channel. The appearance guard
+    raises the strength per pixel in quarter steps up to the full lock until every
+    recorded channel shows within 1 code of the source and every clipped channel stays
+    clipped. Pixels outside partial support, fully clipped ones and those the solve
+    cannot bring back are returned bit-exact. Ported line for line from RUDRA's oracle.
+    """
+    if target not in ("source", "dequant"):
+        raise ValueError("target must be 'source' or 'dequant'")
+    iters = max(3, min(int(iters), 6))
+    source = np.asarray(source, np.float32)
+    cur = np.asarray(constrained, np.float32)
+    out = cur.copy()
+    sup = partial_support(source, weight)
+    idx = np.flatnonzero(sup)
+    band = float(band_codes) / 255.0
+    diag = {"support_pixels": int(idx.size), "changed_pixels": 0, "kept_pixels": 0,
+            "strength_raised_pixels": 0, "dequant_channels": 0, "max_recorded_error_codes": 0.0}
+    if idx.size == 0:
+        return out, diag
+    src = source.reshape(-1, 3)[idx].astype(np.float64)
+    x = cur.reshape(-1, 3)[idx].astype(np.float64)
+    if target == "dequant":
+        dq, used = dequantize_recorded(source, region=sup, iters=dq_iters, max_lap=dq_max_lap)
+        diag["dequant_channels"] = int(used.reshape(-1, 3)[idx].sum())
+        goal_t = dq.reshape(-1, 3)[idx]
+    else:
+        goal_t = src
+    rec = src < FULL_CLIP                         # the recorded channels
+    clipped = ~rec
+
+    def fwd(v):
+        return np.asarray(view.forward(v.astype(np.float32)[None]), np.float64)[0]
+
+    first = fwd(x)
+    if band > 0:   # inside the band already: left as the model made it (bit-exact)
+        inside = (~rec | (np.abs(first - goal_t) <= band)).all(1)
+        idx, src, x, rec, clipped, goal_t = (idx[~inside], src[~inside], x[~inside], rec[~inside],
+                                             clipped[~inside], goal_t[~inside])
+        if idx.size == 0:
+            return out, diag
+    for _ in range(iters):
+        d = fwd(x)
+        goal = np.clip(d, goal_t - band, goal_t + band) if band > 0 else goal_t
+        r = np.where(rec, goal - d, 0.0)
+        J = np.empty((x.shape[0], 3, 3))
+        for c in range(3):
+            h = eps * np.maximum(np.abs(x[:, c]), 1e-3)
+            xp = x.copy()
+            xp[:, c] += h
+            J[:, :, c] = (fwd(xp) - d) / h[:, None]
+        xp_ = np.maximum(x, 1e-6)
+        Jr = J * xp_[:, None, :] * rec[:, :, None]
+        # Batched in torch (float64): NumPy's pinv took 1 s per step on a 1080p sky.
+        jr = torch.from_numpy(Jr).to(_lock_device())
+        du = (torch.linalg.pinv(jr, rtol=1e-10).cpu().numpy() @ r[..., None])[..., 0]
+        x = xp_ * np.exp(np.clip(du, -2.0, 2.0))
+    d = fwd(x)
+    err = np.maximum(np.abs(np.where(rec, d - goal_t, 0.0)).max(1) * 255.0 - float(band_codes), 0.0)
+    near_source = (np.abs(np.where(rec, d - src, 0.0)).max(1) * 255.0) <= 1.0
+    ok = np.isfinite(x).all(1) & (err <= 0.5) & near_source & ~(clipped & (d < FULL_CLIP)).any(1)
+    flat = out.reshape(-1, 3)
+    if strength < 1.0:
+        lam = float(strength)
+        raw = cur.reshape(-1, 3)[idx][ok].astype(np.float64)
+        xl = x[ok]
+        rec_ok, clip_ok, src_ok = rec[ok], clipped[ok], src[ok]
+        chosen = np.full(raw.shape[0], np.nan)
+        res = np.empty_like(raw)
+        for lk in (lam, lam + (1 - lam) * .25, lam + (1 - lam) * .5, lam + (1 - lam) * .75, 1.0):
+            todo = np.isnan(chosen)
+            if not todo.any():
+                break
+            blend = np.maximum(raw[todo], 1e-9) ** (1.0 - lk) * np.maximum(xl[todo], 1e-9) ** lk
+            db = fwd(blend)
+            good = ((np.abs(np.where(rec_ok[todo], db - src_ok[todo], 0.0)).max(1) * 255.0 <= 1.0)
+                    & ~(clip_ok[todo] & (db < FULL_CLIP)).any(1)) | (lk >= 1.0)
+            sel = np.flatnonzero(todo)[good]
+            res[sel] = blend[good]
+            chosen[sel] = lk
+        flat[idx[ok]] = res.astype(np.float32)
+        diag["strength_raised_pixels"] = int((chosen > lam + 1e-9).sum())
+    else:
+        flat[idx[ok]] = x[ok].astype(np.float32)
+    diag["changed_pixels"] = int(ok.sum())
+    diag["kept_pixels"] = int((~ok).sum())
+    diag["max_recorded_error_codes"] = float(err[ok].max()) if ok.any() else 0.0
+    return out, diag
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  One frame
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -454,13 +687,16 @@ def _g1_tiled(pkg: ACES2Package, src: torch.Tensor, base: torch.Tensor, tile: in
 def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2View] = None,
               smoothing: bool = True, constrain: bool = True, tile: int = 1024,
               overlap: int = 128, band: Optional[dict] = None,
-              clean: Optional[dict] = None, ceiling: bool = True) -> FrameResult:
+              clean: Optional[dict] = None, ceiling: bool = True, lock: bool = True) -> FrameResult:
     """The full staged pipeline on one H x W x 3 frame of display codes in [0, 1].
 
     RUDRA 1.1.0 additions: the highlight ceiling (on: nothing brighter than the
     inverse of display white), ``band`` ({"tau_high", "tau_low"}: the learned
     result only in highlights and shadows) and ``clean`` ({"max_code",
-    "radius", "range_stops"}: Clean shadows). Both off by default."""
+    "radius", "range_stops"}: Clean shadows). Both off by default.
+
+    RUDRA 1.2.0: the lock (stage 6b) runs after the constraint whenever the package
+    was released with one (RUDRA ACES 2.0, major 3); ``lock=False`` is for tests."""
     view = view or aces2_view()
     src = np.ascontiguousarray(np.clip(source_hwc, 0.0, 1.0), np.float32)
     baseline = view.inverse(src)                                                 # stage 1
@@ -509,6 +745,16 @@ def run_frame(pkg: ACES2Package, source_hwc: np.ndarray, view: Optional[ACES2Vie
         out, stats = constrain_colour(src, out, baseline, weight[0, 0].numpy(), view,
                                       include_fully_clipped=True,
                                       forbid_new_negative_y=pkg.forbid_new_negative_y)
+    lk = pkg.lock if lock else None
+    if lk:                                                                      # stage 6b
+        # The lock, on the constraint's output; not where the band chose the plain
+        # inverse (band weight 0), which stays the inverse exactly (RUDRA aces_v2.cpp).
+        lock_weight = weight[0, 0].numpy().copy()
+        if band:
+            lock_weight[bw <= 0] = 0.0
+        out, extra["lock"] = lock_observed(src, out, lock_weight, view, strength=lk["strength"],
+                                           iters=lk["iters"], target=lk["target"],
+                                           dq_iters=lk["dq_iters"], dq_max_lap=lk["dq_max_lap"])
     if not np.isfinite(out).all():
         raise ValueError("RUDRA ACES 2 produced non-finite values")
     stats.update(extra)

@@ -252,12 +252,12 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 
 [RUDRA 1.0](https://huggingface.co/fxtdstudios/rudra-models) is the learned model behind **SDR → HDR Universal**, **SDR → HDR Recover** and **SDR → HDR AI Fill**.
 
-- **RUDRA ACES 2** (default, 2.2 MB, downloads on first use): the learned ACES 2.0 reconstruction. SDR in, an ACEScg master out (diffuse white = 1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source's 8-bit codes. Universal and Recover use it whenever it can run; the `reconstructed_mask` output says where light was estimated.
+- **RUDRA ACES 2** (2.0, default, 2.2 MB, downloads on first use): the learned ACES 2.0 reconstruction, with the lock it was released with (RUDRA 1.2). SDR in, an ACEScg master out (diffuse white = 1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source's 8-bit codes. On held-out footage it is within 0.1 code of the plain ACES 2.0 inverse at the delivered exposure and better at −3 and +3 EV. It is the inverse of the ACES 2.0 SDR view, so it suits SDR rendered through ACES 2.0; on a grade made another way, bright areas just under white can come out very bright. Universal and Recover use it whenever it can run; the `reconstructed_mask` output says where light was estimated.
 - **RUDRA AI fill v3** (271 MB, plus the 7.7 GB Wan base model; both download the first time the AI Fill node runs): a LoRA for Wan2.1-VACE-1.3B that draws the shape inside fully clipped highlights, plus an estimator that sets their brightness (±3 stops). Region prompts. Needs about 16 GB of VRAM. Experimental: what it draws is plausible, not recovered.
 
 | Files | Download | Save in |
 |---|---|---|
-| `manifest.json`, `parity.json`, `rudra_g1.ts`, `rudra_g1.onnx` | [RUDRA ACES 2](https://huggingface.co/fxtdstudios/rudra-models/tree/v1.0.0/models/RUDRA_ACES_2) | `models/radiance/RUDRA_ACES_2/` |
+| `manifest.json`, `parity.json`, `rudra_g1.ts`, `rudra_g1.onnx` | [RUDRA ACES 2](https://huggingface.co/fxtdstudios/rudra-models/tree/ab8da1b2db74099eb45cc39585df1d2edf7b3e34/models/RUDRA_ACES_2) | `models/radiance/RUDRA_ACES_2/` |
 | `rudra_genfill.safetensors`, `brightness.json`, `prompt_cache/` | [AI fill v3](https://huggingface.co/fxtdstudios/rudra-models/tree/v1.0.0/models/rudra_genfill_v3) | `models/radiance/rudra_genfill_v3/` |
 | the whole repository | [Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | `models/radiance/Wan2.1-VACE-1.3B-diffusers/` |
 | `sdr2hdr_shadow_v1.safetensors` (RUDRA 3.x, fallback) | [Browse](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `models/radiance/` |

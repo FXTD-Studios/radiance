@@ -7,7 +7,13 @@ approximation does not have. Production renders go through the Academy
 reference as implemented in OpenColorIO, pinned to one built-in config so the
 result does not change with whatever OCIO config the user has loaded.
 
-Pinned config: ``studio-config-v4.0.0_aces-v2.0_ocio-v2.5`` (OCIO >= 2.5).
+Pinned config: the newest ACES 2 studio config the installed OCIO builds in,
+``studio-config-v5.0.0_aces-v2.1_ocio-v2.6`` on OCIO 2.6 (ACES 2.1) and
+``studio-config-v4.0.0_aces-v2.0_ocio-v2.5`` on OCIO 2.5 (ACES 2.0). Their ACES 2.0
+Output Transforms give the same values (measured on OCIO 2.6, every view the two
+share); ACES 2.1's colour spaces add Apple Log 2 and rename the P3-D65 display
+"Gamma 2.6 P3-D65 - Display". RUDRA ACES 2 keeps its own pin (the CG config v4.0.0
+it was trained on, model/rudra_aces2.py).
 """
 from __future__ import annotations
 
@@ -19,7 +25,26 @@ import numpy as np
 
 log = logging.getLogger("radiance.aces2")
 
-PINNED_CONFIG = "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
+#: Newest first: the first one the installed OCIO has is used.
+STUDIO_CONFIGS = (
+    "ocio://studio-config-v5.0.0_aces-v2.1_ocio-v2.6",
+    "ocio://studio-config-v4.0.0_aces-v2.0_ocio-v2.5",
+)
+
+
+def _first_builtin() -> str:
+    try:
+        import PyOpenColorIO as ocio
+        names = {c[0] for c in ocio.BuiltinConfigRegistry().getBuiltinConfigs()}
+    except Exception:  # noqa: BLE001 - OCIO missing or too old: reported by _config()
+        return STUDIO_CONFIGS[-1]
+    for uri in STUDIO_CONFIGS:
+        if uri.split("//", 1)[1] in names:
+            return uri
+    return STUDIO_CONFIGS[-1]
+
+
+PINNED_CONFIG = _first_builtin()
 
 # Node input colorspace -> colour space name in the pinned config.
 INPUT_SPACES = {
@@ -42,6 +67,17 @@ OUTPUT_VIEWS = {
     "ACES 2.0 Cinema (DCI-P3 D65)": ("P3-D65 - Display", "ACES 2.0 - SDR 100 nits (P3 D65)"),
 }
 
+#: Display names ACES 2.1's configs changed (v5.0.0), v4 name -> v5 name.
+_RENAMED_DISPLAYS = {"P3-D65 - Display": "Gamma 2.6 P3-D65 - Display"}
+
+
+def _display(cfg, display: str) -> str:
+    """*display* as *cfg* names it (ACES 2.1 renamed the P3-D65 one)."""
+    names = set(cfg.getDisplays())
+    if display in names:
+        return display
+    return _RENAMED_DISPLAYS.get(display, display)
+
 
 class ACES2ReferenceUnavailable(RuntimeError):
     """The pinned OCIO ACES 2.0 config cannot be used for this request."""
@@ -60,7 +96,7 @@ def _config():
     except Exception as exc:  # noqa: BLE001 - re-raised with the reason
         raise ACES2ReferenceUnavailable(
             f"OpenColorIO {getattr(ocio, '__version__', '?')} has no built-in "
-            f"{PINNED_CONFIG!r}; ACES 2.0 reference transforms need OCIO >= 2.5. ({exc})"
+            f"{PINNED_CONFIG!r}; ACES 2 reference transforms need OCIO >= 2.5. ({exc})"
         ) from exc
 
 
@@ -85,6 +121,7 @@ def _processor(input_colorspace: str, output_transform: str):
             f"{output_transform!r} has no ACES 2.0 view in the pinned OCIO config.")
     display, view = OUTPUT_VIEWS[output_transform]
     cfg = _config()
+    display = _display(cfg, display)
     proc = cfg.getProcessor(INPUT_SPACES[input_colorspace], display, view,
                             ocio.TRANSFORM_DIR_FORWARD)
     return proc.getDefaultCPUProcessor()
@@ -109,6 +146,6 @@ def describe(output_transform: str) -> str:
 
 
 __all__ = [
-    "PINNED_CONFIG", "INPUT_SPACES", "OUTPUT_VIEWS", "ACES2ReferenceUnavailable",
+    "PINNED_CONFIG", "STUDIO_CONFIGS", "INPUT_SPACES", "OUTPUT_VIEWS", "ACES2ReferenceUnavailable",
     "reference_available", "apply_reference", "describe",
 ]
