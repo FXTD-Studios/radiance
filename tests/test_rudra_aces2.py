@@ -186,17 +186,57 @@ class TestStages:
 #  the released package against RUDRA's reference
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.skipif(_installed_package() is None,
-                    reason="RUDRA ACES 2 not installed (models/radiance/RUDRA_ACES_2 or RADIANCE_RUDRA_ACES2)")
+#: The goldens were made by RUDRA's staged_reference with RUDRA ACES 2 1.0 (rudra_g1.ts
+#: fb30e3df..., no lock), the package before 2.0. They hold the stages this module shares
+#: with 2.0; the lock has its own golden (test_rudra_aces2_lock.py).
+GOLDEN_G1_SHA256 = "fb30e3df748f4fa9ae17f7db189c8fe49a58d9863af6c1c45a408a72f3b7a59b"
+
+
+def _golden_package():
+    """The installed package if it is the one the goldens were made with."""
+    folder = os.environ.get("RADIANCE_RUDRA_ACES2_GOLDEN_PACKAGE", "")
+    if not folder or not (Path(folder) / "rudra_g1.ts").is_file():
+        return None
+    from radiance.model.rudra_download import sha256_file
+    return folder if sha256_file(Path(folder) / "rudra_g1.ts") == GOLDEN_G1_SHA256 else None
+
+
+@pytest.mark.skipif(_golden_package() is None,
+                    reason="needs RUDRA ACES 2 1.0 (the goldens' package) in RADIANCE_RUDRA_ACES2_GOLDEN_PACKAGE")
 @pytest.mark.parametrize("name", ["syn", "photo"])
 def test_matches_rudra_staged_reference(name):
     m = _mod()
     g = np.load(FIXTURES / f"golden_{name}.npz")
-    pkg = m.load_aces2_package(download=False)
-    r = m.run_frame(pkg, g["source"])
+    folder = Path(_golden_package())
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    m._check_manifest(manifest)
+    pkg = m.ACES2Package(folder=folder, manifest=manifest, g1=torch.jit.load(str(folder / "rudra_g1.ts")).eval(),
+                         device=torch.device("cpu"),
+                         forbid_new_negative_y=bool(manifest["appearance_constraint"].get("forbid_new_negative_y")),
+                         smoothing=manifest.get("clipped_smoothing"), lock=m.lock_settings(manifest))
+    r = m.run_frame(pkg, g["source"], ceiling=False)
     assert np.array_equal(r.mask, g["mask"])
     rel = np.abs(r.acescg - g["acescg"]) / (np.abs(g["acescg"]) + 1e-3)
     assert rel.max() <= 1e-5
+
+
+@pytest.mark.skipif(_installed_package() is None,
+                    reason="RUDRA ACES 2 not installed (models/radiance/RUDRA_ACES_2 or RADIANCE_RUDRA_ACES2)")
+def test_the_installed_2_0_package_keeps_the_codes_contract():
+    """The released model, with its lock, on a real photo: every highlight code of the
+    master's ACES 2.0 SDR view within one of the source, recorded channels of partially
+    clipped pixels included; the lock ran."""
+    m = _mod()
+    g = np.load(FIXTURES / "golden_photo.npz")
+    pkg = m.load_aces2_package(download=False)
+    assert pkg.lock and pkg.lock["name"] == "lock_dqs050g"
+    r = m.run_frame(pkg, g["source"])
+    assert np.isfinite(r.acescg).all() and r.stats["lock"]["support_pixels"] > 0
+    v = m.aces2_view()
+    err = np.abs(v.forward(r.acescg) - g["source"]).max(-1) * 255
+    base_err = np.abs(v.forward(r.baseline) - g["source"]).max(-1) * 255
+    held = (r.mask > 0) & (base_err <= 1.0)       # not the view's own limit (inverse_limit_pixels)
+    assert err[held].max() <= 1.0 + 1e-3
 
 
 def test_goldens_keep_the_codes_contract():

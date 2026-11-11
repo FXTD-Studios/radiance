@@ -34,6 +34,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
@@ -44,6 +45,10 @@ REPO = "fxtdstudios/rudra-models"
 TAG = "v1.0.0"
 REVISION = "78a0b21bdc606fd78b51ab279bf3c6672ee812aa"   # what tag v1.0.0 points at
 LICENSE_URL = f"https://huggingface.co/{REPO}/blob/{TAG}/LICENSE"
+
+#: RUDRA ACES 2.0 (8 Nov 2026, RUDRA 1.2.0): the commit on main that published it
+#: (RUDRA's scripts/ci_shipped_model.sh pins the same one). Not tagged on the hub.
+ACES2_REVISION = "ab8da1b2db74099eb45cc39585df1d2edf7b3e34"
 
 WAN_REPO = "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
 WAN_REVISION = "ec4d2cb062b548996b179d493fdd05340de702a1"
@@ -80,15 +85,18 @@ class Package:
         return f"https://huggingface.co/{self.repo}/resolve/{self.revision}/{sub}{rel}"
 
 
+# RUDRA ACES 2.0 (release, with the lock: contract major 3). It replaced 1.0 (the
+# preview, rudra_g1.ts fb30e3df...) on the hub; its .ts and .onnx have the same sizes
+# as 1.0's, so an installed 1.0 is told apart by hash (see package_complete).
 ACES2 = Package(
     name="RUDRA_ACES_2", title="RUDRA ACES 2", repo_dir="models/RUDRA_ACES_2",
     files=(
-        ("manifest.json", 3934, "aade83bb28cbd5607226484daf9f331dc9a9a21ced77be236ba5d777c96c47da"),
-        ("parity.json", 1408, "ef1295d85c93000df4c44be7615830e8d23d3d107b8a1a17f8c66b9e454682a1"),
-        ("rudra_g1.ts", 1037772, "fb30e3df748f4fa9ae17f7db189c8fe49a58d9863af6c1c45a408a72f3b7a59b"),
-        ("rudra_g1.onnx", 1157294, "8ba97cb0ed36f5033958e752afad95d585d50bcefefc3bc66a61b27a6618f237"),
+        ("manifest.json", 8423, "db21ffb4a0a652f354d24fd1b6a997717ec862b009a64e5175d1f4c4f25198e8"),
+        ("parity.json", 3228, "beef682e39f8276147a329f57eca70817c056ef0dcc3b053d0b481dadb634c69"),
+        ("rudra_g1.ts", 1037772, "7082eb869d265d6e8c4fc209f7cac7e5dce2f40c10df5e73a889fb85efb9dbcc"),
+        ("rudra_g1.onnx", 1157294, "880e7b698a099b8dd60549444392d51af3022efbae8f68f05c9f0f3a29f8ee49"),
     ),
-    size_mb=3, default_allowed=True,
+    size_mb=3, default_allowed=True, revision=ACES2_REVISION,
 )
 
 GENFILL_V3 = Package(
@@ -177,18 +185,39 @@ def file_digest(path: Path, expected: str) -> str:
     return sha256_file(path)
 
 
-def package_complete(folder: Path, pkg: Package, *, verify_hash: bool = False) -> bool:
-    """Every file of *pkg* is in *folder* with its pinned size (and hash, if asked)."""
-    for rel, size, digest in pkg.files:
-        f = Path(folder) / rel
+#: Files up to this size are always checked by hash, not only by size: a package
+#: replaced on the hub can keep a file's size (RUDRA ACES 2.0's .ts is 1.0's size).
+SMALL_FILE_BYTES = 32 << 20
+
+#: (path, size, mtime, digest) -> matches; bounded, a few package files at most.
+_HASHES_SEEN: "OrderedDict[tuple, bool]" = OrderedDict()
+_HASHES_MAX = 64
+
+
+def _file_matches(f: Path, size: int, digest: str, verify_hash: bool) -> bool:
+    try:
+        st = f.stat()
+    except OSError:
+        return False
+    if not f.is_file() or st.st_size != size:
+        return False
+    if not (verify_hash or size <= SMALL_FILE_BYTES):
+        return True
+    key = (str(f), st.st_size, st.st_mtime_ns, digest)
+    if key not in _HASHES_SEEN:
         try:
-            if not f.is_file() or f.stat().st_size != size:
-                return False
+            _HASHES_SEEN[key] = file_digest(f, digest) == digest
         except OSError:
             return False
-        if verify_hash and file_digest(f, digest) != digest:
-            return False
-    return True
+        while len(_HASHES_SEEN) > _HASHES_MAX:
+            _HASHES_SEEN.popitem(last=False)
+    return _HASHES_SEEN[key]
+
+
+def package_complete(folder: Path, pkg: Package, *, verify_hash: bool = False) -> bool:
+    """Every file of *pkg* is in *folder* with its pinned size, and its pinned hash when
+    it is small (or *verify_hash* is set)."""
+    return all(_file_matches(Path(folder) / rel, size, digest, verify_hash) for rel, size, digest in pkg.files)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -229,8 +258,7 @@ def download_to(pkg: Package, target: Path, log: Callable[[str], None] = print) 
     target.mkdir(parents=True, exist_ok=True)
     todo = []
     for rel, size, digest in pkg.files:
-        f = target / rel
-        if f.is_file() and f.stat().st_size == size:
+        if _file_matches(target / rel, size, digest, False):
             continue
         todo.append((rel, size, digest))
     total = sum(s for _, s, _ in todo)

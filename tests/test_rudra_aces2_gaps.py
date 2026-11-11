@@ -164,7 +164,7 @@ def test_universal_reports_the_stage_statistics(fake_package):  # noqa: F811
         aces2_clean_shadows=True)
     report = out[5]
     for needle in ("highlight ceiling:", "display errors left:", "view's own limit", "bands:",
-                   "clean shadows:", "RUDRA ACES 2 preview"):
+                   "clean shadows:", "model: RUDRA ACES 2 (Apache 2.0)"):
         assert needle in report, needle
 
 
@@ -180,3 +180,56 @@ def test_auto_never_downloads_or_runs_the_rudra_3x_models(monkeypatch):
     with pytest.raises(RuntimeError, match="Pixel / Temporal"):
         uu.RadianceSDRToHDRRecover().recover(_img(), "sRGB", 1000.0, 0.98, 0.05, 1.0, 1.0, "Linear")
     assert called == []
+
+
+# ── stage 6b, the lock (RUDRA ACES 2.0) ──────────────────────────────────────
+
+class _BrightG1(torch.nn.Module):
+    """restored_source = source; weight 1 on every pixel brighter than mid, so
+    partially clipped pixels are in the lock's support."""
+
+    def forward(self, source, baseline):
+        w = (source.amax(1, keepdim=True) > 0.5).float()
+        z = torch.zeros_like(source)
+        return source, z + 0.5, z + 1.0, w
+
+
+def _warm_highlights():
+    rng = np.random.default_rng(5)
+    x = np.zeros((1, 24, 32, 3), np.float32)
+    x[..., 0] = 1.0                                              # red clipped
+    x[..., 1] = np.linspace(0.6, 0.95, 32)[None, None, :]        # green and blue recorded
+    x[..., 2] = 0.55 + 0.1 * rng.random((1, 24, 32))
+    return np.rint(x * 255) / 255
+
+
+def test_a_locked_package_runs_the_lock_after_the_constraint(fake_package):  # noqa: F811
+    m = _mod()
+    fake_package.g1 = _BrightG1()
+    fake_package.lock = {"strength": 0.5, "target": "dequant", "iters": 4, "dq_iters": 200,
+                         "dq_max_lap": 1.5, "name": "lock_dqs050g"}
+    codes = _warm_highlights()
+    stats = []
+    master, *_ = m.run_batch(fake_package, codes, stats=stats)
+    lk = stats[0]["lock"]
+    assert lk["support_pixels"] == 24 * 32
+    assert lk["changed_pixels"] + lk["kept_pixels"] == lk["support_pixels"]
+    view = m.aces2_view()
+    disp = view.forward(master[0])
+    rec = codes[0] < m.FULL_CLIP
+    assert np.abs(np.where(rec, disp - codes[0], 0)).max() * 255 <= 1.0 + 1e-3
+    fake_package.lock = None
+    stats = []
+    m.run_batch(fake_package, codes, stats=stats)
+    assert "lock" not in stats[0]
+
+
+def test_universal_reports_the_lock(fake_package):  # noqa: F811
+    uu = _uu()
+    fake_package.g1 = _BrightG1()
+    fake_package.lock = {"strength": 0.5, "target": "dequant", "iters": 4, "dq_iters": 200,
+                         "dq_max_lap": 1.5, "name": "lock_dqs050g"}
+    img = torch.from_numpy(_warm_highlights()).float()
+    report = uu.RadianceSDRToHDRUniversal().convert(img, "sRGB", 1000.0, "adaptive", 0.75, 2.0, 0.85, "Linear",
+                                                    learned_backend="RUDRA ACES 2")[5]
+    assert "lock (RUDRA ACES 2.0):" in report

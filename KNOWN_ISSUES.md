@@ -73,7 +73,7 @@ These parts of the release gate need checks that cannot run in CI:
   `delivery/handler.py`, which still reaches up into the node layer for
   `RadianceWrite`. Tracked in the README's Status & to-do list.
 
-- **RUDRA ACES 2 runs frame by frame.** RUDRA 1.0's learned ACES 2.0 model
+- **RUDRA ACES 2 runs frame by frame.** RUDRA's learned ACES 2.0 model
   has no temporal inference (`temporal_inference: false` in its manifest); it
   was trained for frame-to-frame consistency and its clipped interiors are
   flat, so it flickers far less than the 3.x pixel model, but a clip may still
@@ -81,7 +81,18 @@ These parts of the release gate need checks that cannot run in CI:
   per 1080p frame); the network runs on the GPU and falls back to 1024 px
   tiles when a frame does not fit (an approximation near tile seams, said in
   the report). The 3.x latent decoders were retired in 3.5.0; the 3.x pixel
-  and temporal models remain as fallbacks.
+  and temporal models remain, chosen by name only.
+- **RUDRA ACES 2.0's lock costs time on large partially clipped areas.** The
+  lock (stage 6b) runs on the GPU when there is one; on a CPU a 1080p frame
+  whose top third is a partially clipped sky took about 18 s on two cores
+  (RUDRA's native engine: 0.2 to 0.4 s). Frames with small clipped areas cost
+  little. The lock cannot be turned off: the model was released with it.
+- **RUDRA ACES 2 is the inverse of the ACES 2.0 SDR view.** It suits SDR that
+  was rendered through ACES 2.0. On a grade made another way, areas parked just
+  under white (a window, an open door, a sky at codes 245-254) come out at many
+  times diffuse white with their colour re-expanded; RUDRA measured 2,691 nits
+  where its analytic route gave 714. Compare with Expand, and use a PQ/HLG
+  output's peak to keep MaxCLL in range.
 - **AI fill v3 is experimental and large.** About 16 GB of VRAM. Its first run
   downloads 8 GB (the LoRA package and Wan2.1-VACE-1.3B), and the first custom
   prompt another 11.4 GB (the umT5 text encoder, loaded on the CPU once; the

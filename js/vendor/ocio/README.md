@@ -6,9 +6,9 @@ release, and record the change below when you do.
 | | |
 | :-- | :-- |
 | Package | [`@bb-studio/ocio`](https://www.npmjs.com/package/@bb-studio/ocio) |
-| Version | 0.0.7 |
+| Version | 0.0.12 |
 | Upstream | <https://github.com/promto-c/ocio-js> |
-| Contains | OpenColorIO 2.5.0, compiled to WebAssembly |
+| Contains | OpenColorIO 2.5.2, compiled to WebAssembly |
 | Licence | BSD-3-Clause (see `LICENSE`; OpenColorIO's own notices in `THIRD_PARTY_NOTICES.md`) |
 
 ## Why it is vendored rather than fetched
@@ -30,10 +30,13 @@ files. Both are resolved locally instead:
 - `#ocio-wasm` → a dynamic `import()` of `./ocio-wasm.js` in the browser or
   `./ocio-wasm.node.js` under Node, chosen at call time inside `createOCIO`.
 - `./wasm-url.js` → `new URL('./ocio-wasm.wasm', import.meta.url)`.
+- `./webgpu-shader-loader.js` → a stub that says the WebGPU/WGSL shader builder
+  is not vendored (it loads a separate naga WebAssembly translator; Radiance's
+  viewer renders with WebGL and never calls it).
 
 Everything else — `ocio-wasm.js`, `ocio-wasm.node.js`, `ocio-wasm.wasm`,
-`LICENSE`, `THIRD_PARTY_NOTICES.md`, `ocio-js.d.ts` — is byte-identical to the
-published tarball.
+`runtime.js`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `ocio-js.d.ts` — is
+byte-identical to the published tarball.
 
 ## Re-vendoring
 
@@ -42,7 +45,7 @@ npm pack @bb-studio/ocio
 tar -xzf bb-studio-ocio-<version>.tgz
 cp package/dist/ocio-wasm.js package/dist/ocio-wasm.node.js \
    package/dist/ocio-wasm.wasm package/LICENSE \
-   package/THIRD_PARTY_NOTICES.md package/src/ocio-js.d.ts js/vendor/ocio/
+   package/THIRD_PARTY_NOTICES.md package/src/ocio-js.d.ts package/src/runtime.js js/vendor/ocio/
 cp package/src/index.js js/vendor/ocio/index.js
 # then re-apply the patch above, and update the version in this file
 node --test js/tests/ocio.test.mjs

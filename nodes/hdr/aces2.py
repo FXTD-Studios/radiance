@@ -17,6 +17,7 @@ Math references
       Academy ACES project — github.com/ampas/aces-dev
   • AMF specification: Academy TB-2014-009 / S-2019-001
   • ACES 2.0 reference Output Transforms: OpenColorIO built-in
+      studio-config-v5.0.0_aces-v2.1_ocio-v2.6 on OCIO 2.6, else
       studio-config-v4.0.0_aces-v2.0_ocio-v2.5 (radiance.hdr.aces2_ocio)
   • Reach gamut compression: ACES Gamut Compression Implementation Guide
 """

@@ -16,9 +16,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
   and says why in its report, and Recover stops with the reason. Auto never
   downloads the 3.x models. A graph that wants them chooses Direct Pixel or
   Temporal (Universal) or Pixel / Temporal (Recover); "Legacy RUDRA" graphs
-  keep the pixel model. RUDRA ACES 2 is labelled a preview, as RUDRA labels
-  it: in RUDRA's last test it beat the plain ACES 2.0 inverse at -3 and +3 EV
-  but not yet at 0 EV, so compare before delivery.
+  keep the pixel model.
+- **RUDRA ACES 2 is now 2.0** (RUDRA 1.2, released 8 November 2026), with the
+  lock it was released with. An installed 1.0 (the preview) is replaced on
+  first use (about 3 MB); with downloads off, the node says the package is the
+  older one instead of running it. Masters change slightly in partially
+  clipped highlights, where the lock holds the recorded channels to the
+  source.
 - **37 nodes are deprecated.** They are hidden from the node menu (109 nodes
   show), and a saved graph that uses one still opens and runs; each one's
   description says what to use instead. They are the manual SDR → HDR chain
@@ -161,6 +165,25 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+
+- **RUDRA ACES 2.0 and its lock** (SDR → HDR Universal and Recover). The
+  model that passed RUDRA's held-out test: at the delivered exposure within
+  0.1 code RMS of the plain ACES 2.0 inverse (not better), better at −3 and
+  +3 EV and in highlight colour; one production and one camera. The lock
+  (stage 6b, registered arm `lock_dqs050g`) is ported from RUDRA's oracle and
+  matches RUDRA's own golden. The package (contract major 3) is pinned to the
+  Hugging Face commit that published it, each file checked by SHA-256. A
+  replaced file of the same size as its predecessor is now told apart by hash,
+  so an installed 1.0 is not taken for 2.0. Universal's report counts the
+  pixels the lock held.
+- **ACES 2.1.** On OpenColorIO 2.6 the ACES 2 reference transforms (the ACES
+  2.0 Output Transform node and the display previews) use the built-in studio
+  config v5.0.0 (ACES 2.1), else v4.0.0 (ACES 2.0) on OCIO 2.5; Write's
+  default was already the newest built-in config. Its Output
+  Transforms give the same values as ACES 2.0's (every shared view checked);
+  it adds Apple Log 2 and renames the P3-D65 display. RUDRA ACES 2 keeps the CG
+  config v4.0.0 it was trained on. The browser Viewer's OpenColorIO
+  (WebAssembly) is now 2.5.2, the version RUDRA ACES 2 pins (was 2.5.0).
 
 - **RUDRA 1.1.0's stages in RUDRA ACES 2** (SDR → HDR Universal and Recover):
   the highlight ceiling (nothing in the master is brighter than the ACES 2.0

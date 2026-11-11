@@ -378,6 +378,11 @@ def _aces2_stats_lines(stats: list) -> List[str]:
         f"{total('inverse_limit_pixels')} more are the ACES 2.0 view's own limit "
         "(its plain inverse is off there too)",
     ]
+    locks = [s["lock"] for s in stats if "lock" in s]
+    if locks:
+        lines.append(f"lock (RUDRA ACES 2.0): {sum(k['changed_pixels'] for k in locks)} partially clipped pixels "
+                     f"held to the source, {sum(k['strength_raised_pixels'] for k in locks)} at more than half "
+                     f"strength, {sum(k['kept_pixels'] for k in locks)} left as constrained")
     bands = [s["band"] for s in stats if "band" in s]
     if bands:
         lines.append("bands: " + ", ".join(
@@ -658,9 +663,10 @@ class RadianceSDRToHDRRecover(_RudraRecoveryCore):
                     ),
                 }),
                 "learned_backend": (["Auto", "RUDRA ACES 2", "Pixel / Temporal"], {"default": "Auto",
-                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, downloads ~3 MB on first "
-                               "use; a preview: in RUDRA's last test it beat the plain ACES 2.0 inverse at -3 and +3 EV "
-                               "but not yet at 0 EV, so compare before delivery). Auto never uses or downloads the RUDRA 3.x models: if "
+                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use; 2.0, released 8 Nov 2026 "
+                               "with the lock: on held-out footage within 0.1 code of the plain ACES 2.0 inverse at the delivered "
+                               "exposure, better at -3 and +3 EV; made for SDR rendered through ACES 2.0, so a grade made another way "
+                               "can put near-white areas too bright: compare with Expand). Auto never uses or downloads the RUDRA 3.x models: if "
                                "RUDRA ACES 2 cannot run, the node stops and says why. RUDRA ACES 2: that model only. "
                                "Pixel / Temporal: the RUDRA 3.x models (non-commercial weights), only when chosen."}),
                 "aces2_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.5, "step": 0.01,
@@ -887,9 +893,10 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
                 "temporal_checkpoint": ("STRING", {"default": "",
                     "tooltip": "Optional Phase 3 checkpoint path. Empty uses the configured default."}),
                 "learned_backend": (["Auto", "RUDRA ACES 2", "Direct Pixel", "Temporal"], {"default": "Auto",
-                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use; a "
-                               "preview: in RUDRA's last test it beat the plain ACES 2.0 inverse at -3 and +3 EV but not "
-                               "yet at 0 EV, so compare before delivery) when it can run, else deterministic expansion, with the reason in "
+                    "tooltip": "Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use; 2.0, released 8 Nov 2026 "
+                               "with the lock: on held-out footage within 0.1 code of the plain ACES 2.0 inverse at the delivered "
+                               "exposure, better at -3 and +3 EV; made for SDR rendered through ACES 2.0, so a grade made another way "
+                               "can put near-white areas too bright: compare with Expand) when it can run, else deterministic expansion, with the reason in "
                                "the report. Auto never uses or downloads the RUDRA 3.x models. RUDRA ACES 2: that model "
                                "only; it makes the whole image, so knee settings do not apply. Direct Pixel / Temporal: "
                                "the RUDRA 3.x models (non-commercial weights), only when chosen."}),
@@ -1295,7 +1302,7 @@ class RadianceSDRToHDRUniversal(_RudraRecoveryCore):
         if recovery_applied:
             lines.append("learned recovery: applied")
             if path.startswith("RUDRA ACES 2"):
-                lines.append("model: RUDRA ACES 2 preview (Apache 2.0) — ACEScg master, diffuse white = "
+                lines.append("model: RUDRA ACES 2 (Apache 2.0) — ACEScg master, diffuse white = "
                              f"{reference_white_nits:.0f} nits; its ACES 2.0 SDR view keeps the source codes; "
                              "knee settings do not apply")
             elif path.startswith("direct-pixel") or path.startswith("temporal"):
