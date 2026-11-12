@@ -18,6 +18,7 @@ import comfy.samplers
 import comfy.sample
 import comfy.model_management
 import comfy.utils
+from comfy_extras import nodes_flux
 try:
     from .tensor_contract import ensure_4d, ensure_5d
 except (ImportError, ValueError):
@@ -92,12 +93,14 @@ VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmo
 # guidance-embed node (see CFG_GUIDED_MODELS).
 # 3.5: LongCat-Image is a Flux transformer and its official template drives it
 # through FluxGuidance (4.0) like Flux.1, with cfg held at 4 under CFGNorm.
-GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image"}
+# ALBABIT-FIX: HunyuanVideo 1.0 is guidance-distilled: its template runs FluxGuidance 6
+# with no CFG, and ComfyUI applies 6 itself when no guidance is given.
+GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image", "hunyuan_video"}
 
 # ALBABIT-FIX: "sd35" renamed "sd3.5" (the Loader/detect.py name). lumina2,
 # z_image and wan_ti2v run a real KSampler cfg with no guidance-embed node in
 # their official workflows.
-CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
+CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
                      # 3.5: every one of these runs a plain KSampler / CFGGuider with
                      # a real cfg in its official Comfy-Org template.
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
@@ -249,16 +252,16 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps 20 from the official ComfyUI HunyuanVideo workflow, the
-    # source of this entry's other values. Tencent's README recommends 50.
+    # ALBABIT-FIX: the official ComfyUI HunyuanVideo workflow: 20 steps, FluxGuidance 6
+    # and no CFG (BasicGuider), shift 7. Tencent's README recommends 50 steps.
     "hunyuan_video": {
-        "cfg": 6.0,
+        "cfg": 1.0,
         "scheduler": "simple",
-        "guidance": 0.0,
+        "guidance": 6.0,
         "shift": 7.0,
         "sampler": "euler",
         "steps": 20,
-        "guidance_type": "cfg",
+        "guidance_type": "embedding",
     },
     # ALBABIT-FIX: Lumina2's official workflow runs a plain KSampler (cfg 4,
     # res_multistep, 25 steps) with no guidance-embed node, so this is classic
@@ -786,6 +789,10 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
         return {"guidance": 0.0, "steps": 4}
     if detected_type == "flux" and "krea" in name:
         return {"guidance": 4.5}
+    # ALBABIT-FIX: FLUX.1 Kontext Dev runs at guidance 2.5 (BFL's default and
+    # ComfyUI's flux_kontext_dev_basic template), not Flux.1 Dev's 3.5.
+    if detected_type == "flux" and "kontext" in name:
+        return {"guidance": 2.5}
     if detected_type == "sdxl" and "turbo" in name:
         return {"cfg": 1.0, "steps": 1, "sampler": "euler_ancestral"}
     # ALBABIT-FIX: cfg=1.6 (not the "pure" diffusers guidance_scale=0.0
@@ -1018,12 +1025,11 @@ def compute_base_sigmas(
     model,
     scheduler_name: str,
     total_steps: int,
-    primary_scheduler: str,
     flux_shift: float,
     denoise: float,
     cache: SigmaCache,
     force_full_denoise: bool = False, 
-    force_exact_steps: bool = False, 
+    force_exact_steps: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     # ALBABIT-FIX: Properly define how many schedule steps to generate conceptually.
@@ -1032,18 +1038,23 @@ def compute_base_sigmas(
     else:
         calc_steps = total_steps
 
-    cached = cache.get(model, scheduler_name, calc_steps)
+    # ALBABIT-FIX: a FLUX.2 refiner takes over on the primary's image-size schedule
+    # (get_flux_sigmas), which the cache key cannot tell apart: never cached.
+    flux2 = image_seq_len is not None and scheduler_name == "simple"
+    cached = None if flux2 else cache.get(model, scheduler_name, calc_steps)
     if cached is not None:
         bs = cached
     else:
         ms = model.get_model_object("model_sampling")
-        bs = comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps)
+        bs = correct_sigma_end(nodes_flux.get_schedule(calc_steps, image_seq_len) if flux2
+                               else comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps))
+        if not flux2:
+            cache.put(model, scheduler_name, calc_steps, bs)
 
-        if flux_shift != 1.0 and scheduler_name != primary_scheduler:
-            bs = flux_shift_sigmas(bs, flux_shift)
-
-        bs = correct_sigma_end(bs)
-        cache.put(model, scheduler_name, calc_steps, bs)
+    # ALBABIT-FIX: shifted like the primary schedule (get_flux_sigmas), a refiner on the same
+    # scheduler too, and after the cache, whose key does not hold flux_shift.
+    if flux_shift != 1.0:
+        bs = flux_shift_sigmas(bs, flux_shift)
 
     # ALBABIT-FIX: ALWAYS truncate the schedule based on denoise. 
     # force_full does NOT bypass truncation, it only forces the final value to 0.0 later
@@ -1135,7 +1146,7 @@ def get_sd_turbo_sigmas(model, steps: int, denoise: float) -> torch.Tensor:
 
 def get_flux_sigmas(
     model, scheduler: str, steps: int, denoise: float, shift: float = 1.0,
-    force_full: bool = False, force_exact: bool = False,
+    force_full: bool = False, force_exact: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     if steps < 1:
@@ -1153,7 +1164,12 @@ def get_flux_sigmas(
     else:
         total_steps = steps
 
-    sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
+    # ALBABIT-FIX: FLUX.2's "simple" is Flux2Scheduler's schedule (BFL's), whose shift follows
+    # the image size: the model's own fixed shift only suits about 1 MP at 50 steps.
+    if image_seq_len is not None and scheduler == "simple":
+        sigmas = nodes_flux.get_schedule(total_steps, image_seq_len)
+    else:
+        sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
 
     if shift != 1.0:
         sigmas = flux_shift_sigmas(sigmas, shift)

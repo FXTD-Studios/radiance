@@ -64,6 +64,10 @@ class TestRefineDistillationFromMeta:
         assert result == {"guidance": 4.5}
         assert "steps" not in result
 
+    def test_flux1_kontext_dev_guidance_only(self):
+        result = refine_distillation_from_meta("flux", "flux1-dev-kontext_fp8_scaled.safetensors")
+        assert result == {"guidance": 2.5}
+
     def test_sdxl_turbo(self):
         result = refine_distillation_from_meta("sdxl", "sd_xl_turbo_1.0_fp16.safetensors")
         assert result == {"cfg": 1.0, "steps": 1, "sampler": "euler_ancestral"}
