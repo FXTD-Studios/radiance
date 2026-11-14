@@ -4,18 +4,16 @@
 
 Viewer, scopes, preview servers, contact sheets, and QC.
 
-11 nodes. [All sections](README.md)
+9 nodes. [All sections](README.md)
 
 - [Burn-In](#burn-in)
 - [Contact Sheet](#contact-sheet)
 - [False Color Monitor](#false-color-monitor)
 - [Flipbook GIF](#flipbook-gif)
 - [Focus Peaking](#focus-peaking)
-- [HDR Monitor](#hdr-monitor)
 - [Policy Guard](#policy-guard)
 - [Preview Server](#preview-server)
 - [QC](#qc)
-- [Split View](#split-view)
 - [Viewer](#viewer)
 
 ## Burn-In
@@ -55,7 +53,7 @@ Render a contact sheet grid of multiple images for review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frame batch to lay out, left to right then top to bottom. Clamped to [0, 1] and resized through 8-bit, so display-encoded input is expected. |
+| `images` | IMAGE |  |  | Frame batch to lay out, left to right then top to bottom. Clamped to [0, 1] and resized through 8-bit, so display-encoded input is expected. Alpha is not shown. |
 | `thumb_width` | int | 160 | 32 to 512, step 8 | Width of each thumbnail in pixels. |
 | `max_cols` | int | 8 | 1 to 32 | Maximum number of columns. Rows are computed automatically. |
 | `label_frames` (optional) | boolean | on |  | Print the frame index below each thumbnail. |
@@ -101,7 +99,7 @@ Export a sequence as an animated GIF flipbook for quick review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] and quantised to a 256-colour palette, so display-encoded input is expected. |
+| `images` | IMAGE |  |  | Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] and quantised to a 256-colour palette, so display-encoded input is expected. Alpha is not shown (the passthrough keeps it). |
 | `save_path` | string | `preview/flipbook.gif` |  | Output .gif path. A relative path is written under ComfyUI's output/ folder; absolute paths are used as given. The directory is created automatically. |
 | `fps` | float | 12 | 1 to 60, step 0.5 | Playback speed. GIF frame delay = 1000/fps ms. |
 | `max_width` | int | 480 | 64 to 1920, step 8 | Resize frames to this width (preserves aspect ratio). Smaller = smaller file. |
@@ -125,7 +123,7 @@ Overlay focus-peaking highlights on edges for sharpness assessment.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to check, returned unchanged on passthrough. Edges are measured on BT.709 luma, normalised to the strongest edge in each frame. |
+| `image` | IMAGE |  |  | Image to check, returned unchanged on passthrough. Edges are measured on BT.709 luma, normalised to the strongest edge in each frame. Alpha is kept on focus_peak. |
 | `threshold` | float | 0.2 | 0.01 to 1, step 0.01 | Normalised Sobel magnitude above which a pixel is considered in-focus. |
 | `peak_color` | choice | `Red` | `Red`, `Green`, `White`, `Yellow`, `Cyan` | Overlay colour painted on pixels above threshold. |
 | `strength` | float | 0.85 | 0 to 1, step 0.05 | Blend factor for the peaking overlay. |
@@ -136,32 +134,6 @@ Overlay focus-peaking highlights on edges for sharpness assessment.
 | :--- | :--- |
 | `passthrough` | IMAGE |
 | `focus_peak` | IMAGE |
-
-## HDR Monitor
-
-`RadianceHDRMonitor`
-
-HDR monitor / preview node. SDR tone-map or direct PQ/HLG display encoding. Wire in parallel — does not affect your HDR pipeline.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Scene-linear HDR, 1.0 = reference white (203 nits for the PQ and HLG modes). Negatives are clipped. |
-| `mode` | choice | `Preview (SDR)` | `Preview (SDR)`, `Rec.2100 PQ`, `Rec.2100 HLG` | Preview (SDR): tone-map to 0 to 1 for a normal monitor. Rec.2100 PQ / HLG: encode the signal for an HDR display (no gamut conversion). |
-| `operator` (optional) | choice | `ACES (Narkowicz)` | `ACES (Narkowicz)`, `Filmic (Hejl-Burgess)`, `Reinhard Extended`, `Exposure + Gamma` | [Preview (SDR)] Tone-mapping operator. |
-| `exposure` (optional) | float | 0 | -6 to 6, step 0.1 | [Preview (SDR)] EV offset applied before tone mapping. |
-| `saturation` (optional) | float | 1 | 0 to 2, step 0.05 | [Preview (SDR)] Post-tonemap saturation scale. |
-| `gamma` (optional) | float | 2.2 | 1 to 3, step 0.05 | [Preview (SDR)] Display gamma, applied as a pure 1/gamma power. 2.2 approximates sRGB, 2.4 matches BT.1886. |
-| `reinhard_white` (optional) | float | 4 | 0.5 to 100, step 0.5 | [Preview (SDR) / Reinhard Extended] White point. |
-| `peak_nits` (optional) | float | 1000 | 100 to 10000, step 100 | [Rec.2100 PQ] Mastering display peak luminance in nits. |
-| `gamma_correct_sdr` (optional) | boolean | on |  | [Preview (SDR)] Apply the 1/gamma display encoding after tone mapping. Applies to every preview operator, including Exposure + Gamma. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `preview` | IMAGE |
 
 ## Policy Guard
 
@@ -210,9 +182,9 @@ Run a local HTTP preview server for browser-based image review.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to publish, returned unchanged on passthrough. Only the last frame is served, clamped to [0, 1] as an 8-bit JPEG. |
+| `images` | IMAGE |  |  | Frames to publish, returned unchanged on passthrough. Only the last frame is served, clamped to [0, 1] as an 8-bit JPEG. Alpha is not shown (the passthrough keeps it). |
 | `port` | int | 8765 | 1024 to 65535 | TCP port for the preview HTTP server. |
-| `stream_name` | string | `radiance` |  | Stream identifier. Access at /frame/<stream_name>. |
+| `stream_name` | string | `radiance` |  | Stream identifier. Access at /frame/&lt;stream_name>. |
 | `jpeg_quality` (optional) | int | 85 | 20 to 99 | JPEG compression quality (20=small, 99=lossless-ish). |
 | `resize_width` (optional) | int | 0 | 0 to 3840 | Resize frame before serving (0 = original size). Smaller = faster over network. |
 | `enabled` (optional) | boolean | on |  | Off: skip publishing this frame. A server already started keeps running and serves the previous frame. |
@@ -258,27 +230,6 @@ Run technical QC on an image or sequence (crushed blacks, clipped whites, out-of
 | `json_report` | STRING |
 | `status` | STRING |
 
-## Split View
-
-`RadianceSplitView`
-
-Side-by-side or wipe comparison between two images or versions.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image_a` | IMAGE |  |  | Original / reference image. |
-| `image_b` | IMAGE |  |  | Processed / graded image. |
-| `mode` | choice | `wipe_h` | `wipe_h`, `wipe_v`, `side_by_side`, `diff` | wipe_h: A left, B right of a vertical line. wipe_v: A above, B below. side_by_side: left half of A beside right half of B (fixed 50% split). diff: \|A - B\| x 4, clipped to [0, 1]. |
-| `position` | float | 0.5 | 0 to 1, step 0.01 | Wipe line position as a fraction of width (wipe_h) or height (wipe_v): 0 = all B, 1 = all A. Unused in side_by_side and diff. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `comparison` | IMAGE |
-
 ## Viewer
 
 `RadianceViewer`
@@ -292,6 +243,7 @@ VFX review for scene-linear and HDR images: • Simple mode (picture, compare, p
 | `image` | IMAGE,VIDEO |  |  | IMAGE batch or VIDEO to review. Returned unchanged as an IMAGE; input_space decides how it is displayed. |
 | `compare_image` (optional) | IMAGE,VIDEO |  |  | Optional B side (IMAGE or VIDEO) for the viewer's wipe and compare modes. Every frame is sent; its display space is resolved like image's. |
 | `zdepth` (optional) | IMAGE,VIDEO |  |  | Z-Depth map to display when pressing Z button |
+| `normal` (optional) | IMAGE,VIDEO |  |  | Normal pass for the 3D Normal channel. Signed (-1..1) or encoded (0..1) is detected from the values and shown in the viewer. |
 | `exposure_bracketing` (optional) | boolean | off |  | Write -2 EV / +2 EV preview thumbnails for the analysis shelf. One extra PNG per frame per bracket; off by default because a long shot pays for it on disk. |
 | `input_space` (optional) | choice | `Auto` | `Auto`, `sRGB (ComfyUI IMAGE)`, `Linear Rec.709 (sRGB)`, `ACEScg`, `Linear Rec.2020`, `Linear P3-D65`, `ACES2065-1` | What the incoming pixels are. A ComfyUI IMAGE is sRGB-encoded and is shown untouched, exactly as ComfyUI previews it. Linear sources (HDR Decode, SDR -> HDR, Read in a linear working space) are shown through OpenColorIO's ACES 2.0 SDR view. Auto: linear when any value is above 1.0 or below 0, otherwise sRGB. Set it explicitly for linear material that stays inside 0-1. |
 | `float_precision` (optional) | choice | `Half (16-bit)` | `Half (16-bit)`, `Full (32-bit)` | Precision of the float frames sent to the browser. Half is what OpenEXR, RV and Nuke's viewer cache use: exact for display and grading, half the size (about 60 MB less per 4K frame). Full keeps every fp32 bit for values above 65504 or bit-exact probing. |

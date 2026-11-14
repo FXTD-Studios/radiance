@@ -216,19 +216,12 @@ def _comfy_sample(model, noise, steps, cfg, sampler_name, scheduler,
             model, noise, cfg, sampler_obj, sigmas,
             positive, negative, latent_image, seed=seed,
         )
-        # ALBABIT-FIX: guard against NaN/Inf that silently produce black/corrupt frames.
-        # Mirrors the same guard in RadianceSamplerPro.sample().
-        try:
-            if not torch.isfinite(samples).all():
-                _bad = int((~torch.isfinite(samples)).sum().item())
-                logger.warning(
-                    "[RadianceVideoSampler] %d non-finite value(s) (NaN/Inf) in sampled "
-                    "latent — sanitizing via nan_to_num. Check CFG, scheduler, and precision.",
-                    _bad,
-                )
-                samples = torch.nan_to_num(samples, nan=0.0, posinf=0.0, neginf=0.0)
-        except Exception as _nf_err:
-            logger.debug("[RadianceVideoSampler] finite-check skipped: %s", _nf_err)
+        # A diverged run (CFG blowup, fp16 overflow) must stop the node. This used
+        # to replace NaN/Inf with 0.0, which decodes to a plausible grey plate and
+        # a success report, while RadianceSamplerPro raised on the same failure.
+        # One check, shared with the image sampler.
+        from radiance.nodes.generate.sampler import assert_latent_finite
+        assert_latent_finite(samples, node_name="RadianceVideoSampler")
         return samples
     except Exception as exc:
         # Returning `noise` here turned every sampling failure into a
@@ -1286,14 +1279,17 @@ class RadianceI2VPipeline:
     Sampling is performed via _comfy_sample() — the same module-level helper
     used by RadianceVideoSampler and RadianceT2VPipeline.
 
-    I2V conditioning strategy (applied automatically by model type)
-    ---------------------------------------------------------------
-    LTX-Video      — reference image injected via model's img2vid API;
-                     first latent frame is clamped to the image encoding
-    HunyuanVideo   — encoded image latent concatenated channel-wise to noise
-    Wan2.1         — CLIP vision embedding injected into cross-attention
-    CogVideoX      — reference latent prepended to the video latent sequence
-    Generic        — image encoded and blended into the first latent frame
+    I2V conditioning strategy (chosen from what the model can read, not its name)
+    -----------------------------------------------------------------------------
+    concat_channels    — the model has an image-concat input (Wan 2.1 I2V, Wan 2.2
+                         I2V 14B, ...): the image latent and mask go in as conditioning,
+                         as ComfyUI's WanImageToVideo does. This is a real I2V path.
+    clip_vision_inject — a connected CLIP vision output is added to the conditioning.
+    first_frame_lock   — HEURISTIC, used by "auto" for every other model (LTX, Wan 2.2
+    prepend_latent       TI2V 5B, ...): the image latent is blended into the starting
+                         noise of frame 0 at image_strength. Frame 0 of the result is
+                         NOT guaranteed to match the reference image. The pipeline
+                         report says so when one of these ran.
 
     Outputs
     -------
@@ -1470,6 +1466,10 @@ class RadianceI2VPipeline:
             raise ValueError(
                 "i2v_strategy clip_vision_inject needs clip_vision_output connected "
                 "(Load CLIP Vision -> CLIP Vision Encode). Nothing was injected.")
+        if strategy in ("first_frame_lock", "prepend_latent"):
+            report.append(
+                f"HEURISTIC I2V: '{strategy}' blends the image into the starting noise; "
+                "frame 0 is not guaranteed to match the reference image.")
         report.append(f"Resolved strategy: {strategy}"
                       + (f" (model concat input: {concat_ch} ch)" if concat_ch else ""))
 
@@ -1615,8 +1615,13 @@ class RadianceI2VPipeline:
                     il = il.repeat(1, rep, 1, 1)[:, :ch]
                 return noise * (1 - strength) + il * strength
         except Exception as exc:
-            logger.warning(f"[I2V first_frame_lock] {exc}")
-            return noise
+            # Returning `noise` here dropped the reference image and let the run
+            # continue as plain text-to-video while the report still named this
+            # strategy. A reference that cannot be applied is an error.
+            logger.error(f"[I2V first_frame_lock] could not apply the reference image: {exc}")
+            raise RuntimeError(
+                f"I2V first_frame_lock could not apply the reference image: {exc}"
+            ) from exc
 
     @staticmethod
     def _set_cond(cond, values):
@@ -1670,8 +1675,10 @@ class RadianceI2VPipeline:
             result[:, :, :1] = result[:, :, :1] * (1 - strength) + il_t
             return result
         except Exception as exc:
-            logger.warning(f"[I2V prepend_latent] {exc}")
-            return noise
+            logger.error(f"[I2V prepend_latent] could not apply the reference image: {exc}")
+            raise RuntimeError(
+                f"I2V prepend_latent could not apply the reference image: {exc}"
+            ) from exc
 
     def _decode_preview(self, vae, latent, target_frames):
         """Decode the preview batch. Returns (frames, failure_text_or_None).

@@ -899,6 +899,8 @@ def test_discovery_looks_one_level_down_a_search_directory(monkeypatch, tmp_path
 def test_discovery_falls_back_to_the_download_when_nothing_is_on_disk(monkeypatch):
     """The last resort is a network fetch; it must be reached, and its failure
     must be a None rather than an exception out of import."""
+    import radiance.color.ocio_setup as ocio_setup
+    monkeypatch.setattr(ocio_setup, "active_config_path", lambda: "")
     monkeypatch.setattr(ocio_module, "_OCIO_SEARCH_PATHS", [lambda: None])
     calls = []
 

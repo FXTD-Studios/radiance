@@ -121,35 +121,42 @@ def test_a_linear_delivery_does_not_clamp_the_master(tmp_path):
 
 # ── versioning ──────────────────────────────────────────────────────────────
 
-def test_the_first_version_is_v01_when_nothing_is_there(tmp_path):
-    assert get_next_version(str(tmp_path / "nope"), "shot") == "v01"
-    assert get_next_version(str(tmp_path), "shot") == "v01"
+def test_the_first_version_is_v0001_when_nothing_is_there(tmp_path):
+    assert get_next_version(str(tmp_path / "nope"), "shot") == "v0001"
+    assert get_next_version(str(tmp_path), "shot") == "v0001"
 
 
 def test_the_version_follows_the_highest_on_disk(tmp_path):
-    for name in ("shot_v01.mov", "shot_v02.mov", "shot_v07.mov"):
+    for name in ("shot_v0001.mov", "shot_v0002.mov", "shot_v0007.mov"):
         (tmp_path / name).touch()
-    assert get_next_version(str(tmp_path), "shot") == "v08", (
+    assert get_next_version(str(tmp_path), "shot") == "v0008", (
         "a gap in the numbering must not hand back a version that already exists"
     )
 
 
-def test_versions_stay_two_digits_until_they_cannot(tmp_path):
-    (tmp_path / "shot_v09.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v10"
-    (tmp_path / "shot_v99.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v100"
+def test_versions_are_four_digits_like_the_writer_stamps(tmp_path):
+    (tmp_path / "shot_v0009.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0010"
+    (tmp_path / "shot_v9999.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v10000"
+
+
+def test_names_from_before_4_0_still_count(tmp_path):
+    """3.x wrote shot_v02_v0001.mov; the counter must continue past it."""
+    (tmp_path / "shot_v02_v0001.mov").touch()
+    (tmp_path / "shot_v07.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0008"
 
 
 def test_another_shots_versions_do_not_count(tmp_path):
-    (tmp_path / "other_v42.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v01"
+    (tmp_path / "other_v0042.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0001"
 
 
 def test_a_regex_special_character_in_the_name_is_not_a_pattern(tmp_path):
     """`shot.a` must not match `shotXa`. The base goes through re.escape."""
-    (tmp_path / "shotXa_v03.mov").touch()
-    assert get_next_version(str(tmp_path), "shot.a") == "v01"
+    (tmp_path / "shotXa_v0003.mov").touch()
+    assert get_next_version(str(tmp_path), "shot.a") == "v0001"
 
 
 # ── the session log ─────────────────────────────────────────────────────────

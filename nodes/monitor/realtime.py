@@ -63,6 +63,16 @@ def _to_batch_numpy(t: torch.Tensor) -> np.ndarray:
     return arr if arr.ndim == 4 else arr[np.newaxis]
 
 
+def _display_rgb(frame: np.ndarray) -> np.ndarray:
+    """The colour channels of a frame for an 8-bit preview (GIF or JPEG).
+
+    Neither format can show alpha, so it is dropped on purpose. Until 4.0 an
+    RGBA frame reached Pillow as is: the JPEG writer raised and the GIF writer
+    read the four-channel bytes as RGB, scrambling the colours.
+    """
+    return frame[..., :3] if frame.shape[-1] > 3 else frame
+
+
 def _sobel_mag(gray: np.ndarray) -> np.ndarray:
     """Approximate Sobel magnitude via finite differences. (H,W) → (H,W)."""
     gx = np.abs(np.diff(gray, axis=1, prepend=gray[:, :1]))
@@ -268,7 +278,8 @@ class RadianceFocusPeaking:
             "required": {
                 "image": ("IMAGE", {
                     "tooltip": "Image to check, returned unchanged on passthrough. Edges are measured on "
-                               "BT.709 luma, normalised to the strongest edge in each frame."}),
+                               "BT.709 luma, normalised to the strongest edge in each frame. Alpha is kept on "
+                               "focus_peak."}),
                 "threshold": ("FLOAT", {
                     "default": 0.20, "min": 0.01, "max": 1.0, "step": 0.01,
                     "tooltip": "Normalised Sobel magnitude above which a pixel is considered in-focus.",
@@ -297,8 +308,12 @@ class RadianceFocusPeaking:
         pk_frames = np.zeros_like(frames)
         color = self._COLORS.get(peak_color, (1.0, 0.0, 0.0))
 
+        # Peaking paints the colour channels; an alpha channel rides along
+        # unchanged. Until 4.0 RGBA input raised (TEN-007).
         for b in range(frames.shape[0]):
-            pk_frames[b] = _focus_peak(frames[b], threshold, color, strength)
+            pk_frames[b, ..., :3] = _focus_peak(frames[b, ..., :3], threshold, color, strength)
+        if frames.shape[-1] > 3:
+            pk_frames[..., 3:] = frames[..., 3:]
 
         log.debug("FocusPeaking: %d frame(s), thr=%.2f, color=%s", frames.shape[0], threshold, peak_color)
         return (image, _to_tensor(pk_frames))
@@ -388,8 +403,9 @@ class RadianceSplitView:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image_a": ("IMAGE", {"tooltip": "Original / reference image."}),
-                "image_b": ("IMAGE", {"tooltip": "Processed / graded image."}),
+                "image_a": ("IMAGE", {"tooltip": "Original / reference image. Alpha is ignored; the "
+                                                 "comparison is RGB."}),
+                "image_b": ("IMAGE", {"tooltip": "Processed / graded image. Alpha is ignored."}),
                 "mode": (["wipe_h", "wipe_v", "side_by_side", "diff"], {
                     "default": "wipe_h",
                     "tooltip": "wipe_h: A left, B right of a vertical line. wipe_v: A above, B below. "
@@ -405,8 +421,10 @@ class RadianceSplitView:
         }
 
     def compare(self, image_a: torch.Tensor, image_b: torch.Tensor, mode: str, position: float):
-        batch_a = _to_batch_numpy(image_a)
-        batch_b = _to_batch_numpy(image_b)
+        # The comparison is of colour: alpha is dropped from both sides, so
+        # RGBA and mixed RGB / RGBA pairs work. Until 4.0 they raised (TEN-007).
+        batch_a = _display_rgb(_to_batch_numpy(image_a))
+        batch_b = _display_rgb(_to_batch_numpy(image_b))
         n = max(batch_a.shape[0], batch_b.shape[0])
 
         out = np.zeros((n, *batch_a.shape[1:]), dtype=np.float32)
@@ -444,7 +462,8 @@ class RadianceContactSheet:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frame batch to lay out, left to right then top to bottom. Clamped to "
-                               "[0, 1] and resized through 8-bit, so display-encoded input is expected."}),
+                               "[0, 1] and resized through 8-bit, so display-encoded input is expected. Alpha "
+                               "is not shown."}),
                 "thumb_width": ("INT", {
                     "default": 160, "min": 32, "max": 512, "step": 8,
                     "tooltip": "Width of each thumbnail in pixels.",
@@ -474,7 +493,8 @@ class RadianceContactSheet:
         label_frames: bool = True,
         background: str = "Black",
     ):
-        frames = _to_batch_numpy(images)          # (B, H, W, 3)
+        # Thumbnails show colour only; until 4.0 RGBA input raised (TEN-007).
+        frames = _display_rgb(_to_batch_numpy(images))          # (B, H, W, 3)
         B, H, W, _ = frames.shape
 
         aspect = H / max(W, 1)
@@ -553,7 +573,8 @@ class RadianceFlipbookGIF:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frames to animate, returned unchanged on passthrough. Clamped to [0, 1] "
-                               "and quantised to a 256-colour palette, so display-encoded input is expected."}),
+                               "and quantised to a 256-colour palette, so display-encoded input is expected. "
+                               "Alpha is not shown (the passthrough keeps it)."}),
                 "save_path": ("STRING", {
                     "default": "preview/flipbook.gif",
                     "tooltip": (
@@ -597,7 +618,8 @@ class RadianceFlipbookGIF:
             log.error("FlipbookGIF: Pillow not installed — cannot write GIF")
             return (images, "ERROR: Pillow not installed")
 
-        frames = _to_batch_numpy(images)  # (B, H, W, 3)
+        # Alpha is dropped: GIF has no partial transparency to carry it.
+        frames = _display_rgb(_to_batch_numpy(images))  # (B, H, W, 3)
         B, H, W, _ = frames.shape
 
         # Compute resize dimensions
@@ -1003,10 +1025,10 @@ def _shutdown_servers(keep_port: Optional[int] = None) -> int:
 
 
 def _frame_to_jpeg(arr: np.ndarray, quality: int = 85) -> bytes:
-    """Convert (H,W,3) float32 [0,1] to JPEG bytes."""
+    """Convert (H,W,3) float32 [0,1] to JPEG bytes; alpha, if any, is dropped."""
     if not HAS_PIL:
         return b""
-    u8  = (np.clip(arr, 0, 1) * 255).astype(np.uint8)
+    u8  = (np.clip(_display_rgb(arr), 0, 1) * 255).astype(np.uint8)
     pil = _PilImage.fromarray(u8)
     buf = io.BytesIO()
     pil.save(buf, format="JPEG", quality=quality)
@@ -1041,7 +1063,8 @@ class RadiancePreviewServer:
             "required": {
                 "images": ("IMAGE", {
                     "tooltip": "Frames to publish, returned unchanged on passthrough. Only the last frame "
-                               "is served, clamped to [0, 1] as an 8-bit JPEG."}),
+                               "is served, clamped to [0, 1] as an 8-bit JPEG. Alpha is not shown (the "
+                               "passthrough keeps it)."}),
                 "port": ("INT", {
                     "default": 8765, "min": 1024, "max": 65535,
                     "tooltip": "TCP port for the preview HTTP server.",
@@ -1093,8 +1116,9 @@ class RadiancePreviewServer:
             return (images, f"ERROR: PreviewServer not started, {bind_error}")
 
         frames = _to_batch_numpy(images)
-        # Serve only the last frame of the batch (most recently processed)
-        frame = frames[-1]
+        # Serve only the last frame of the batch (most recently processed).
+        # A JPEG cannot carry alpha, so it is dropped here.
+        frame = _display_rgb(frames[-1])
 
         # Optional resize
         if resize_width > 0 and frame.shape[1] != resize_width:

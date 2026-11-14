@@ -264,3 +264,15 @@ class TestNodeRegistrations:
         assert isinstance(peak_linear, float)
         assert isinstance(colorspace_json, str)
 
+
+
+def test_color_space_info_records_its_settings_and_passes_the_image_through():
+    """scene_referred and peak_nits are metadata by design (KNOWN_ISSUES, 4.0)."""
+    import json as _json
+    import torch as _torch
+    from radiance.nodes.hdr.colorspace import RadianceColorSpaceInfo
+    img = _torch.rand(1, 4, 4, 3) * 3.0
+    out, meta = RadianceColorSpaceInfo().info(img, scene_referred=True, peak_nits=1000.0)
+    assert out is img
+    m = _json.loads(meta)
+    assert m["scene_referred"] is True and m["peak_nits"] == 1000.0

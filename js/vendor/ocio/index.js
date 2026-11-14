@@ -2,8 +2,12 @@
 // Upstream resolves the Emscripten module through the package's "#ocio-wasm"
 // imports map and the .wasm URL through ./wasm-url.js. Neither exists outside
 // an npm install, and ComfyUI serves this directory as static files, so both
-// are resolved here instead. This is the ONLY change from the published
-// @bb-studio/ocio 0.0.7 source -- see README.md in this directory.
+// are resolved here instead. The WebGPU/WGSL shader builder (and the naga
+// translator it loads) is not vendored: Radiance's viewer uses WebGL, and
+// getWebGpuShaderInfo() says so if called. These are the ONLY changes from the
+// published @bb-studio/ocio 0.0.12 source -- see README.md in this directory.
+import { OcioRuntime, normalizeOcioConfigPackage } from './runtime.js';
+
 let _ocioWasmModule = null;
 async function _loadOcioWasmModule() {
   if (_ocioWasmModule) return _ocioWasmModule;
@@ -15,7 +19,12 @@ async function _loadOcioWasmModule() {
   return _ocioWasmModule;
 }
 const DEFAULT_WASM_URL = new URL('./ocio-wasm.wasm', import.meta.url).href;
+async function loadWebGpuShaderBuilder() {
+  throw new Error('The WebGPU shader builder of @bb-studio/ocio is not vendored in Radiance.');
+}
 // ── end patch ───────────────────────────────────────────────────────────────
+
+export { OcioRuntime, normalizeOcioConfigPackage };
 
 export const ACES_CG_V2_CONFIG = 'ocio://cg-config-v2.2.0_aces-v1.3_ocio-v2.4';
 export const ACES_STUDIO_V2_CONFIG = 'ocio://studio-config-v2.2.0_aces-v1.3_ocio-v2.4';
@@ -185,6 +194,12 @@ export async function createOCIO(options = {}) {
   };
 
   return new OCIO(await moduleFactory(moduleOptions));
+}
+
+export async function createOcioRuntime(options = {}) {
+  const { maxRgbCacheEntries, ...ocioOptions } = options;
+  const ocio = await createOCIO(ocioOptions);
+  return new OcioRuntime(ocio, { maxRgbCacheEntries });
 }
 
 export class OCIO {
@@ -1046,6 +1061,20 @@ export class Processor {
 
   getGpuShaderText(options = {}) {
     return this.getGpuShaderInfo(options).shaderText;
+  }
+
+  async getWebGpuShaderInfo(options = {}) {
+    const shaderInfo = this.getGpuShaderInfo({
+      ...options,
+      language: 'glsl_vk_4.6',
+      allowTexture1D: false
+    });
+    const { buildWebGpuShaderInfo } = await loadWebGpuShaderBuilder();
+    return buildWebGpuShaderInfo(shaderInfo);
+  }
+
+  async getWebGpuShaderText(options = {}) {
+    return (await this.getWebGpuShaderInfo(options)).shaderText;
   }
 
   _applyFloat32(target, channels, functionName) {

@@ -50,6 +50,11 @@ def _block_count(ks: list[str], prefix: str) -> int:
 # older, looser matchers they would otherwise fall into (hunyuan_video's
 # "img_in"+"proj", flux's "double_blocks").
 _NEW_FAMILY_HEURISTICS = [
+    # FLUX 3 Image (Klein 5.6B, base and step-distilled): per-mode block
+    # stacks, the two keys comfy/model_detection.py matches it on. It has
+    # single_blocks and txt_in like Flux.2, but no double_blocks.
+    (lambda ks, f: any("content_mode_blocks.image.0.attn_out.weight" in k for k in ks)
+     and any("single_stream_modulations.txt.lin.weight" in k for k in ks), "flux3"),
     # HunyuanVideo 1.5: HunyuanVideo keys plus the vision_in projector.
     (lambda ks, f: any("txt_in.individual_token_refiner" in k for k in ks)
      and any(k.startswith("vision_in.proj.") for k in ks), "hunyuan_video_15"),
@@ -156,6 +161,8 @@ LATENT_CHANNELS = {
     "cosmos": 16, "cogvideox": 16, "mochi": 12,
     # ALBABIT-FIX: Chroma (distilled Flux, 16ch) and Flux.2 / Flux.2 Klein (128ch)
     "chroma": 16, "flux2": 128, "flux2-klein": 128,
+    # FLUX 3 Image Klein decodes through the Flux.2 VAE (latent_formats.Flux2).
+    "flux3": 128,
     # ALBABIT-FIX: WAN 2.2 TI2V-5B's VAE is a distinct architecture (comfy's own
     # latent_formats.Wan22) -- 48 latent channels, not 16. Verified directly on
     # a real wan2.2_ti2v_5B_fp16.safetensors checkpoint's patch_embedding.weight
@@ -181,7 +188,7 @@ LATENT_CHANNELS = {
 # the families whose latent is not the SD/Flux 8x8 grid. Read by Resolution
 # and the HDR VAE decode tile maths.
 VAE_SPATIAL_FACTOR = {
-    "ltxv": 32, "ltxav": 32, "flux2": 16, "flux2-klein": 16,
+    "ltxv": 32, "ltxav": 32, "flux2": 16, "flux2-klein": 16, "flux3": 16,
     "wan_ti2v": 16, "minimax": 16, "qwen_image21": 16,
     "hunyuan_image": 32, "hunyuan_video_15": 16,
 }
@@ -202,6 +209,7 @@ _FORMAT_MAP = {
     "cosmos": "cosmos_16ch", "cogvideox": "cogvideox_16ch", "mochi": "mochi_12ch",
     # ALBABIT-FIX: Chroma and Flux.2 / Flux.2 Klein (share the 128ch VAE)
     "chroma": "chroma_16ch", "flux2": "flux2_128ch", "flux2-klein": "flux2_128ch",
+    "flux3": "flux2_128ch",
     "wan_ti2v": "wan_ti2v_48ch",
     "minimax": "minimax_24ch",
     "qwen_image": "wan_16ch", "krea2": "wan_16ch",
@@ -239,6 +247,8 @@ CLIP_SLOT_ORDER = {
     # ALBABIT-FIX: Chroma — distilled Flux, single T5XXL (no clip_l). Flux.2 /
     # Flux.2 Klein — single LLM encoder (Mistral-3 24B / Qwen3-4B).
     "chroma": ["t5xxl"], "flux2": ["llm_encoder"], "flux2-klein": ["llm_encoder"],
+    # FLUX 3 Image Klein: one Qwen3-VL-4B file (CLIPType.FLUX3).
+    "flux3": ["llm_encoder"],
     # ALBABIT-FIX: WAN 2.2 TI2V-5B uses the same umt5-xxl text encoder as every
     # other WAN variant -- confirmed via the official TI2V-5B workflow's
     # CLIPLoader (umt5_xxl_fp8_e4m3fn_scaled.safetensors, type "wan").
@@ -334,6 +344,11 @@ _CLIP_TYPE_VARIANTS = {
     # ALBABIT-FIX: Qwen-Image 2.1 shares CLIPType.QWEN_IMAGE. comfy.sd routes the
     # Qwen3-VL-8B file by CLIPType, so any other type loads a different encoder.
     "qwen_image21": ["QWEN_IMAGE"],
+    # FLUX 3: CLIPType.FLUX3 only. No fallback type: any other one loads the
+    # Qwen3-VL-4B file as a different encoder (Mage-Flow's, last hidden
+    # state) and the DiT gets the wrong conditioning; get_clip_type_enum
+    # stops with an update message instead.
+    "flux3": ["FLUX3"],
 }
 
 _BASE_CLIP_VRAM = {
@@ -345,6 +360,8 @@ _BASE_CLIP_VRAM = {
     # ALBABIT-FIX: Chroma — single T5XXL (no clip_l). Flux.2 Dev — Mistral-3 24B
     # encoder (much heavier). Flux.2 Klein — Qwen3-4B, same as Z-Image.
     "chroma": 3.5, "flux2": 8.0, "flux2-klein": 3.0,
+    # Qwen3-VL-4B: bf16 file 8.9 GB, int8_convrot 4.9 GB (BFL's ComfyUI pack).
+    "flux3": 8.9,
     # ALBABIT-FIX: same umt5-xxl CLIP as "wan" -- identical VRAM cost.
     "wan_ti2v": 3.0,
     # ALBABIT-FIX: MiniMax H3's Qwen3-VL-32B encoder (truncated to 50 layers)
@@ -384,6 +401,8 @@ _BASE_VRAM = {
     "cosmos": 14.0, "cogvideox": 12.0, "mochi": 16.0,
     # ALBABIT-FIX: Chroma (~8.9B distilled Flux) and Flux.2 / Flux.2 Klein (128ch)
     "chroma": 10.0, "flux2": 20.0, "flux2-klein": 14.0,
+    # FLUX 3 Image Klein 5.6B: bf16 weights 11.2 GB (BFL), int8_convrot 5.8 GB.
+    "flux3": 11.2,
     # ALBABIT-FIX: WAN 2.2 TI2V-5B is a ~5B DiT (vs "wan"'s 14B) -- rough
     # estimate, not sourced from a specific benchmark like the others above.
     "wan_ti2v": 7.0,
@@ -419,7 +438,7 @@ _COMFY_CONFIG_TO_ARCH = {
     "SSD1B": "sdxl", "Segmind_Vega": "sdxl", "SD3": "sd3",
     "AuraFlow": "aura_flow", "PixArtAlpha": "pixart", "PixArtSigma": "pixart",
     "Flux": "flux", "FluxInpaint": "flux", "FluxSchnell": "flux",
-    "Flux2": "flux2", "Chroma": "chroma", "GenmoMochi": "mochi",
+    "Flux2": "flux2", "Flux3": "flux3", "Chroma": "chroma", "GenmoMochi": "mochi",
     "LTXV": "ltxv", "LTXAV": "ltxav", "MiniMaxH3": "minimax",
     "HunyuanVideo": "hunyuan_video", "HunyuanVideoI2V": "hunyuan_video",
     "HunyuanVideoSkyreelsI2V": "hunyuan_video",
@@ -593,7 +612,7 @@ def get_clip_type_enum(model_type: str):
     # Chroma -> CLIPType.CHROMA, Flux.2 -> CLIPType.FLUX2 (Flux.2 Klein via
     # _CLIP_TYPE_VARIANTS override above, since "FLUX2-KLEIN" isn't a real enum).
     for name in ("hunyuan_video", "wan", "wan_ti2v", "ltxv", "ltxav", "pixart", "aura_flow", "lumina2", "z_image",  # ALBABIT-FIX: "ltx" → "ltxv"
-                  "cosmos", "cogvideox", "mochi", "chroma", "flux2", "flux2-klein",
+                  "cosmos", "cogvideox", "mochi", "chroma", "flux2", "flux2-klein", "flux3",
                   "qwen_image", "qwen_image21", "krea2", "omnigen2", "longcat_image", "hunyuan_image",
                   "hunyuan_video_15", "hidream", "kandinsky5", "kandinsky5_image"):
         enum_name = name.upper().replace(".", "_")
@@ -607,6 +626,13 @@ def get_clip_type_enum(model_type: str):
                 break
         else:
             mapping.setdefault(name, comfy.sd.CLIPType.STABLE_DIFFUSION)
+
+    if model_type == "flux3" and not hasattr(comfy.sd.CLIPType, "FLUX3"):
+        raise RuntimeError(
+            "FLUX 3 Image Klein needs a ComfyUI with FLUX 3 support (CLIPType.FLUX3, "
+            "ComfyUI 0.41.1 or a build from 15 October 2026 on). Update ComfyUI: this "
+            "one has no FLUX 3 text encoder, and any other type would load the "
+            "Qwen3-VL-4B file as the wrong encoder.")
 
     clip_type = mapping.get(model_type)
     if clip_type is None:

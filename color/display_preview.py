@@ -27,7 +27,21 @@ import numpy as np
 
 log = logging.getLogger("radiance.display_preview")
 
-ACES2_CONFIG = "studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
+# The newest ACES 2 studio config the installed OCIO has, as hdr/aces2_ocio.py picks
+# it; the sRGB SDR view is the same in ACES 2.0's v4.0.0 and ACES 2.1's v5.0.0.
+_STUDIO_CONFIGS = ("studio-config-v5.0.0_aces-v2.1_ocio-v2.6", "studio-config-v4.0.0_aces-v2.0_ocio-v2.5")
+
+
+def _newest_studio_config() -> str:
+    try:
+        import PyOpenColorIO as ocio  # type: ignore
+        names = {c[0] for c in ocio.BuiltinConfigRegistry().getBuiltinConfigs()}
+        return next((c for c in _STUDIO_CONFIGS if c in names), _STUDIO_CONFIGS[-1])
+    except Exception:  # noqa: BLE001 - no OCIO: aces2_processor reports it
+        return _STUDIO_CONFIGS[-1]
+
+
+ACES2_CONFIG = _newest_studio_config()
 ACES2_DISPLAY = "sRGB - Display"
 ACES2_VIEW = "ACES 2.0 - SDR 100 nits (Rec.709)"
 

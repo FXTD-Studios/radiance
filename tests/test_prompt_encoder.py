@@ -94,8 +94,9 @@ def test_encoder_returns_debug_outputs_and_uses_model_meta():
 
 
 def test_loader_exposes_model_meta_output_contract():
-    assert RadianceUnifiedLoader.RETURN_TYPES[-1] == "STRING"
-    assert RadianceUnifiedLoader.RETURN_NAMES[-1] == "model_meta"
+    # Saved links name output slots: model_meta stays slot 4, upsampler_clip comes after it.
+    assert RadianceUnifiedLoader.RETURN_TYPES[4:6] == ("STRING", "CLIP")
+    assert RadianceUnifiedLoader.RETURN_NAMES[4:6] == ("model_meta", "upsampler_clip")
 
 
 class TestMiniMaxArch:

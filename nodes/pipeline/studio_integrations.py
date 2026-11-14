@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 from radiance.nodes.io.write import _save_exr, _save_pil_image
+from radiance.core.sequence_safety import stale_sequence_frames, stale_warning, write_atomic
 
 logger = logging.getLogger("radiance.nodes.studio")
 
@@ -182,7 +183,8 @@ class RadianceNukeSend:
             else:
                 fname = f"{filename}.{frame_num:04d}.exr"
             fpath = out_dir / fname
-            _save_exr(_for_format(frames[i], input_space, linear_file=True), fpath, half=half_float)
+            _arr = _for_format(frames[i], input_space, linear_file=True)
+            write_atomic(fpath, lambda tmp, _a=_arr: _save_exr(_a, tmp, half=half_float))
             written.append(str(fpath))
 
         first_frame = frame_start
@@ -209,6 +211,11 @@ class RadianceNukeSend:
         nk_path.write_text(nk_content, encoding="utf-8")
 
         status = f"{len(written)} EXR frame(s) + .nk → {out_dir}"
+        _stale = stale_warning(stale_sequence_frames(
+            out_dir, filename, ".", ".exr",
+            range(frame_start, frame_start + len(frames))), filename)
+        if _stale:
+            status += " | " + _stale
         render_path = str(out_dir)
 
         if push_to_nuke:
@@ -249,6 +256,9 @@ class RadianceNukeSend:
             return f"FAILED ({e})"
         if ok:
             return f"OK ({msg})"
+        if str(msg).startswith("UNCONFIRMED: "):
+            # Sent, but Nuke never acknowledged it: neither OK nor FAILED.
+            return f"UNCONFIRMED ({msg[len('UNCONFIRMED: '):]})"
         return f"FAILED ({msg})"
 
 
@@ -370,14 +380,22 @@ class RadianceDaVinciSend:
             fname = f"{filename}.{ext}" if len(frames) == 1 else f"{filename}.{frame_num:04d}.{ext}"
             fpath = out_dir / fname
             if bit_depth == "EXR":
-                _save_exr(_for_format(frames[i], input_space, linear_file=True), fpath, half=True)
+                _arr = _for_format(frames[i], input_space, linear_file=True)
+                write_atomic(fpath, lambda tmp, _a=_arr: _save_exr(_a, tmp, half=True))
             elif bit_depth == "8bit":
-                _save_pil_image(_for_format(frames[i], input_space, linear_file=False), fpath, "8-bit PNG")
+                _arr = _for_format(frames[i], input_space, linear_file=False)
+                write_atomic(fpath, lambda tmp, _a=_arr: _save_pil_image(_a, tmp, "8-bit PNG"))
             else:  # 16bit
-                _save_pil_image(_for_format(frames[i], input_space, linear_file=False), fpath, "16-bit TIFF")
+                _arr = _for_format(frames[i], input_space, linear_file=False)
+                write_atomic(fpath, lambda tmp, _a=_arr: _save_pil_image(_a, tmp, "16-bit TIFF"))
             written.append(str(fpath))
 
         status = f"{len(written)} frame(s) [{bit_depth}] → {out_dir}"
+        _stale = stale_warning(stale_sequence_frames(
+            out_dir, filename, ".", f".{ext}",
+            range(frame_start, frame_start + len(frames))), filename)
+        if _stale:
+            status += " | " + _stale
         if import_to_media_pool:
             pattern = None
             if len(written) > 1:

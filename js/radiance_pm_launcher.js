@@ -32,14 +32,14 @@ function buildLauncher(node) {
     const mk = (tag, css, txt) => { const e = document.createElement(tag); e.style.cssText = css; if (txt != null) e.textContent = txt; return e; };
     const secLabel = (s) => mk("div", "font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#52555c;margin:4px 0 1px;", s);
     const tile = (icon, label, accent, on) => {
-        const el = mk("div", `height:46px;background:#26262c;border:1px solid ${accent ? "rgba(200,169,110,0.35)" : "rgba(255,255,255,0.08)"};border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9.5px;color:#cdd0d6;cursor:pointer;`);
-        el.innerHTML = `<span style="font-size:14px;color:${accent ? "#c8a96e" : "#8a8f98"};">${icon}</span>${label}`;
+        const el = mk("div", `height:46px;background:#26262c;border:1px solid ${accent ? "rgba(10,132,255,0.45)" : "rgba(255,255,255,0.08)"};border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9.5px;color:#cdd0d6;cursor:pointer;`);
+        el.innerHTML = `<span style="font-size:14px;color:${accent ? "#0a84ff" : "#8a8f98"};">${icon}</span>${label}`;
         el.onmouseenter = () => { el.style.background = "#2f2f37"; };
         el.onmouseleave = () => { el.style.background = "#26262c"; };
         el.onclick = on;
         return el;
     };
-    const primary = (label, on) => { const b = mk("div", "height:30px;background:#c8a96e;color:#241c08;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "#d8bd87"; }; b.onmouseleave = () => { b.style.background = "#c8a96e"; }; b.onclick = on; return b; };
+    const primary = (label, on) => { const b = mk("div", "height:30px;background:#0a84ff;color:#ffffff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "#d8bd87"; }; b.onmouseleave = () => { b.style.background = "#0a84ff"; }; b.onclick = on; return b; };
     const ghost = (label, on) => { const b = mk("div", "height:30px;background:none;border:1px solid rgba(255,255,255,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#cdd0d6;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "rgba(255,255,255,0.05)"; }; b.onmouseleave = () => { b.style.background = "none"; }; b.onclick = on; return b; };
     const flink = (label, url) => { const s = mk("span", "cursor:pointer;", label); s.onmouseenter = () => { s.style.color = "#cdd0d6"; }; s.onmouseleave = () => { s.style.color = "#6c707a"; }; s.onclick = () => window.open(url, "_blank"); return s; };
 

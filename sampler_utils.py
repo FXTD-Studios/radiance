@@ -18,6 +18,7 @@ import comfy.samplers
 import comfy.sample
 import comfy.model_management
 import comfy.utils
+from comfy_extras import nodes_flux
 try:
     from .tensor_contract import ensure_4d, ensure_5d
 except (ImportError, ValueError):
@@ -56,6 +57,7 @@ MODEL_TYPES = [
     "flux",
     # ALBABIT-FIX: flux2 / flux2-klein were absent — Loader uses them, Sampler silently fell back to "flux"
     "flux2", "flux2-klein",
+    "flux3",  # FLUX 3 Image Klein (base and step-distilled), see model/detect.py
     "sd3",
     # ALBABIT-FIX: renamed "sd35" → "sd3.5" to match Loader, model/detect.py, prompt.py
     "sd3.5",
@@ -86,22 +88,32 @@ MODEL_TYPES = [
 VIDEO_MODEL_TYPES = {"wan", "wan_ti2v", "ltxv", "ltxav", "hunyuan_video", "cosmos", "cogvideox", "mochi", "minimax",
                      "hunyuan_video_15", "kandinsky5"}
 
-# ALBABIT-FIX: flux2/flux2-klein embed guidance like flux. lumina2 and z_image
+# ALBABIT-FIX: flux2 embeds guidance like flux. lumina2 and z_image
 # are not here: their official templates run a plain KSampler cfg (4) with no
 # guidance-embed node (see CFG_GUIDED_MODELS).
 # 3.5: LongCat-Image is a Flux transformer and its official template drives it
 # through FluxGuidance (4.0) like Flux.1, with cfg held at 4 under CFGNorm.
-GUIDANCE_EMBED_MODELS = {"flux", "flux2", "flux2-klein", "ltxv", "longcat_image"}
+# ALBABIT-FIX: HunyuanVideo 1.0 is guidance-distilled: its template runs FluxGuidance 6
+# with no CFG, and ComfyUI applies 6 itself when no guidance is given.
+GUIDANCE_EMBED_MODELS = {"flux", "flux2", "ltxv", "longcat_image", "hunyuan_video"}
 
 # ALBABIT-FIX: "sd35" renamed "sd3.5" (the Loader/detect.py name). lumina2,
 # z_image and wan_ti2v run a real KSampler cfg with no guidance-embed node in
 # their official workflows.
-CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "hunyuan_video", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
+CFG_GUIDED_MODELS = {"wan", "wan_ti2v", "sdxl", "sd1.5", "sd3", "sd3.5", "ltxav", "cogvideox", "mochi", "lumina2", "z_image",
                      # 3.5: every one of these runs a plain KSampler / CFGGuider with
                      # a real cfg in its official Comfy-Org template.
                      "qwen_image", "krea2", "hunyuan_image", "hunyuan_video_15",
                      "hidream", "omnigen2", "kandinsky5", "kandinsky5_image",
-                     "qwen_image21"}  # ALBABIT-FIX: same evidence, its template's KSampler cfg
+                     "qwen_image21",  # ALBABIT-FIX: same evidence, its template's KSampler cfg
+                     # ALBABIT-FIX: Flux.2 Klein has no guidance_in either: BFL's
+                     # guidance_scale 4.0 for Base is a real cfg (diffusers' Klein
+                     # pipeline), as is the CFGGuider of its official templates.
+                     "flux2-klein",
+                     # FLUX 3 Image Klein: no guidance embedding (the DiT has no
+                     # guidance_in). Base runs a real cfg 3.5, the distilled flow
+                     # map cfg 1 (MODEL_DEFAULTS / refine_flux3_from_model).
+                     "flux3"}
 
 # ALBABIT-FIX: "minimax" belongs in neither set above on purpose. Its reference
 # pipeline uses BasicGuider, which has no cfg input and no guidance-embed
@@ -121,8 +133,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     },
     # ALBABIT-FIX: guidance 4.0 per BFL's example code, steps 20 per Comfy-Org's
     # Flux.2 Dev/Klein templates. Klein's entry is the fallback without
-    # model_meta: Base (4.0) and distilled (~1.0) differ only by file name, which
-    # refine_distillation_from_meta() reads.
+    # model_meta: Base (cfg 4.0) and distilled (cfg 1.0) differ only by file name,
+    # which refine_distillation_from_meta() reads.
     "flux2": {
         "cfg": 1.0,
         "scheduler": "simple",
@@ -134,10 +146,22 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "flux2-klein": {
         "cfg": 1.0,
         "scheduler": "simple",
-        "guidance": 4.0,
+        "guidance": 0.0,
         "shift": 1.0,
         "sampler": "euler",
         "steps": 20,
+    },
+    # FLUX 3 Image Klein base: Comfy-Org's image_flux3_klein_t2i.json (KSampler
+    # 50 steps, cfg 3.5, euler, simple) and BFL's reference (50 steps, CFG
+    # 3.5). The step-distilled model is refined to cfg 1, 16 steps (its
+    # template and BFL's). The native shift (mu 1.936) is the model's own.
+    "flux3": {
+        "cfg": 3.5,
+        "scheduler": "simple",
+        "guidance": 0.0,
+        "shift": 1.0,
+        "sampler": "euler",
+        "steps": 50,
     },
     # ALBABIT-FIX: cfg 4.5->5.45, sampler dpmpp_2m->euler, steps=30 -- all
     # verified directly against the official SD3 Medium example workflow's
@@ -208,11 +232,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 20,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps=30 added (was previously "faible confiance" from a
-    # Lightricks model card, now upgraded to "haute" -- confirmed by
-    # ComfyUI's own official LTX Video example workflow, corroborated by
-    # Lightricks' own 13B-dev first-pass config). The 2B-0.9.6-dev config
-    # suggests 40 instead -- our entry doesn't distinguish 2B/13B currently.
+    # ALBABIT-FIX: steps=30 from ComfyUI's official LTX Video workflow and
+    # Lightricks' 13B-dev config (the 2B-0.9.6-dev config suggests 40).
     "ltxv": {
         "cfg": 1.0,
         "scheduler": "simple",
@@ -231,16 +252,16 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "sampler": "euler",
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: steps 20 from the official ComfyUI HunyuanVideo workflow, the
-    # source of this entry's other values. Tencent's README recommends 50.
+    # ALBABIT-FIX: the official ComfyUI HunyuanVideo workflow: 20 steps, FluxGuidance 6
+    # and no CFG (BasicGuider), shift 7. Tencent's README recommends 50 steps.
     "hunyuan_video": {
-        "cfg": 6.0,
+        "cfg": 1.0,
         "scheduler": "simple",
-        "guidance": 0.0,
+        "guidance": 6.0,
         "shift": 7.0,
         "sampler": "euler",
         "steps": 20,
-        "guidance_type": "cfg",
+        "guidance_type": "embedding",
     },
     # ALBABIT-FIX: Lumina2's official workflow runs a plain KSampler (cfg 4,
     # res_multistep, 25 steps) with no guidance-embed node, so this is classic
@@ -290,11 +311,9 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 50,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: cfg/scheduler/steps verified against lodestones' own official
-    # Chroma1-HD ComfyUI workflow (cfg was 1.0, wrong; scheduler was "simple",
-    # wrong -- should be "beta"). "steps" is a generic (non-distillation)
-    # fallback -- new for this architecture, see refine_distillation_from_meta's
-    # docstring/_configure_model_and_defaults for how it's resolved.
+    # ALBABIT-FIX: cfg, scheduler "beta" and steps from lodestones' official
+    # Chroma1-HD workflow; steps is a generic fallback (see
+    # refine_distillation_from_meta).
     "chroma": {
         "cfg": 3.8,
         "scheduler": "beta",
@@ -440,11 +459,8 @@ MODEL_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "steps": 50,
         "guidance_type": "cfg",
     },
-    # ALBABIT-FIX: previously fell back to "sd1.5" (cfg=7.0/dpmpp_2m/normal) --
-    # verified against AuraFlow's own official ComfyUI workflow, which
-    # contradicts all three. No shift node present (unlike Lumina2, which
-    # reuses the same ModelSamplingAuraFlow node but at shift=6.0 -- confirmed
-    # NOT applicable to AuraFlow's own workflow, checked directly).
+    # ALBABIT-FIX: was the sd1.5 fallback; values from AuraFlow's official
+    # ComfyUI workflow, which has no shift node (unlike Lumina2).
     "aura_flow": {
         "cfg": 3.48,
         "scheduler": "sgm_uniform",
@@ -578,6 +594,20 @@ class RadianceModelRegistry:
                 if res: return res
             except Exception as e:
                 logger.debug(f"Detector {detector.__name__} failed: {e}")
+        # Not recognised: the sampler applies 'sd1.5' defaults. Say so where it
+        # is visible; this used to be silent, and a newer model family then ran
+        # with SD1.5 steps, cfg and sampler without any indication.
+        # Warn only for a model whose config class is not one of the SD
+        # families, which are the ones this default is right for.
+        try:
+            _cfg = type(model.model.model_config).__name__
+        except Exception:
+            _cfg = ""
+        if not _cfg.startswith(("SD", "SSD", "Segmind")):
+            logger.warning(
+                "[Radiance] Model family not recognised (config class %r); using generic "
+                "'sd1.5' sampler defaults. Set model_type on the sampler (or wire model_meta "
+                "from the Loader) if this is wrong.", _cfg or "unknown")
         return "sd1.5"
 
 @RadianceModelRegistry.register(priority=1)
@@ -595,14 +625,19 @@ def detect_by_config(model) -> Optional[str]:
             "Chroma": "chroma", "ChromaRadiance": "chroma",
             # ALBABIT-FIX: Flux2 config class maps to "flux2", not "flux"
             "Flux": "flux", "FluxSchnell": "flux", "FluxInpaint": "flux", "Flux2": "flux2",
+            "Flux3": "flux3",  # FLUX 3 Image Klein (comfy supported_models.Flux3)
             "CogVideoX": "cogvideox", "CogVideo": "cogvideox",
             "Mochi": "mochi",  # ALBABIT-FIX: Mochi-1 config class detection
             "MiniMaxH3": "minimax",  # ALBABIT-FIX: MiniMax H3 config class detection
             # ALBABIT-FIX: without it, detect_by_sampling reported Qwen-Image 2.1 as "flux".
             "QwenImage21": "qwen_image21",
         }
-        for pattern, mtype in config_map.items():
-            if pattern in config_cls: return mtype
+        # Substring match, because ComfyUI's classes carry suffixes (WAN21_T2V),
+        # longest pattern first: in table order "Flux" matched "Flux2" before
+        # "Flux2" was reached, so Flux.2 was detected as Flux.1.
+        for pattern in sorted(config_map, key=len, reverse=True):
+            if pattern in config_cls:
+                return config_map[pattern]
     except Exception as exc:
         logger.warning("[nodes_sampler] detect_by_config: %s", exc)
     return None
@@ -684,6 +719,40 @@ def parse_model_meta(model_meta: str) -> Tuple[str, str, List[str]]:
 LIGHTNING_LORA = re.compile(r"(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?")
 
 
+#: FLUX 3 Image Klein step-distilled (flow map): its ComfyUI templates and BFL's
+#: reference both run 16 steps without guidance (cfg 1).
+FLUX3_DISTILLED: Dict[str, Any] = {"cfg": 1.0, "steps": 16}
+
+
+def _flux3_name_is_distilled(name: str) -> bool:
+    """BFL names the step-distilled files ``flux3_image_klein_sd_*``."""
+    name = name.lower()
+    # ALBABIT-FIX: BFL renamed them: plain flux3-image-klein-* is now the distilled
+    # model and flux3-image-klein-base-* the base, while the old plain
+    # flux3_image_klein_* was the base. Both spellings stay recognised.
+    return ("_sd_" in name or "_sd." in name or "distill" in name
+            or ("flux3-image-klein" in name and "-base" not in name))
+
+
+def refine_flux3_from_model(model) -> Optional[Dict[str, Any]]:
+    """FLUX 3 base and step-distilled from the weights, not the file name.
+
+    The distilled DiT carries a flow-map head (``ref_time_in``), which ComfyUI
+    reads into ``Flux3.flow_map`` (comfy/model_detection.py). Returns the
+    distilled settings, ``{}`` for the base model (MODEL_DEFAULTS applies),
+    or None when the model does not say (not a FLUX 3 DiT, or an older
+    ComfyUI), leaving the file-name rule in charge.
+    """
+    try:
+        dm = model.get_model_object("diffusion_model")
+    except Exception:
+        return None
+    flow_map = getattr(dm, "flow_map", None)
+    if not isinstance(flow_map, bool) or type(dm).__name__ != "Flux3":
+        return None
+    return dict(FLUX3_DISTILLED) if flow_map else {}
+
+
 def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) -> Optional[Dict[str, Any]]:
     """
     Some checkpoints need settings that differ from their model_type's generic
@@ -704,14 +773,26 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
                 return {"cfg": 1.0, "steps": int(match.group(1))}
     if not unet_file:
         return None
-    name = unet_file.lower()
+    # ALBABIT-FIX: the file's own name, not its folder: a "klein-base/" folder made
+    # a distilled file read as the base.
+    name = re.split(r"[\\/]", unet_file)[-1].lower()
+    if detected_type == "flux3":
+        return FLUX3_DISTILLED if _flux3_name_is_distilled(name) else None
+    # ALBABIT-FIX: the LTX 2.3 / 2.5 Distilled models run at cfg 1 in both passes; the
+    # frontend's stage presets set their steps (8, then 3), which differ per pass.
+    if detected_type == "ltxav" and "distilled" in name:
+        return {"cfg": 1.0}
     if detected_type == "flux2-klein":
         is_distilled = "base" not in name
-        return {"guidance": 1.0, "steps": 4} if is_distilled else {"guidance": 4.0, "steps": 50}
+        return {"cfg": 1.0, "steps": 4} if is_distilled else {"cfg": 4.0, "steps": 50}
     if detected_type == "flux" and "schnell" in name:
         return {"guidance": 0.0, "steps": 4}
     if detected_type == "flux" and "krea" in name:
         return {"guidance": 4.5}
+    # ALBABIT-FIX: FLUX.1 Kontext Dev runs at guidance 2.5 (BFL's default and
+    # ComfyUI's flux_kontext_dev_basic template), not Flux.1 Dev's 3.5.
+    if detected_type == "flux" and "kontext" in name:
+        return {"guidance": 2.5}
     if detected_type == "sdxl" and "turbo" in name:
         return {"cfg": 1.0, "steps": 1, "sampler": "euler_ancestral"}
     # ALBABIT-FIX: cfg=1.6 (not the "pure" diffusers guidance_scale=0.0
@@ -944,12 +1025,11 @@ def compute_base_sigmas(
     model,
     scheduler_name: str,
     total_steps: int,
-    primary_scheduler: str,
     flux_shift: float,
     denoise: float,
     cache: SigmaCache,
     force_full_denoise: bool = False, 
-    force_exact_steps: bool = False, 
+    force_exact_steps: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     # ALBABIT-FIX: Properly define how many schedule steps to generate conceptually.
@@ -958,18 +1038,23 @@ def compute_base_sigmas(
     else:
         calc_steps = total_steps
 
-    cached = cache.get(model, scheduler_name, calc_steps)
+    # ALBABIT-FIX: a FLUX.2 refiner takes over on the primary's image-size schedule
+    # (get_flux_sigmas), which the cache key cannot tell apart: never cached.
+    flux2 = image_seq_len is not None and scheduler_name == "simple"
+    cached = None if flux2 else cache.get(model, scheduler_name, calc_steps)
     if cached is not None:
         bs = cached
     else:
         ms = model.get_model_object("model_sampling")
-        bs = comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps)
+        bs = correct_sigma_end(nodes_flux.get_schedule(calc_steps, image_seq_len) if flux2
+                               else comfy.samplers.calculate_sigmas(ms, scheduler_name, calc_steps))
+        if not flux2:
+            cache.put(model, scheduler_name, calc_steps, bs)
 
-        if flux_shift != 1.0 and scheduler_name != primary_scheduler:
-            bs = flux_shift_sigmas(bs, flux_shift)
-
-        bs = correct_sigma_end(bs)
-        cache.put(model, scheduler_name, calc_steps, bs)
+    # ALBABIT-FIX: shifted like the primary schedule (get_flux_sigmas), a refiner on the same
+    # scheduler too, and after the cache, whose key does not hold flux_shift.
+    if flux_shift != 1.0:
+        bs = flux_shift_sigmas(bs, flux_shift)
 
     # ALBABIT-FIX: ALWAYS truncate the schedule based on denoise. 
     # force_full does NOT bypass truncation, it only forces the final value to 0.0 later
@@ -1010,8 +1095,12 @@ WORKFLOW_PRESETS = [
     "[V] LTX-Video (25 steps)",
     "[V] LTX 2.3 LowRes (20 steps)",
     "[V] LTX 2.3 HighRes (40 steps)",
-    "[V] LTX 2.5 LowRes (20 steps)",
+    "[V] LTX 2.3 Distilled LowRes (8 steps)",
+    "[V] LTX 2.3 Distilled HighRes (3 steps)",
+    "[V] LTX 2.5 LowRes (30 steps)",
     "[V] LTX 2.5 HighRes (40 steps)",
+    "[V] LTX 2.5 Distilled LowRes (8 steps)",
+    "[V] LTX 2.5 Distilled HighRes (3 steps)",
     "[V] HunyuanVideo (30 steps)",
     "[V] MiniMax H3 T2V (20 steps)",
 
@@ -1057,7 +1146,7 @@ def get_sd_turbo_sigmas(model, steps: int, denoise: float) -> torch.Tensor:
 
 def get_flux_sigmas(
     model, scheduler: str, steps: int, denoise: float, shift: float = 1.0,
-    force_full: bool = False, force_exact: bool = False,
+    force_full: bool = False, force_exact: bool = False, image_seq_len: Optional[int] = None,
 ) -> torch.Tensor:
 
     if steps < 1:
@@ -1075,7 +1164,12 @@ def get_flux_sigmas(
     else:
         total_steps = steps
 
-    sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
+    # ALBABIT-FIX: FLUX.2's "simple" is Flux2Scheduler's schedule (BFL's), whose shift follows
+    # the image size: the model's own fixed shift only suits about 1 MP at 50 steps.
+    if image_seq_len is not None and scheduler == "simple":
+        sigmas = nodes_flux.get_schedule(total_steps, image_seq_len)
+    else:
+        sigmas = comfy.samplers.calculate_sigmas(model_sampling, scheduler, total_steps)
 
     if shift != 1.0:
         sigmas = flux_shift_sigmas(sigmas, shift)
@@ -1342,6 +1436,71 @@ def apply_cfg_plus_plus(cfg: float, sigma: torch.Tensor, sigma_max: float) -> fl
     effective_cfg = cfg * cos_factor + 1.0 * (1.0 - cos_factor)
 
     return effective_cfg
+
+
+# ALBABIT-FIX: LTX-AV guidance recipes, as (stg_scale, stg_end, modality_scale). Lightricks'
+# reference guider for LTX 2.3 / 2.5 Dev runs STG 1 on block 28 and modality 3
+# over the whole schedule; "early" stops STG halfway, before fine skin texture forms.
+LTX_GUIDANCE_RECIPES = {
+    "Off": (0.0, 1.0, 1.0),
+    "Modality": (0.0, 1.0, 3.0),
+    "Modality + STG (early)": (1.0, 0.5, 3.0),
+    "Modality + STG (full)": (1.0, 1.0, 3.0),
+}
+LTX_GUIDANCE_MODES = [*LTX_GUIDANCE_RECIPES, "Custom"]
+LTX_STG_BLOCKS = "28"
+
+
+def resolve_ltx_guidance(mode: str, stg_scale: float, stg_end: float, modality_scale: float):
+    """(stg_scale, stg_end, modality_scale) for an ltx_guidance mode; Custom keeps the widget values."""
+    return LTX_GUIDANCE_RECIPES.get(mode, (stg_scale, stg_end, modality_scale))
+
+
+def make_guidance_rescale_patch(phi: float, video_numel: Optional[int] = None):
+    """sampler_post_cfg_function for guidance rescale (Lin et al.), in denoised space.
+
+    With *video_numel*, the size of the video part of a packed LTX-AV latent,
+    video and audio are each rescaled against their own std, as Lightricks'
+    guider does: the video holds most of the values, so one std left the audio
+    uncorrected.
+    """
+    def rescale(guided, cond):
+        dims = list(range(1, guided.ndim))
+        guided_std = guided.std(dim=dims, keepdim=True).clamp(min=1e-6)
+        cond_std = cond.std(dim=dims, keepdim=True).clamp(min=1e-6)
+        return guided * (cond_std / guided_std) * phi + guided * (1.0 - phi)
+
+    def patch(args):
+        guided, cond = args["denoised"], args["cond_denoised"]
+        if video_numel is None:
+            return rescale(guided, cond)
+        v = video_numel
+        return torch.cat((rescale(guided[..., :v], cond[..., :v]),
+                          rescale(guided[..., v:], cond[..., v:])), dim=-1)
+
+    return patch
+
+
+def perpendicular_cfg_function(args):
+    """ComfyUI sampler_cfg_function for CFG++ (Perpendicular), since 4.0.
+
+    Plain CFG is ``cond + (s - 1) * (cond - uncond)`` on the denoised
+    predictions. This keeps only the part of ``cond - uncond`` orthogonal to
+    ``cond``, per batch item (projected guidance, as in APG), so a high cfg
+    adds less saturation and contrast. ``cond_scale`` is the stage cfg after
+    ``apply_cfg_plus_plus``. Returns noise space (x minus the guided
+    prediction), as comfy/samplers.py:cfg_function expects.
+    """
+    x = args["input"]
+    cond = args["cond_denoised"]
+    uncond = args["uncond_denoised"]
+    scale = args["cond_scale"]
+    diff = cond - uncond
+    dims = tuple(range(1, cond.ndim))
+    dot = (diff * cond).sum(dim=dims, keepdim=True)
+    norm = (cond * cond).sum(dim=dims, keepdim=True).clamp_min(1e-12)
+    perpendicular = diff - (dot / norm) * cond
+    return x - (cond + (scale - 1.0) * perpendicular)
 
 def build_sigma_report(
     detected_type: str,

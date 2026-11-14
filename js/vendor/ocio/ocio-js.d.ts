@@ -219,6 +219,7 @@ export type GpuShaderLanguage =
   | 'glsl_1.2'
   | 'glsl_1.3'
   | 'glsl_4.0'
+  | 'glsl_vk_4.6'
   | 'glsl_es_1.0'
   | 'glsl_es_3.0'
   | 'webgl'
@@ -262,6 +263,130 @@ export interface GpuShaderInfo {
   uniforms: OcioGpuUniform[];
 }
 
+
+export interface WebGpuBinding {
+  group: number;
+  binding: number;
+}
+
+/** Options for WebGPU shader extraction. WGSL is generated through OCIO Vulkan GLSL + Naga. */
+export interface WebGpuShaderOptions
+  extends Omit<GpuShaderOptions, 'language' | 'allowTexture1D'> {}
+
+/** OCIO LUT metadata plus the texture and sampler bindings used by the generated WGSL. */
+export interface OcioWebGpuTexture extends OcioGpuTexture {
+  texture: WebGpuBinding;
+  sampler: WebGpuBinding;
+}
+
+export interface WebGpuShaderInfo {
+  /** Embeddable WGSL containing `functionName` plus an internal translation entry point. */
+  shaderText: string;
+  /** Original OCIO Vulkan GLSL before normalization/translation. Useful for diagnostics. */
+  sourceShaderText: string;
+  /** Callable OCIO transform function in `shaderText`; call it from your own WGSL entry point. */
+  functionName: string;
+  language: 'wgsl';
+  sourceLanguage: 'glsl_vk_4.6';
+  /** OCIO GPU shader cache identifier, suitable for application-side pipeline/resource caches. */
+  cacheId: string;
+  uniformBufferSize: number;
+  /** Bind-group location of the OCIO uniform buffer, or null when the shader has none. */
+  uniformBinding: WebGpuBinding | null;
+  textures: OcioWebGpuTexture[];
+  uniforms: OcioGpuUniform[];
+}
+
+export interface OcioConfigPackageFile {
+  relativePath: string;
+  data: ArrayBufferView;
+}
+
+export interface OcioConfigPackage {
+  configRelativePath: string;
+  files: readonly OcioConfigPackageFile[];
+}
+
+export interface NormalizedOcioConfigPackage {
+  configRelativePath: string;
+  files: Array<{ relativePath: string; data: Uint8Array }>;
+}
+
+export interface OcioProcessorRequest {
+  transforms: TransformDescriptor | readonly TransformDescriptor[];
+  optimization?: OptimizationValue;
+  direction?: TransformDirectionValue;
+  context?: OcioContextVariables;
+}
+
+export interface OcioRuntimeConfigInfo {
+  id: string;
+  version: { major: number; minor: number };
+  ocioVersion: string;
+  ocioVersionHex: number;
+  builtinConfigs: BuiltinConfigInfo[];
+  colorSpaces: ColorSpaceInfo[];
+  roles: RoleInfo[];
+  displays: string[];
+  viewsByDisplay: Record<string, ViewInfo[]>;
+  defaultDisplay: string;
+  defaultViewsByDisplay: Record<string, string>;
+  /** Color-space-aware default view for each OCIO role and display. */
+  defaultViewsByRole: Record<string, Record<string, string>>;
+  looks: LookInfo[];
+  namedTransforms: NamedTransformInfo[];
+  fileRules: FileRuleInfo[];
+  fileTransformFormats: FileTransformFormatInfo[];
+}
+
+export interface OcioRuntimeDiagnostics {
+  activeConfigId: string | null;
+  processorCacheEntries: number;
+  gpuShaderCacheEntries: number;
+  webGpuShaderCacheEntries: number;
+  rgbTransformCacheEntries: number;
+  latestFailure: string | null;
+}
+
+export interface CreateOcioRuntimeOptions extends CreateOCIOOptions {
+  maxRgbCacheEntries?: number;
+}
+
+export function normalizeOcioConfigPackage(source: OcioConfigPackage): NormalizedOcioConfigPackage;
+
+export class OcioRuntime {
+  readonly ocio: OCIO;
+  readonly activeConfigId: string | null;
+
+  constructor(ocio: OCIO, options?: { maxRgbCacheEntries?: number });
+  getConfigInfo(): OcioRuntimeConfigInfo | null;
+  loadBuiltinConfig(name: string): OcioRuntimeConfigInfo;
+  inspectBuiltinConfig(name: string): OcioRuntimeConfigInfo;
+  loadConfigPackage(source: OcioConfigPackage, options?: { id?: string }): OcioRuntimeConfigInfo;
+  inspectConfigPackage(source: OcioConfigPackage, options?: { id?: string }): OcioRuntimeConfigInfo;
+  mountFile(path: string, data: ArrayBufferView): string;
+  matchFileRule(filePath: string): FileRuleMatch | null;
+  getViews(display: string): ViewInfo[];
+  getDefaultView(display: string, colorSpace?: string): string;
+  getGpuShaderInfo(request: OcioProcessorRequest, options?: GpuShaderOptions): GpuShaderInfo | null;
+  getWebGpuShaderInfo(
+    request: OcioProcessorRequest,
+    options?: WebGpuShaderOptions,
+  ): Promise<WebGpuShaderInfo | null>;
+  transformRgb(
+    source: string,
+    destination: string,
+    color: readonly [number, number, number] | Float32Array,
+    options?: { optimization?: OptimizationValue; context?: OcioContextVariables },
+  ): [number, number, number];
+  invalidateContext(context: OcioContextVariables): void;
+  clearCaches(): void;
+  getDiagnostics(): OcioRuntimeDiagnostics;
+  dispose(): void;
+}
+
+export function createOcioRuntime(options?: CreateOcioRuntimeOptions): Promise<OcioRuntime>;
+
 export function createOCIO(options?: CreateOCIOOptions): Promise<OCIO>;
 
 export class OCIO {
@@ -293,6 +418,8 @@ export class Config {
   getFileRule(index: number): FileRuleInfo;
   listFileRules(): FileRuleInfo[];
   matchFileRule(filePath: string): FileRuleMatch | null;
+  getViews(display: string): ViewInfo[];
+  getDefaultView(display: string, colorSpace?: string): string;
   listDisplays(): string[];
   getDefaultDisplay(): string;
   listViews(display: string): ViewInfo[];
@@ -331,4 +458,8 @@ export class Processor {
   applyRGBA8(rgba: Uint8Array | Uint8ClampedArray, options?: { copy?: boolean }): Uint8Array | Uint8ClampedArray;
   getGpuShaderInfo(options?: GpuShaderOptions): GpuShaderInfo;
   getGpuShaderText(options?: GpuShaderOptions): string;
+  /** Generate WGSL plus OCIO LUT/uniform binding metadata for WebGPU integration. */
+  getWebGpuShaderInfo(options?: WebGpuShaderOptions): Promise<WebGpuShaderInfo>;
+  /** Generate only the translated WGSL text. */
+  getWebGpuShaderText(options?: WebGpuShaderOptions): Promise<string>;
 }

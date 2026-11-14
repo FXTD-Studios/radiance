@@ -15,9 +15,6 @@ from radiance.nodes.hdr.delivery import (
     RadianceHDREncode,
     RadianceHDRMonitor,
 )
-from radiance.nodes.hdr.encoder import (
-    RadianceHDRLatentEncoder,
-)
 from radiance.nodes.hdr.smart import (
     RadianceHDRAutoLogSelect,
     RadianceHDRDiagnostics,
@@ -31,6 +28,7 @@ from radiance.nodes.hdr.uplift_universal import (
     RadianceSDRToHDRRecover,
     RadianceSDRToHDRUniversal,
 )
+from radiance.nodes.hdr.rudra_aifill import RadianceSDRToHDRAIFill
 from radiance.nodes.hdr.synthesis import (
     RadianceSDRtoHDRExpand,
     RadianceHDRSynthesisEngine,
@@ -88,11 +86,11 @@ NODE_CLASS_MAPPINGS = {
     "RadianceSDRtoHDRExpand": RadianceSDRtoHDRExpand,
     "RadianceSDRToHDRRecover": RadianceSDRToHDRRecover,
     "RadianceSDRToHDRUniversal": RadianceSDRToHDRUniversal,
+    "RadianceSDRToHDRAIFill": RadianceSDRToHDRAIFill,
     "RadianceHDRExpandDynamicRange": HDRExpandDynamicRange,
     "RadianceHDRToneMap": HDRToneMap,
     "RadianceHDRSynthesisEngine": RadianceHDRSynthesisEngine,
     "RadianceRelightEngine": RadianceRelightEngine,
-    "RadianceHDRLatentEncoder": RadianceHDRLatentEncoder,
     # ── from radiance.hdr (never reachable before 2026-09-18) ──────────────
     # RadianceHDRExpandDynamicRange and RadianceHDRToneMap are deliberately
     # absent from this block: hdr/__init__.py declares them too, and they are
@@ -141,11 +139,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RadianceSDRtoHDRExpand": "◎ SDR → HDR Expand",
     "RadianceSDRToHDRRecover": "◎ SDR → HDR Recover",
     "RadianceSDRToHDRUniversal": "◎ SDR → HDR Universal",
+    "RadianceSDRToHDRAIFill": "◎ SDR → HDR AI Fill (RUDRA v3)",
     "RadianceHDRExpandDynamicRange": "◎ HDR Expand Dynamic Range",
     "RadianceHDRToneMap": "◎ HDR Tone Map",
     "RadianceHDRSynthesisEngine": "◎ HDR Synthesis Engine",
     "RadianceRelightEngine": "◎ Relight Engine",
-    "RadianceHDRLatentEncoder": "◎ HDR Latent Encoder",
     "RadianceFloat32Convert": "◎ Float32 Convert",
     "RadianceFloat32ColorCorrect": "◎ Float32 Color Correct",
     "RadianceHDRColorConvert": "◎ HDR Color Convert",

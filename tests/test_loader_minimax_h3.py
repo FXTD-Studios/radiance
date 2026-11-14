@@ -7,9 +7,9 @@ Covers:
     heuristic, using the same synthetic-checkpoint technique as the existing
     Flux.2/Klein tests in test_model_detect.py
   - Table consistency across config/model_map.py and model/detect.py,
-    including the MODEL_TYPES list in nodes/generate/loader.py itself (a
-    SEPARATE list from VIDEO_MODEL_TYPES. "ltxav" was once unselectable
-    for exactly this reason, per that file's own comment)
+    including the MODEL_TYPES list in nodes/generate/loader.py itself ("ltxav"
+    was once unselectable because it was missing from it, per that file's
+    own comment)
   - construct_audio_vae(): AUDIO_VAE_KEY_REMAP dispatch (ltxav remaps and
     filters, minimax does neither), and the mutate-the-caller's-sd-in-place
     side effect load_unet_and_baked_vae relies on
@@ -78,20 +78,16 @@ class TestMiniMaxH3Tables:
             assert CHECKPOINT_PRESETS[name]["weight_dtype"] == "default"
             assert CHECKPOINT_PRESETS[name]["clip_dtype"] == "default"
 
-    def test_listed_in_video_preset_names(self):
-        from radiance.config.model_map import VIDEO_PRESET_NAMES
-        assert "MiniMax H3" in VIDEO_PRESET_NAMES
-        assert "MiniMax H3 (Low VRAM)" in VIDEO_PRESET_NAMES
-
-    def test_listed_in_video_model_types(self):
-        from radiance.config.model_map import VIDEO_MODEL_TYPES
-        assert "minimax" in VIDEO_MODEL_TYPES
+    def test_offered_by_the_loader(self):
+        from radiance.nodes.generate.loader import RadianceUnifiedLoader
+        required = RadianceUnifiedLoader.INPUT_TYPES()["required"]
+        assert {"MiniMax H3", "MiniMax H3 (Low VRAM)"} <= set(required["preset"][0])
+        assert "minimax" in required["model_type"][0]
 
     def test_listed_in_loader_model_types_dropdown(self):
-        """Regression guard: nodes/generate/loader.py's own MODEL_TYPES list
-        is separate from VIDEO_MODEL_TYPES (which only filters it). "ltxav"
-        was once unselectable in Custom mode for exactly this reason, per
-        that file's own comment on its MODEL_TYPES list."""
+        """Regression guard: "ltxav" was once unselectable in Custom mode
+        because it was missing from nodes/generate/loader.py's MODEL_TYPES,
+        per that file's own comment on the list."""
         from radiance.nodes.generate.loader import MODEL_TYPES
         assert "minimax" in MODEL_TYPES
 

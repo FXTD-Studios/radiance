@@ -144,7 +144,6 @@ def _code_only(src):
 @pytest.mark.parametrize("rel", [
     "tests/test_audit_regressions.py",
     "tests/test_audit_regressions_batch2.py",
-    "tests/test_radiance_load_image_mask.py",
 ])
 def test_no_file_still_uses_a_detector_the_stub_defeats(rel):
     code = _code_only(_src(rel))

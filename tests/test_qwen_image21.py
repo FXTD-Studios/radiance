@@ -95,12 +95,11 @@ class TestQwenImage21Loader:
                 "model_type": "qwen_image21", "weight_dtype": "default", "clip_dtype": "default",
             }
 
-    def test_offered_by_the_image_loader_not_the_video_loader(self):
-        from radiance.config.model_map import VIDEO_PRESET_NAMES, VIDEO_MODEL_TYPES
-        from radiance.nodes.generate.loader import MODEL_TYPES
+    def test_offered_by_the_loader(self):
+        from radiance.nodes.generate.loader import MODEL_TYPES, RadianceUnifiedLoader
         assert "qwen_image21" in MODEL_TYPES
-        assert "qwen_image21" not in VIDEO_MODEL_TYPES
-        assert not {"Qwen-Image 2.1", "Qwen-Image 2.1 (Low VRAM)"} & VIDEO_PRESET_NAMES
+        presets = RadianceUnifiedLoader.INPUT_TYPES()["required"]["preset"][0]
+        assert {"Qwen-Image 2.1", "Qwen-Image 2.1 (Low VRAM)"} <= set(presets)
 
     def test_catalogue_pins_the_official_files(self):
         from radiance.config.model_map import RADIANCE_MODEL_MAP
@@ -259,7 +258,9 @@ class TestQwenImage21PromptReferences:
         assert kind == "COMFY_AUTOGROW_V3"
         assert opts["template"]["names"] == [f"image_{i}" for i in range(1, 17)]
         assert opts["template"]["min"] == 0
-        assert list(spec["optional"])[-4:] == ["model_meta", "vae", "resolution", "images"]
+        # 4.0.0 appends the prompt upsampler's three and the FLUX 3 layout after them.
+        assert list(spec["optional"])[-8:] == ["model_meta", "vae", "resolution", "images",
+                                                "upsampler_clip", "upsample_prompt", "upsampler_seed", "layout"]
         assert spec["optional"]["vae"][0] == "VAE"
         assert spec["optional"]["resolution"][1]["default"] == 1024
         assert list(P.RETURN_TYPES)[-1] == "LATENT"

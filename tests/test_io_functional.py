@@ -243,7 +243,7 @@ class TestVideoFormats:
         produced = list(tmp_path.glob("audio_out*"))
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(produced[0])],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         assert "audio" in probe.stdout
 

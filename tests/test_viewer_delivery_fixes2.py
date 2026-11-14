@@ -7,6 +7,7 @@ and the medium-severity batch.
 import ast
 import os
 import pathlib
+import re
 import tempfile
 import types
 
@@ -78,7 +79,9 @@ def test_scope_readback_matches_the_fbo_type():
     """
     src = _src("js/radiance_webgl.js")
     assert "_scopeFBOType" in src, "the FBO type is not recorded"
-    assert "gl.readPixels(0, 0, size, size, gl.RGBA, gl.FLOAT" in src, \
+    # The scope target is sized to each plot (w x h) since the scopes count
+    # every pixel; the read-back is still typed by the attachment.
+    assert "gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT" in src, \
         "no float read-back path"
     assert "_scopePixelsF32" in src, "no Float32Array staging buffer"
 
@@ -86,7 +89,7 @@ def test_scope_readback_matches_the_fbo_type():
 def test_scope_fallback_path_still_uses_bytes():
     """The RGBA8 fallback must keep its UNSIGNED_BYTE read."""
     src = _src("js/radiance_webgl.js")
-    assert "gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels)" in src
+    assert "gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels)" in src
 
 
 def test_webgl_destroy_releases_context_and_clears_maps():
@@ -170,10 +173,12 @@ def test_temp_file_helpers_purge_the_previous_generation():
     assert ns["_viewer_purge_temp"]("never-seen") == 0
 
 
-def test_viewer_purges_before_writing_and_tracks_after():
+def test_viewer_purges_the_previous_generation_after_writing_the_new_one():
+    """It purged first: a re-run deleted frames the open viewer had not loaded
+    yet. tests/test_viewer_session_server.py runs the node to check the order."""
     src = _src("nodes/monitor/viewer.py")
-    assert "_viewer_purge_temp(_purge_key)" in src
-    assert "_viewer_track_temp(_purge_key" in src
+    assert "_viewer_purge_temp(_purge_key)" not in src
+    assert "_viewer_unlink(_viewer_track_temp(_purge_key, _written), _purge_key)" in src
 
 
 def test_float_payloads_use_cheap_compression():
@@ -182,7 +187,12 @@ def test_float_payloads_use_cheap_compression():
     1080p frame to write and ~50 ms of the browser's main thread to inflate."""
     src = _src("nodes/monitor/viewer.py")
     assert "level=6" not in src, "zlib level 6 is back on a float payload"
-    assert src.count("level=0") >= 3 and "level=1" not in src
+    assert "level=1" not in src
+    # The frame (fp16 and fp32) and depth sidecars go through core.rhdr; every
+    # call must store. test_rhdr_writers.py checks the written zlib header too.
+    calls = re.findall(r"_rhdr\.write\([^)]*\)", src)
+    assert len(calls) >= 2, "the frame and depth sidecar writes moved again"
+    assert all("level=0" in call for call in calls), calls
 
 
 # ── 5. Medium batch ─────────────────────────────────────────────────────────

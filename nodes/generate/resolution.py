@@ -103,6 +103,9 @@ LATENT_FORMAT_MAP = {
     "HunyuanVideo (16ch)": "hunyuan_video",
     # ALBABIT-FIX: Flux.2 latent format (comfy.latent_formats.Flux2)
     "Flux.2 / Flux.2 Klein (128ch)": "flux2",
+    # FLUX 3 Image Klein: the Flux.2 VAE and latent (EmptyFlux2LatentImage), its
+    # own entry so the VRAM estimate reads FLUX 3's tables, not Flux.2 Dev's.
+    "Flux.3 Klein (128ch)": "flux3",
     # ALBABIT-FIX: matches comfy/supported_models.py's MiniMaxH3.unet_config
     # ("image_model": "minimax_h3"). RadianceSamplerPro doesn't recognize this
     # latent_format yet — Sampler-side support is a separate, later task.
@@ -151,6 +154,8 @@ MODEL_TYPES = [
     # ALBABIT-FIX: Flux.2 / Flux.2 Klein — 128ch latent like LTXV, but ×16 spatial
     # downscale (vs ×32 for LTXV) and no 5D/video handling.
     "Flux.2 / Flux.2 Klein (128ch)",
+    # FLUX 3 Image Klein — the Flux.2 VAE: 128ch, 16x, image only.
+    "Flux.3 Klein (128ch)",
     # ALBABIT-FIX: MiniMax H3 — 24ch video latent, 16px spatial (comfy_extras/
     # nodes_minimax_h3.py's _empty_av_latent: height//16, width//16). Video-only:
     # the model's native audio stream (32ch stereo) isn't produced here — pair
@@ -179,6 +184,7 @@ ARCHS_BY_MODEL_TYPE = {
     "WAN TI2V (48ch)": ["wan_ti2v"],
     "HunyuanVideo (16ch)": ["hunyuan_video"],
     "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "Flux.3 Klein (128ch)": ["flux3"],
     "MiniMax H3 (24ch)": ["minimax"],
     "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
     "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
@@ -210,6 +216,7 @@ LATENT_CHANNELS = {
     "HunyuanVideo (16ch)": 16,
     # ALBABIT-FIX: Flux.2 latent is 128 channels (comfy.latent_formats.Flux2)
     "Flux.2 / Flux.2 Klein (128ch)": 128,
+    "Flux.3 Klein (128ch)": 128,
     # ALBABIT-FIX: MiniMax H3's video stream is 24 latent channels (the 32ch
     # audio stream isn't produced by this node, see MODEL_TYPES comment above).
     "MiniMax H3 (24ch)": 24,
@@ -233,6 +240,7 @@ SPATIAL_SCALE = {
     # (a wrong 16x entry here once produced 2x-oversized output).
     "LTXV (128ch)": 32,
     "Flux.2 / Flux.2 Klein (128ch)": 16,
+    "Flux.3 Klein (128ch)": 16,
     # ALBABIT-FIX: WAN 2.2 TI2V-5B's VAE trades channel depth for spatial
     # compression -- comfy.latent_formats.Wan22 sets spacial_downscale_ratio=16
     # (double the standard WAN's implicit 8x). Real bug fix: this model_type had
@@ -1349,6 +1357,14 @@ class RadianceResolution:
             latent = torch.zeros(actual_batch, latent_c, lat_h, lat_w, dtype=torch.float32)
 
         latent_dict = {"samples": latent}
+        # Pixel size behind this latent, so SamplerPro can rebuild an empty
+        # latent at the right size if model_type doesn't match the model.
+        latent_dict["radiance_pixel_size"] = (int(w), int(h))
+        if model_type == "Manual" and latent_channels <= 0 and not parse_model_meta(model_meta)[0]:
+            logger.warning(
+                "[Radiance] RadianceResolution: model_type is 'Manual' with no model_meta "
+                "connected, so this is a 16ch, pixel-sized (1x) latent. Connect the "
+                "Loader's model_meta or pick the model_type for your model.")
 
         # ── Build info string ────────────────────────────────────────────────────
         megapixels = (w * h) / 1_000_000

@@ -1,0 +1,39 @@
+{
+  "_comment": "The contract fields of RUDRA ACES 2.0's manifest.json as published (Hugging Face fxtdstudios/rudra-models@ab8da1b2db74099eb45cc39585df1d2edf7b3e34, models/RUDRA_ACES_2/, sha256 db21ffb4a0a652f3...). Release evidence fields left out.",
+  "name": "RUDRA_ACES_2_w4",
+  "title": "RUDRA ACES 2",
+  "contract": "rudra_native_aces_v2_staged",
+  "contract_major": 3,
+  "model_contract": {
+    "id": "aces2_ap1_reconstruction_v9_full_context_experimental",
+    "config": "cg-config-v4.0.0_aces-v2.0_ocio-v2.5",
+    "display": "Rec.1886 Rec.709 - Display",
+    "view": "ACES 2.0 - SDR 100 nits (Rec.709)",
+    "working_space": "ACEScg",
+    "ocio_version": "2.5.2",
+    "config_sha256": "24ec81841048fc5db160a7bad882263246183385c5d49d0e86e11464917ead15"
+  },
+  "checkpoint_sha256": "b9a903a58dccfcd2e1d2aa15b7d01d33cf0858dacb09cbe5910df05998f2825f",
+  "g1_sha256": "7082eb869d265d6e8c4fc209f7cac7e5dce2f40c10df5e73a889fb85efb9dbcc",
+  "g1_file": "rudra_g1.ts",
+  "ocio": {
+    "ocio_version": "2.5.2",
+    "config": "cg-config-v4.0.0_aces-v2.0_ocio-v2.5",
+    "view": "ACES 2.0 - SDR 100 nits (Rec.709)",
+    "display": "Rec.1886 Rec.709 - Display"
+  },
+  "stages": ["inverse_view(source)->baseline", "G1", "inverse_view(restored_source)->restored", "compose",
+             "clipped_smoothing", "appearance_constraint(include_fully_clipped)", "lock", "mask"],
+  "clipped_smoothing": {"name": "hybrid64", "sigma": 64.0, "ramp": 1.0, "start": 0.0, "mode": "hybrid",
+                        "erode": "cross 3x3 x2, border 0", "components": 8,
+                        "gaussian": "k=int(4*sigma)|1, BORDER_REFLECT_101"},
+  "appearance_constraint": {"max_display_error_codes": 1, "include_fully_clipped": true,
+                            "method": "halving backtrack toward baseline", "forbid_new_negative_y": true},
+  "onnx_file": "rudra_g1.onnx",
+  "onnx_sha256": "880e7b698a099b8dd60549444392d51af3022efbae8f68f05c9f0f3a29f8ee49",
+  "lock": {"name": "lock_dqs050g", "mode": "lock", "strength": 0.5, "target": "dequant", "iters": 4,
+           "band_codes": 0.0, "dq_iters": 200, "dq_max_lap": 1.5},
+  "provenance": {"model": "RUDRA ACES 2", "version": "2.0"},
+  "parity_pass": true,
+  "release_authorized": true
+}

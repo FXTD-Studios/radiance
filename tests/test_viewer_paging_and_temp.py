@@ -177,8 +177,9 @@ def test_bracketing_multiplies_the_write_volume_by_one_file_not_four(temp_out):
     files = _listdir(temp_out)
     main = [f for f in files if "bracket" not in f]
     brackets = [f for f in files if "bracket" in f]
-    # 5 frames x 4 artefacts for the main pass, 5 x 2 PNGs for the brackets.
-    assert len(main) == 20, main
+    # 5 frames x 3 artefacts for the main pass (PNG, .rhdr, .exr; the .rpick
+    # nothing read is gone), 5 x 2 PNGs for the brackets.
+    assert len(main) == 15, main
     assert len(brackets) == 10, brackets
 
 
@@ -286,7 +287,8 @@ def test_the_badge_cannot_claim_fp32_over_the_proxy():
         "the fallback branch still labels the 8-bit proxy FP32"
 
     # FP32 may only be set where a float source is actually loaded.
-    float_branch = badge[badge.index("if (hdr && hdr.data)"):badge.index("} else if (this.image")]
+    # (fp16data first: 'data' on an fp16 frame decodes it on read.)
+    float_branch = badge[badge.index("if (hdr && (hdr.fp16data || hdr.data))"):badge.index("} else if (this.image")]
     assert badge.count("inputLabel = 'FP32'") == float_branch.count("inputLabel = 'FP32'"), \
         "FP32 is set outside the float-source branch"
 
