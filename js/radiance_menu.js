@@ -11,7 +11,8 @@ import { app } from "../../scripts/app.js";
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
 
-const GOLD = "#c8a96e";
+// FXTD blue (fxtdstudios.com, and the icon's square).
+const BRAND = "#0a84ff";
 
 function openDash(file, title) {
     if (window.showRadianceDashboard) window.showRadianceDashboard(`${_EXT_BASE}/${file}`, title);
@@ -22,7 +23,9 @@ function openDash(file, title) {
 // element it covered the canvas toolbar (select, fit view, zoom, minimap) that
 // the frontend now draws in that corner.
 const style = document.createElement("style");
-style.textContent = `.radiance-launcher-icon::before { content: "◎"; color: ${GOLD}; font-style: normal; font-size: 16px; line-height: 1; }`;
+// The button shows the Radiance for ComfyUI icon, as on fxtdstudios.com.
+style.textContent = `.radiance-launcher-icon::before { content: ""; display: inline-block; width: 16px; height: 16px;
+    background: url("${_EXT_BASE}/r_icon.png") center / contain no-repeat; }`;
 document.head.appendChild(style);
 
 let menu = null;
@@ -37,7 +40,7 @@ function buildMenu() {
     });
     const item = (icon, label, file, title, run = null) => {
         const b = document.createElement("button");
-        b.innerHTML = `<span style="color:${GOLD};width:16px;display:inline-block;">${icon}</span>${label}`;
+        b.innerHTML = `<span style="color:${BRAND};width:16px;display:inline-block;">${icon}</span>${label}`;
         Object.assign(b.style, {
             display: "flex", alignItems: "center", gap: "9px", width: "100%", textAlign: "left",
             background: "none", border: "0", color: "#e8e8ec", fontFamily: "inherit", fontSize: "12.5px",

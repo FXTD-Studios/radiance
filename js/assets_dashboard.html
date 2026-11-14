@@ -10,7 +10,7 @@
     <style>
         :root {
             --bg: #0a0a0c; --line: rgba(255,255,255,0.06); --line2: rgba(255,255,255,0.09);
-            --text: #ededf0; --dim: #767a82; --mute: #6b7079; --faint: #5b616b; --accent: #c8a96e;
+            --text: #ededf0; --dim: #767a82; --mute: #6b7079; --faint: #5b616b; --accent: #0a84ff;
             --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             --display: 'Space Grotesk', 'Inter', sans-serif;
             --t-image: #6f9bc4; --t-video: #9cc4e6; --t-sequence: #c9a35e; --t-hdri: #a99ad0;
@@ -45,7 +45,7 @@
         .ast-search { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--line2); padding: 3px 2px; }
         .ast-search input { background: none; border: 0; outline: 0; color: var(--text); font-family: inherit; font-size: 12.5px; width: 150px; }
         .ast-search input::placeholder { color: var(--faint); }
-        .ast-import { color: var(--accent); border-bottom: 1px solid rgba(200,169,110,0.4); padding-bottom: 2px; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; font-size: 12px; }
+        .ast-import { color: var(--accent); border-bottom: 1px solid rgba(10,132,255,0.4); padding-bottom: 2px; cursor: pointer; background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; font-size: 12px; }
 
         .ast-content { padding: 24px 32px 40px; overflow-y: auto; flex: 1; }
         .ast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 24px 16px; }
@@ -64,8 +64,8 @@
         .ast-name { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ast-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
         .ast-sub { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
-        .ast-drop { display: flex; align-items: center; justify-content: center; aspect-ratio: 16/10; border: 1px dashed rgba(200,169,110,0.4); border-radius: 5px; color: var(--accent); font-size: 11px; cursor: pointer; }
-        .ast-drop:hover { background: rgba(200,169,110,0.04); }
+        .ast-drop { display: flex; align-items: center; justify-content: center; aspect-ratio: 16/10; border: 1px dashed rgba(10,132,255,0.4); border-radius: 5px; color: var(--accent); font-size: 11px; cursor: pointer; }
+        .ast-drop:hover { background: rgba(10,132,255,0.04); }
         .ast-empty { color: var(--faint); font-size: 12px; padding: 40px 0; text-align: center; grid-column: 1 / -1; }
 
         .ast-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(12px); background: #16161a; border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 12.5px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
