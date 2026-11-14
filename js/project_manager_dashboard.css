@@ -7,7 +7,7 @@
     --rpm-dim: #767a82;
     --rpm-mute: #6b7079;
     --rpm-faint: #5b616b;
-    --rpm-accent: #c8a96e;
+    --rpm-accent: #0a84ff;
     --rpm-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --rpm-display: 'Space Grotesk', 'Inter', sans-serif;
     --st-wip: #c9a35e;
@@ -131,8 +131,8 @@ body { background: var(--rpm-bg); color: var(--rpm-text); font-family: var(--rpm
 .rpm-button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; color: var(--rpm-dim); font-family: inherit; font-size: 12.5px; font-weight: 400; cursor: pointer; transition: color .15s; }
 .rpm-button:hover { color: var(--rpm-text); }
 .rpm-button svg { width: 14px; height: 14px; }
-.rpm-button.is-primary { color: var(--rpm-accent); border-bottom: 1px solid rgba(200,169,110,0.4); padding-bottom: 2px; }
-.rpm-button.is-primary:hover { color: #d8bd87; border-color: var(--rpm-accent); }
+.rpm-button.is-primary { color: var(--rpm-accent); border-bottom: 1px solid rgba(10,132,255,0.4); padding-bottom: 2px; }
+.rpm-button.is-primary:hover { color: #409cff; border-color: var(--rpm-accent); }
 
 /* ── Project dropdown ── */
 .rpm-proj-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 230px; max-height: 320px; overflow-y: auto; background: #111114; border: 1px solid var(--rpm-line-2); border-radius: 8px; padding: 5px; z-index: 40; box-shadow: 0 24px 60px -30px rgba(0,0,0,0.9); }
