@@ -135,7 +135,7 @@ if (!window.showRadianceDashboard) {
         const dot = document.createElement("span");
         Object.assign(dot.style, {
             width: "9px", height: "9px", borderRadius: "50%",
-            background: "#c8a96e", boxShadow: "0 0 10px rgba(200,169,110,0.8)",
+            background: "#0a84ff", boxShadow: "0 0 10px rgba(10,132,255,0.8)",
         });
         const label = document.createElement("div");
         label.textContent = title;

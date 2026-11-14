@@ -62,13 +62,13 @@ const CSS = `
 .rw-count{margin-left:auto;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:#aeaeb3}
 .rw-close{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:#bcbcc1;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .rw-close:hover{background:#2c2c2e;color:#fff}
-.rw-kicker{margin-top:26px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;letter-spacing:.16em;color:#f0b94f}
+.rw-kicker{margin-top:26px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;letter-spacing:.16em;color:#409cff}
 .rw-title{margin:8px 0 0;font-size:30px;line-height:1.2;font-weight:600;color:#e8e8ea}
 .rw-lead{margin:10px 0 0;font-size:15px;line-height:1.55;color:#bcbcc1}
 .rw-list{margin:22px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:14px}
 .rw-item{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start}
 .rw-mark{width:30px;height:30px;border-radius:8px;background:#2c2c2e;display:flex;align-items:center;justify-content:center;
-  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:#f0b94f}
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;color:#409cff}
 .rw-step .rw-mark{border-radius:50%;font-size:13px}
 .rw-item>div>b{display:block;font-size:14px;font-weight:600}
 .rw-item>div>span{display:block;margin-top:2px;font-size:13px;line-height:1.5;color:#aeaeb3}
@@ -79,15 +79,15 @@ const CSS = `
 .rw-btn:hover{background:#2c2c2e}
 .rw-btn.is-soft{height:36px;padding:0 14px;border:0;background:#2c2c2e;font-size:13px;font-weight:500}
 .rw-btn.is-soft:hover{background:#363639}
-.rw-btn.is-primary{border:0;background:#f0a830;color:#1c1408;font-weight:600;padding:0 20px}
-.rw-btn.is-primary:hover{background:#f6bb52}
-.rw-btn:focus-visible,.rw-close:focus-visible,.rw-link:focus-visible{outline:2px solid #f0b94f;outline-offset:2px}
+.rw-btn.is-primary{border:0;background:#0a84ff;color:#ffffff;font-weight:600;padding:0 20px}
+.rw-btn.is-primary:hover{background:#409cff}
+.rw-btn:focus-visible,.rw-close:focus-visible,.rw-link:focus-visible{outline:2px solid #409cff;outline-offset:2px}
 .rw-foot{margin-top:auto;padding-top:18px;border-top:1px solid #2a2a2d;display:flex;align-items:center;gap:12px}
 .rw-foot label{font-size:13px;color:#aeaeb3;display:flex;align-items:center;gap:10px;cursor:pointer}
-.rw-foot input{width:16px;height:16px;margin:0;accent-color:#f0a830}
+.rw-foot input{width:16px;height:16px;margin:0;accent-color:#0a84ff}
 .rw-dots{margin-left:auto;margin-right:8px;display:flex;gap:6px}
 .rw-dots i{width:6px;height:6px;border-radius:3px;background:#48484a;transition:width .15s}
-.rw-dots i.on{width:18px;background:#f0a830}
+.rw-dots i.on{width:18px;background:#0a84ff}
 .rw-img{display:block;border-radius:10px;border:1px solid #2f2f32;object-fit:cover}
 .rw-chip{padding:4px 10px;border-radius:6px;background:#2c2c2e;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.08em;color:#bcbcc1}
 .rw-seg{display:flex;padding:3px;border-radius:9px;background:#2c2c2e}
@@ -105,11 +105,11 @@ const CSS = `
 .rw-link span{display:block;margin-top:2px;font-size:13px;color:#aeaeb3}
 .rw-note{margin:14px 0 0;font-size:13px;color:#8e8e93}
 .rw-ver{margin-top:22px;display:flex;align-items:center;gap:10px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;letter-spacing:.12em;color:#aeaeb3}
-.rw-ver b{padding:3px 8px;border-radius:6px;background:rgba(240,168,48,.14);color:#f0b94f;font-weight:500}
+.rw-ver b{padding:3px 8px;border-radius:6px;background:rgba(10,132,255,.16);color:#409cff;font-weight:500}
 .rw-bul{margin:20px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
 .rw-bul li{display:grid;grid-template-columns:8px minmax(0,1fr);gap:12px;font-size:14px;line-height:1.5}
-.rw-bul li::before{content:"";width:8px;height:8px;margin-top:7px;border-radius:50%;background:#f0a830}
-.rw-a{color:#f0b94f}.rw-a:hover{color:#ffd27a}
+.rw-bul li::before{content:"";width:8px;height:8px;margin-top:7px;border-radius:50%;background:#0a84ff}
+.rw-a{color:#409cff}.rw-a:hover{color:#7ab8ff}
 .rw-back-frame{width:316px;height:230px;box-sizing:border-box;border-radius:8px;background:rgba(179,134,0,.2);border:1px solid rgba(240,168,48,.45);display:flex;flex-direction:column}
 .rw-back-frame>div:first-child{height:34px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;background:rgba(179,134,0,.35);border-radius:7px 7px 0 0;font-size:13px;font-weight:600}
 .rw-node{position:absolute;border-radius:6px;background:#26262a;border:1px solid #3a3a3c}
@@ -139,7 +139,7 @@ function svg(markup) {
     t.innerHTML = markup.trim();
     return t.content.firstChild;
 }
-const RING = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="none" stroke="#e8e8ea" stroke-width="1.5"/><circle cx="9" cy="9" r="3.5" fill="#f0a830"/></svg>';
+const RING = '<svg width="18" height="18" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22.5" fill="#1C1C1E"/><path d="M50.6 32.3A21 21 0 1 0 67.7 49.4" fill="none" stroke="#F5F5F7" stroke-width="17"/><rect x="54" y="29" width="17" height="17" rx="4" fill="#0A84FF"/></svg>';
 const CLOSE = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 const OUT = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M5 2h7v7M12 2L3 11" fill="none" stroke="#aeaeb3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -273,7 +273,7 @@ const PAGES = {
             frame.setAttribute("role", "img");
             frame.setAttribute("aria-label", "Three nodes inside an amber backdrop titled HDR Processing");
             const head = el("div");
-            head.append(el("span", null, "◎ HDR Processing"), svg('<svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7" rx="1.5" fill="none" stroke="#f0b94f" stroke-width="1.4"/><path d="M3.5 6V4a2.5 2.5 0 015 0v2" fill="none" stroke="#f0b94f" stroke-width="1.4"/></svg>'));
+            head.append(el("span", null, "◎ HDR Processing"), svg('<svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect x="1" y="6" width="10" height="7" rx="1.5" fill="none" stroke="#f0b94f" stroke-width="1.4"/><path d="M3.5 6V4a2.5 2.5 0 015 0v2" fill="none" stroke="#409cff" stroke-width="1.4"/></svg>'));
             const area = el("div"); area.style.cssText = "flex:1;position:relative";
             [["Read", 18, 26, 96], ["SDR → HDR", 116, 14, 140], ["Write", 214, 40, 96]].forEach(([t, x, y, h]) => {
                 const n = el("div", "rw-node"); n.style.cssText = `left:${x}px;top:${y}px;width:84px;height:${h}px`;
@@ -312,7 +312,7 @@ const PAGES = {
             wrap.setAttribute("role", "img");
             wrap.setAttribute("aria-label", "Four selected nodes become one gizmo node with two inputs, one output and two knobs");
             const row = el("div"); row.style.cssText = "display:flex;gap:8px";
-            for (let i = 0; i < 4; i++) { const n = el("div"); n.style.cssText = "width:62px;height:70px;border-radius:6px;background:#26262a;border:1.5px solid #f0a830"; row.appendChild(n); }
+            for (let i = 0; i < 4; i++) { const n = el("div"); n.style.cssText = "width:62px;height:70px;border-radius:6px;background:#26262a;border:1.5px solid #0a84ff"; row.appendChild(n); }
             const arrow = svg('<svg width="20" height="28" viewBox="0 0 20 28" aria-hidden="true"><path d="M10 2v22M3 17l7 7 7-7" fill="none" stroke="#aeaeb3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>');
             const node = el("div"); node.style.cssText = "width:220px;border-radius:8px;background:#26262a;border:1px solid #48484a;overflow:hidden";
             const t = el("div", null, "◎ Chrome Aberration"); t.style.cssText = "padding:8px 12px;background:#303034;font-size:13px;font-weight:600";
@@ -337,7 +337,7 @@ const PAGES = {
         lead: "The documentation, every node and its inputs, and the release notes are on our website.",
         art() {
             const f = document.createDocumentFragment();
-            f.appendChild(svg('<svg width="96" height="96" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="none" stroke="#e8e8ea" stroke-width="0.8"/><circle cx="9" cy="9" r="3.5" fill="#f0a830"/></svg>'));
+            f.appendChild(svg('<svg width="96" height="96" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22.5" fill="#1C1C1E"/><path d="M52.2 28.4A24 24 0 1 0 71.6 47.8" fill="none" stroke="#F5F5F7" stroke-width="14"/><rect x="58" y="28" width="14" height="14" rx="3" fill="#0A84FF"/></svg>'));
             const t = el("div"); t.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:6px";
             const n = el("div", "rw-brand", "FXTD STUDIOS"); n.style.fontSize = "14px";
             const d = el("div", null, "fxtdstudios.com"); d.style.cssText = "font-size:13px;color:#8e8e93";
@@ -407,7 +407,8 @@ function openWelcome(view = "tour", { page = TOUR_PAGES[0], from = "" } = {}) {
     const button = (label, cls, onClick) => { const b = el("button", `rw-btn ${cls}`, label); b.type = "button"; b.addEventListener("click", onClick); return b; };
     const header = (count) => {
         const h = el("div", "rw-head");
-        h.append(svg(RING), el("span", "rw-brand", "RADIANCE"));
+        const comfy = el("span", "rw-brand", "COMFYUI"); comfy.style.color = "#409cff";
+        h.append(svg(RING), el("span", "rw-brand", "RADIANCE"), comfy);
         if (count) h.appendChild(el("span", "rw-count", count));
         const x = el("button", "rw-close"); x.type = "button"; x.setAttribute("aria-label", "Close"); x.appendChild(svg(CLOSE));
         if (!count) x.style.marginLeft = "auto";
