@@ -17,6 +17,8 @@ import {
     defaultWorkspaceFor as _defaultWorkspaceFor, suggestWorkspace as _suggestWorkspace,
     tabsFor as _tabsFor, workspaceForTab as _workspaceForTab,
 } from "./radiance_viewer_modes.js";
+import { installShell as _installShell, fontFaceCSS as _shellFontFaces, TOKENS as _TOKENS, INPUT_WIDGET_NAMES as _INPUT_WIDGET_NAMES } from "./radiance_viewer_shell.js";
+import { setWidgetVisible as _setWidgetVisible } from "./radiance_widget_utils.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
 import { ReviewStore as _ReviewStore, canvasToUV as _canvasToUV, uvToCanvas as _uvToCanvas } from "./radiance_review.js";
@@ -122,25 +124,30 @@ class RadianceViewer {
      * (raised controls included); viewer_polish.test.mjs measures it.
      */
     static THEME = {
-        bg: '#161616',              // canvas surround: dark neutral, no cast
-        surface: '#1c1c1e',         // rail, panel body
-        surfaceRaised: '#202022',   // header, tab strip, bars
-        control: '#2c2c2e',         // inputs, buttons, readouts
-        controlHover: '#333336',
-        panel: 'rgba(32, 32, 34, 0.97)',
-        panelBorder: '#2f2f32',
-        borderStrong: '#48484a',
-        accent: '#4da3ff',          // state only: the selected tab, mode, toggle
-        accentSoft: 'rgba(77, 163, 255, 0.14)',
-        accentGlow: 'rgba(77, 163, 255, 0.22)',
-        text: '#e8e8ea',
-        textDim: '#bcbcc1',         // labels
-        textMuted: '#aeaeb3',       // shortcuts and secondary readouts
+        // 4.1: Radiance space-gray, the colours of the Radiance nodes and
+        // Rudra (node body #141419, widgets #121217, outlines #2c2c35):
+        // neutral, no cast beside the picture, and one silver for state.
+        bg: '#111114',              // canvas surround
+        surface: '#16161b',         // rail, panel body
+        surfaceRaised: '#1a1a1f',   // header, tab strip, bars
+        control: '#26262d',         // inputs, buttons, readouts
+        controlHover: '#2e2e36',
+        panel: 'rgba(26, 26, 31, 0.97)',
+        panelBorder: '#2c2c35',
+        borderStrong: '#44444e',
+        accent: '#d8d8de',          // state only: the selected tab, mode, toggle (silver)
+        accentSoft: 'rgba(255, 255, 255, 0.10)',
+        accentGlow: 'rgba(255, 255, 255, 0.18)',
+        accentText: '#f2f2f5',      // text on a tinted (accentSoft) fill
+        accentInk: '#111114',       // text on a solid accent fill
+        text: '#f2f2f5',
+        textDim: '#b4b4bc',         // labels
+        textMuted: '#9a9aa2',       // shortcuts and secondary readouts
         warn: '#ff9f0a',
         error: '#ff6961',
-        ok: '#5ad27a',
-        font: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-        mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
+        ok: '#30d158',
+        font: "'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        mono: "'DM Mono', 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
         // 12 px for every label and value; 11 px only for uppercase,
         // letter-spaced section headings.
         fsBody: '12px',
@@ -231,17 +238,16 @@ class RadianceViewer {
         this.neuralMonitor = null;
         this._setupComfyListeners();
 
-        // v2.3.3: Cinema Scope Fonts
-        // B-13 FIX: Removed external Google Fonts dependency (fails in air-gapped studios).
-        // Uses a system font stack that provides equivalent aesthetics on all platforms.
-        // If you bundle Inter/JetBrains Mono WOFF2 locally, add @font-face rules here.
+        // Fonts: Manrope and DM Mono, the FXTD website's faces, bundled under
+        // js/fonts (SIL OFL) so nothing is fetched from the network (B-13:
+        // air-gapped studios). System stacks follow if they fail to load.
         if (!document.getElementById('radiance-fonts')) {
             const style = document.createElement('style');
             style.id = 'radiance-fonts';
-            style.textContent = `
+            style.textContent = `${_shellFontFaces()}
                 :root {
-                    --radiance-font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                    --radiance-font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', monospace;
+                    --radiance-font-ui: ${_TOKENS.font};
+                    --radiance-font-mono: ${_TOKENS.mono};
                 }
             `;
             document.head.appendChild(style);
@@ -395,50 +401,50 @@ class RadianceViewer {
                     cursor: pointer;
                     font: inherit;
                 }
+                /* 4.1: the menus in the Radiance gray (shell design). */
                 .radiance-pro-dropdown {
                     position: fixed;
-                    min-width: 184px;
+                    min-width: 248px;
                     padding: 6px;
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    border-radius: 10px;
-                    background: rgba(22, 22, 29, 0.93);
-                    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-                    backdrop-filter: blur(25px) saturate(180%) !important;
+                    border: 1px solid #2c2c35;
+                    border-radius: 12px;
+                    background: #1e1e24;
+                    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
                     z-index: 30000;
-                    font-family: var(--radiance-font);
+                    font-family: var(--radiance-font-ui);
                 }
                 .radiance-pro-menu-item {
                     width: 100%;
-                    min-height: 28px;
+                    min-height: 32px;
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     gap: 14px;
-                    padding: 6px 12px;
+                    padding: 0 10px;
                     border: 0;
-                    border-radius: 6px;
+                    border-radius: 7px;
                     background: transparent;
-                    color: rgba(255, 255, 255, 0.85);
-                    font-size: 11.5px;
-                    font-weight: 450;
+                    color: #f2f2f5;
+                    font-size: 12px;
+                    font-weight: 500;
                     cursor: pointer;
                     text-align: left;
                     transition: all 0.12s ease;
                 }
                 .radiance-pro-menu-item:hover {
-                    background: var(--radiance-accent) !important;
-                    color: #ffffff !important;
+                    background: rgba(255, 255, 255, 0.08) !important;
+                    color: var(--radiance-text) !important;
                 }
                 .radiance-pro-menu-item span:last-child {
-                    color: rgba(255, 255, 255, 0.35) !important;
+                    color: #9a9aa2 !important;
                     font-family: var(--radiance-font-mono);
                     font-size: 10px;
                     margin-left: 12px;
                 }
                 .radiance-pro-menu-separator {
                     height: 1px;
-                    margin: 5px 2px;
-                    background: rgba(255, 255, 255, 0.06);
+                    margin: 5px 6px;
+                    background: #2c2c35;
                 }
                 .radiance-pro-toolbar {
                     flex: 0 0 46px;
@@ -474,8 +480,8 @@ class RadianceViewer {
                 .radiance-pro-chip {
                     padding: 3px 7px;
                     border-radius: 4px;
-                    border: 1px solid rgba(77, 163, 255, 0.35);
-                    color: var(--radiance-accent);
+                    border: 1px solid rgba(216, 216, 222, 0.35);
+                    color: var(--radiance-accent-text);
                     background: var(--radiance-accent-soft);
                     font-size: var(--radiance-fs-heading);
                     font-weight: 700;
@@ -519,8 +525,8 @@ class RadianceViewer {
                 }
                 .radiance-pro-actions button.is-active,
                 .radiance-pro-actions button[aria-expanded="true"].radiance-pro-settings-btn {
-                    color: var(--radiance-accent);
-                    border-color: rgba(77, 163, 255, 0.45);
+                    color: var(--radiance-accent-text);
+                    border-color: rgba(216, 216, 222, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-sidebar button:hover {
@@ -577,8 +583,8 @@ class RadianceViewer {
                 .radiance-settings-popover button:hover { background: var(--radiance-control-hover); }
                 .radiance-settings-popover button[aria-pressed="true"],
                 .radiance-settings-popover button[aria-checked="true"] {
-                    color: var(--radiance-accent);
-                    border-color: rgba(77, 163, 255, 0.45);
+                    color: var(--radiance-accent-text);
+                    border-color: rgba(216, 216, 222, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-settings-popover button:disabled { opacity: .45; cursor: not-allowed; }
@@ -644,7 +650,7 @@ class RadianceViewer {
                     transition: background 0.12s, color 0.12s;
                 }
                 .radiance-pro-sidebar button.is-active {
-                    color: var(--radiance-accent) !important;
+                    color: var(--radiance-accent-text) !important;
                     background: var(--radiance-accent-soft) !important;
                     font-weight: 600;
                     box-shadow: inset 2px 0 0 var(--radiance-accent);
@@ -714,8 +720,8 @@ class RadianceViewer {
                     border-color: var(--radiance-border-strong);
                 }
                 .radiance-pro-viewer-bar button.is-active {
-                    color: var(--radiance-accent);
-                    border-color: rgba(77, 163, 255, 0.45);
+                    color: var(--radiance-accent-text);
+                    border-color: rgba(216, 216, 222, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-viewer-bar .radiance-pro-bar-label {
@@ -784,7 +790,7 @@ class RadianceViewer {
                     cursor: pointer;
                 }
                 .radiance-pro-sequence-controls button:hover {
-                    border-color: rgba(77, 163, 255, 0.45);
+                    border-color: rgba(216, 216, 222, 0.45);
                     background: var(--radiance-control-hover);
                 }
                 .radiance-pro-tool-btn,
@@ -810,7 +816,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-tool-btn.is-active,
                 .radiance-pro-track-btn.is-active {
-                    color: var(--radiance-accent);
+                    color: var(--radiance-accent-text);
                     background: var(--radiance-accent-soft);
                 }
                 /* The timeline's tools and its V2 lane edit Ref Wipe blocks, which
@@ -860,11 +866,11 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     margin-top: -5px;
-                    box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.28);
+                    box-shadow: 0 0 0 2px rgba(216, 216, 222, 0.28);
                     transition: box-shadow 0.15s;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb:hover {
-                    box-shadow: 0 0 0 4px rgba(77, 163, 255, 0.38);
+                    box-shadow: 0 0 0 4px rgba(216, 216, 222, 0.38);
                 }
                 .radiance-pro-sequence-range::-moz-range-track {
                     height: 4px;
@@ -878,7 +884,7 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     border: none;
-                    box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.28);
+                    box-shadow: 0 0 0 2px rgba(216, 216, 222, 0.28);
                 }
                 .radiance-pro-sequence-range::-moz-range-progress {
                     background: var(--radiance-accent);
@@ -940,7 +946,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-thumb.is-active .radiance-pro-thumb-frame {
                     border-color: var(--radiance-accent);
-                    box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.45);
+                    box-shadow: 0 0 0 1px rgba(216, 216, 222, 0.45);
                 }
                 .radiance-pro-thumb canvas,
                 .radiance-pro-thumb img {
@@ -1030,8 +1036,8 @@ class RadianceViewer {
                     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
                 }
                 .help-group h3 {
-                    font-size: 11px; color: #4da3ff; text-transform: uppercase;
-                    letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(0, 168, 255, 0.2);
+                    font-size: 11px; color: #d8d8de; text-transform: uppercase;
+                    letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(216, 216, 222, 0.2);
                     padding-bottom: 4px;
                 }
                 .help-item {
@@ -1593,8 +1599,8 @@ class RadianceViewer {
             if (this._analysisLabel) {
                 this._analysisLabel.textContent = 'PICK NEUTRAL POINT...';
                 this._analysisLabel.style.display = 'block';
-                this._analysisLabel.style.background = '#4da3ff';
-                this._analysisLabel.style.color = '#fff';
+                this._analysisLabel.style.background = '#d8d8de';
+                this._analysisLabel.style.color = '#111114';
             }
 
             this._wbPickHandler = (e) => {
@@ -2400,7 +2406,7 @@ class RadianceViewer {
         if (existing) existing.remove();
 
         const colors = {
-            info: "#4da3ff",
+            info: "#d8d8de",
             success: "#4cd964",
             error: "#ff6b6b",
             warn: "#ffb020",
@@ -2526,7 +2532,7 @@ class RadianceViewer {
             const confirm = document.createElement("button");
             confirm.type = "button";
             confirm.textContent = confirmLabel;
-            confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+            confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(216,216,222,0.45);background:rgba(216,216,222,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
 
             const close = (value) => {
                 overlay.remove();
@@ -2706,7 +2712,7 @@ class RadianceViewer {
             label.textContent = item.label;
             const shortcut = document.createElement('span');
             shortcut.textContent = item.shortcut || '';
-            shortcut.style.color = 'rgba(255,255,255,0.32)';
+            shortcut.style.color = '#9a9aa2';
             btn.append(label, shortcut);
             btn.onclick = (e) => {
                 e.stopPropagation();
@@ -2752,21 +2758,21 @@ class RadianceViewer {
                 font: 600 11px var(--radiance-font-ui); color: rgba(232,238,247,.72); white-space: nowrap;
                 background: transparent; border: 0; border-radius: 4px; padding: 0 10px; height: 26px; cursor: pointer; }
             .radiance-mode-switch button.is-active, .radiance-simple-bar button.is-active {
-                background: #1f3b57; color: #fff; }
+                background: #3a3a42; color: #fff; }
             .radiance-mode-switch button.has-hint::after { content: ''; display: inline-block; width: 6px; height: 6px;
                 border-radius: 50%; background: #f5a524; margin-left: 5px; vertical-align: middle; }
             .radiance-mode-switch button:focus-visible, .radiance-simple-bar button:focus-visible,
-            .radiance-simple-bar input:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
+            .radiance-simple-bar input:focus-visible { outline: 2px solid #d8d8de; outline-offset: 1px; }
             .radiance-simple-bar { display: none; flex: 0 0 auto; align-items: center; gap: 10px;
                 padding: 6px 10px; background: #0d1117; border-top: 1px solid rgba(255,255,255,.08);
                 font: 11px var(--radiance-font-ui); color: rgba(232,238,247,.8); min-width: 0; }
             .radiance-mode-simple .radiance-simple-bar { display: flex; }
             .radiance-simple-bar .rsb-group { display: flex; gap: 2px; padding: 2px; border-radius: 6px;
                 background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10); flex-shrink: 0; }
-            .radiance-simple-bar .rsb-play { width: 34px; background: #4da3ff; color: #071019; }
-            .radiance-simple-bar .rsb-play.is-active { background: #4da3ff; color: #071019; }
+            .radiance-simple-bar .rsb-play { width: 34px; background: #d8d8de; color: #071019; }
+            .radiance-simple-bar .rsb-play.is-active { background: #d8d8de; color: #071019; }
             .radiance-simple-bar .rsb-frame { font-family: var(--radiance-font-mono); min-width: 64px; }
-            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #4da3ff; }
+            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #d8d8de; }
             .radiance-simple-bar .radiance-cache-marks { flex: 1 1 120px; min-width: 60px; }
             .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
             .radiance-cache-marks > input { position: relative; }
@@ -2785,7 +2791,7 @@ class RadianceViewer {
             .radiance-b-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent;
                 color: inherit; font: inherit; text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
             .radiance-b-menu button:hover:not(:disabled), .radiance-b-menu button:focus-visible { background: #3a3a3c; outline: none; }
-            .radiance-b-menu button.is-current { box-shadow: inset 2px 0 0 #4da3ff; }
+            .radiance-b-menu button.is-current { box-shadow: inset 2px 0 0 #d8d8de; }
             .radiance-b-menu button:disabled { opacity: .45; cursor: default; }
             .radiance-b-menu img { width: 48px; height: 27px; object-fit: cover; border-radius: 3px; flex: 0 0 48px; background: #111; }
             .radiance-b-menu .rbm-sep { height: 1px; margin: 4px 2px; background: rgba(255,255,255,.08); }
@@ -2821,6 +2827,9 @@ class RadianceViewer {
 
         this.simpleBar = this._createSimpleBar();
         this.container.appendChild(this.simpleBar);
+
+        // 4.1 shell: Radiance gray, Simple | Full, workspace tabs, Simple dock, Input menu.
+        try { _installShell(this); } catch (e) { console.warn('[Radiance Viewer] shell not applied:', e); }
 
         const saved = this.node?.properties?.radiance_viewer_mode;
         const resolved = _resolveSavedMode(this.node?.properties);
@@ -2883,6 +2892,7 @@ class RadianceViewer {
         this._syncWorkspaceHint();
         this._syncCompareUI();
         this._syncSimpleTransport();
+        this._shell?.sync();
         requestAnimationFrame(() => { this.resize?.(); if (this.image) this.fitToView?.(); });
     }
 
@@ -3207,11 +3217,11 @@ class RadianceViewer {
             if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, w, h);
-            ctx.shadowColor = 'rgba(57,170,255,0.7)';
+            ctx.shadowColor = 'rgba(216,216,222,0.7)';
             ctx.shadowBlur = 3 * dpr;
             const y = Math.round(geo.top * dpr);
             for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
-                ctx.fillStyle = `rgba(57,170,255,${alpha})`;
+                ctx.fillStyle = `rgba(216,216,222,${alpha})`;
                 for (const f of frames) {
                     const x = geo.x0 + (f / (total - 1)) * geo.span;
                     ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
@@ -3260,6 +3270,7 @@ class RadianceViewer {
         this._sbScrub.value = String(i);
         this._sbScrub.disabled = n <= 1;
         this._sbFrame.textContent = n ? `${i + 1} / ${n}` : '- / -';
+        this._shell?.syncTransport();
         const single = n <= 1;
         [this._sbPrev, this._sbPlay, this._sbNext].forEach((b) => { if (b) b.disabled = single && !this.videoMode; });
     }
@@ -3332,6 +3343,7 @@ class RadianceViewer {
             }
             menus[name] = items;
         });
+        this._proMenus = menus;
         Object.keys(menus).forEach(label => {
             const btn = document.createElement('button');
             btn.textContent = label;
@@ -4244,7 +4256,7 @@ class RadianceViewer {
                     endFrame: total > 0 ? total - 1 : 0,
                     offset: 0,
                     name: clipName,
-                    color: '#4da3ff'
+                    color: '#d8d8de'
                 }
             ];
             this._lastSegmentsTotal = total;
@@ -4510,7 +4522,7 @@ class RadianceViewer {
                 if (!hoverCard) {
                     hoverCard = document.createElement('div');
                     hoverCard.id = 'radiance-timeline-hover';
-                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(77, 163, 255, 0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
+                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(216, 216, 222, 0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
 
                     const pCanvas = document.createElement('canvas');
                     pCanvas.width = 120;
@@ -4518,7 +4530,7 @@ class RadianceViewer {
                     pCanvas.style.cssText = 'border-radius:4px; border:1px solid rgba(255,255,255,0.1);';
 
                     const pFrameText = document.createElement('span');
-                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#4da3ff;';
+                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#d8d8de;';
 
                     const pTimecode = document.createElement('span');
                     pTimecode.style.cssText = 'font:8px var(--radiance-mono, monospace); color:rgba(255,255,255,0.6);';
@@ -5354,7 +5366,7 @@ class RadianceViewer {
 
         const dvQuality = document.createElement('input');
         dvQuality.type = 'range'; dvQuality.min = '0'; dvQuality.max = '51'; dvQuality.value = '18';
-        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #4da3ff;`;
+        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #d8d8de;`;
         addRow('Quality (CRF)', dvQuality);
 
         // HDR10 mastering display (SMPTE ST 2086), written only into PQ H.265:
@@ -5391,7 +5403,7 @@ class RadianceViewer {
             wrap.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 9px; color: #aaa; font-weight: 600; text-transform: uppercase;`;
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = def;
-            cb.style.cssText = `accent-color: #4da3ff;`;
+            cb.style.cssText = `accent-color: #d8d8de;`;
             wrap.appendChild(cb);
             wrap.appendChild(document.createTextNode(label));
             return { wrap, cb };
@@ -5453,9 +5465,9 @@ class RadianceViewer {
         dvRenderBtn.dataset.dv = 'render';
         dvRenderBtn.textContent = '◎ RENDER NOW';
         dvRenderBtn.title = 'Render these settings now';
-        dvRenderBtn.style.cssText = `background: #4da3ff; color: #fff; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(0, 168, 255, 0.3);`;
+        dvRenderBtn.style.cssText = `background: #d8d8de; color: #111114; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(216, 216, 222, 0.3);`;
         dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
-        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#4da3ff';
+        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#d8d8de';
 
         dvSubmitRow.appendChild(dvRenderBtn);
 
@@ -5485,14 +5497,14 @@ class RadianceViewer {
         const dvProgressLabel = document.createElement('div');
 
         dvProgressLabel.dataset.dv = 'progress';
-        dvProgressLabel.style.cssText = `font-size: 9px; color: #4da3ff; font-weight: bold; text-transform: uppercase;`;
+        dvProgressLabel.style.cssText = `font-size: 9px; color: #d8d8de; font-weight: bold; text-transform: uppercase;`;
         dvProgressLabel.textContent = 'READY TO EXPORT';
 
         const dvProgressTrack = document.createElement('div');
         dvProgressTrack.style.cssText = `width: 100%; height: 2px; background: #1a1e24; border-radius: 1px; overflow: hidden;`;
 
         const dvProgressBar = document.createElement('div');
-        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #4da3ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 168, 255, 0.5);`;
+        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #d8d8de; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(216, 216, 222, 0.5);`;
 
         dvProgressTrack.appendChild(dvProgressBar);
         dvProgressContainer.appendChild(dvProgressLabel);
@@ -5685,7 +5697,7 @@ class RadianceViewer {
         const runJob = async (job) => {
             const { payload, name } = job;
             if (!this._deliverQueueRunning) dvStatus.replaceChildren();   // a queue keeps every job's lines
-            dvProgressBar.style.background = '#4da3ff';
+            dvProgressBar.style.background = '#d8d8de';
             dvProgressContainer.style.display = 'flex';
             dvProgressBar.style.width = '0%';
             dvProgressLabel.textContent = 'Initializing Export Pipeline...';
@@ -5783,7 +5795,7 @@ class RadianceViewer {
 
         // ── Render queue: snapshots of settings + grade, rendered one by one ──
         const STATUS_TEXT = { queued: 'Queued', rendering: 'Rendering…', success: 'Done', partial: 'Done with warnings', failed: 'Failed', skipped: 'Stopped' };
-        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#4da3ff', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
+        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#d8d8de', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
         const renderQueue = () => {
             dvQueueList.replaceChildren();
             const jobs = this._deliverQueue;
@@ -5995,9 +6007,9 @@ class RadianceViewer {
             btn.textContent = name;
             btn.style.cssText = `
                 font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
-                color: ${active ? '#4da3ff' : '#555'}; text-transform: uppercase;
+                color: ${active ? '#d8d8de' : '#555'}; text-transform: uppercase;
                 cursor: pointer; padding: 4px 8px;
-                border-bottom: 2px solid ${active ? '#4da3ff' : 'transparent'};
+                border-bottom: 2px solid ${active ? '#d8d8de' : 'transparent'};
                 transition: 0.2s;
             `;
             return btn;
@@ -6145,7 +6157,7 @@ class RadianceViewer {
 
         const scRunBtn = document.createElement('button');
         scRunBtn.textContent = '▶ RUN AUTOMATION';
-        scRunBtn.style.cssText = `background: rgba(0, 168, 255, 0.1); color: #4da3ff; border: 1px solid rgba(0, 168, 255, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
+        scRunBtn.style.cssText = `background: rgba(216, 216, 222, 0.1); color: #d8d8de; border: 1px solid rgba(216, 216, 222, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
 
         scToolbar.appendChild(scModeSelect);
         scToolbar.appendChild(scSaveBtn);
@@ -6167,7 +6179,7 @@ class RadianceViewer {
         let activeTab = 'term';
         tabTerm.onclick = () => {
             activeTab = 'term';
-            tabTerm.style.color = '#4da3ff'; tabTerm.style.borderColor = '#4da3ff';
+            tabTerm.style.color = '#d8d8de'; tabTerm.style.borderColor = '#d8d8de';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'block';
             this._termInputRow.style.display = 'flex';
@@ -6187,7 +6199,7 @@ class RadianceViewer {
         };
         tabDeliver.onclick = () => {
             activeTab = 'deliver';
-            tabDeliver.style.color = '#4da3ff'; tabDeliver.style.borderColor = '#4da3ff';
+            tabDeliver.style.color = '#d8d8de'; tabDeliver.style.borderColor = '#d8d8de';
             tabTerm.style.color = '#555'; tabTerm.style.borderColor = 'transparent';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'none';
@@ -6551,7 +6563,7 @@ class RadianceViewer {
 
         const colors = {
             system: '#3d6060',
-            info: '#4da3ff',
+            info: '#d8d8de',
             warn: '#ff9f43',
             error: '#ff4757',
             cmd: '#2ed573',
@@ -7818,9 +7830,9 @@ else:
             if (!btn) return;
             btn.classList.toggle('active', active);
             btn.style.color = active ? this.theme.accent : this.theme.textDim;
-            btn.style.background = active ? 'rgba(0, 168, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)';
-            btn.style.borderColor = active ? 'rgba(0, 168, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)';
-            btn.style.boxShadow = active ? '0 0 10px rgba(0, 168, 255, 0.2)' : 'none';
+            btn.style.background = active ? 'rgba(216, 216, 222, 0.15)' : 'rgba(255, 255, 255, 0.03)';
+            btn.style.borderColor = active ? 'rgba(216, 216, 222, 0.4)' : 'rgba(255, 255, 255, 0.08)';
+            btn.style.boxShadow = active ? '0 0 10px rgba(216, 216, 222, 0.2)' : 'none';
         };
 
         const syncAll = () => {
@@ -10002,9 +10014,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._syncCompareUI();
         if (!this._compareBtnEl) return;
         const on = this.compareMode === 'wipe';
-        this._compareBtnEl.style.borderColor  = on ? '#4da3ff' : 'rgba(255,255,255,0.15)';
-        this._compareBtnEl.style.background   = on ? 'rgba(0,168,255,0.15)' : 'rgba(255,255,255,0.05)';
-        this._compareBtnEl.style.color        = on ? '#4da3ff' : '#ccc';
+        this._compareBtnEl.style.borderColor  = on ? '#d8d8de' : 'rgba(255,255,255,0.15)';
+        this._compareBtnEl.style.background   = on ? 'rgba(216,216,222,0.15)' : 'rgba(255,255,255,0.05)';
+        this._compareBtnEl.style.color        = on ? '#d8d8de' : '#ccc';
         this._syncViewerBarBtns();
     }
 
@@ -12682,6 +12694,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     _updatePlayBtn() {
         if (this._sbPlay) this._sbPlay.textContent = this.isPlaying ? '❚❚' : '▶';
+        this._shell?.syncTransport();
         if (this.playBtn) this.playBtn.textContent = this.isPlaying ? '⏸' : '▶';
         if (this.sequencePlayButton) this.sequencePlayButton.textContent = this.isPlaying ? 'Ⅱ' : '▶';
         if (this.videoMode && this.videoEl) {
@@ -13370,6 +13383,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._termLog?.('warn', '[Viewer] The viewer f-stop is not implemented on WebGPU; the picture will not change. Switch to WebGL under Settings > Renderer.');
         }
         if (this._viewEvInput) this._viewEvInput.value = this.viewExposure.toFixed(1);
+        this._shell?.syncExposure();
         this.render();
     }
 
@@ -13733,12 +13747,12 @@ self.onmessage = async ({ data: { id, url } }) => {
                 border-radius: 3px; overflow: hidden; cursor: pointer;
                 border: 1.5px solid ${
                     isCut    ? '#ff000088' :
-                    isActive ? '#4da3ff' :
+                    isActive ? '#d8d8de' :
                                'rgba(255,255,255,0.09)'
                 };
                 box-shadow: ${
                     isCut    ? '0 0 6px #ff000066' :
-                    isActive ? '0 0 6px #4da3ff66' : 'none'
+                    isActive ? '0 0 6px #d8d8de66' : 'none'
                 };
                 position: relative; background: #111;
                 transition: border-color 0.12s, box-shadow 0.12s;
@@ -13794,7 +13808,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             badge.style.cssText = `
                 position: absolute; bottom: 1px; right: 2px;
                 font-size: 6px; font-family: monospace;
-                color: ${isActive ? '#4da3ff' : 'rgba(255,255,255,0.3)'};
+                color: ${isActive ? '#d8d8de' : 'rgba(255,255,255,0.3)'};
                 pointer-events: none; line-height: 1;
             `;
             cell.appendChild(badge);
@@ -13806,17 +13820,17 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const frameIdx = ci * step;
                         const isNowActive = (frameIdx === this.currentFrame);
                         const nowCut = cutFrames.has(frameIdx);
-                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#4da3ff' : 'rgba(255,255,255,0.09)';
-                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #4da3ff66' : 'none';
+                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#d8d8de' : 'rgba(255,255,255,0.09)';
+                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #d8d8de66' : 'none';
                         const b = c.querySelector('span:last-child');
-                        if (b) b.style.color = isNowActive ? '#4da3ff' : 'rgba(255,255,255,0.3)';
+                        if (b) b.style.color = isNowActive ? '#d8d8de' : 'rgba(255,255,255,0.3)';
                     });
                 }
             };
 
             cell.onmouseenter = () => {
                 if (idx !== this.currentFrame && !cutFrames.has(idx))
-                    cell.style.borderColor = 'rgba(0,168,255,0.4)';
+                    cell.style.borderColor = 'rgba(216,216,222,0.4)';
             };
             cell.onmouseleave = () => {
                 if (idx !== this.currentFrame && !cutFrames.has(idx))
@@ -13846,8 +13860,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else { this._applyCompareToRenderer(); this.render(); }
         this._termLog?.('info', `[Pin Frame] Frame ${this.currentFrame + 1} pinned as B.`);
         if (this._pinFrameBtn) {
-            this._pinFrameBtn.style.borderColor = '#4da3ff';
-            this._pinFrameBtn.style.color = '#4da3ff';
+            this._pinFrameBtn.style.borderColor = '#d8d8de';
+            this._pinFrameBtn.style.color = '#d8d8de';
             this._pinFrameBtn.title = `Pinned: Frame ${this.currentFrame + 1}, click again to release`;
         }
     }
@@ -14671,7 +14685,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (this.promptButton) {
                 this.promptButton.classList.add('active');
                 this.promptButton.style.background = this.theme.accent;
-                this.promptButton.style.color = '#fff';
+                this.promptButton.style.color = this.theme.accentInk;
             }
             // v2.4: Integrate with HUD — panel-embedded mode
             this.showControls = true;
@@ -14957,7 +14971,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         input = document.createElement('select');
                         input.style.cssText = `
                             width: 100%; background: #09090d; border: 1px solid rgba(255,255,255,0.08);
-                            border-radius: 6px; color: #00f2ff; font-size: 11px; padding: 4px 6px; cursor: pointer; outline: none;
+                            border-radius: 6px; color: #d8d8de; font-size: 11px; padding: 4px 6px; cursor: pointer; outline: none;
                             transition: all 0.2s;
                         `;
                         input.onmouseenter = () => { input.style.borderColor = 'rgba(0, 242, 255, 0.3)'; };
@@ -15008,7 +15022,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
                         const ck = document.createElement('input');
                         ck.type = 'checkbox'; ck.checked = w.value;
-                        ck.style.cssText = 'accent-color: #00f2ff; cursor: pointer; width: 11px; height: 11px;';
+                        ck.style.cssText = 'accent-color: #d8d8de; cursor: pointer; width: 11px; height: 11px;';
                         ck.onchange = (e) => {
                             w.value = e.target.checked;
                             if (w.callback) w.callback(w.value);
@@ -15093,7 +15107,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-search:focus { border-color: var(--radiance-accent); }
                 .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 52px; min-height:28px; align-items:center; padding:0 8px; border-radius:4px; border:1px solid transparent; color:var(--radiance-text); font-size:var(--radiance-fs-body); transition: background 0.15s; }
                 .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.02); }
-                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(77, 163, 255, .35); color: var(--radiance-accent); }
+                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(216, 216, 222, .35); color: var(--radiance-accent-text); }
                 .radiance-ref-channel:not(.is-disabled) { cursor:pointer; }
                 .radiance-ref-channel:not(.is-disabled):hover { background:var(--radiance-control-hover); }
                 .radiance-ref-channel.is-disabled { color:var(--radiance-text-muted); }
@@ -16633,6 +16647,8 @@ self.onmessage = async ({ data: { id, url } }) => {
      * appears as its own entry while it owns the display.
      */
     _syncViewSelect() {
+        // The Simple header's view menu mirrors this select once it is current.
+        if (this._shell) queueMicrotask(() => this._shell?.syncView());
         const sel = this._viewSelect;
         if (!sel) return;
         const opt = (value) => [...sel.options].find(o => o.value === value);
@@ -16750,7 +16766,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             title.textContent = label.toUpperCase();
             const state = document.createElement('span');
             state.textContent = this.renderer?.getPipelineInfo?.()?.api?.toUpperCase?.() || (this._gpuBackend || 'GPU').toUpperCase();
-            state.style.color = '#4da3ff';
+            state.style.color = '#d8d8de';
             head.append(title, state);
             const canvas = document.createElement('canvas');
             canvas.className = 'radiance-ref-scope-canvas';
@@ -17510,7 +17526,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const evG = (g / 12).toFixed(2);
                 const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
-                printerEVBadge.style.color = '#4da3ff';
+                printerEVBadge.style.color = '#d8d8de';
             }
         };
         printerEVBadge.style.cssText = 'font-size: 8px; font-family: monospace; color: #555; letter-spacing: 0.04em;';
@@ -17929,7 +17945,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         presets.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
         const INACTIVE_PRESET = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#888;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
-        const ACTIVE_PRESET = `background:rgba(0,168,255,0.12);border:1px solid rgba(0,168,255,0.45);color:#4da3ff;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
+        const ACTIVE_PRESET = `background:rgba(216,216,222,0.12);border:1px solid rgba(216,216,222,0.45);color:#d8d8de;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
 
         // Track which grain preset is active via a module-level label key
         if (!this._activeFilmPreset) this._activeFilmPreset = 'No Grain';
@@ -19673,7 +19689,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 b.style.cssText = `
                     flex:1; text-align:center; padding:5px 4px; font-size:10px; font-weight:700;
                     border-radius:4px; cursor:pointer; user-select:none; transition:all .15s;
-                    color:${on ? '#00f2ff' : t.textDim};
+                    color:${on ? '#d8d8de' : t.textDim};
                     background:${on ? 'rgba(0,242,255,0.10)' : 'transparent'};
                     border:1px solid ${on ? 'rgba(0,242,255,0.28)' : 'transparent'};
                 `;
@@ -19782,7 +19798,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.probeMode !== 'cursor') {
             const sampleBtn = document.createElement('button');
             sampleBtn.textContent = this.probeMode === 'frame' ? '⛶ SAMPLE FRAME' : '▣ SAMPLE REGION';
-            sampleBtn.style.cssText = 'background:rgba(0,242,255,0.08); color:#00f2ff; border:1px solid rgba(0,242,255,0.28); padding:8px; border-radius:5px; font-size:10px; cursor:pointer; font-weight:800; letter-spacing:0.5px;';
+            sampleBtn.style.cssText = 'background:rgba(216,216,222,0.08); color:#d8d8de; border:1px solid rgba(216,216,222,0.28); padding:8px; border-radius:5px; font-size:10px; cursor:pointer; font-weight:800; letter-spacing:0.5px;';
             sampleBtn.onclick = () => this._probeComputeStats();
             container.appendChild(sampleBtn);
         }
@@ -20511,7 +20527,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             filterBtn.style.cssText = `flex:1; text-align:center; padding:5px; border-radius:4px; font-size:10px;
                 font-weight:700; cursor:pointer; user-select:none;
                 background:${near ? 'rgba(0,242,255,0.10)' : 'rgba(255,255,255,0.06)'};
-                color:${near ? '#00f2ff' : '#aaa'};
+                color:${near ? '#d8d8de' : '#aaa'};
                 border:1px solid ${near ? 'rgba(0,242,255,0.28)' : 'rgba(255,255,255,0.12)'};`;
         };
         filterBtn.onclick = () => { this.togglePixelFilter(); paintFilter(); };
@@ -20873,14 +20889,14 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // ── v2.4: OCIO Display Transform Section ─────────────────────────────
         const ocioGroup = document.createElement('div');
-        ocioGroup.style.cssText = 'margin-top: 4px; border: 1px solid rgba(0,168,255,0.15); border-radius: 8px; padding: 10px; background: rgba(0,168,255,0.04);';
+        ocioGroup.style.cssText = 'margin-top: 4px; border: 1px solid rgba(216,216,222,0.15); border-radius: 8px; padding: 10px; background: rgba(216,216,222,0.04);';
 
         const ocioHeader = document.createElement('div');
         ocioHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;';
 
         const ocioTitle = document.createElement('div');
         ocioTitle.innerHTML = `
-            <span style="color:#4da3ff; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
+            <span style="color:#d8d8de; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
                 OCIO Display Transform
             </span>`;
         ocioHeader.appendChild(ocioTitle);
@@ -20893,9 +20909,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             : 'No Config';
         ocioBadge.style.cssText = `
             font-size: 8px; font-family: monospace; padding: 2px 6px; border-radius: 3px;
-            background: ${ocioLoaded ? 'rgba(0,168,255,0.15)' : 'rgba(255,255,255,0.06)'};
-            color: ${ocioLoaded ? '#4da3ff' : '#555'};
-            border: 1px solid ${ocioLoaded ? 'rgba(0,168,255,0.3)' : 'rgba(255,255,255,0.08)'};
+            background: ${ocioLoaded ? 'rgba(216,216,222,0.15)' : 'rgba(255,255,255,0.06)'};
+            color: ${ocioLoaded ? '#d8d8de' : '#555'};
+            border: 1px solid ${ocioLoaded ? 'rgba(216,216,222,0.3)' : 'rgba(255,255,255,0.08)'};
         `;
         ocioHeader.appendChild(ocioBadge);
         ocioGroup.appendChild(ocioHeader);
@@ -20905,8 +20921,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             const dtSel = document.createElement('select');
             dtSel.className = 'radiance-ocio-display-sel';
             dtSel.style.cssText = `
-                width: 100%; background: #0d0d14; color: #4da3ff;
-                border: 1px solid rgba(0,168,255,0.25); border-radius: 5px;
+                width: 100%; background: #0d0d14; color: #d8d8de;
+                border: 1px solid rgba(216,216,222,0.25); border-radius: 5px;
                 padding: 6px 8px; font-size: 10px; font-family: monospace;
                 cursor: pointer; outline: none; margin-bottom: 6px;
             `;
@@ -20949,7 +20965,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const { display, view } = JSON.parse(val);
                         await this.ocioApplyDisplayView(display, view);
                         ocioActiveLbl.textContent = `▶ ${display} / ${view}`;
-                        ocioActiveLbl.style.color = '#4da3ff';
+                        ocioActiveLbl.style.color = '#d8d8de';
                     } catch (e) {
                         console.error('[OCIO]', e);
                     }
@@ -20963,7 +20979,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ? `▶ ${this._ocioActiveTransform}` : 'No active transform';
             ocioActiveLbl.style.cssText = `
                 font-size: 9px; font-family: monospace;
-                color: ${this._ocioActiveTransform ? '#4da3ff' : '#444'};
+                color: ${this._ocioActiveTransform ? '#d8d8de' : '#444'};
                 margin-bottom: 6px; padding-left: 2px;
             `;
             ocioGroup.appendChild(ocioActiveLbl);
@@ -20990,12 +21006,12 @@ self.onmessage = async ({ data: { id, url } }) => {
             const rebakeBtn = document.createElement('button');
             rebakeBtn.textContent = '⟳ Bake';
             rebakeBtn.style.cssText = `
-                font-size: 9px; padding: 3px 8px; background: rgba(0,168,255,0.1);
-                border: 1px solid rgba(0,168,255,0.3); color: #4da3ff;
+                font-size: 9px; padding: 3px 8px; background: rgba(216,216,222,0.1);
+                border: 1px solid rgba(216,216,222,0.3); color: #d8d8de;
                 border-radius: 4px; cursor: pointer; flex-shrink: 0;
             `;
-            rebakeBtn.onmouseenter = () => { rebakeBtn.style.background = 'rgba(0,168,255,0.2)'; };
-            rebakeBtn.onmouseleave = () => { rebakeBtn.style.background = 'rgba(0,168,255,0.1)'; };
+            rebakeBtn.onmouseenter = () => { rebakeBtn.style.background = 'rgba(216,216,222,0.2)'; };
+            rebakeBtn.onmouseleave = () => { rebakeBtn.style.background = 'rgba(216,216,222,0.1)'; };
             rebakeBtn.onclick = async () => {
                 if (!dtSel.value) return;
                 try {
@@ -21028,8 +21044,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             const loadOcioBtn = document.createElement('button');
             loadOcioBtn.textContent = '⤓ Load config.ocio';
             loadOcioBtn.style.cssText = `
-                width: 100%; padding: 6px; border: 1px solid rgba(0,168,255,0.25);
-                background: transparent; color: #4da3ff; border-radius: 5px;
+                width: 100%; padding: 6px; border: 1px solid rgba(216,216,222,0.25);
+                background: transparent; color: #d8d8de; border-radius: 5px;
                 font-size: 9px; cursor: pointer; margin-top: 2px;
             `;
             const ocioFileInput = document.createElement('input');
@@ -22970,7 +22986,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const appendOutput = (text, isError, cmdEcho) => {
             if (cmdEcho) {
                 const cmdLine = document.createElement('div');
-                cmdLine.style.cssText = `color:rgba(0,168,255,0.7);margin-top:6px;font-weight:600;`;
+                cmdLine.style.cssText = `color:rgba(216,216,222,0.7);margin-top:6px;font-weight:600;`;
                 cmdLine.textContent = '>>> ' + cmdEcho.split('\n')[0] + (cmdEcho.includes('\n') ? '...' : '');
                 outputPanel.appendChild(cmdLine);
             }
@@ -23010,7 +23026,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 <span id="rad-term-clean" style="cursor:pointer;color:#e87;opacity:0.6;transition:opacity 0.2s;">[CLEAR OUTPUT]</span>
             </div>
             <div style="display:flex;gap:12px;align-items:center;">
-                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(0,168,255,0.5);text-decoration:none;" onmouseover="this.style.color='#4da3ff'" onmouseout="this.style.color='rgba(0,168,255,0.5)'">📖 DOCS</a>
+                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(216,216,222,0.5);text-decoration:none;" onmouseover="this.style.color='#d8d8de'" onmouseout="this.style.color='rgba(216,216,222,0.5)'">📖 DOCS</a>
                 <span id="rad-term-status">READY</span>
             </div>
         `;
@@ -23614,7 +23630,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 container.style.borderColor = 'rgba(0, 242, 255, 0.35)';
                 container.style.background = 'rgba(0, 242, 255, 0.03)';
                 container.style.boxShadow = '0 0 12px rgba(0, 242, 255, 0.15)';
-                lbl.style.color = '#00f2ff';
+                lbl.style.color = '#d8d8de';
                 lbl.style.textShadow = '0 0 6px rgba(0, 242, 255, 0.4)';
             } else {
                 container.style.borderColor = 'transparent';
@@ -24738,6 +24754,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     destroy() {
         this._destroyed = true;
+        this._shell?.destroy();
         this.closeBMenu?.();
         this._stills = null;
         // Chromium can keep a <select> reachable from a native root after the
@@ -25028,15 +25045,32 @@ app.registerExtension({
             if (!node?.id || !document?.querySelector) return;
             const nodeEl = document.querySelector(`[data-node-id="${node.id}"]`);
             if (!nodeEl) return;
-            for (const name of Object.keys(hiddenViewerDefaults)) {
+            const linked = (name) => node?.inputs?.find?.((i) => i?.widget?.name === name)?.link != null;
+            for (const name of [...Object.keys(hiddenViewerDefaults), ..._INPUT_WIDGET_NAMES.filter((n) => !linked(n))]) {
                 const label = [...nodeEl.querySelectorAll('.lg-node-widget .truncate, .lg-node-widget [aria-label]')]
                     .find(el => (el.textContent || el.getAttribute('aria-label') || '').trim() === name);
                 const row = label?.closest?.('.lg-node-widget');
                 if (row) row.style.display = 'none';
             }
         };
+        // 4.1: input_space, float_precision, fps and exposure_bracketing live
+        // in the viewer's Input menu (radiance_viewer_shell.js), so their
+        // widget rows are hidden: nothing is drawn outside the viewer. The
+        // values stay in the widgets (saved, API format unchanged). A widget
+        // converted to an input and linked keeps its socket (setWidgetVisible
+        // leaves linked widgets alone) and the menu says a link sets it.
+        const hideInputSettingWidgets = (node) => {
+            let changed = false;
+            for (const name of _INPUT_WIDGET_NAMES) {
+                const w = node?.widgets?.find((x) => x?.name === name);
+                if (w && w.type !== 'hidden') changed = _setWidgetVisible(w, false, node) || changed;
+            }
+            if (changed) node.radianceViewer?._shell?.syncInput?.(true);
+            return changed;
+        };
         const scheduleHiddenViewerDefaults = (node) => {
             if (!isRadianceViewerNode(node)) return;
+            hideInputSettingWidgets(node);
             applyHiddenViewerDefaults(node);
             hideMountedViewerDefaultRows(node);
             hideLegacyViewerRows();
