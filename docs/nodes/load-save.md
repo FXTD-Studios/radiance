@@ -4,11 +4,34 @@
 
 Readers, writers, EXR, image, video, and file exchange.
 
-3 nodes. [All sections](README.md)
+4 nodes. [All sections](README.md)
 
+- [Load Still (RUDRA)](#load-still-rudra)
 - [Read](#read)
 - [Write](#write)
 - [Write EXR](#write-exr)
+
+## Load Still (RUDRA)
+
+`RadianceRudraLoadStill`
+
+Loads an SDR still as RUDRA does: every code kept (8 or 16 bit), the EXIF orientation applied, and the colour tag read (ICC profile, PNG cICP / sRGB / cHRM): Rec.709 / sRGB, Display P3, Rec.2020 or Adobe RGB. Wire `source` into SDR → HDR Analytic (RUDRA) so the master is made from the right primaries. A profile RUDRA does not know is reported and read as Rec.709, never guessed.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | choice |  | files found in the matching models or input folder | A still in ComfyUI's input folder (or upload one). |
+| `path` (optional) | string |  |  | A file anywhere instead. Empty: the image above. |
+
+**Outputs**
+
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `image` | IMAGE | The still's codes, oriented, 0..1 (not converted). |
+| `alpha` | MASK | Its alpha (1 where it has none). |
+| `source` | RUDRA_SOURCE | Its primaries, for SDR → HDR Analytic (RUDRA)'s source input. |
+| `note` | STRING | What was found and what is done, in words. |
 
 ## Read
 
@@ -84,6 +107,7 @@ Write images or EXR sequences to disk with configurable format options.
 | `audio_codec` (optional) | choice | `Auto` | `Auto`, `PCM 24-bit`, `PCM 32-bit float`, `FLAC 24-bit`, `AAC`, `MP3` | Audio of a video: • Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), AAC in an MP4. • PCM in an MP4 is read by few players. • FLAC cannot go in a MOV, which gets PCM 24-bit instead. • AAC is 256 kb/s, MP3 320 kb/s. A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3. |
 | `audio_path` (optional) | string |  |  | Sequences: where the audio file goes. • Empty: in the sequence's folder, named like the frames (shot_v0001.wav). • Otherwise a folder, or a file path (its extension follows audio_codec). A relative path is under ComfyUI's output folder; quotes from "Copy as path" are fine. |
 | `aces_amf` (optional) | boolean | off |  | EXR in ACEScg or ACES2065-1 only: also write an ACES Metadata File (AMF v2.0) beside the master, as RUDRA does: one per sequence (named after it, frames as ####) or per image. It names the ACES 2.0 SDR Rec.709 output transform and, for ACEScg, the ACEScg to ACES2065-1 input transform, so grading and review tools open the master in the right ACES pipeline. |
+| `hdr10plus_json` (optional) | string |  |  | PQ with MP4 (H.265 10-bit) only: an HDR10+ JSON (◎ HDR Dynamic Metadata (RUDRA)'s hdr10plus_path, or any x265 --dhdr10-info file) carried into the video as ST 2094-40 dynamic metadata, as RUDRA does. It needs an ffmpeg whose x265 was built with HDR10+; the receipt says whether the file carries it. Empty: HDR10 only. |
 
 Output node: writes or displays, no graph outputs.
 

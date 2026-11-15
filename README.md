@@ -29,7 +29,7 @@ Generate in HDR, grade and review like a finishing suite, and deliver masters to
 
 ## What Radiance does
 
-110 visible nodes, grouped around four jobs:
+121 visible nodes, grouped around four jobs:
 
 <table>
 <tr>

@@ -1,0 +1,752 @@
+{
+ "cuts": [
+  0,
+  5
+ ],
+ "flicker": [
+  [
+   null,
+   null
+  ],
+  [
+   0.011179928156007657,
+   0.0705682060797549
+  ],
+  [
+   0.002871649683101829,
+   0.06311746067143693
+  ],
+  [
+   0.009104794296183938,
+   0.06923768409871531
+  ],
+  [
+   0.004050614117085294,
+   0.06366257203443448
+  ],
+  [
+   null,
+   null
+  ],
+  [
+   0.010280863875746782,
+   0.0706281839993968
+  ],
+  [
+   0.0031483203531488257,
+   0.06431630036538849
+  ]
+ ],
+ "detected_shots": [
+  [
+   0,
+   5
+  ],
+  [
+   5,
+   3
+  ]
+ ],
+ "dovi": {
+  "cm_version": "V40",
+  "profile": "8.1",
+  "length": 8,
+  "level6": {
+   "max_display_mastering_luminance": 1000,
+   "min_display_mastering_luminance": 1,
+   "max_content_light_level": 987,
+   "max_frame_average_light_level": 81
+  },
+  "shots": [
+   {
+    "start": 0,
+    "duration": 5,
+    "metadata_blocks": [
+     {
+      "Level1": {
+       "min_pq": 12,
+       "max_pq": 3071,
+       "avg_pq": 1992
+      }
+     }
+    ]
+   },
+   {
+    "start": 5,
+    "duration": 3,
+    "metadata_blocks": [
+     {
+      "Level1": {
+       "min_pq": 12,
+       "max_pq": 3073,
+       "avg_pq": 1690
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "hdr10plus": {
+  "JSONInfo": {
+   "HDR10plusProfile": "A",
+   "Version": "1.0"
+  },
+  "SceneInfo": [
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 804,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       273,
+       337,
+       384,
+       465,
+       546,
+       607,
+       644,
+       654,
+       9811
+      ]
+     },
+     "MaxScl": [
+      9820,
+      9820,
+      9820
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 0,
+    "SceneId": 0,
+    "SequenceFrameIndex": 0
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 804,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       273,
+       337,
+       384,
+       465,
+       546,
+       607,
+       644,
+       654,
+       9811
+      ]
+     },
+     "MaxScl": [
+      9820,
+      9820,
+      9820
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 1,
+    "SceneId": 0,
+    "SequenceFrameIndex": 1
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 804,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       273,
+       337,
+       384,
+       465,
+       546,
+       607,
+       644,
+       654,
+       9811
+      ]
+     },
+     "MaxScl": [
+      9820,
+      9820,
+      9820
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 2,
+    "SceneId": 0,
+    "SequenceFrameIndex": 2
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 804,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       273,
+       337,
+       384,
+       465,
+       546,
+       607,
+       644,
+       654,
+       9811
+      ]
+     },
+     "MaxScl": [
+      9820,
+      9820,
+      9820
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 3,
+    "SceneId": 0,
+    "SequenceFrameIndex": 3
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 804,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       273,
+       337,
+       384,
+       465,
+       546,
+       607,
+       644,
+       654,
+       9811
+      ]
+     },
+     "MaxScl": [
+      9820,
+      9820,
+      9820
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 4,
+    "SceneId": 0,
+    "SequenceFrameIndex": 4
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 373,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       19,
+       30,
+       39,
+       58,
+       78,
+       95,
+       105,
+       108,
+       9848
+      ]
+     },
+     "MaxScl": [
+      9866,
+      9866,
+      9866
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 0,
+    "SceneId": 1,
+    "SequenceFrameIndex": 5
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 373,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       19,
+       30,
+       39,
+       58,
+       78,
+       95,
+       105,
+       108,
+       9848
+      ]
+     },
+     "MaxScl": [
+      9866,
+      9866,
+      9866
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 1,
+    "SceneId": 1,
+    "SequenceFrameIndex": 6
+   },
+   {
+    "LuminanceParameters": {
+     "AverageRGB": 373,
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1,
+       5,
+       10,
+       25,
+       50,
+       75,
+       90,
+       95,
+       99
+      ],
+      "DistributionValues": [
+       19,
+       30,
+       39,
+       58,
+       78,
+       95,
+       105,
+       108,
+       9848
+      ]
+     },
+     "MaxScl": [
+      9866,
+      9866,
+      9866
+     ]
+    },
+    "NumberOfWindows": 1,
+    "TargetedSystemDisplayMaximumLuminance": 0,
+    "SceneFrameIndex": 2,
+    "SceneId": 1,
+    "SequenceFrameIndex": 7
+   }
+  ],
+  "SceneInfoSummary": {
+   "SceneFirstFrameIndex": [
+    0,
+    5
+   ],
+   "SceneFrameNumbers": [
+    5,
+    3
+   ]
+  },
+  "ToolInfo": {
+   "Tool": "RUDRA",
+   "Version": "1.0"
+  }
+ },
+ "scenes": {
+  "JSONInfo": {
+   "Generator": "RUDRA delivery",
+   "Version": "1.0",
+   "Units": "cd/m2"
+  },
+  "SceneInfoSummary": {
+   "SceneFirstFrameIndex": [
+    0,
+    5
+   ],
+   "SceneFrameNumbers": [
+    5,
+    3
+   ]
+  },
+  "SceneInfo": [
+   {
+    "SceneId": 0,
+    "SceneFirstFrameIndex": 0,
+    "SceneFrameNumbers": 5,
+    "TargetedSystemDisplayMaximumLuminance": 400,
+    "LuminanceParameters": {
+     "Units": "cd/m2",
+     "AverageMaxRGB": 80.40858809918164,
+     "MaxSCL": [
+      981.9777221679688,
+      981.9777221679688,
+      981.9777221679688
+     ],
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1.0,
+       5.0,
+       10.0,
+       25.0,
+       50.0,
+       75.0,
+       90.0,
+       95.0,
+       99.98
+      ],
+      "DistributionValues": [
+       27.256796875,
+       33.70171489715576,
+       38.44022483825684,
+       46.466126441955566,
+       54.614187240600586,
+       60.71668720245361,
+       64.36624145507812,
+       65.40341415405274,
+       981.1058441284183
+      ]
+     }
+    }
+   },
+   {
+    "SceneId": 1,
+    "SceneFirstFrameIndex": 5,
+    "SceneFrameNumbers": 3,
+    "TargetedSystemDisplayMaximumLuminance": 400,
+    "LuminanceParameters": {
+     "Units": "cd/m2",
+     "AverageMaxRGB": 37.28766096780698,
+     "MaxSCL": [
+      986.5731201171875,
+      986.5731201171875,
+      986.5731201171875
+     ],
+     "LuminanceDistributions": {
+      "DistributionIndex": [
+       1.0,
+       5.0,
+       10.0,
+       25.0,
+       50.0,
+       75.0,
+       90.0,
+       95.0,
+       99.98
+      ],
+      "DistributionValues": [
+       1.928382158279419,
+       3.049384117126465,
+       3.9057657718658447,
+       5.76798677444458,
+       7.7880988121032715,
+       9.539710998535156,
+       10.494050025939941,
+       10.824009895324707,
+       984.7946588500985
+      ]
+     }
+    }
+   }
+  ]
+ },
+ "analysis": {
+  "generator": "rudra.delivery.metadata",
+  "convention": "MaxRGB per pixel; nits absolute; pq codes 12-bit (0-4095)",
+  "frame_count": 8,
+  "max_cll_nits": 987,
+  "max_fall_nits": 81,
+  "shots": [
+   {
+    "start": 0,
+    "duration": 5,
+    "min_pq": 1511,
+    "avg_pq": 1992,
+    "max_pq": 3071,
+    "min_nits": 22.926443099975586,
+    "avg_nits": 80.40858809918164,
+    "max_nits": 981.9777221679688
+   },
+   {
+    "start": 5,
+    "duration": 3,
+    "min_pq": 632,
+    "avg_pq": 1690,
+    "max_pq": 3073,
+    "min_nits": 1.0877506732940674,
+    "avg_nits": 37.28766096780698,
+    "max_nits": 986.5731201171875
+   }
+  ],
+  "frames": [
+   {
+    "index": 0,
+    "min_nits": 23.230384826660156,
+    "avg_nits": 79.97916472405196,
+    "max_nits": 977.744873046875,
+    "min_pq": 1515,
+    "avg_pq": 1989,
+    "max_pq": 3069,
+    "maxscl_nits": [
+     977.744873046875,
+     977.744873046875,
+     977.744873046875
+    ],
+    "percentiles": {
+     "1.0": 26.972272872924805,
+     "5.0": 33.52184295654297,
+     "10.0": 38.12761688232422,
+     "25.0": 45.315284729003906,
+     "50.0": 54.07019805908203,
+     "75.0": 60.11608123779297,
+     "90.0": 62.822200775146484,
+     "95.0": 64.66500091552734,
+     "99.98": 976.3148693603522
+    }
+   },
+   {
+    "index": 1,
+    "min_nits": 23.379091262817383,
+    "avg_nits": 80.48819378018379,
+    "max_nits": 980.690185546875,
+    "min_pq": 1518,
+    "avg_pq": 1992,
+    "max_pq": 3070,
+    "maxscl_nits": [
+     980.690185546875,
+     980.690185546875,
+     980.690185546875
+    ],
+    "percentiles": {
+     "1.0": 27.092323856353758,
+     "5.0": 33.70171489715576,
+     "10.0": 38.1955623626709,
+     "25.0": 45.66308307647705,
+     "50.0": 54.36086082458496,
+     "75.0": 60.47409152984619,
+     "90.0": 63.372166824340816,
+     "95.0": 65.05628280639648,
+     "99.98": 980.0015796386722
+    }
+   },
+   {
+    "index": 2,
+    "min_nits": 23.86876106262207,
+    "avg_nits": 80.31260597556829,
+    "max_nits": 976.546630859375,
+    "min_pq": 1525,
+    "avg_pq": 1991,
+    "max_pq": 3068,
+    "maxscl_nits": [
+     976.546630859375,
+     976.546630859375,
+     976.546630859375
+    ],
+    "percentiles": {
+     "1.0": 27.109148445129396,
+     "5.0": 33.08628749847412,
+     "10.0": 38.24689712524414,
+     "25.0": 45.928897857666016,
+     "50.0": 54.26157569885254,
+     "75.0": 60.40544319152832,
+     "90.0": 63.91338653564453,
+     "95.0": 64.99043807983398,
+     "99.98": 975.9601100585941
+    }
+   },
+   {
+    "index": 3,
+    "min_nits": 23.977535247802734,
+    "avg_nits": 80.77602756395936,
+    "max_nits": 981.9777221679688,
+    "min_pq": 1527,
+    "avg_pq": 1993,
+    "max_pq": 3071,
+    "maxscl_nits": [
+     981.9777221679688,
+     981.9777221679688,
+     981.9777221679688
+    ],
+    "percentiles": {
+     "1.0": 27.256796875,
+     "5.0": 33.27144203186035,
+     "10.0": 38.44022483825684,
+     "25.0": 46.466126441955566,
+     "50.0": 54.614187240600586,
+     "75.0": 60.71668720245361,
+     "90.0": 64.36624145507812,
+     "95.0": 65.40341415405274,
+     "99.98": 981.1058441284183
+    }
+   },
+   {
+    "index": 4,
+    "min_nits": 22.926443099975586,
+    "avg_nits": 80.48694845214486,
+    "max_nits": 978.3536376953125,
+    "min_pq": 1511,
+    "avg_pq": 1992,
+    "max_pq": 3069,
+    "maxscl_nits": [
+     978.3536376953125,
+     978.3536376953125,
+     978.3536376953125
+    ],
+    "percentiles": {
+     "1.0": 27.193766708374024,
+     "5.0": 33.21684799194336,
+     "10.0": 38.12761688232422,
+     "25.0": 46.40756416320801,
+     "50.0": 54.518104553222656,
+     "75.0": 60.61769390106201,
+     "90.0": 63.63686637878417,
+     "95.0": 65.2618911743164,
+     "99.98": 977.0233450439459
+    }
+   },
+   {
+    "index": 5,
+    "min_nits": 1.1834102869033813,
+    "avg_nits": 37.35826636166312,
+    "max_nits": 984.5111083984375,
+    "min_pq": 650,
+    "avg_pq": 1691,
+    "max_pq": 3072,
+    "maxscl_nits": [
+     984.5111083984375,
+     984.5111083984375,
+     984.5111083984375
+    ],
+    "percentiles": {
+     "1.0": 1.928382158279419,
+     "5.0": 3.049384117126465,
+     "10.0": 3.9057657718658447,
+     "25.0": 5.76798677444458,
+     "50.0": 7.7880988121032715,
+     "75.0": 9.539710998535156,
+     "90.0": 10.494050025939941,
+     "95.0": 10.824009895324707,
+     "99.98": 983.8064150268558
+    }
+   },
+   {
+    "index": 6,
+    "min_nits": 1.0877506732940674,
+    "avg_nits": 37.18735621119849,
+    "max_nits": 980.3402099609375,
+    "min_pq": 632,
+    "avg_pq": 1689,
+    "max_pq": 3070,
+    "maxscl_nits": [
+     980.3402099609375,
+     980.3402099609375,
+     980.3402099609375
+    ],
+    "percentiles": {
+     "1.0": 1.9103100109100342,
+     "5.0": 3.029162335395813,
+     "10.0": 3.889459419250488,
+     "25.0": 5.722768783569336,
+     "50.0": 7.754183053970337,
+     "75.0": 9.473012924194336,
+     "90.0": 10.404851341247559,
+     "95.0": 10.755779266357422,
+     "99.98": 979.6705029174808
+    }
+   },
+   {
+    "index": 7,
+    "min_nits": 1.2724040746688843,
+    "avg_nits": 37.31736033055931,
+    "max_nits": 986.5731201171875,
+    "min_pq": 666,
+    "avg_pq": 1691,
+    "max_pq": 3073,
+    "maxscl_nits": [
+     986.5731201171875,
+     986.5731201171875,
+     986.5731201171875
+    ],
+    "percentiles": {
+     "1.0": 1.912453738451004,
+     "5.0": 3.03986132144928,
+     "10.0": 3.882952427864075,
+     "25.0": 5.723603367805481,
+     "50.0": 7.76085090637207,
+     "75.0": 9.48111867904663,
+     "90.0": 10.191713619232177,
+     "95.0": 10.768521070480347,
+     "99.98": 984.7946588500985
+    }
+   }
+  ]
+ },
+ "source": "FXTD-Studios/RUDRA 74f03b6: peak_* from the native core's master_to_peak (scale / KeepLuminance), network units in, nits out; held, cuts and flicker from rudra/video.py (ShadowSmoother with static hold at 0.25 s / 24 fps, thumbnails by torch area interpolation); metadata from rudra/delivery/metadata.py on rudra.hdr10.master_to_peak(held, 1000) (the Python's scale fit). The sequence is tests/test_rudra_delivery.py::_sequence."
+}
