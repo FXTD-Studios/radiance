@@ -40,4 +40,6 @@ WEB_DIRECTORY = "./js"
 #: 4.0: 152 -> 151. RadianceLoadImageMask (Read Mask) removed; ComfyUI's Load
 #: Image and its mask editor do the same job.
 #: 4.0: 151 -> 152. RadianceSDRToHDRAIFill (RUDRA AI fill v3) added.
-EXPECTED_MIN_NODE_COUNT = 152
+#: 4.0: 152 -> 153. RadianceSDRToHDRAIFillRerender (RUDRA AI fill v4, region
+#: re-render, experimental) added.
+EXPECTED_MIN_NODE_COUNT = 153

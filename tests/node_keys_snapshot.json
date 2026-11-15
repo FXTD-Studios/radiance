@@ -114,6 +114,7 @@
   "RadianceResolution",
   "RadianceRollingShutter",
   "RadianceSDRToHDRAIFill",
+  "RadianceSDRToHDRAIFillRerender",
   "RadianceSDRToHDRPrepare",
   "RadianceSDRToHDRRecover",
   "RadianceSDRToHDRUniversal",
