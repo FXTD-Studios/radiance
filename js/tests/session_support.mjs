@@ -69,13 +69,15 @@ function crc32(buf) {
 }
 
 /** A flat RGB PNG at `value`. */
-export function makePNG(W, H, value = 128) {
+export function makePNG(W, H, value = 128, colour = null) {
     const raw = Buffer.alloc((W * 3 + 1) * H);
     for (let y = 0; y < H; y++) {
         raw[y * (W * 3 + 1)] = 0;
         for (let x = 0; x < W; x++) {
             const o = y * (W * 3 + 1) + 1 + x * 3;
-            raw[o] = raw[o + 1] = raw[o + 2] = value;
+            const rgb = colour?.(x, y);
+            if (rgb) { raw[o] = rgb[0]; raw[o + 1] = rgb[1]; raw[o + 2] = rgb[2]; }
+            else raw[o] = raw[o + 1] = raw[o + 2] = value;
         }
     }
     const chunk = (type, data) => {
@@ -125,6 +127,8 @@ export function makeRHDR(W, H, { base = 0.18, mark = 0, black = 0, ramp = null, 
  *   b_<W>x<H>_<v>.png | .rhdr     a flat compare frame at value v (PNG 0-255, RHDR v/100)
  *   g_<W>x<H>_<i>.rhdr            frame i, every pixel at 0.05 * (i + 1)
  *   black_<W>x<H>_<i>.rhdr        half the frame pure black, the rest 0.01 to 41.6
+ *   r_<W>x<H>_<i>.png             a RUDRA regions picture: grey, with the right quarter
+ *                                 reconstructed (cyan) and the top-left eighth generated (yellow)
  *   bad.rhdr, trunc.rhdr          corrupt payloads
  *   clip24.webm                   js/tests/fixtures/clip24.webm
  * Anything else is a 404, as a deleted ComfyUI temp file is.
@@ -139,6 +143,11 @@ async function viewFile(name) {
     if (m) {
         const [W, H, v] = [+m[1], +m[2], +m[3]];
         return m[4] === 'png' ? makePNG(W, H, v) : makeRHDR(W, H, { base: v / 100, mark: v / 100 });
+    }
+    m = name.match(/^r_(\d+)x(\d+)_(\d+)\.png$/);
+    if (m) {
+        const [W, H] = [+m[1], +m[2]];
+        return makePNG(W, H, 70, (x, y) => (x >= W * 0.75 ? [72, 202, 220] : x < W / 4 && y < H / 2 ? [250, 201, 59] : null));
     }
     m = name.match(/^g_(\d+)x(\d+)_(\d+)\.rhdr$/);
     if (m) return makeRHDR(+m[1], +m[2], { base: 0.05 * (+m[3] + 1), mark: +m[3] });

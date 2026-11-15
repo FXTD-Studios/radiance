@@ -154,7 +154,9 @@ def test_the_new_widgets_are_visible_and_not_named_bit_depth():
     """The JS force-hides any widget called bit_depth on this node."""
     from radiance.nodes.monitor.viewer import RadianceViewer
     opt = RadianceViewer.INPUT_TYPES()["optional"]
-    assert list(opt)[-3:] == ["input_space", "float_precision", "fps"], "appended, positions kept"
+    # Widget values are saved by position; sockets (IMAGE, VIDEO) have none. V5's regions socket follows fps.
+    widgets = [k for k, v in opt.items() if isinstance(v[0], (list, tuple)) or v[0] in ("BOOLEAN", "FLOAT", "INT", "STRING")]
+    assert widgets[-3:] == ["input_space", "float_precision", "fps"], "appended, positions kept"
     assert "bit_depth" not in opt
     assert opt["float_precision"][1]["default"] == "Half (16-bit)"
 

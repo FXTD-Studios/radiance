@@ -25,7 +25,7 @@ async function inPage(fn, arg) {
     }
 }
 
-test('a connected B switches nothing, and A | B | Wipe | Diff | Blink is on the bar in every workspace', { skip }, async () => {
+test('a connected B switches nothing; the compare switch is in the Compare panel and on the Pro tools bar', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make('simple'); const v = n.radianceViewer;
         const msg = __frames(3, 64, 48);
@@ -37,7 +37,7 @@ test('a connected B switches nothing, and A | B | Wipe | Diff | Blink is on the 
         const r = { hints: [...v._modeBtns.values()].filter((b) => b.classList.contains('has-hint')).length,
             ws: v.workspace, modeKept: v.compareMode === modeBefore, workspaces: [...v._modeBtns.keys()] };
         const labels = (root) => [...root.querySelectorAll('button')].map((b) => b.textContent);
-        r.review = labels(v.simpleBar).filter((t) => ['A', 'B', 'Wipe', 'Diff', 'Blink'].includes(t));
+        r.review = labels(v.container.querySelector('.rv5-panel .rv5-cmp'));
         v.setWorkspace('color');
         r.advanced = labels(v.viewerBar.querySelector('.radiance-vb-compare'));
         r.headerCompare = [...v.container.querySelectorAll('.radiance-pro-actions button')]
@@ -52,8 +52,8 @@ test('a connected B switches nothing, and A | B | Wipe | Diff | Blink is on the 
     assert.equal(out.ws, 'review');
     assert.equal(out.modeKept, true);
     assert.deepEqual(out.workspaces, ['review', 'color', 'inspect', 'qc']);
-    assert.deepEqual(out.review, ['A', 'B', 'Wipe', 'Diff', 'Blink']);
-    assert.deepEqual(out.advanced, out.review, 'the Advanced bar is the same switch');
+    assert.deepEqual(out.review, ['Split', 'Difference', 'Flip', 'B only', 'A only'], 'V5: the Compare panel, in words');
+    assert.deepEqual(out.advanced, ['A', 'B', 'Wipe', 'Diff', 'Blink'], 'Pro tools keeps the short labels');
     assert.equal(out.headerCompare, false, 'the header Compare button is gone');
     assert.equal(out.wipe, 'wipe');
     assert.equal(out.off, 'none');

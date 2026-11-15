@@ -248,6 +248,7 @@ VFX review for scene-linear and HDR images: • Simple mode (picture, compare, p
 | `input_space` (optional) | choice | `Auto` | `Auto`, `sRGB (ComfyUI IMAGE)`, `Linear Rec.709 (sRGB)`, `ACEScg`, `Linear Rec.2020`, `Linear P3-D65`, `ACES2065-1` | What the incoming pixels are. A ComfyUI IMAGE is sRGB-encoded and is shown untouched, exactly as ComfyUI previews it. Linear sources (HDR Decode, SDR -> HDR, Read in a linear working space) are shown through OpenColorIO's ACES 2.0 SDR view. Auto: linear when any value is above 1.0 or below 0, otherwise sRGB. Set it explicitly for linear material that stays inside 0-1. |
 | `float_precision` (optional) | choice | `Half (16-bit)` | `Half (16-bit)`, `Full (32-bit)` | Precision of the float frames sent to the browser. Half is what OpenEXR, RV and Nuke's viewer cache use: exact for display and grading, half the size (about 60 MB less per 4K frame). Full keeps every fp32 bit for values above 65504 or bit-exact probing. |
 | `fps` (optional) | float | 0 | 0 to 240, step 0.001 | Playback rate. 0 = the source's rate (a VIDEO input carries it), 24 for an image batch. 23.976 / 29.97 / 59.94 are handled as the NTSC rates. |
+| `regions` (optional) | IMAGE |  |  | Optional: the regions output of SDR -> HDR Analytic (RUDRA). The viewer's Check task shows it as the Rebuilt by AI overlay: cyan reconstructed, magenta estimated, yellow generated. |
 
 **Outputs**
 
