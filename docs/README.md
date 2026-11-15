@@ -10,11 +10,6 @@
 - [Known limitations](../KNOWN_ISSUES.md)
 - [Changelog](../CHANGELOG.md)
 
-## Website documentation
-
-[Website documentation plan](website/README.md) contains the proposed structure,
-visual style, and writing template for the FXTD Studios documentation site.
-
 ## Engineering records
 
 - [Production readiness](PRODUCTION_REPORT.md)
