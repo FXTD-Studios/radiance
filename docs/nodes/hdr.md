@@ -4,7 +4,7 @@
 
 HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 
-18 nodes. [All sections](README.md)
+19 nodes. [All sections](README.md)
 
 - [ACES 2.0 Gamut Compress](#aces-20-gamut-compress)
 - [ACES 2.0 Output Check](#aces-20-output-check)
@@ -21,6 +21,7 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 - [OCIO List Colorspaces](#ocio-list-colorspaces)
 - [OCIO Transform](#ocio-transform)
 - [SDR → HDR AI Fill (RUDRA v3)](#sdr--hdr-ai-fill-rudra-v3)
+- [SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)](#sdr--hdr-ai-fill-v4-re-render-rudra-experimental)
 - [SDR → HDR Recover](#sdr--hdr-recover)
 - [SDR → HDR Universal](#sdr--hdr-universal)
 - [Tonemap](#tonemap)
@@ -409,6 +410,43 @@ RUDRA AI fill v3: draws the shape inside fully clipped highlights of an HDR mast
 | `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
 | `fill_package` (optional) | string |  |  | RUDRA AI fill v3 folder (rudra_genfill.safetensors, brightness.json, prompt_cache). Empty searches models/radiance/rudra_genfill_v3 and RADIANCE_RUDRA_GENFILL. |
 | `allow_download` (optional) | boolean | on |  | Download what is missing on first use, into models/radiance: the AI fill v3 package (271 MB) and the Wan2.1-VACE-1.3B base model (7.7 GB; its 11.4 GB text encoder only when a custom prompt is first used). Pinned and hash-checked; resumes if interrupted. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
+| `prompt_strength` (optional) | float | 1 | 0 to 2, step 0.05 | How strongly prompt_highlight / prompt_shadow steer their region. 1 = as RUDRA's gates (the region's prediction replaces the base one); 0 = the prompt is ignored; above 1 pushes further from the base prompt (experimental). |
+| `focus` (optional) | choice | `frame` | `frame`, `region`, `areas` | What the model sees. frame: the whole frame at max_area (v3). region: one box round everything the shot fills, so a sky that is part of the frame gets more detail. areas: one box per group of clipped areas, each drawn at up to max_area (two lamps at opposite edges of a 4K frame each at full detail; one model run per box). Nothing is generated outside the boxes. |
+| `fallback` (optional) | choice | `none` | `none`, `spikes` | spikes: a frame whose fill flickers (more than 0.25 stops beyond the master's own change, both into it and out of it) is returned as the master's own frame. none: every fill is kept (v3). A fill that is not finite always falls back. |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `image` | IMAGE |
+| `generated_mask` | MASK |
+| `reconstructed_mask` | MASK |
+| `report` | STRING |
+
+## SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)
+
+`RadianceSDRToHDRAIFillRerender`
+
+RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the region the SDR's codes are not kept; outside it every pixel is the master's. Needs the v4 LoRA, which is not published. Plausible, not recovered.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The HDR master (scene-linear, 1.0 = diffuse white), a batch read as ordered frames of one shot. RUDRA tested v4 on its analytic route. |
+| `image_encoding` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear ACES2065-1 (AP0)`, `ACEScg` | How the master is encoded. The result leaves in the same encoding. |
+| `source` | IMAGE |  |  | The SDR the master was made from (display-referred, 0..1), frame for frame. The regions are its codes at 240 and above. Resized to the master's size if it differs. |
+| `prompt_highlight` | string |  | multi-line text | What is in the bright area (e.g. 'an overcast sky through an open door'). Empty: texture with no subject. A new prompt loads the 11 GB umT5 text encoder once. |
+| `reconstructed_mask` (optional) | MASK |  |  | The master's reconstructed_mask; the output becomes max(it, generated). |
+| `condition` (optional) | choice | `bt1886` | `bt1886`, `aces` | How the model reads the source. bt1886: code ^ 2.4, RUDRA's analytic route (what v4 was gated on). aces: the ACES 2.0 inverse, for a master from the RUDRA ACES 2 route. |
+| `finish` (optional) | choice | `RUDRA app (12 Nov 2026)` | `RUDRA app (12 Nov 2026)`, `off (the model as registered)` | RUDRA app: source colour (0.3 of the model's), level 3.3 x SDR white, smoothing 0.8, dark detail at most 0.3 stops, near-white sources only. off: the model's own colour and level, as registered on 9 Nov (it failed the level and flicker gates). |
+| `steps` (optional) | int | 30 | 4 to 80, step 1 | Denoising steps per window. RUDRA uses 30. |
+| `seed` (optional) | int | 0 | 0 to 4294967295 | Noise seed. The same seed and settings give the same fill. |
+| `lora` (optional) | string |  |  | The v4 LoRA (rudra_genfill.safetensors of research_genfill_v4_20261109), or its folder. Empty searches RADIANCE_RUDRA_GENFILL_V4, then models/radiance/rudra_genfill_v4/. Never downloaded: it is not published. |
+| `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
+| `fill_package` (optional) | string |  |  | The AI fill v3 folder, used here for its prompt cache only (the base prompt's embedding, so no 11 GB text encoder for an empty prompt). |
+| `allow_download` (optional) | boolean | on |  | Download the Wan base model (7.7 GB) and the v3 package's prompt cache (271 MB) if missing. Never the v4 LoRA. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
 | `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
 
 **Outputs**

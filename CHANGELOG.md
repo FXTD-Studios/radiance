@@ -23,7 +23,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   older one instead of running it. Masters change slightly in partially
   clipped highlights, where the lock holds the recorded channels to the
   source.
-- **37 nodes are deprecated.** They are hidden from the node menu (109 nodes
+- **37 nodes are deprecated.** They are hidden from the node menu (110 nodes
   show), and a saved graph that uses one still opens and runs; each one's
   description says what to use instead. They are the manual SDR → HDR chain
   from before RUDRA and the HDR LoRA chain (no HDR LoRA was published), the
@@ -286,6 +286,24 @@ else is fixes. Read the upgrade notes before moving a production setup.
   model (7.7 GB; the 11.4 GB text encoder only for a custom prompt) download on
   first use, pinned, hash-checked and resumable. Needs about 16 GB of VRAM.
   Experimental.
+- **AI Fill (RUDRA v3) catches up with RUDRA 1.1 and 1.2.** Three inputs,
+  added after the old ones so saved graphs keep their values: `focus`
+  (`region`: one box round what the shot fills; `areas`: one box per group of
+  clipped areas, each drawn at up to the working size, so two lamps at
+  opposite edges of a 4K frame each keep their detail), `fallback` (`spikes`:
+  a frame whose fill flickers is returned as the master's own frame) and
+  `prompt_strength` (0 to 2; 1 is the gated behaviour). The report gives the
+  boxes, their detail gain and the frames that fell back. Defaults are v3's.
+- **SDR → HDR AI Fill v4 Re-render (RUDRA, experimental).** New node, from
+  RUDRA's `feat/genfill-v4-finish` (12 Nov 2026): Wan VACE with the v4 LoRA
+  draws a whole bright region again (a window, an open door, a sky parked just
+  under white), not only fully clipped pixels. The regions come from the SDR
+  source wired into `source`; the finish is RUDRA's app's (source colour,
+  3.3 x SDR white crossfaded in from code 240, dark detail at most 0.3 stops,
+  smoothing 0.8, near-white sources only). Inside the region the SDR codes are
+  not kept; outside it every pixel is the master's. The v4 LoRA is not
+  published and is never downloaded: put it in `models/radiance/rudra_genfill_v4/`.
+  v4 has not passed every RUDRA gate (a second shot fails on structure).
 - **Zero setup for SDR → HDR.** `install.py` installs diffusers 0.35+ (an
   older one is upgraded; Wan VACE needs it) and fetches RUDRA ACES 2 into
   `models/radiance/RUDRA_ACES_2`, so the learned path works offline from the

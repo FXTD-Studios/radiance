@@ -119,6 +119,7 @@ NODE_SECTIONS = {
     "RadianceSDRToHDRRecover": "HDR",
     "RadianceSDRToHDRUniversal": "HDR",
     "RadianceSDRToHDRAIFill": "HDR",
+    "RadianceSDRToHDRAIFillRerender": "HDR",
     "RadianceSDRtoHDRExpand": "HDR",
     # ── Load & Save ───────────────────────────────────────────────────────
     "RadianceDigitalCinemaRead": "Load & Save",
