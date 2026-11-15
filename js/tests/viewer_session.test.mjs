@@ -381,7 +381,7 @@ test('stepping, scrubbing and the arrow keys move a video picture frame by frame
         assert.ok(Math.abs(s.time - (frame + 0.5) / 24) < 1e-3, `${what}: video time ${s.time}`);
         assert.equal(s.scrub, frame, `${what}: simple-bar scrubber at ${s.scrub}`);
         assert.equal(s.dock, frame, `${what}: dock range at ${s.dock}`);
-        assert.equal(s.label, `${frame + 1} / 30`);
+        assert.equal(s.label, `Frame ${frame + 1} of 30`);
     };
     check(out.start, 0, 'loaded');
     check(out.afterNext, 2, 'two clicks on the next button');

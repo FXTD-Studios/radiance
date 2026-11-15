@@ -3,36 +3,132 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-    TOKENS, INPUT_SETTINGS, INPUT_WIDGET_NAMES, inputSettingsState, setInputSetting, shortSpace, formatEV, exposureBadge, shellMode, DOCK_LAYOUT, fontFaceCSS, shellCSS, svgIcon, RADIANCE_ICON_SVG,
+    TOKENS, INPUT_SETTINGS, INPUT_WIDGET_NAMES, inputSettingsState, setInputSetting, shortSpace, formatEV, brightnessBadge, shellMode,
+    fontFaceCSS, shellCSS, svgIcon, RADIANCE_ICON_SVG, TASKS, normalizeTask, LOOKS, lookFor, OVERLAYS, currentOverlay, setOverlay,
+    EXPOSURE_LEGEND, checkItems, regionShares, REGION_CLASSES, REGION_LEGEND, issueCount, sizeName, lengthName, MORE_TOOLS,
 } from '../radiance_viewer_shell.js';
+import { workspaceById, PANEL_TABS } from '../radiance_viewer_modes.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const viewerSrc = readFileSync(here('../radiance_viewer.js'), 'utf8');
+const webglSrc = readFileSync(here('../radiance_webgl.js'), 'utf8');
 
-test('viewer f-stops read as the dock shows them, with a real minus sign', () => {
-    assert.equal(formatEV(0), '±0.0');
+test('preview brightness reads as the bar shows it, with a real minus sign', () => {
+    assert.equal(formatEV(0), '0.0');
     assert.equal(formatEV(0.5), '+0.5');
-    assert.equal(formatEV(-1.5), '−1.5');
-    assert.equal(formatEV('nope'), '±0.0');
-    assert.equal(formatEV(0.04), '±0.0', 'rounds to a tenth before deciding the sign');
+    assert.equal(formatEV(-1.5), '\u22121.5');
+    assert.equal(formatEV('nope'), '0.0');
+    assert.equal(formatEV(0.04), '0.0', 'rounds to a tenth before deciding the sign');
 });
 
-test('the picture says when the viewer f-stop is not in delivery, and only then', () => {
-    assert.equal(exposureBadge(0), null);
-    assert.equal(exposureBadge(0.01), null);
-    assert.match(exposureBadge(1), /^Preview exposure \+1\.0 EV · not in delivery$/);
-    assert.match(exposureBadge(-0.5), /not in delivery/);
+test('the picture says preview brightness is not saved, and only when it is on', () => {
+    assert.equal(brightnessBadge(0), null);
+    assert.equal(brightnessBadge(0.01), null);
+    assert.equal(brightnessBadge(1), 'Preview brightness +1.0 \u00b7 not saved');
+    assert.match(brightnessBadge(-0.5), /not saved$/);
 });
 
-test('Simple / Full follows the saved layout key', () => {
-    assert.equal(shellMode('simple'), 'simple');
+test('three tasks in plain words; anything else is View', () => {
+    assert.deepEqual(TASKS.map((t) => t.label), ['View', 'Compare', 'Check']);
+    assert.equal(normalizeTask('check'), 'check');
+    assert.equal(normalizeTask('qc'), 'view');
+    assert.equal(normalizeTask(undefined), 'view');
     assert.equal(shellMode('advanced'), 'full');
     assert.equal(shellMode(undefined), 'simple');
 });
 
-test('the dock only moves controls the viewer already builds', () => {
-    for (const k of [...DOCK_LAYOUT.main, ...DOCK_LAYOUT.more]) {
-        assert.match(viewerSrc, new RegExp(`this\\.${k} = `), `${k} is not a Simple-bar field`);
+test('every view transform has a name a person picks from', () => {
+    const ids = [...viewerSrc.matchAll(/^\s*\['([a-z0-9]+)', '[^']+'\],$/gm)].map((m) => m[1]);
+    const modes = ids.slice(0, ids.indexOf('manual') + 1);
+    assert.ok(modes.length >= 6, modes.join());
+    for (const id of modes) assert.ok(LOOKS[id]?.name && LOOKS[id]?.desc, `${id} has no Look name`);
+    assert.equal(lookFor('aces2').name, 'Film');
+    assert.equal(lookFor('ocio-config', 'OCIO: My show').name, 'OCIO: My show', 'an unknown view keeps its own label');
+    assert.equal(lookFor('x', 'View: Something').name, 'Something');
+});
+
+test('overlays are the viewer\'s own flags, one at a time', () => {
+    const v = { falseColor: false, clippingMonitor: true, gamutWarning: false, zebra: true, renders: 0, render() { this.renders++; } };
+    assert.equal(currentOverlay(v), 'clip');
+    setOverlay(v, 'exposure');
+    assert.deepEqual([v.falseColor, v.clippingMonitor, v.zebra], [true, false, false]);
+    assert.equal(currentOverlay(v), 'exposure');
+    setOverlay(v, 'off');
+    assert.equal(currentOverlay(v), 'off');
+    assert.equal(v.renders, 2);
+    for (const o of OVERLAYS) if (o.flag) assert.match(viewerSrc, new RegExp(`this\\.${o.flag} = `), o.flag);
+});
+
+test('the exposure legend matches the shader\'s bands', () => {
+    const fn = webglSrc.slice(webglSrc.indexOf('vec3 getFalseColorMap'), webglSrc.indexOf('vec3 getFalseColorMap') + 700);
+    const colours = [...fn.matchAll(/return vec3\(([\d.]+), ([\d.]+), ([\d.]+)\)/g)]
+        .map((m) => '#' + m.slice(1).map((x) => Math.round(Number(x) * 255).toString(16).padStart(2, '0')).join(''));
+    for (const g of EXPOSURE_LEGEND) assert.ok(colours.includes(g.c), `${g.label} ${g.c} not in ${colours}`);
+});
+
+test('Check says what is wrong in sentences, worst first', () => {
+    const stats = { nitPeak: 3190, clippedPct: 1.3, above1000Pct: 0.4, evRange: 9.2 };
+    const qc = { checks: [
+        { id: 'nan_inf', status: 'PASS' },
+        { id: 'flicker', status: 'WARN', frames: [4, 9] },
+        { id: 'alpha_range', status: 'NOT_APPLICABLE', reason: 'No alpha channel.' },
+    ] };
+    const items = checkItems(qc, stats, 100);
+    assert.deepEqual(items.map((i) => [i.id, i.tone]),
+        [['bright', 'warn'], ['flicker', 'warn'], ['exposure', 'ok'], ['nan_inf', 'ok'], ['alpha_range', 'skip']]);
+    assert.match(items[0].text, /^1\.3% of the frame is above what this SDR view shows \(peak about 3,190 nits\)/);
+    assert.equal(items[0].overlay, 'clip');
+    assert.match(items[1].text, /2 frames\.$/);
+    assert.equal(items[4].text, 'No alpha channel.');
+    assert.equal(issueCount(items), 2);
+    const hdr = checkItems(null, stats, 1000);
+    assert.equal(hdr[0].title, 'Brighter than 1000 nits');
+    assert.match(hdr[0].text, /^0\.4%/);
+    assert.deepEqual(checkItems(null, null), []);
+    assert.equal(checkItems(null, { ...stats, clippedPct: 0 })[0].tone, 'ok');
+});
+
+test('what RUDRA rebuilt is read back from the regions picture\'s colours', () => {
+    const MIX = 0.85, grey = 0.6;
+    const px = (rgb, lum = 0.5) => rgb.map((c) => Math.round(((1 - MIX) * lum * grey + MIX * c) * 255));
+    const pix = [px([0, 0, 0], 0.4).map(() => 100), px(REGION_CLASSES[0].rgb), px(REGION_CLASSES[1].rgb, 0.9), px(REGION_CLASSES[2].rgb, 0.1),
+        [255, 255, 255], px(REGION_CLASSES[0].rgb, 0.2), [20, 20, 22], [130, 128, 126]];
+    const rgba = new Uint8ClampedArray(pix.flatMap((p) => [...p, 255]));
+    const s = regionShares(rgba);
+    assert.equal(s.reconstructed, 25);
+    assert.equal(s.estimated, 12.5);
+    assert.equal(s.generated, 12.5);
+    assert.equal(s.rebuilt, 50);
+    assert.deepEqual(regionShares(new Uint8ClampedArray(0)), { reconstructed: 0, estimated: 0, generated: 0, rebuilt: 0 });
+    const py = readFileSync(here('../../model/rudra_analytic.py'), 'utf8');
+    const m = py.match(/PIXEL_CLASS_COLOUR = np\.array\(\[([\s\S]*?)\], np\.float32\)/);
+    const rows = [...m[1].matchAll(/\[([\d.]+), ([\d.]+), ([\d.]+)\]/g)].map((r) => r.slice(1).map(Number));
+    assert.deepEqual(REGION_CLASSES.map((c) => c.rgb), rows.slice(2), 'classes 2-4 as the model colours them');
+    assert.deepEqual(REGION_LEGEND.map((l) => l.c), ['#40c7db', '#eb4ddb', '#fac733']);
+    const items = checkItems(null, null, 100, s);
+    assert.equal(items[0].id, 'ai');
+    assert.equal(items[0].overlay, 'ai');
+    assert.match(items[0].text, /^RUDRA rebuilt 50\.0% of the frame: 25\.0% reconstructed, 12\.5% estimated, 12\.5% generated by AI\.$/);
+    assert.equal(checkItems(null, null, 100, { reconstructed: 0, estimated: 0, generated: 0, rebuilt: 0 })[0].tone, 'ok');
+    assert.equal(checkItems(null, null, 100, 'loading')[0].tone, 'skip', 'still loading');
+});
+
+test('sizes and lengths read as a person says them', () => {
+    assert.equal(sizeName(4096, 2160), '4K');
+    assert.equal(sizeName(1920, 1080), 'HD');
+    assert.equal(sizeName(640, 360), 'Small');
+    assert.equal(sizeName(0, 0), '\u2014');
+    assert.equal(lengthName(240, 24), '10 s');
+    assert.equal(lengthName(36, 24), '1.5 s');
+    assert.equal(lengthName(1, 24), 'Still');
+    assert.equal(lengthName(24 * 64, 24), '1 min 4 s');
+});
+
+test('More tools only opens workspaces and panel tabs that exist', () => {
+    for (const m of MORE_TOOLS) {
+        const ws = workspaceById(m.workspace);
+        assert.ok(ws?.available && ws.layout === 'advanced', m.id);
+        assert.ok(PANEL_TABS.includes(m.tab) && ws.tabs.includes(m.tab), `${m.id}: ${m.tab}`);
     }
 });
 
@@ -41,17 +137,20 @@ test('the viewer installs the shell and keeps it in step', () => {
     assert.match(viewerSrc, /_installShell\(this\)/);
     assert.match(viewerSrc, /setUIMode[\s\S]*?this\._shell\?\.sync\(\)/);
     assert.match(viewerSrc, /setViewExposure\(stops\) \{[\s\S]*?this\._shell\?\.syncExposure\(\)/);
+    assert.match(viewerSrc, /_syncCompareUI\(\) \{[\s\S]*?this\._shell\?\.syncCompare\?\.\(\);\n    \}/);
+    assert.match(viewerSrc, /_refreshQCPanel\(\) \{\s*this\._shell\?\.syncChecks\?\.\(\);/);
+    assert.match(viewerSrc, /_updateHDRPeakBadge\(\) \{[\s\S]{0,200}this\._shell\?\.syncDetails\?\.\(\)/);
+    assert.match(viewerSrc, /setViewMode\(mode\) \{[\s\S]*?this\._shell\?\.syncLook\?\.\(\);/);
     assert.match(viewerSrc, /destroy\(\) \{\s*this\._destroyed = true;\s*this\._shell\?\.destroy\(\);/);
 });
 
-test('the theme is the Radiance gray, with one silver accent', () => {
-    assert.match(viewerSrc, /accent: '#d8d8de'/);
-    assert.match(viewerSrc, /bg: '#111114'/);
-    assert.match(viewerSrc, /panelBorder: '#2c2c35'/);
-    assert.equal(TOKENS.accent, '#d8d8de');
-    assert.equal(TOKENS.line, '#2c2c35');
-    assert.match(TOKENS.font, /^'Manrope'/);
-    assert.match(TOKENS.mono, /^'DM Mono'/);
+test('the V5 colours: near-black, one blue for state, amber only for warnings', () => {
+    assert.equal(TOKENS.canvas, '#08080a');
+    assert.equal(TOKENS.accent, '#5aa9ff');
+    assert.equal(TOKENS.accentInk, '#06101f');
+    assert.equal(TOKENS.warn, '#f5b544');
+    assert.match(TOKENS.font, /^'Inter'/);
+    assert.match(TOKENS.mono, /^'JetBrains Mono'/);
     assert.doesNotMatch(viewerSrc, /#4da3ff/i, 'the old blue is gone');
 });
 
@@ -112,11 +211,11 @@ test('the node hides those widget rows, so nothing sits outside the viewer', () 
 
 test('fonts are bundled, not fetched', () => {
     const css = fontFaceCSS('https://host/extensions/radiance/radiance_viewer_shell.js');
-    for (const f of ['manrope-latin-wght.woff2', 'dm-mono-latin-400.woff2', 'dm-mono-latin-500.woff2']) {
+    for (const f of ['inter-latin-wght.woff2', 'jetbrains-mono-latin-400.woff2', 'jetbrains-mono-latin-500.woff2']) {
         assert.ok(css.includes(`https://host/extensions/radiance/fonts/${f}`), f);
         assert.ok(existsSync(here(`../fonts/${f}`)), `js/fonts/${f} is missing`);
     }
-    assert.ok(existsSync(here('../fonts/OFL-Manrope.txt')) && existsSync(here('../fonts/OFL-DM-Mono.txt')), 'font licences');
+    for (const l of ['OFL-Inter.txt', 'OFL-JetBrains-Mono.txt']) assert.ok(existsSync(here(`../fonts/${l}`)), l);
     assert.doesNotMatch(css + shellCSS(), /fonts\.googleapis|fonts\.gstatic/);
 });
 
@@ -124,7 +223,7 @@ test('shell styles are scoped to the viewer', () => {
     const rules = shellCSS().replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.trim()).filter((r) => r && !r.startsWith('@'));
     for (const r of rules) {
         const sel = r.split('{')[0];
-        for (const part of sel.split(',')) assert.match(part.trim(), /^\.radiance-v4/, `unscoped: ${part.trim()}`);
+        for (const part of sel.split(',')) assert.match(part.trim(), /^\.radiance-v5/, `unscoped: ${part.trim()}`);
     }
 });
 
@@ -132,4 +231,5 @@ test('icons are decorative: hidden from assistive tech', () => {
     assert.match(svgIcon('play'), /aria-hidden="true"/);
     assert.match(RADIANCE_ICON_SVG, /aria-hidden="true"/);
     assert.match(RADIANCE_ICON_SVG, /#0A84FF/);
+    for (const t of TASKS) assert.ok(svgIcon(t.id).includes('<path'), `${t.id} has an icon`);
 });
