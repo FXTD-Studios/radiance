@@ -17,7 +17,7 @@ import {
     defaultWorkspaceFor as _defaultWorkspaceFor, suggestWorkspace as _suggestWorkspace,
     tabsFor as _tabsFor, workspaceForTab as _workspaceForTab,
 } from "./radiance_viewer_modes.js";
-import { installShell as _installShell, fontFaceCSS as _shellFontFaces, TOKENS as _TOKENS, INPUT_WIDGET_NAMES as _INPUT_WIDGET_NAMES } from "./radiance_viewer_shell.js";
+import { installShell as _installShell, fontFaceCSS as _shellFontFaces, TOKENS as _TOKENS, INPUT_WIDGET_NAMES as _INPUT_WIDGET_NAMES, regionShares as _regionShares } from "./radiance_viewer_shell.js";
 import { setWidgetVisible as _setWidgetVisible } from "./radiance_widget_utils.js";
 import { loadPrefs as _loadViewerPrefs } from "./radiance_viewer_state.js";
 import { mapCompareFrame as _mapCompareFrame, compareGeometry as _compareGeometry } from "./radiance_compare.js";
@@ -124,30 +124,29 @@ class RadianceViewer {
      * (raised controls included); viewer_polish.test.mjs measures it.
      */
     static THEME = {
-        // 4.1: Radiance space-gray, the colours of the Radiance nodes and
-        // Rudra (node body #141419, widgets #121217, outlines #2c2c35):
-        // neutral, no cast beside the picture, and one silver for state.
-        bg: '#111114',              // canvas surround
-        surface: '#16161b',         // rail, panel body
-        surfaceRaised: '#1a1a1f',   // header, tab strip, bars
-        control: '#26262d',         // inputs, buttons, readouts
-        controlHover: '#2e2e36',
-        panel: 'rgba(26, 26, 31, 0.97)',
-        panelBorder: '#2c2c35',
-        borderStrong: '#44444e',
-        accent: '#d8d8de',          // state only: the selected tab, mode, toggle (silver)
-        accentSoft: 'rgba(255, 255, 255, 0.10)',
-        accentGlow: 'rgba(255, 255, 255, 0.18)',
-        accentText: '#f2f2f5',      // text on a tinted (accentSoft) fill
-        accentInk: '#111114',       // text on a solid accent fill
-        text: '#f2f2f5',
-        textDim: '#b4b4bc',         // labels
-        textMuted: '#9a9aa2',       // shortcuts and secondary readouts
-        warn: '#ff9f0a',
-        error: '#ff6961',
-        ok: '#30d158',
-        font: "'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-        mono: "'DM Mono', 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
+        // V5: near-black around the picture, one blue for state (the shell's
+        // TOKENS), amber only for warnings. No colour cast next to the picture.
+        bg: '#08080a',              // canvas surround
+        surface: '#0e0e11',         // rail, panel body
+        surfaceRaised: '#131317',   // header, tab strip, bars
+        control: '#1f1f24',         // inputs, buttons, readouts
+        controlHover: '#29292f',
+        panel: 'rgba(14, 14, 17, 0.97)',
+        panelBorder: '#26262c',
+        borderStrong: '#3f3f46',
+        accent: '#5aa9ff',          // state only: the selected tab, mode, toggle (blue)
+        accentSoft: 'rgba(90, 169, 255, 0.14)',
+        accentGlow: 'rgba(90, 169, 255, 0.24)',
+        accentText: '#dcebff',      // text on a tinted (accentSoft) fill
+        accentInk: '#06101f',       // text on a solid accent fill
+        text: '#fafafa',
+        textDim: '#c4c4cc',         // labels
+        textMuted: '#a1a1aa',       // shortcuts and secondary readouts
+        warn: '#f5b544',
+        error: '#ff6b7a',
+        ok: '#4ade80',
+        font: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
         // 12 px for every label and value; 11 px only for uppercase,
         // letter-spaced section headings.
         fsBody: '12px',
@@ -480,7 +479,7 @@ class RadianceViewer {
                 .radiance-pro-chip {
                     padding: 3px 7px;
                     border-radius: 4px;
-                    border: 1px solid rgba(216, 216, 222, 0.35);
+                    border: 1px solid rgba(90, 169, 255, 0.35);
                     color: var(--radiance-accent-text);
                     background: var(--radiance-accent-soft);
                     font-size: var(--radiance-fs-heading);
@@ -526,7 +525,7 @@ class RadianceViewer {
                 .radiance-pro-actions button.is-active,
                 .radiance-pro-actions button[aria-expanded="true"].radiance-pro-settings-btn {
                     color: var(--radiance-accent-text);
-                    border-color: rgba(216, 216, 222, 0.45);
+                    border-color: rgba(90, 169, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-sidebar button:hover {
@@ -584,7 +583,7 @@ class RadianceViewer {
                 .radiance-settings-popover button[aria-pressed="true"],
                 .radiance-settings-popover button[aria-checked="true"] {
                     color: var(--radiance-accent-text);
-                    border-color: rgba(216, 216, 222, 0.45);
+                    border-color: rgba(90, 169, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-settings-popover button:disabled { opacity: .45; cursor: not-allowed; }
@@ -721,7 +720,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-viewer-bar button.is-active {
                     color: var(--radiance-accent-text);
-                    border-color: rgba(216, 216, 222, 0.45);
+                    border-color: rgba(90, 169, 255, 0.45);
                     background: var(--radiance-accent-soft);
                 }
                 .radiance-pro-viewer-bar .radiance-pro-bar-label {
@@ -790,7 +789,7 @@ class RadianceViewer {
                     cursor: pointer;
                 }
                 .radiance-pro-sequence-controls button:hover {
-                    border-color: rgba(216, 216, 222, 0.45);
+                    border-color: rgba(90, 169, 255, 0.45);
                     background: var(--radiance-control-hover);
                 }
                 .radiance-pro-tool-btn,
@@ -866,11 +865,11 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     margin-top: -5px;
-                    box-shadow: 0 0 0 2px rgba(216, 216, 222, 0.28);
+                    box-shadow: 0 0 0 2px rgba(90, 169, 255, 0.28);
                     transition: box-shadow 0.15s;
                 }
                 .radiance-pro-sequence-range::-webkit-slider-thumb:hover {
-                    box-shadow: 0 0 0 4px rgba(216, 216, 222, 0.38);
+                    box-shadow: 0 0 0 4px rgba(90, 169, 255, 0.38);
                 }
                 .radiance-pro-sequence-range::-moz-range-track {
                     height: 4px;
@@ -884,7 +883,7 @@ class RadianceViewer {
                     background: var(--radiance-accent);
                     cursor: pointer;
                     border: none;
-                    box-shadow: 0 0 0 2px rgba(216, 216, 222, 0.28);
+                    box-shadow: 0 0 0 2px rgba(90, 169, 255, 0.28);
                 }
                 .radiance-pro-sequence-range::-moz-range-progress {
                     background: var(--radiance-accent);
@@ -946,7 +945,7 @@ class RadianceViewer {
                 }
                 .radiance-pro-thumb.is-active .radiance-pro-thumb-frame {
                     border-color: var(--radiance-accent);
-                    box-shadow: 0 0 0 1px rgba(216, 216, 222, 0.45);
+                    box-shadow: 0 0 0 1px rgba(90, 169, 255, 0.45);
                 }
                 .radiance-pro-thumb canvas,
                 .radiance-pro-thumb img {
@@ -1036,8 +1035,8 @@ class RadianceViewer {
                     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
                 }
                 .help-group h3 {
-                    font-size: 11px; color: #d8d8de; text-transform: uppercase;
-                    letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(216, 216, 222, 0.2);
+                    font-size: 11px; color: #5aa9ff; text-transform: uppercase;
+                    letter-spacing: 2px; margin-bottom: 12px; border-bottom: 1px solid rgba(90, 169, 255, 0.2);
                     padding-bottom: 4px;
                 }
                 .help-item {
@@ -1100,6 +1099,8 @@ class RadianceViewer {
         this.zebra = false;
         this.gamutWarning = false;
         this.clippingMonitor = false;
+        // V5 Check: the Analytic node's regions picture over the frame (Rebuilt by AI).
+        this.showRegions = false;
         this.colorspace = 'sRGB';
 
         // Batch Navigation
@@ -1599,7 +1600,7 @@ class RadianceViewer {
             if (this._analysisLabel) {
                 this._analysisLabel.textContent = 'PICK NEUTRAL POINT...';
                 this._analysisLabel.style.display = 'block';
-                this._analysisLabel.style.background = '#d8d8de';
+                this._analysisLabel.style.background = '#5aa9ff';
                 this._analysisLabel.style.color = '#111114';
             }
 
@@ -1989,6 +1990,8 @@ class RadianceViewer {
     }
 
     _updateHDRPeakBadge() {
+        // V5 shell: the HDR badge, Details brightness and the Check list read the same stats.
+        try { this._shell?.syncShot?.(); this._shell?.syncDetails?.(); this._shell?.syncChecks?.(); } catch { /* shell is cosmetic */ }
         if (!this.hdrPeakInfo) return;
         const stats = this._hdrZoneStats;
         if (!stats || !this.hdrData) {
@@ -2406,7 +2409,7 @@ class RadianceViewer {
         if (existing) existing.remove();
 
         const colors = {
-            info: "#d8d8de",
+            info: "#5aa9ff",
             success: "#4cd964",
             error: "#ff6b6b",
             warn: "#ffb020",
@@ -2532,7 +2535,7 @@ class RadianceViewer {
             const confirm = document.createElement("button");
             confirm.type = "button";
             confirm.textContent = confirmLabel;
-            confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(216,216,222,0.45);background:rgba(216,216,222,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+            confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(90, 169, 255,0.45);background:rgba(90, 169, 255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
 
             const close = (value) => {
                 overlay.remove();
@@ -2762,17 +2765,17 @@ class RadianceViewer {
             .radiance-mode-switch button.has-hint::after { content: ''; display: inline-block; width: 6px; height: 6px;
                 border-radius: 50%; background: #f5a524; margin-left: 5px; vertical-align: middle; }
             .radiance-mode-switch button:focus-visible, .radiance-simple-bar button:focus-visible,
-            .radiance-simple-bar input:focus-visible { outline: 2px solid #d8d8de; outline-offset: 1px; }
+            .radiance-simple-bar input:focus-visible { outline: 2px solid #5aa9ff; outline-offset: 1px; }
             .radiance-simple-bar { display: none; flex: 0 0 auto; align-items: center; gap: 10px;
                 padding: 6px 10px; background: #0d1117; border-top: 1px solid rgba(255,255,255,.08);
                 font: 11px var(--radiance-font-ui); color: rgba(232,238,247,.8); min-width: 0; }
             .radiance-mode-simple .radiance-simple-bar { display: flex; }
             .radiance-simple-bar .rsb-group { display: flex; gap: 2px; padding: 2px; border-radius: 6px;
                 background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10); flex-shrink: 0; }
-            .radiance-simple-bar .rsb-play { width: 34px; background: #d8d8de; color: #071019; }
-            .radiance-simple-bar .rsb-play.is-active { background: #d8d8de; color: #071019; }
+            .radiance-simple-bar .rsb-play { width: 34px; background: #5aa9ff; color: #071019; }
+            .radiance-simple-bar .rsb-play.is-active { background: #5aa9ff; color: #071019; }
             .radiance-simple-bar .rsb-frame { font-family: var(--radiance-font-mono); min-width: 64px; }
-            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #d8d8de; }
+            .radiance-simple-bar .rsb-scrub { flex: 1 1 120px; min-width: 60px; accent-color: #5aa9ff; }
             .radiance-simple-bar .radiance-cache-marks { flex: 1 1 120px; min-width: 60px; }
             .radiance-cache-marks { position: relative; display: flex; align-items: center; min-height: 20px; }
             .radiance-cache-marks > input { position: relative; }
@@ -2791,7 +2794,7 @@ class RadianceViewer {
             .radiance-b-menu button { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent;
                 color: inherit; font: inherit; text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
             .radiance-b-menu button:hover:not(:disabled), .radiance-b-menu button:focus-visible { background: #3a3a3c; outline: none; }
-            .radiance-b-menu button.is-current { box-shadow: inset 2px 0 0 #d8d8de; }
+            .radiance-b-menu button.is-current { box-shadow: inset 2px 0 0 #5aa9ff; }
             .radiance-b-menu button:disabled { opacity: .45; cursor: default; }
             .radiance-b-menu img { width: 48px; height: 27px; object-fit: cover; border-radius: 3px; flex: 0 0 48px; background: #111; }
             .radiance-b-menu .rbm-sep { height: 1px; margin: 4px 2px; background: rgba(255,255,255,.08); }
@@ -2828,7 +2831,7 @@ class RadianceViewer {
         this.simpleBar = this._createSimpleBar();
         this.container.appendChild(this.simpleBar);
 
-        // 4.1 shell: Radiance gray, Simple | Full, workspace tabs, Simple dock, Input menu.
+        // V5 shell: picture first; View / Compare / Check; floating panel; Pro tools.
         try { _installShell(this); } catch (e) { console.warn('[Radiance Viewer] shell not applied:', e); }
 
         const saved = this.node?.properties?.radiance_viewer_mode;
@@ -3076,6 +3079,70 @@ class RadianceViewer {
         return this._onionDrawn;
     }
 
+    /** True when the node's regions input sent a picture (Check > Rebuilt by AI). */
+    hasRegions() {
+        return (this.frameRegionEntries?.length || 0) > 0;
+    }
+
+    /**
+     * The regions picture for a frame: the loaded image, or null while it loads
+     * (it redraws when it arrives). A shorter regions batch holds its last frame.
+     */
+    _regionImage(frame = this.currentFrame || 0) {
+        const list = this.frameRegionEntries || [];
+        if (!list.length) return null;
+        const i = Math.min(Math.max(0, frame), list.length - 1);
+        const have = this._regionImgs?.[i];
+        if (have) return have.complete && have.naturalWidth ? have : null;
+        const e = list[i];
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const gen = this.generationID;
+        img.onload = () => {
+            if (this.generationID !== gen) return;
+            if (this.showRegions) this.renderOverlay();
+            this._shell?.syncChecks?.();
+        };
+        img.onerror = () => console.warn('[Radiance] Failed to load regions picture:', e.filename);
+        img.src = api.apiURL(`/view?filename=${encodeURIComponent(e.filename)}&subfolder=${encodeURIComponent(e.subfolder || '')}&type=${e.type || 'temp'}`);
+        (this._regionImgs ||= [])[i] = img;
+        return null;
+    }
+
+    /** The regions picture over the frame, where the picture is, at its zoom. */
+    _drawRegions(ctx) {
+        const img = this._regionImage();
+        const W = this.imageWidth, H = this.imageHeight;
+        if (!img || !W || !H) return;
+        ctx.save();
+        ctx.imageSmoothingEnabled = this.zoom < 1;
+        ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, this.panX, this.panY, W * this.zoom, H * this.zoom);
+        ctx.restore();
+    }
+
+    /**
+     * How much of the frame each class covers, read back from the regions
+     * picture's colours (radiance_viewer_shell.js regionShares). null until loaded.
+     */
+    regionShares(frame = this.currentFrame || 0) {
+        const n = this.frameRegionEntries?.length || 0;
+        if (!n) return null;
+        const i = Math.min(Math.max(0, frame), n - 1);
+        if (this._regionShareCache?.[i]) return this._regionShareCache[i];
+        const img = this._regionImage(i);
+        if (!img) return null;
+        try {
+            const w = Math.min(320, img.naturalWidth), h = Math.max(1, Math.round(img.naturalHeight * w / img.naturalWidth));
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const g = c.getContext('2d', { willReadFrequently: true });
+            g.drawImage(img, 0, 0, w, h);
+            const shares = _regionShares(g.getImageData(0, 0, w, h).data);
+            (this._regionShareCache ||= [])[i] = shares;
+            return shares;
+        } catch { return null; }
+    }
+
     /** Simple bar and viewer bar buttons follow the compare state. */
     _syncCompareUI() {
         this._syncViewerBarBtns?.();
@@ -3147,6 +3214,7 @@ class RadianceViewer {
                 + (n ? `. ${n} still${n === 1 ? '' : 's'} kept; pick one from the B menu` : '');
         }
         if (this._sbBLabel?.tagName === 'BUTTON') this._sbBLabel.title += '. Click to choose B';
+        this._shell?.syncCompare?.();
     }
 
     /**
@@ -3217,11 +3285,11 @@ class RadianceViewer {
             if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, w, h);
-            ctx.shadowColor = 'rgba(216,216,222,0.7)';
+            ctx.shadowColor = 'rgba(90, 169, 255,0.7)';
             ctx.shadowBlur = 3 * dpr;
             const y = Math.round(geo.top * dpr);
             for (const [frames, alpha] of [[state.loading, 0.35], [state.held, 1]]) {
-                ctx.fillStyle = `rgba(216,216,222,${alpha})`;
+                ctx.fillStyle = `rgba(90, 169, 255,${alpha})`;
                 for (const f of frames) {
                     const x = geo.x0 + (f / (total - 1)) * geo.span;
                     ctx.fillRect(Math.round(x * dpr) - (tick >> 1), y, tick, Math.round(4 * dpr));
@@ -4256,7 +4324,7 @@ class RadianceViewer {
                     endFrame: total > 0 ? total - 1 : 0,
                     offset: 0,
                     name: clipName,
-                    color: '#d8d8de'
+                    color: '#5aa9ff'
                 }
             ];
             this._lastSegmentsTotal = total;
@@ -4522,7 +4590,7 @@ class RadianceViewer {
                 if (!hoverCard) {
                     hoverCard = document.createElement('div');
                     hoverCard.id = 'radiance-timeline-hover';
-                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(216, 216, 222, 0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
+                    hoverCard.style.cssText = 'position:fixed; background:rgba(10,12,18,0.96); border:1px solid rgba(90, 169, 255, 0.4); border-radius:6px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,0.6); pointer-events:none; z-index:110000; display:flex; flex-direction:column; gap:4px; align-items:center; backdrop-filter:blur(10px); width:132px;';
 
                     const pCanvas = document.createElement('canvas');
                     pCanvas.width = 120;
@@ -4530,7 +4598,7 @@ class RadianceViewer {
                     pCanvas.style.cssText = 'border-radius:4px; border:1px solid rgba(255,255,255,0.1);';
 
                     const pFrameText = document.createElement('span');
-                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#d8d8de;';
+                    pFrameText.style.cssText = 'font:bold 9px var(--radiance-mono, monospace); color:#5aa9ff;';
 
                     const pTimecode = document.createElement('span');
                     pTimecode.style.cssText = 'font:8px var(--radiance-mono, monospace); color:rgba(255,255,255,0.6);';
@@ -5366,7 +5434,7 @@ class RadianceViewer {
 
         const dvQuality = document.createElement('input');
         dvQuality.type = 'range'; dvQuality.min = '0'; dvQuality.max = '51'; dvQuality.value = '18';
-        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #d8d8de;`;
+        dvQuality.style.cssText = `width: 100%; height: 4px; accent-color: #5aa9ff;`;
         addRow('Quality (CRF)', dvQuality);
 
         // HDR10 mastering display (SMPTE ST 2086), written only into PQ H.265:
@@ -5403,7 +5471,7 @@ class RadianceViewer {
             wrap.style.cssText = `display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 9px; color: #aaa; font-weight: 600; text-transform: uppercase;`;
             const cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = def;
-            cb.style.cssText = `accent-color: #d8d8de;`;
+            cb.style.cssText = `accent-color: #5aa9ff;`;
             wrap.appendChild(cb);
             wrap.appendChild(document.createTextNode(label));
             return { wrap, cb };
@@ -5465,9 +5533,9 @@ class RadianceViewer {
         dvRenderBtn.dataset.dv = 'render';
         dvRenderBtn.textContent = '◎ RENDER NOW';
         dvRenderBtn.title = 'Render these settings now';
-        dvRenderBtn.style.cssText = `background: #d8d8de; color: #111114; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(216, 216, 222, 0.3);`;
+        dvRenderBtn.style.cssText = `background: #5aa9ff; color: #111114; border: none; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; border-radius: 3px; padding: 8px 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(90, 169, 255, 0.3);`;
         dvRenderBtn.onmouseenter = () => dvRenderBtn.style.background = '#33beff';
-        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#d8d8de';
+        dvRenderBtn.onmouseleave = () => dvRenderBtn.style.background = '#5aa9ff';
 
         dvSubmitRow.appendChild(dvRenderBtn);
 
@@ -5497,14 +5565,14 @@ class RadianceViewer {
         const dvProgressLabel = document.createElement('div');
 
         dvProgressLabel.dataset.dv = 'progress';
-        dvProgressLabel.style.cssText = `font-size: 9px; color: #d8d8de; font-weight: bold; text-transform: uppercase;`;
+        dvProgressLabel.style.cssText = `font-size: 9px; color: #5aa9ff; font-weight: bold; text-transform: uppercase;`;
         dvProgressLabel.textContent = 'READY TO EXPORT';
 
         const dvProgressTrack = document.createElement('div');
         dvProgressTrack.style.cssText = `width: 100%; height: 2px; background: #1a1e24; border-radius: 1px; overflow: hidden;`;
 
         const dvProgressBar = document.createElement('div');
-        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #d8d8de; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(216, 216, 222, 0.5);`;
+        dvProgressBar.style.cssText = `width: 0%; height: 100%; background: #5aa9ff; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(90, 169, 255, 0.5);`;
 
         dvProgressTrack.appendChild(dvProgressBar);
         dvProgressContainer.appendChild(dvProgressLabel);
@@ -5697,7 +5765,7 @@ class RadianceViewer {
         const runJob = async (job) => {
             const { payload, name } = job;
             if (!this._deliverQueueRunning) dvStatus.replaceChildren();   // a queue keeps every job's lines
-            dvProgressBar.style.background = '#d8d8de';
+            dvProgressBar.style.background = '#5aa9ff';
             dvProgressContainer.style.display = 'flex';
             dvProgressBar.style.width = '0%';
             dvProgressLabel.textContent = 'Initializing Export Pipeline...';
@@ -5795,7 +5863,7 @@ class RadianceViewer {
 
         // ── Render queue: snapshots of settings + grade, rendered one by one ──
         const STATUS_TEXT = { queued: 'Queued', rendering: 'Rendering…', success: 'Done', partial: 'Done with warnings', failed: 'Failed', skipped: 'Stopped' };
-        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#d8d8de', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
+        const STATUS_COLOR = { queued: '#9aa7b5', rendering: '#5aa9ff', success: '#7bed9f', partial: '#ff9f43', failed: '#ff4757', skipped: '#777' };
         const renderQueue = () => {
             dvQueueList.replaceChildren();
             const jobs = this._deliverQueue;
@@ -6007,9 +6075,9 @@ class RadianceViewer {
             btn.textContent = name;
             btn.style.cssText = `
                 font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
-                color: ${active ? '#d8d8de' : '#555'}; text-transform: uppercase;
+                color: ${active ? '#5aa9ff' : '#555'}; text-transform: uppercase;
                 cursor: pointer; padding: 4px 8px;
-                border-bottom: 2px solid ${active ? '#d8d8de' : 'transparent'};
+                border-bottom: 2px solid ${active ? '#5aa9ff' : 'transparent'};
                 transition: 0.2s;
             `;
             return btn;
@@ -6157,7 +6225,7 @@ class RadianceViewer {
 
         const scRunBtn = document.createElement('button');
         scRunBtn.textContent = '▶ RUN AUTOMATION';
-        scRunBtn.style.cssText = `background: rgba(216, 216, 222, 0.1); color: #d8d8de; border: 1px solid rgba(216, 216, 222, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
+        scRunBtn.style.cssText = `background: rgba(90, 169, 255, 0.1); color: #5aa9ff; border: 1px solid rgba(90, 169, 255, 0.35); font-size: 9px; font-weight: bold; border-radius: 3px; padding: 3px 10px; cursor: pointer; white-space: nowrap;`;
 
         scToolbar.appendChild(scModeSelect);
         scToolbar.appendChild(scSaveBtn);
@@ -6179,7 +6247,7 @@ class RadianceViewer {
         let activeTab = 'term';
         tabTerm.onclick = () => {
             activeTab = 'term';
-            tabTerm.style.color = '#d8d8de'; tabTerm.style.borderColor = '#d8d8de';
+            tabTerm.style.color = '#5aa9ff'; tabTerm.style.borderColor = '#5aa9ff';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'block';
             this._termInputRow.style.display = 'flex';
@@ -6199,7 +6267,7 @@ class RadianceViewer {
         };
         tabDeliver.onclick = () => {
             activeTab = 'deliver';
-            tabDeliver.style.color = '#d8d8de'; tabDeliver.style.borderColor = '#d8d8de';
+            tabDeliver.style.color = '#5aa9ff'; tabDeliver.style.borderColor = '#5aa9ff';
             tabTerm.style.color = '#555'; tabTerm.style.borderColor = 'transparent';
             tabScript.style.color = '#555'; tabScript.style.borderColor = 'transparent';
             outputEl.style.display = 'none';
@@ -6563,7 +6631,7 @@ class RadianceViewer {
 
         const colors = {
             system: '#3d6060',
-            info: '#d8d8de',
+            info: '#5aa9ff',
             warn: '#ff9f43',
             error: '#ff4757',
             cmd: '#2ed573',
@@ -7830,9 +7898,9 @@ else:
             if (!btn) return;
             btn.classList.toggle('active', active);
             btn.style.color = active ? this.theme.accent : this.theme.textDim;
-            btn.style.background = active ? 'rgba(216, 216, 222, 0.15)' : 'rgba(255, 255, 255, 0.03)';
-            btn.style.borderColor = active ? 'rgba(216, 216, 222, 0.4)' : 'rgba(255, 255, 255, 0.08)';
-            btn.style.boxShadow = active ? '0 0 10px rgba(216, 216, 222, 0.2)' : 'none';
+            btn.style.background = active ? 'rgba(90, 169, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)';
+            btn.style.borderColor = active ? 'rgba(90, 169, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)';
+            btn.style.boxShadow = active ? '0 0 10px rgba(90, 169, 255, 0.2)' : 'none';
         };
 
         const syncAll = () => {
@@ -8552,7 +8620,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const images = message?.radiance_images;
         if (!token || !Array.isArray(images) || !images.length) return null;
         const PER_FRAME = ['data_range', 'hdr_stats', 'depth_range', 'normal_invalid_pixels'];
-        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_normal ? 'normal' : e.is_compare ? 'compare'
+        const kindOf = (e) => (e.is_zdepth ? 'zdepth' : e.is_normal ? 'normal' : e.is_regions ? 'regions' : e.is_compare ? 'compare'
             : e.bracket_label ? `bracket_${e.bracket_label}` : 'main');
         const groups = new Map();
         for (const e of images) {
@@ -9166,7 +9234,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!this.image) return;
 
         if (format === 'exr') {
-            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal);
+            const imgData = (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal && !d.is_regions);
             if (imgData && imgData.exr_filename) {
                 // Use dedicated EXR location metadata when available.
                 // Falls back to the PNG thumbnail's subfolder/type so older
@@ -10014,9 +10082,9 @@ self.onmessage = async ({ data: { id, url } }) => {
         this._syncCompareUI();
         if (!this._compareBtnEl) return;
         const on = this.compareMode === 'wipe';
-        this._compareBtnEl.style.borderColor  = on ? '#d8d8de' : 'rgba(255,255,255,0.15)';
-        this._compareBtnEl.style.background   = on ? 'rgba(216,216,222,0.15)' : 'rgba(255,255,255,0.05)';
-        this._compareBtnEl.style.color        = on ? '#d8d8de' : '#ccc';
+        this._compareBtnEl.style.borderColor  = on ? '#5aa9ff' : 'rgba(255,255,255,0.15)';
+        this._compareBtnEl.style.background   = on ? 'rgba(90, 169, 255,0.15)' : 'rgba(255,255,255,0.05)';
+        this._compareBtnEl.style.color        = on ? '#5aa9ff' : '#ccc';
         this._syncViewerBarBtns();
     }
 
@@ -10343,6 +10411,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         // transform, grade or scope applied. Scopes and probe still read the picture.
         if (this.channel === 'normal' && this.normalImage) this._drawNormalChannel(ctx);
         else this._drawOnionSkin(ctx);
+        if (this.showRegions) this._drawRegions(ctx);
 
         // Aspect matte first: it dims the picture, and the guides drawn after
         // it must stay legible on top.
@@ -10556,6 +10625,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
     /** Rebuild the QC tab when it is the one showing. */
     _refreshQCPanel() {
+        this._shell?.syncChecks?.();
         if (this.uiMode === 'advanced' && (this._referenceRightTab === 'qc'
             || (this._referenceRightTab === 'scopes' && this.workspace === 'inspect'))) this._renderReferenceRightHUD?.();
     }
@@ -13747,12 +13817,12 @@ self.onmessage = async ({ data: { id, url } }) => {
                 border-radius: 3px; overflow: hidden; cursor: pointer;
                 border: 1.5px solid ${
                     isCut    ? '#ff000088' :
-                    isActive ? '#d8d8de' :
+                    isActive ? '#5aa9ff' :
                                'rgba(255,255,255,0.09)'
                 };
                 box-shadow: ${
                     isCut    ? '0 0 6px #ff000066' :
-                    isActive ? '0 0 6px #d8d8de66' : 'none'
+                    isActive ? '0 0 6px #5aa9ff66' : 'none'
                 };
                 position: relative; background: #111;
                 transition: border-color 0.12s, box-shadow 0.12s;
@@ -13808,7 +13878,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             badge.style.cssText = `
                 position: absolute; bottom: 1px; right: 2px;
                 font-size: 6px; font-family: monospace;
-                color: ${isActive ? '#d8d8de' : 'rgba(255,255,255,0.3)'};
+                color: ${isActive ? '#5aa9ff' : 'rgba(255,255,255,0.3)'};
                 pointer-events: none; line-height: 1;
             `;
             cell.appendChild(badge);
@@ -13820,17 +13890,17 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const frameIdx = ci * step;
                         const isNowActive = (frameIdx === this.currentFrame);
                         const nowCut = cutFrames.has(frameIdx);
-                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#d8d8de' : 'rgba(255,255,255,0.09)';
-                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #d8d8de66' : 'none';
+                        c.style.borderColor = nowCut ? '#ff000088' : isNowActive ? '#5aa9ff' : 'rgba(255,255,255,0.09)';
+                        c.style.boxShadow = nowCut ? '0 0 6px #ff000066' : isNowActive ? '0 0 6px #5aa9ff66' : 'none';
                         const b = c.querySelector('span:last-child');
-                        if (b) b.style.color = isNowActive ? '#d8d8de' : 'rgba(255,255,255,0.3)';
+                        if (b) b.style.color = isNowActive ? '#5aa9ff' : 'rgba(255,255,255,0.3)';
                     });
                 }
             };
 
             cell.onmouseenter = () => {
                 if (idx !== this.currentFrame && !cutFrames.has(idx))
-                    cell.style.borderColor = 'rgba(216,216,222,0.4)';
+                    cell.style.borderColor = 'rgba(90, 169, 255,0.4)';
             };
             cell.onmouseleave = () => {
                 if (idx !== this.currentFrame && !cutFrames.has(idx))
@@ -13860,8 +13930,8 @@ self.onmessage = async ({ data: { id, url } }) => {
         else { this._applyCompareToRenderer(); this.render(); }
         this._termLog?.('info', `[Pin Frame] Frame ${this.currentFrame + 1} pinned as B.`);
         if (this._pinFrameBtn) {
-            this._pinFrameBtn.style.borderColor = '#d8d8de';
-            this._pinFrameBtn.style.color = '#d8d8de';
+            this._pinFrameBtn.style.borderColor = '#5aa9ff';
+            this._pinFrameBtn.style.color = '#5aa9ff';
             this._pinFrameBtn.title = `Pinned: Frame ${this.currentFrame + 1}, click again to release`;
         }
     }
@@ -14971,7 +15041,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         input = document.createElement('select');
                         input.style.cssText = `
                             width: 100%; background: #09090d; border: 1px solid rgba(255,255,255,0.08);
-                            border-radius: 6px; color: #d8d8de; font-size: 11px; padding: 4px 6px; cursor: pointer; outline: none;
+                            border-radius: 6px; color: #5aa9ff; font-size: 11px; padding: 4px 6px; cursor: pointer; outline: none;
                             transition: all 0.2s;
                         `;
                         input.onmouseenter = () => { input.style.borderColor = 'rgba(0, 242, 255, 0.3)'; };
@@ -15022,7 +15092,7 @@ self.onmessage = async ({ data: { id, url } }) => {
 
                         const ck = document.createElement('input');
                         ck.type = 'checkbox'; ck.checked = w.value;
-                        ck.style.cssText = 'accent-color: #d8d8de; cursor: pointer; width: 11px; height: 11px;';
+                        ck.style.cssText = 'accent-color: #5aa9ff; cursor: pointer; width: 11px; height: 11px;';
                         ck.onchange = (e) => {
                             w.value = e.target.checked;
                             if (w.callback) w.callback(w.value);
@@ -15107,7 +15177,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 .radiance-ref-search:focus { border-color: var(--radiance-accent); }
                 .radiance-ref-channel { display:grid; grid-template-columns:minmax(0,1fr) 52px; min-height:28px; align-items:center; padding:0 8px; border-radius:4px; border:1px solid transparent; color:var(--radiance-text); font-size:var(--radiance-fs-body); transition: background 0.15s; }
                 .radiance-ref-channel:nth-child(even) { background:rgba(255,255,255,.02); }
-                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(216, 216, 222, .35); color: var(--radiance-accent-text); }
+                .radiance-ref-channel.is-active { background:var(--radiance-accent-soft); border-color: rgba(90, 169, 255, .35); color: var(--radiance-accent-text); }
                 .radiance-ref-channel:not(.is-disabled) { cursor:pointer; }
                 .radiance-ref-channel:not(.is-disabled):hover { background:var(--radiance-control-hover); }
                 .radiance-ref-channel.is-disabled { color:var(--radiance-text-muted); }
@@ -15446,8 +15516,8 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _getCurrentResult() {
-        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal)
-            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth && !d.is_normal)
+        return (this.lastResult || []).find(d => d.frame === this.currentFrame && !d.is_compare && !d.is_zdepth && !d.is_normal && !d.is_regions)
+            || (this.lastResult || []).find(d => !d.is_compare && !d.is_zdepth && !d.is_normal && !d.is_regions)
             || {};
     }
 
@@ -16766,7 +16836,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             title.textContent = label.toUpperCase();
             const state = document.createElement('span');
             state.textContent = this.renderer?.getPipelineInfo?.()?.api?.toUpperCase?.() || (this._gpuBackend || 'GPU').toUpperCase();
-            state.style.color = '#d8d8de';
+            state.style.color = '#5aa9ff';
             head.append(title, state);
             const canvas = document.createElement('canvas');
             canvas.className = 'radiance-ref-scope-canvas';
@@ -17526,7 +17596,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 const evG = (g / 12).toFixed(2);
                 const evB = (b / 12).toFixed(2);
                 printerEVBadge.textContent = `R${r>0?'+':''}${r} G${g>0?'+':''}${g} B${b>0?'+':''}${b}`;
-                printerEVBadge.style.color = '#d8d8de';
+                printerEVBadge.style.color = '#5aa9ff';
             }
         };
         printerEVBadge.style.cssText = 'font-size: 8px; font-family: monospace; color: #555; letter-spacing: 0.04em;';
@@ -17945,7 +18015,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         presets.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
         const INACTIVE_PRESET = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#888;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
-        const ACTIVE_PRESET = `background:rgba(216,216,222,0.12);border:1px solid rgba(216,216,222,0.45);color:#d8d8de;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
+        const ACTIVE_PRESET = `background:rgba(90, 169, 255,0.12);border:1px solid rgba(90, 169, 255,0.45);color:#5aa9ff;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;transition:all 0.15s;`;
 
         // Track which grain preset is active via a module-level label key
         if (!this._activeFilmPreset) this._activeFilmPreset = 'No Grain';
@@ -19689,7 +19759,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 b.style.cssText = `
                     flex:1; text-align:center; padding:5px 4px; font-size:10px; font-weight:700;
                     border-radius:4px; cursor:pointer; user-select:none; transition:all .15s;
-                    color:${on ? '#d8d8de' : t.textDim};
+                    color:${on ? '#5aa9ff' : t.textDim};
                     background:${on ? 'rgba(0,242,255,0.10)' : 'transparent'};
                     border:1px solid ${on ? 'rgba(0,242,255,0.28)' : 'transparent'};
                 `;
@@ -19798,7 +19868,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (this.probeMode !== 'cursor') {
             const sampleBtn = document.createElement('button');
             sampleBtn.textContent = this.probeMode === 'frame' ? '⛶ SAMPLE FRAME' : '▣ SAMPLE REGION';
-            sampleBtn.style.cssText = 'background:rgba(216,216,222,0.08); color:#d8d8de; border:1px solid rgba(216,216,222,0.28); padding:8px; border-radius:5px; font-size:10px; cursor:pointer; font-weight:800; letter-spacing:0.5px;';
+            sampleBtn.style.cssText = 'background:rgba(90, 169, 255,0.08); color:#5aa9ff; border:1px solid rgba(90, 169, 255,0.28); padding:8px; border-radius:5px; font-size:10px; cursor:pointer; font-weight:800; letter-spacing:0.5px;';
             sampleBtn.onclick = () => this._probeComputeStats();
             container.appendChild(sampleBtn);
         }
@@ -20089,6 +20159,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             this._releaseUserConfig();
         }
         this._applyView();
+        this._shell?.syncLook?.();
     }
 
     /**
@@ -20527,7 +20598,7 @@ self.onmessage = async ({ data: { id, url } }) => {
             filterBtn.style.cssText = `flex:1; text-align:center; padding:5px; border-radius:4px; font-size:10px;
                 font-weight:700; cursor:pointer; user-select:none;
                 background:${near ? 'rgba(0,242,255,0.10)' : 'rgba(255,255,255,0.06)'};
-                color:${near ? '#d8d8de' : '#aaa'};
+                color:${near ? '#5aa9ff' : '#aaa'};
                 border:1px solid ${near ? 'rgba(0,242,255,0.28)' : 'rgba(255,255,255,0.12)'};`;
         };
         filterBtn.onclick = () => { this.togglePixelFilter(); paintFilter(); };
@@ -20889,14 +20960,14 @@ self.onmessage = async ({ data: { id, url } }) => {
 
         // ── v2.4: OCIO Display Transform Section ─────────────────────────────
         const ocioGroup = document.createElement('div');
-        ocioGroup.style.cssText = 'margin-top: 4px; border: 1px solid rgba(216,216,222,0.15); border-radius: 8px; padding: 10px; background: rgba(216,216,222,0.04);';
+        ocioGroup.style.cssText = 'margin-top: 4px; border: 1px solid rgba(90, 169, 255,0.15); border-radius: 8px; padding: 10px; background: rgba(90, 169, 255,0.04);';
 
         const ocioHeader = document.createElement('div');
         ocioHeader.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;';
 
         const ocioTitle = document.createElement('div');
         ocioTitle.innerHTML = `
-            <span style="color:#d8d8de; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
+            <span style="color:#5aa9ff; font-size:10px; text-transform:uppercase; font-weight:bold; letter-spacing:1px;">
                 OCIO Display Transform
             </span>`;
         ocioHeader.appendChild(ocioTitle);
@@ -20909,9 +20980,9 @@ self.onmessage = async ({ data: { id, url } }) => {
             : 'No Config';
         ocioBadge.style.cssText = `
             font-size: 8px; font-family: monospace; padding: 2px 6px; border-radius: 3px;
-            background: ${ocioLoaded ? 'rgba(216,216,222,0.15)' : 'rgba(255,255,255,0.06)'};
-            color: ${ocioLoaded ? '#d8d8de' : '#555'};
-            border: 1px solid ${ocioLoaded ? 'rgba(216,216,222,0.3)' : 'rgba(255,255,255,0.08)'};
+            background: ${ocioLoaded ? 'rgba(90, 169, 255,0.15)' : 'rgba(255,255,255,0.06)'};
+            color: ${ocioLoaded ? '#5aa9ff' : '#555'};
+            border: 1px solid ${ocioLoaded ? 'rgba(90, 169, 255,0.3)' : 'rgba(255,255,255,0.08)'};
         `;
         ocioHeader.appendChild(ocioBadge);
         ocioGroup.appendChild(ocioHeader);
@@ -20921,8 +20992,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             const dtSel = document.createElement('select');
             dtSel.className = 'radiance-ocio-display-sel';
             dtSel.style.cssText = `
-                width: 100%; background: #0d0d14; color: #d8d8de;
-                border: 1px solid rgba(216,216,222,0.25); border-radius: 5px;
+                width: 100%; background: #0d0d14; color: #5aa9ff;
+                border: 1px solid rgba(90, 169, 255,0.25); border-radius: 5px;
                 padding: 6px 8px; font-size: 10px; font-family: monospace;
                 cursor: pointer; outline: none; margin-bottom: 6px;
             `;
@@ -20965,7 +21036,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                         const { display, view } = JSON.parse(val);
                         await this.ocioApplyDisplayView(display, view);
                         ocioActiveLbl.textContent = `▶ ${display} / ${view}`;
-                        ocioActiveLbl.style.color = '#d8d8de';
+                        ocioActiveLbl.style.color = '#5aa9ff';
                     } catch (e) {
                         console.error('[OCIO]', e);
                     }
@@ -20979,7 +21050,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 ? `▶ ${this._ocioActiveTransform}` : 'No active transform';
             ocioActiveLbl.style.cssText = `
                 font-size: 9px; font-family: monospace;
-                color: ${this._ocioActiveTransform ? '#d8d8de' : '#444'};
+                color: ${this._ocioActiveTransform ? '#5aa9ff' : '#444'};
                 margin-bottom: 6px; padding-left: 2px;
             `;
             ocioGroup.appendChild(ocioActiveLbl);
@@ -21006,12 +21077,12 @@ self.onmessage = async ({ data: { id, url } }) => {
             const rebakeBtn = document.createElement('button');
             rebakeBtn.textContent = '⟳ Bake';
             rebakeBtn.style.cssText = `
-                font-size: 9px; padding: 3px 8px; background: rgba(216,216,222,0.1);
-                border: 1px solid rgba(216,216,222,0.3); color: #d8d8de;
+                font-size: 9px; padding: 3px 8px; background: rgba(90, 169, 255,0.1);
+                border: 1px solid rgba(90, 169, 255,0.3); color: #5aa9ff;
                 border-radius: 4px; cursor: pointer; flex-shrink: 0;
             `;
-            rebakeBtn.onmouseenter = () => { rebakeBtn.style.background = 'rgba(216,216,222,0.2)'; };
-            rebakeBtn.onmouseleave = () => { rebakeBtn.style.background = 'rgba(216,216,222,0.1)'; };
+            rebakeBtn.onmouseenter = () => { rebakeBtn.style.background = 'rgba(90, 169, 255,0.2)'; };
+            rebakeBtn.onmouseleave = () => { rebakeBtn.style.background = 'rgba(90, 169, 255,0.1)'; };
             rebakeBtn.onclick = async () => {
                 if (!dtSel.value) return;
                 try {
@@ -21044,8 +21115,8 @@ self.onmessage = async ({ data: { id, url } }) => {
             const loadOcioBtn = document.createElement('button');
             loadOcioBtn.textContent = '⤓ Load config.ocio';
             loadOcioBtn.style.cssText = `
-                width: 100%; padding: 6px; border: 1px solid rgba(216,216,222,0.25);
-                background: transparent; color: #d8d8de; border-radius: 5px;
+                width: 100%; padding: 6px; border: 1px solid rgba(90, 169, 255,0.25);
+                background: transparent; color: #5aa9ff; border-radius: 5px;
                 font-size: 9px; cursor: pointer; margin-top: 2px;
             `;
             const ocioFileInput = document.createElement('input');
@@ -22986,7 +23057,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         const appendOutput = (text, isError, cmdEcho) => {
             if (cmdEcho) {
                 const cmdLine = document.createElement('div');
-                cmdLine.style.cssText = `color:rgba(216,216,222,0.7);margin-top:6px;font-weight:600;`;
+                cmdLine.style.cssText = `color:rgba(90, 169, 255,0.7);margin-top:6px;font-weight:600;`;
                 cmdLine.textContent = '>>> ' + cmdEcho.split('\n')[0] + (cmdEcho.includes('\n') ? '...' : '');
                 outputPanel.appendChild(cmdLine);
             }
@@ -23026,7 +23097,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 <span id="rad-term-clean" style="cursor:pointer;color:#e87;opacity:0.6;transition:opacity 0.2s;">[CLEAR OUTPUT]</span>
             </div>
             <div style="display:flex;gap:12px;align-items:center;">
-                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(216,216,222,0.5);text-decoration:none;" onmouseover="this.style.color='#d8d8de'" onmouseout="this.style.color='rgba(216,216,222,0.5)'">📖 DOCS</a>
+                <a href="https://www.fxtdstudios.com" target="_blank" style="color:rgba(90, 169, 255,0.5);text-decoration:none;" onmouseover="this.style.color='#5aa9ff'" onmouseout="this.style.color='rgba(90, 169, 255,0.5)'">📖 DOCS</a>
                 <span id="rad-term-status">READY</span>
             </div>
         `;
@@ -23630,7 +23701,7 @@ self.onmessage = async ({ data: { id, url } }) => {
                 container.style.borderColor = 'rgba(0, 242, 255, 0.35)';
                 container.style.background = 'rgba(0, 242, 255, 0.03)';
                 container.style.boxShadow = '0 0 12px rgba(0, 242, 255, 0.15)';
-                lbl.style.color = '#d8d8de';
+                lbl.style.color = '#5aa9ff';
                 lbl.style.textShadow = '0 0 6px rgba(0, 242, 255, 0.4)';
             } else {
                 container.style.borderColor = 'transparent';
@@ -25286,10 +25357,16 @@ app.registerExtension({
             // Separate main images from compare, brackets, and zdepth images.
             // Exposure brackets are support frames, not timeline frames.
             const bracketImages = message.radiance_images.filter(img => img.bracket_label);
-            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.is_normal && !img.bracket_label);
+            const mainImages = message.radiance_images.filter(img => !img.is_compare && !img.is_zdepth && !img.is_normal && !img.is_regions && !img.bracket_label);
             const compareImages = message.radiance_images.filter(img => img.is_compare);
             const zdepthImages = message.radiance_images.filter(img => img.is_zdepth);
             const normalImages = message.radiance_images.filter(img => img.is_normal);
+            // V5: the Analytic node's regions picture, for Check > Rebuilt by AI. Loaded on demand.
+            viewer.frameRegionEntries = message.radiance_images.filter(img => img.is_regions)
+                .sort((a, b) => (a.frame || 0) - (b.frame || 0));
+            viewer._regionImgs = [];
+            viewer._regionShareCache = [];
+            if (!viewer.frameRegionEntries.length) viewer.showRegions = false;
 
             // Reset frame arrays
             viewer.frameImages = [];

@@ -393,6 +393,14 @@ class RadianceViewer:
                         ),
                     },
                 ),
+                # V5: the viewer's Check > "Rebuilt by AI" overlay. Last in the
+                # list so saved graphs keep their slots. A socket, not a widget.
+                "regions": (
+                    "IMAGE",
+                    {"tooltip": "Optional: the regions output of SDR -> HDR Analytic (RUDRA). "
+                                "The viewer's Check task shows it as the Rebuilt by AI overlay: "
+                                "cyan reconstructed, magenta estimated, yellow generated."},
+                ),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -461,6 +469,7 @@ class RadianceViewer:
         input_space: str = "Auto",
         float_precision: str = "",
         fps: float = 0.0,
+        regions: Optional[Any] = None,
         # Hidden
         prompt: Optional[Any] = None,
         extra_pnginfo: Optional[Any] = None,
@@ -500,6 +509,8 @@ class RadianceViewer:
             zdepth = _extract_tensor(zdepth)
         if normal is not None:
             normal = _extract_tensor(normal)
+        if regions is not None:
+            regions = _extract_tensor(regions)
 
         # 3.5.0: float_precision is the visible widget. The legacy bit_depth
         # keyword is still accepted from scripts. Half is the default: RHDR
@@ -672,6 +683,10 @@ class RadianceViewer:
                     normal, output_dir, use_16bit=use_16bit, use_32bit=use_32bit,
                     save_hdr_sidecar=save_hdr_sidecar, file_token=file_token))
 
+            # RUDRA regions: a picture already (grey + class colours), sent as 8-bit PNGs.
+            if regions is not None:
+                images_list.extend(self._process_regions_image(regions, output_dir, file_token=file_token))
+
             # ── Build output IMAGE ──
             output_image = image
 
@@ -790,7 +805,8 @@ class RadianceViewer:
             cmp_enc, cmp_cs = (resolve_viewer_input_space(input_space, compare_image)
                                if compare_image is not None else (source_encoding, source_colorspace))
             for _entry in images_list:
-                if not isinstance(_entry, dict) or _entry.get("is_zdepth") or _entry.get("is_normal"):
+                if (not isinstance(_entry, dict) or _entry.get("is_zdepth") or _entry.get("is_normal")
+                        or _entry.get("is_regions")):
                     continue
                 if _entry.get("is_compare"):
                     _entry["source_encoding"], _entry["source_colorspace"] = cmp_enc, cmp_cs
@@ -1322,6 +1338,45 @@ class RadianceViewer:
         result.extend(meta for meta in _prepare_in_order(depth_entry, depth_batch) if meta)
 
         return result
+
+    def _process_regions_image(
+        self,
+        regions: torch.Tensor,
+        output_dir: str,
+        file_token: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """The Analytic node's regions picture, one 8-bit PNG per frame, for the Check overlay.
+
+        It is already a display picture (the frame's grey with the pixel classes mixed in), so
+        it is written as it is: no view transform, no float sidecar.
+        """
+        from PIL import Image as PILImage
+
+        validation_error = self._validate_image(regions, "regions")
+        if validation_error:
+            logger.warning(validation_error)
+            return []
+        batch = regions.shape[0] if regions.dim() == 4 else 1
+        token = file_token or uuid.uuid4().hex[:12]
+
+        def regions_entry(idx: int) -> Optional[Dict[str, Any]]:
+            try:
+                frame = safe_tensor_to_numpy(regions[idx] if regions.dim() == 4 else regions)
+                if frame.ndim == 2:
+                    frame = np.repeat(frame[..., None], 3, axis=-1)
+                elif frame.shape[-1] == 1:
+                    frame = np.repeat(frame, 3, axis=-1)
+                rgb = (np.clip(np.nan_to_num(frame[..., :3].astype(np.float32)), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+                name = f"Radiance_regions_{token}_{idx}.png"
+                PILImage.fromarray(rgb, mode="RGB").save(safe_join(output_dir, name),
+                                                         compress_level=DEFAULT_PNG_COMPRESSION)
+                return {"filename": name, "subfolder": "", "type": "temp", "is_regions": True, "frame": idx,
+                        "width": int(rgb.shape[1]), "height": int(rgb.shape[0])}
+            except (RuntimeError, ValueError, OSError) as e:
+                logger.warning(f"Error processing regions frame {idx}: {e}")
+                return None
+
+        return [m for m in _prepare_in_order(regions_entry, batch) if m]
 
     def _process_normal_image(
         self,
