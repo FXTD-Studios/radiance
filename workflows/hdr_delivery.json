@@ -1,8 +1,8 @@
 {
   "id": "42386a87-9309-44c9-8a18-f42febf2ab5b",
   "revision": 0,
-  "last_node_id": 7,
-  "last_link_id": 5,
+  "last_node_id": 9,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
@@ -374,9 +374,9 @@
           "slot_index": null,
           "links": [
             1,
-            2,
             3,
-            5
+            5,
+            6
           ]
         },
         {
@@ -474,7 +474,7 @@
         362
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
@@ -925,7 +925,7 @@
       "id": 3,
       "type": "RadianceWrite",
       "pos": [
-        400,
+        800,
         380
       ],
       "size": [
@@ -933,7 +933,7 @@
         482
       ],
       "flags": {},
-      "order": 3,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -948,7 +948,7 @@
           "removable": null,
           "type": "*",
           "pos": null,
-          "link": 2
+          "link": 7
         },
         {
           "color_off": null,
@@ -1323,6 +1323,13 @@
             "name": "audio_path"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10plus_json",
+          "name": "hdr10plus_json",
+          "shape": 7,
+          "type": "*",
+          "link": 9
         }
       ],
       "outputs": [],
@@ -1385,14 +1392,14 @@
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
         400,
-        920
+        1120
       ],
       "size": [
         313.513671875,
         246
       ],
       "flags": {},
-      "order": 4,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -1600,14 +1607,14 @@
       "type": "RadianceWrite",
       "pos": [
         800,
-        920
+        1120
       ],
       "size": [
         270,
         458
       ],
       "flags": {},
-      "order": 6,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -2058,7 +2065,7 @@
       "id": 6,
       "type": "RadianceViewer",
       "pos": [
-        800,
+        1240,
         -60
       ],
       "size": [
@@ -2066,7 +2073,7 @@
         632
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -2340,28 +2347,328 @@
       "id": 7,
       "type": "Note",
       "pos": [
-        0,
-        560
+        -460,
+        0
       ],
       "size": [
-        380,
-        360
+        420,
+        520
       ],
       "flags": {},
-      "order": 1,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Deliver HDR",
       "properties": {},
       "widgets_values": [
-        "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half.\n- HDR10: Write encodes PQ (ST.2084) with Rec.2020 primaries and tags the file. hdr_reference_nits sets where 1.0 lands (203 nits, BT.2408).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr)."
+        "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself."
       ],
       "widgets_values_named": {
-        "text": "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half.\n- HDR10: Write encodes PQ (ST.2084) with Rec.2020 primaries and tags the file. hdr_reference_nits sets where 1.0 lands (203 nits, BT.2408).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr)."
+        "text": "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself."
       },
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 8,
+      "type": "RadianceRudraPeakFit",
+      "pos": [
+        400,
+        380
+      ],
+      "size": [
+        320,
+        190
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "peak_nits"
+          }
+        },
+        {
+          "localized_name": "peak_fit",
+          "name": "peak_fit",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "peak_fit"
+          }
+        },
+        {
+          "localized_name": "knee_nits",
+          "name": "knee_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "knee_nits"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7,
+            8
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraPeakFit"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        1000.0,
+        "Keep luminance (RUDRA default)",
+        0.0,
+        203.0
+      ],
+      "title": "Peak fit to 1000 nits"
+    },
+    {
+      "id": 9,
+      "type": "RadianceRudraDynamicMetadata",
+      "pos": [
+        400,
+        620
+      ],
+      "size": [
+        320,
+        420
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "peak_nits"
+          }
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "filename_prefix"
+          }
+        },
+        {
+          "localized_name": "write_files",
+          "name": "write_files",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_files"
+          }
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "cut_data"
+          }
+        },
+        {
+          "localized_name": "apply_peak_fit",
+          "name": "apply_peak_fit",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "apply_peak_fit"
+          }
+        },
+        {
+          "localized_name": "peak_fit",
+          "name": "peak_fit",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "peak_fit"
+          }
+        },
+        {
+          "localized_name": "knee_nits",
+          "name": "knee_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "knee_nits"
+          }
+        },
+        {
+          "localized_name": "mastering_min_nits",
+          "name": "mastering_min_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mastering_min_nits"
+          }
+        },
+        {
+          "localized_name": "shot_threshold",
+          "name": "shot_threshold",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "shot_threshold"
+          }
+        },
+        {
+          "localized_name": "hdr10plus_target_nits",
+          "name": "hdr10plus_target_nits",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "hdr10plus_target_nits"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_path"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "summary",
+          "name": "summary",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "hdr10plus_json",
+          "name": "hdr10plus_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "dovi_json",
+          "name": "dovi_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "analysis_json",
+          "name": "analysis_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "hdr10plus_path",
+          "name": "hdr10plus_path",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraDynamicMetadata"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        1000.0,
+        "hdr10",
+        true,
+        "",
+        false,
+        "Keep luminance (RUDRA default)",
+        0.0,
+        0.0001,
+        0.35,
+        400,
+        203.0,
+        ""
+      ],
+      "title": "HDR10+ / Dolby Vision metadata"
     }
   ],
   "links": [
@@ -2370,14 +2677,6 @@
       1,
       0,
       2,
-      0,
-      "IMAGE"
-    ],
-    [
-      2,
-      1,
-      0,
-      3,
       0,
       "IMAGE"
     ],
@@ -2404,6 +2703,38 @@
       6,
       0,
       "IMAGE"
+    ],
+    [
+      6,
+      1,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      8,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      9,
+      4,
+      3,
+      25,
+      "STRING"
     ]
   ],
   "groups": [],
