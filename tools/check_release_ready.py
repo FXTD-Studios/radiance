@@ -111,9 +111,10 @@ def _check_readme(errors: list[str]) -> None:
         if claim.lower() in readme.lower():
             errors.append(f"README contains stale or unsafe claim: {claim!r}")
 
-    required_sections = ("## Installation", "## Quick start", "## Example workflows",
-                         "## Using the Viewer", "## Before you start",
-                         "## Documentation", "## Support", "## License")
+    # The end-user order (V5 README): install, a first result, workflows, the
+    # Viewer, help.
+    required_sections = ("## Install", "### What you need", "## Your first HDR image",
+                         "## Example workflows", "## Using the Viewer", "## Help", "## License")
     for section in required_sections:
         if section not in readme:
             errors.append(f"README missing section: {section}")
