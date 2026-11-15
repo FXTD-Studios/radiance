@@ -3,16 +3,28 @@ import assert from 'node:assert/strict';
 import {
     WORKSPACES, availableWorkspaces, normalizeLayout, defaultWorkspaceFor,
     resolveSaved, propsFor, suggestWorkspace, workspaceById, tabsFor, workspaceForTab, PANEL_TABS,
+    fullWorkspaces, fullWorkspaceFor,
 } from '../radiance_viewer_modes.js';
 
-test('three workspaces: Review, Color and Inspect, which holds QC', () => {
-    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect']);
-    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis', 'qc']);
-    assert.equal(workspaceForTab('qc', 'color'), 'inspect');
+test('four workspaces: Review (Simple), then Color, Inspect and QC (Full)', () => {
+    assert.deepEqual(availableWorkspaces().map((w) => w.id), ['review', 'color', 'inspect', 'qc']);
+    assert.deepEqual(fullWorkspaces().map((w) => w.id), ['color', 'inspect', 'qc']);
+    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(tabsFor('qc'), ['scopes', 'analysis', 'qc']);
+    assert.equal(workspaceForTab('qc', 'color'), 'qc');
+    assert.equal(workspaceForTab('qc', 'qc'), 'qc');
 });
 
-test('the retired Compare and QC workspaces land in Inspect', () => {
-    for (const id of ['compare', 'qc']) {
+test('Full goes back to the last Full workspace, else Color', () => {
+    assert.equal(fullWorkspaceFor('qc'), 'qc');
+    assert.equal(fullWorkspaceFor('inspect'), 'inspect');
+    assert.equal(fullWorkspaceFor('review'), 'color');
+    assert.equal(fullWorkspaceFor(undefined), 'color');
+    assert.equal(fullWorkspaceFor('compare'), 'inspect', 'the retired Compare lands in Inspect');
+});
+
+test('the retired Compare workspace lands in Inspect', () => {
+    for (const id of ['compare']) {
         assert.equal(workspaceById(id).id, 'inspect');
         assert.deepEqual(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: id }),
             { layout: 'advanced', workspace: 'inspect' }, `a graph saved in ${id}`);
@@ -42,7 +54,7 @@ test('a stale, mismatched or unavailable workspace falls back to the layout defa
     // layout says simple, workspace says color: an older Radiance rewrote the layout
     assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'color' }).workspace, 'review');
     assert.equal(resolveSaved({ radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'qc' }).workspace, 'review');
-    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'inspect');
+    assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'qc' }).workspace, 'qc');
     assert.equal(resolveSaved({ radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'nope' }).workspace, 'color');
 });
 
@@ -120,7 +132,7 @@ test('Inspect uses the Advanced layout, opens the Scopes tab, and grows the node
     const v = viewer();
     v.setWorkspace('inspect', { grow: true });
     assert.ok(!v._cls.has('radiance-mode-simple'));
-    assert.equal(v._referenceRightTab, 'scopes');
+    assert.equal(v._referenceRightTab, 'inspector');
     assert.ok(v.calls.includes('hud'), 'the right panel was not redrawn for the workspace');
     assert.equal(v.node.properties.radiance_viewer_mode, 'advanced');
     assert.deepEqual(v.node.size, [1180, 760]);
@@ -136,15 +148,15 @@ test('a workspace never changes the compare mode', () => {
     }
 });
 
-test('unknown workspaces do nothing, and the retired QC opens Inspect on its tab', () => {
+test('unknown workspaces do nothing, and QC opens on its own tab', () => {
     const v = viewer();
     v.setWorkspace('nope');
     assert.equal(v.workspace, undefined);
     assert.deepEqual(v.node.properties, {});
-    v.setWorkspace('qc', { tab: 'qc' });
-    assert.equal(v.workspace, 'inspect');
+    v.setWorkspace('qc');
+    assert.equal(v.workspace, 'qc');
     assert.equal(v._referenceRightTab, 'qc');
-    assert.equal(v.node.properties.radiance_viewer_workspace, 'inspect');
+    assert.equal(v.node.properties.radiance_viewer_workspace, 'qc');
 });
 
 test('setUIMode on its own (old callers) keeps the workspace consistent', () => {
@@ -191,7 +203,8 @@ test('no B, no hint', () => {
 
 test('each Advanced workspace shows its own panel tabs, in panel order', () => {
     assert.deepEqual(tabsFor('color'), ['grade', 'masks', 'effects', 'scopes']);
-    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis', 'qc']);
+    assert.deepEqual(tabsFor('inspect'), ['inspector', 'scopes', 'analysis']);
+    assert.deepEqual(tabsFor('qc'), ['scopes', 'analysis', 'qc']);
     assert.deepEqual(tabsFor('nope'), [...PANEL_TABS]);
     for (const w of WORKSPACES.filter((x) => x.tabs)) assert.ok(w.tabs.includes(w.tab), `${w.id} opens on a tab it hides`);
     // every tab is reachable from some workspace
