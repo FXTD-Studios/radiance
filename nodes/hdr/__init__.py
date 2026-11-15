@@ -29,6 +29,7 @@ from radiance.nodes.hdr.uplift_universal import (
     RadianceSDRToHDRUniversal,
 )
 from radiance.nodes.hdr.rudra_aifill import RadianceSDRToHDRAIFill
+from radiance.nodes.hdr.rudra_rerender import RadianceSDRToHDRAIFillRerender
 from radiance.nodes.hdr.synthesis import (
     RadianceSDRtoHDRExpand,
     RadianceHDRSynthesisEngine,
@@ -87,6 +88,7 @@ NODE_CLASS_MAPPINGS = {
     "RadianceSDRToHDRRecover": RadianceSDRToHDRRecover,
     "RadianceSDRToHDRUniversal": RadianceSDRToHDRUniversal,
     "RadianceSDRToHDRAIFill": RadianceSDRToHDRAIFill,
+    "RadianceSDRToHDRAIFillRerender": RadianceSDRToHDRAIFillRerender,
     "RadianceHDRExpandDynamicRange": HDRExpandDynamicRange,
     "RadianceHDRToneMap": HDRToneMap,
     "RadianceHDRSynthesisEngine": RadianceHDRSynthesisEngine,
@@ -140,6 +142,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RadianceSDRToHDRRecover": "◎ SDR → HDR Recover",
     "RadianceSDRToHDRUniversal": "◎ SDR → HDR Universal",
     "RadianceSDRToHDRAIFill": "◎ SDR → HDR AI Fill (RUDRA v3)",
+    "RadianceSDRToHDRAIFillRerender": "◎ SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)",
     "RadianceHDRExpandDynamicRange": "◎ HDR Expand Dynamic Range",
     "RadianceHDRToneMap": "◎ HDR Tone Map",
     "RadianceHDRSynthesisEngine": "◎ HDR Synthesis Engine",

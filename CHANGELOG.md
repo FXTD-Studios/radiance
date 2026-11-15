@@ -23,7 +23,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   older one instead of running it. Masters change slightly in partially
   clipped highlights, where the lock holds the recorded channels to the
   source.
-- **37 nodes are deprecated.** They are hidden from the node menu (109 nodes
+- **37 nodes are deprecated.** They are hidden from the node menu (110 nodes
   show), and a saved graph that uses one still opens and runs; each one's
   description says what to use instead. They are the manual SDR → HDR chain
   from before RUDRA and the HDR LoRA chain (no HDR LoRA was published), the
@@ -165,6 +165,64 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **SDR → HDR Analytic (RUDRA)**, RUDRA's model-free route, ported from the
+  RUDRA desktop app (Apache 2.0, commit 74f03b6): the inverse of the curve that
+  made the SDR (BT.1886, RUDRA's default; BT.1886 shadows; ACES; Hable; AgX;
+  camera log; plain clip), clipped highlights rebuilt with no model (partial
+  channels from the ones that survived, a smooth fill and dome for a blown sky,
+  a peak and falloff for lamps and the sun, `clip_peaks` to set a region's
+  peak in nits), Highlight detail, the anchor to source exposure, chroma carry,
+  grain settle and the master exposure. Outputs the filled and estimated
+  (fully clipped) masks and a report. Held to RUDRA's own native output on
+  committed goldens (worst pixel 0.06 stop; tests/test_rudra_analytic.py).
+  Measured at about 15 s per 4K frame on the CPU when much of the frame is clipped.
+- **RUDRA Region, RUDRA Calibrate and HDR Region EV (RUDRA)**, the rest of
+  RUDRA's reconstruction controls, wired into SDR → HDR Analytic. Region:
+  limit the reconstruction to a range of the SDR's brightness (Highlights +
+  shadows, each with its level, softness and strength, or one Band); outside
+  it the plain inverse, bit for bit. Calibrate: up to three anchors (an SDR
+  code or a position on the frame, and its nits) over the source curve, or a
+  fit to a graded HDR reference of the same frame (refuses anchors that are
+  not monotone). Region EV: three bands of nits pushed in stops with soft
+  edges, each optionally limited to a mask, after the exposure. SDR → HDR
+  Analytic also takes a `mask`: the reconstruction acts only inside it. All
+  held to RUDRA's native output (tests/test_rudra_analytic.py).
+- **RUDRA Master Write**, and SDR → HDR Analytic's new `mattes` and `regions`
+  outputs: the master written the way RUDRA 1.1 delivers one. Beside
+  `<name>.exr` (stamped with `rudra:*` provenance and its chromaticities):
+  `<name>.mattes.exr` (rudra.highlight, shadow, changed, region, class,
+  confidence, and rudra.generated split into highlight / shadow when an AI Fill
+  mask is connected), `<name>.regions.png` (each pixel preserved, follows,
+  reconstructed, estimated or generated, in colour), EV brackets at −2 / 0 /
+  +2 EV read back from the EXR with a preview-to-export check, and
+  `<name>.json` with the source and checkpoint SHA-256, build commit, settings
+  and the class shares. Mattes and classes held to RUDRA's native output.
+- **HDR Peak Fit, HDR Dynamic Metadata, HDR Flicker Report and HDR Shot Hold
+  (RUDRA)**, RUDRA's delivery steps for a master or a movie batch. Peak Fit:
+  the shoulder to a display peak, and for a colour still too bright for it,
+  Keep luminance (RUDRA's default: saturation given up) or Scale (brightness
+  given up). Dynamic Metadata: MaxCLL / MaxFALL, Dolby Vision L1 per shot
+  (`_dovi_generate.json` for dovi_tool, profile 8.1), HDR10+ per shot
+  (`_hdr10plus.json` for x265 / hdr10plus_tool, and the scene analysis) and
+  `_hdr_analysis.json` in nits and PQ codes; shots from Scene Cut Detect or
+  RUDRA's own test. Flicker Report: the HDR's exposure change beyond the
+  source's, frame to frame and per area, in EV. Shot Hold: where the source
+  is still, the HDR's gain is held across the shot and reset at each cut.
+  Held to RUDRA's own output (tests/test_rudra_delivery.py).
+- **Load Still (RUDRA)** and a `source_primaries` / `source` input on SDR →
+  HDR Analytic: a still's EXIF orientation is applied and its colour tag read
+  (ICC profile, PNG cICP / sRGB / cHRM: Rec.709, Display P3, Rec.2020, Adobe
+  RGB), and the master is made from those primaries, as RUDRA does, so a
+  Display P3 phone photo keeps its colours and a portrait one is upright. A
+  profile RUDRA does not know is reported and read as Rec.709.
+- **RUDRA Fill Prompt**: RUDRA's nine AI fill prompt presets and its
+  suggestion from the shot's clipped areas (sky, sun, lamp, window, glints,
+  flame, shadow detail), with no model, for SDR → HDR AI Fill's prompts.
+- **Write: `hdr10plus_json`**. PQ into MP4 (H.265 10-bit) carries the HDR10+
+  JSON from HDR Dynamic Metadata (its new `hdr10plus_path` output) as ST
+  2094-40 dynamic metadata (x265 `--dhdr10-info`), checked before writing
+  (a file, one entry per frame); the receipt says whether the video carries it
+  (an x265 built without HDR10+ writes HDR10 only, with a warning).
 
 - **RUDRA ACES 2.0 and its lock** (SDR → HDR Universal and Recover). The
   model that passed RUDRA's held-out test: at the delivered exposure within
@@ -286,6 +344,24 @@ else is fixes. Read the upgrade notes before moving a production setup.
   model (7.7 GB; the 11.4 GB text encoder only for a custom prompt) download on
   first use, pinned, hash-checked and resumable. Needs about 16 GB of VRAM.
   Experimental.
+- **AI Fill (RUDRA v3) catches up with RUDRA 1.1 and 1.2.** Three inputs,
+  added after the old ones so saved graphs keep their values: `focus`
+  (`region`: one box round what the shot fills; `areas`: one box per group of
+  clipped areas, each drawn at up to the working size, so two lamps at
+  opposite edges of a 4K frame each keep their detail), `fallback` (`spikes`:
+  a frame whose fill flickers is returned as the master's own frame) and
+  `prompt_strength` (0 to 2; 1 is the gated behaviour). The report gives the
+  boxes, their detail gain and the frames that fell back. Defaults are v3's.
+- **SDR → HDR AI Fill v4 Re-render (RUDRA, experimental).** New node, from
+  RUDRA's `feat/genfill-v4-finish` (12 Nov 2026): Wan VACE with the v4 LoRA
+  draws a whole bright region again (a window, an open door, a sky parked just
+  under white), not only fully clipped pixels. The regions come from the SDR
+  source wired into `source`; the finish is RUDRA's app's (source colour,
+  3.3 x SDR white crossfaded in from code 240, dark detail at most 0.3 stops,
+  smoothing 0.8, near-white sources only). Inside the region the SDR codes are
+  not kept; outside it every pixel is the master's. The v4 LoRA is not
+  published and is never downloaded: put it in `models/radiance/rudra_genfill_v4/`.
+  v4 has not passed every RUDRA gate (a second shot fails on structure).
 - **Zero setup for SDR → HDR.** `install.py` installs diffusers 0.35+ (an
   older one is upgraded; Wan VACE needs it) and fetches RUDRA ACES 2 into
   `models/radiance/RUDRA_ACES_2`, so the learned path works offline from the
