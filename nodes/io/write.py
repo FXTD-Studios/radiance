@@ -883,6 +883,15 @@ class RadianceWrite:
                     "open the master in the right ACES pipeline."
                 ),
             }),
+            "hdr10plus_json": ("STRING", {
+                "default": "",
+                "tooltip": (
+                    "PQ with MP4 (H.265 10-bit) only: an HDR10+ JSON (◎ HDR Dynamic Metadata (RUDRA)'s "
+                    "hdr10plus_path, or any x265 --dhdr10-info file) carried into the video as ST 2094-40 "
+                    "dynamic metadata, as RUDRA does. It needs an ffmpeg whose x265 was built with HDR10+; "
+                    "the receipt says whether the file carries it. Empty: HDR10 only."
+                ),
+            }),
         }, "hidden": {
             "prompt":        "PROMPT",
             "extra_pnginfo": "EXTRA_PNGINFO",
@@ -958,6 +967,7 @@ class RadianceWrite:
         write_audio:    bool  = False,
         audio_path:     str   = "",
         aces_amf:       bool  = False,
+        hdr10plus_json: str   = "",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -1003,6 +1013,7 @@ class RadianceWrite:
             write_audio=write_audio,
             audio_path=audio_path,
             aces_amf=aces_amf,
+            hdr10plus_json=strip_path_quotes(hdr10plus_json or "") if hdr10plus_json else "",
         )
         return _with_history(res, t0, receipt)
 

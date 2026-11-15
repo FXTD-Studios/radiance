@@ -42,4 +42,17 @@ WEB_DIRECTORY = "./js"
 #: 4.0: 151 -> 152. RadianceSDRToHDRAIFill (RUDRA AI fill v3) added.
 #: 4.0: 152 -> 153. RadianceSDRToHDRAIFillRerender (RUDRA AI fill v4, region
 #: re-render, experimental) added.
-EXPECTED_MIN_NODE_COUNT = 153
+#: 4.0: 153 -> 154. RadianceSDRToHDRAnalytic (RUDRA's analytic route: source
+#: curves, clipped-highlight fill, highlight detail, anchor) added.
+#: 4.0: 154 -> 157. RadianceRudraRegion, RadianceRudraCalibrate and
+#: RadianceRudraRegionEV (RUDRA's luminance region, calibration / reference
+#: fit and Region EV) added.
+#: 4.0: 157 -> 158. RadianceRudraMasterWrite (the master with RUDRA's mattes,
+#: regions picture, EV brackets and provenance sidecar) added.
+#: 4.0: 158 -> 162. RadianceRudraPeakFit, RadianceRudraDynamicMetadata,
+#: RadianceRudraFlickerReport and RadianceRudraShotHold (RUDRA's delivery
+#: steps) added.
+#: 4.0: 162 -> 164. RadianceRudraLoadStill (a still's colour tag and EXIF
+#: orientation, as RUDRA reads them) and RadianceRudraFillPrompt (RUDRA's AI fill
+#: prompt presets and suggestion) added.
+EXPECTED_MIN_NODE_COUNT = 164
