@@ -1,0 +1,69 @@
+RUDRA
+Copyright 2026 FXTD Studios
+
+Licensed under the Apache License, Version 2.0 (see LICENSE). Website:
+https://www.fxtdstudios.com
+
+------------------------------------------------------------------------
+Code
+------------------------------------------------------------------------
+The code, documentation and tools in this repository are licensed under the
+Apache License, Version 2.0 (see LICENSE,
+https://www.apache.org/licenses/LICENSE-2.0), from 29 October 2026.
+Commercial use is permitted under its terms.
+
+Copies obtained between 24 September and 28 October 2026 under the PolyForm
+Noncommercial License 1.0.0 may be used under the Apache License 2.0 from
+29 October 2026. Copies obtained before 24 September 2026 were already
+released under the Apache License 2.0.
+
+------------------------------------------------------------------------
+Trained weights
+------------------------------------------------------------------------
+Each model carries its own licence, separate from the code's. The weights
+distributed in `checkpoints/` (sdr2hdr_image_v8, sdr2hdr_shadow_v1) are
+NON-COMMERCIAL under their own terms, because one of their training sources
+restricts commercial use. Other models state their licence in the app's
+Model packages window and in their package. See
+`checkpoints/LICENSE`, and contact FXTD Studios for commercial licensing.
+
+------------------------------------------------------------------------
+Attribution required by the training sources
+------------------------------------------------------------------------
+Netflix Open Content -- Chimera (CC BY 4.0)
+    https://opencontent.netflix.com/
+
+Netflix Open Content, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/),
+used to train sdr2hdr_image_v8 and to measure the "BT.1886 shadows" Source
+curve (native/core/src/source_curve.cpp), with Meridian held out for testing:
+    Nocturne -- Netflix Open Content
+    Sparks -- Netflix Open Content
+    Meridian -- Netflix Open Content
+    Sol Levante -- Netflix Open Content and Production I.G; director Akira Saitoh
+    Cosmos Laundromat -- (CC) Blender Foundation | gooseberry.blender.org;
+        director Mathieu Auvray; original film CC BY 3.0
+        (https://creativecommons.org/licenses/by/3.0/). HDR re-grade:
+        Netflix and Fotokem's Keep Me Posted.
+    https://opencontent.netflix.com/
+    RUDRA sampled frames from these titles, converted them (BT.709 SDR and
+    P3-D65 PQ HDR to BT.2020, linear-light downsampling, letterbox crops)
+    and measured them; it does not redistribute the footage. No rights in
+    logos or trademarks are claimed, and no endorsement is implied.
+
+Poly Haven HDRIs (CC0)
+    https://polyhaven.com/license
+
+HdM-HDR-2014 and HdM-HFR-2017, Hochschule der Medien Stuttgart
+    Free for academic and educational use. Commercial use requires a
+    separate agreement with HdM.
+    https://hdm-stuttgart.de/vmlab/hdm-hdr-2014/
+
+------------------------------------------------------------------------
+FFmpeg (in the Windows package)
+------------------------------------------------------------------------
+The Windows package of the desktop app carries ffmpeg.exe and ffprobe.exe,
+the unmodified gyan.dev "full" build (https://www.gyan.dev/ffmpeg/builds/),
+in its ffmpeg\ folder. That build is licensed under the GNU General Public
+License version 3 (ffmpeg\LICENSE.txt); where its source is: ffmpeg\SOURCE.txt.
+RUDRA runs it as a separate program and is not linked to it, so RUDRA's own
+licence is unchanged.
