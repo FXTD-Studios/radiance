@@ -51,7 +51,7 @@ test('a connected B switches nothing, and A | B | Wipe | Diff | Blink is on the 
     assert.equal(out.hints, 0);
     assert.equal(out.ws, 'review');
     assert.equal(out.modeKept, true);
-    assert.deepEqual(out.workspaces, ['review', 'color', 'inspect']);
+    assert.deepEqual(out.workspaces, ['review', 'color', 'inspect', 'qc']);
     assert.deepEqual(out.review, ['A', 'B', 'Wipe', 'Diff', 'Blink']);
     assert.deepEqual(out.advanced, out.review, 'the Advanced bar is the same switch');
     assert.equal(out.headerCompare, false, 'the header Compare button is gone');
@@ -175,11 +175,11 @@ test('each workspace shows only its panel tabs, and a hidden tab moves to the wo
         return r;
     });
     assert.deepEqual(errors, []);
-    assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis', 'qc']);
-    assert.equal(out.inspectActive, 'scopes');
+    assert.deepEqual(out.inspect, ['inspector', 'scopes', 'analysis']);
+    assert.equal(out.inspectActive, 'inspector');
     assert.deepEqual(out.color, ['grade', 'masks', 'effects', 'scopes']);
     assert.equal(out.colorActive, 'grade');
-    assert.deepEqual(out.compare, { ws: 'inspect', tabs: ['inspector', 'scopes', 'analysis', 'qc'] }, 'the retired Compare opens Inspect');
+    assert.deepEqual(out.compare, { ws: 'inspect', tabs: ['inspector', 'scopes', 'analysis'] }, 'the retired Compare opens Inspect');
     assert.deepEqual(out.afterShortcut, { ws: 'color', tabs: ['grade', 'masks', 'effects', 'scopes'], active: 'grade' });
     assert.equal(out.compareMode, 'none');
 });
@@ -432,7 +432,7 @@ test('the QC tab runs the checks, lists each one and the flagged frames, and a f
         msg.radiance_images.forEach((e, i) => { e.hdr_sidecar = e.hdr_filename = `g_64x48_${seq[i]}.rhdr`; });
         n.onExecuted(msg);
         await __until(() => v.image && v.hdrData, 15000);
-        const r = { offered: v._modeBtns.has('inspect') && !v._modeBtns.has('qc') };
+        const r = { offered: v._modeBtns.has('qc') };
         v._runKeyAction('panel.qc');
         await __sleep(50);
         const panel = () => v.container.querySelector('.radiance-ref-col') || document;
@@ -452,7 +452,7 @@ test('the QC tab runs the checks, lists each one and the flagged frames, and a f
         flick?.querySelector('.radiance-qc-frame')?.click();
         await __sleep(50);
         r.frameAfterJump = v.currentFrame;
-        // Alt+7 from another workspace lands on Inspect's QC tab.
+        // Alt+7 from another workspace lands on the QC workspace.
         v.setWorkspace('color');
         v._runKeyAction('panel.qc');
         r.altSeven = [v.workspace, v._referenceRightTab];
@@ -460,9 +460,9 @@ test('the QC tab runs the checks, lists each one and the flagged frames, and a f
         return r;
     });
     assert.deepEqual(errors, []);
-    assert.equal(out.offered, true, 'QC is a tab of Inspect, not a workspace');
-    assert.equal(out.ws, 'inspect'); assert.equal(out.tab, 'qc');
-    assert.deepEqual(out.tabs, ['inspector', 'scopes', 'analysis', 'qc']);
+    assert.equal(out.offered, true, 'QC is a workspace (4.1 shell)');
+    assert.equal(out.ws, 'qc'); assert.equal(out.tab, 'qc');
+    assert.deepEqual(out.tabs, ['scopes', 'analysis', 'qc']);
     assert.match(out.before, /Not run/);
     assert.equal(out.reportDisabled, true, 'Report is offered before any QC run');
     assert.match(out.status, /^WARN · 8\/8 frames$/);
@@ -474,7 +474,7 @@ test('the QC tab runs the checks, lists each one and the flagged frames, and a f
     assert.match(out.perFrame[0][1], /Flicker/);
     assert.equal(out.runLabel, 'Run again');
     assert.equal(out.frameAfterJump, 5);
-    assert.deepEqual(out.altSeven, ['inspect', 'qc']);
+    assert.deepEqual(out.altSeven, ['qc', 'qc']);
 });
 
 test('the Deliver render queue renders snapshots one by one, reports each job, and stops after the current one', { skip }, async () => {
