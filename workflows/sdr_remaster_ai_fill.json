@@ -1,8 +1,8 @@
 {
   "id": "b5959a16-0d36-4170-a379-91925257b5bf",
   "revision": 0,
-  "last_node_id": 12,
-  "last_link_id": 12,
+  "last_node_id": 16,
+  "last_link_id": 21,
   "nodes": [
     {
       "id": 1,
@@ -225,7 +225,10 @@
           "type": "IMAGE",
           "links": [
             1,
-            10
+            10,
+            13,
+            15,
+            18
           ]
         },
         {
@@ -305,7 +308,7 @@
         730
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
@@ -663,7 +666,7 @@
         658
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -695,7 +698,7 @@
           "widget": {
             "name": "prompt_highlight"
           },
-          "link": null
+          "link": 14
         },
         {
           "localized_name": "brightness_offset",
@@ -883,7 +886,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            4
+            16
           ]
         },
         {
@@ -969,14 +972,14 @@
         294
       ],
       "flags": {},
-      "order": 4,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "localized_name": "image",
           "name": "image",
           "type": "IMAGE",
-          "link": 4
+          "link": 17
         },
         {
           "localized_name": "cdl_data",
@@ -1135,7 +1138,7 @@
         458
       ],
       "flags": {},
-      "order": 6,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -1444,7 +1447,7 @@
         482
       ],
       "flags": {},
-      "order": 7,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -1753,7 +1756,7 @@
         246
       ],
       "flags": {},
-      "order": 8,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -1893,7 +1896,7 @@
         458
       ],
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -2202,7 +2205,7 @@
         640
       ],
       "flags": {},
-      "order": 9,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -2423,7 +2426,7 @@
         614
       ],
       "flags": {},
-      "order": 10,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -2673,26 +2676,382 @@
       "type": "Note",
       "pos": [
         -1400,
-        -760
+        -900
       ],
       "size": [
         560,
-        420
+        560
       ],
       "flags": {},
-      "order": 1,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (frames are reconstructed one by one; batch_mode Video Frames also smooths the knee over time). Set mode to Expand for the math path alone.\n3. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run). Edit prompt_highlight per shot.\n4. CDL: trim the remaster.\n5. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG; set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
+        "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
       ],
       "widgets_values_named": {
-        "text": "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (frames are reconstructed one by one; batch_mode Video Frames also smooths the knee over time). Set mode to Expand for the math path alone.\n3. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run). Edit prompt_highlight per shot.\n4. CDL: trim the remaster.\n5. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG; set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
+        "text": "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
       },
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 13,
+      "type": "RadianceRudraFillPrompt",
+      "pos": [
+        -1000,
+        800
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "localized_name": "highlight",
+          "name": "highlight",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "highlight"
+          }
+        },
+        {
+          "localized_name": "shadow",
+          "name": "shadow",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "shadow"
+          }
+        },
+        {
+          "localized_name": "highlight_context_code",
+          "name": "highlight_context_code",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "highlight_context_code"
+          }
+        },
+        {
+          "localized_name": "extra",
+          "name": "extra",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "extra"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "links": [
+            14
+          ]
+        },
+        {
+          "localized_name": "prompt_shadow",
+          "name": "prompt_shadow",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraFillPrompt"
+      },
+      "widgets_values": [
+        "Suggest from the frames",
+        "None",
+        250,
+        ""
+      ],
+      "title": "AI fill prompts (suggested)"
+    },
+    {
+      "id": 14,
+      "type": "RadianceRudraShotHold",
+      "pos": [
+        -600,
+        760
+      ],
+      "size": [
+        320,
+        280
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "sdr",
+          "name": "sdr",
+          "type": "IMAGE",
+          "link": 15
+        },
+        {
+          "localized_name": "hdr",
+          "name": "hdr",
+          "type": "IMAGE",
+          "link": 16
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "hold_seconds",
+          "name": "hold_seconds",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "hold_seconds"
+          }
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "fps"
+          }
+        },
+        {
+          "localized_name": "sdr_transfer",
+          "name": "sdr_transfer",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sdr_transfer"
+          }
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "cut_data"
+          }
+        },
+        {
+          "localized_name": "cut_threshold",
+          "name": "cut_threshold",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "cut_threshold"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            17,
+            19
+          ]
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "links": [
+            20
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraShotHold"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        0.25,
+        24.0,
+        "sRGB",
+        "",
+        0.15
+      ],
+      "title": "Hold steady within each shot"
+    },
+    {
+      "id": 15,
+      "type": "RadianceRudraFlickerReport",
+      "pos": [
+        -200,
+        420
+      ],
+      "size": [
+        300,
+        230
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "sdr",
+          "name": "sdr",
+          "type": "IMAGE",
+          "link": 18
+        },
+        {
+          "localized_name": "hdr",
+          "name": "hdr",
+          "type": "IMAGE",
+          "link": 19
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "sdr_transfer",
+          "name": "sdr_transfer",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "sdr_transfer"
+          }
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "link": 20,
+          "shape": 7,
+          "widget": {
+            "name": "cut_data"
+          }
+        },
+        {
+          "localized_name": "cut_threshold",
+          "name": "cut_threshold",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "cut_threshold"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": [
+            21
+          ]
+        },
+        {
+          "localized_name": "json_report",
+          "name": "json_report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "flicker_ev_max",
+          "name": "flicker_ev_max",
+          "type": "FLOAT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraFlickerReport"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "sRGB",
+        "",
+        0.15,
+        203.0
+      ],
+      "title": "Flicker report"
+    },
+    {
+      "id": 16,
+      "type": "PreviewAny",
+      "pos": [
+        -200,
+        700
+      ],
+      "size": [
+        300,
+        220
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 21
+        }
+      ],
+      "outputs": [],
+      "title": "Flicker report",
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
     }
   ],
   "links": [
@@ -2719,14 +3078,6 @@
       3,
       1,
       "MASK"
-    ],
-    [
-      4,
-      3,
-      0,
-      4,
-      0,
-      "IMAGE"
     ],
     [
       5,
@@ -2791,6 +3142,78 @@
       10,
       0,
       "IMAGE"
+    ],
+    [
+      13,
+      1,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      13,
+      0,
+      3,
+      3,
+      "STRING"
+    ],
+    [
+      15,
+      1,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      16,
+      3,
+      0,
+      14,
+      1,
+      "IMAGE"
+    ],
+    [
+      17,
+      14,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      18,
+      1,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      19,
+      14,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      20,
+      14,
+      1,
+      15,
+      4,
+      "STRING"
+    ],
+    [
+      21,
+      15,
+      0,
+      16,
+      0,
+      "STRING"
     ]
   ],
   "groups": [],

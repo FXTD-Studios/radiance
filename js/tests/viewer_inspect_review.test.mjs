@@ -137,33 +137,37 @@ test('Grab still keeps versions for B; the B menu picks one, Release keeps them,
     } finally { await page.close(); }
 });
 
-test('a loaded graph opens the viewer in its saved workspace, with that workspace\'s tabs', { skip }, async () => {
+test('a loaded graph opens in View, unless the V5 shell saved it in Pro tools', { skip }, async () => {
     const page = await session.open();
     try {
         const r = await page.evaluate(async () => {
             const tabs = (v) => [...v.controlsPanel.querySelectorAll('.radiance-ref-tab')].map((b) => b.dataset.tabId);
             const out = {};
-            // A graph saved in Inspect.
+            // Saved by the V5 shell in Pro tools > Inspect: it opens there again.
             const a = new FakeNode(); a.onNodeCreated(); await __sleep(100);
-            a.onConfigure({ properties: { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'inspect' } });
+            a.onConfigure({ properties: { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'inspect', radiance_viewer_shell: 'v5' } });
             await __sleep(100);
-            out.inspect = { ws: a.radianceViewer.workspace, tab: a.radianceViewer._referenceRightTab, tabs: tabs(a.radianceViewer) };
-            // A graph saved before workspaces existed: Advanced, so Color.
+            out.inspect = { ui: a.radianceViewer.uiMode, ws: a.radianceViewer.workspace, tabs: tabs(a.radianceViewer) };
+            // Saved before V5 in the Full layout (or before workspaces existed): View.
             const b = new FakeNode(); b.onNodeCreated(); await __sleep(100);
-            b.onConfigure({ properties: {} });
+            b.onConfigure({ properties: { radiance_viewer_mode: 'advanced', radiance_viewer_workspace: 'color' } });
             await __sleep(100);
-            out.old = { ws: b.radianceViewer.workspace, tab: b.radianceViewer._referenceRightTab, tabs: tabs(b.radianceViewer) };
-            // A shipped workflow: Review.
+            out.old = { ui: b.radianceViewer.uiMode, ws: b.radianceViewer.workspace, task: b.radianceViewer._shell.task,
+                marked: b.properties.radiance_viewer_shell };
+            const d = new FakeNode(); d.onNodeCreated(); await __sleep(100);
+            d.onConfigure({ properties: {} });
+            out.none = { ui: d.radianceViewer.uiMode, ws: d.radianceViewer.workspace };
+            // A shipped workflow: View.
             const c = new FakeNode(); c.onNodeCreated(); await __sleep(100);
             c.onConfigure({ properties: { radiance_viewer_mode: 'simple', radiance_viewer_workspace: 'review' } });
             out.review = { ui: c.radianceViewer.uiMode, ws: c.radianceViewer.workspace };
-            [a, b, c].forEach((n) => __remove(n));
+            [a, b, c, d].forEach((n) => __remove(n));
             return out;
         });
         assert.deepEqual(page.errors, []);
-        assert.deepEqual(r.inspect, { ws: 'inspect', tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis', 'qc'] });
-        assert.deepEqual(r.old, { ws: 'color', tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'] },
-            'the panel kept the Simple layout\'s seven tabs, on Inspector');
+        assert.deepEqual(r.inspect, { ui: 'advanced', ws: 'inspect', tabs: ['inspector', 'scopes', 'analysis'] });
+        assert.deepEqual(r.old, { ui: 'simple', ws: 'review', task: 'view', marked: 'v5' });
+        assert.deepEqual(r.none, { ui: 'simple', ws: 'review' });
         assert.deepEqual(r.review, { ui: 'simple', ws: 'review' });
     } finally { await page.close(); }
 });

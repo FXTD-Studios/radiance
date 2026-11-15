@@ -201,6 +201,33 @@ test('Check > Rebuilt by AI: the regions input draws over the picture and is mea
     assert.equal(out.off, false, 'leaving Check turns it off');
 });
 
+test('a saved grade says so on the picture, and Reset clears it', { skip }, async () => {
+    const { out, errors } = await inPage(async () => {
+        const n = __make('simple'); const v = n.radianceViewer;
+        n.onExecuted(__frames(2, 64, 48));
+        await __until(() => v.image, 10000);
+        const c = v.container;
+        const chip = c.querySelector('.rv5-grade');
+        const r = { before: getComputedStyle(chip).display };
+        // The grade from the user's screenshot: Exposure -4.1, a warm Gain.
+        v._restoreGradingState({ ...v._captureGradingState(), exposure: -4.1, gain: [0.82, 1.17, 1.02] });
+        r.on = [getComputedStyle(chip).display, chip.querySelector('span').textContent];
+        v._shell.setTask('check');
+        r.inCheck = [getComputedStyle(chip).display, c.querySelector('.rv5-check[data-check="grade"] b')?.textContent];
+        v._shell.setTask('view');
+        [...chip.querySelectorAll('button')].find((b) => b.textContent === 'Reset').click();
+        await __sleep(50);
+        r.after = [v.exposure, v.gain.join(), getComputedStyle(chip).display];
+        __remove(n);
+        return r;
+    });
+    assert.deepEqual(errors, []);
+    assert.equal(out.before, 'none');
+    assert.deepEqual(out.on, ['flex', 'Grade on: Exposure \u22124.1, Gain']);
+    assert.deepEqual(out.inCheck, ['none', 'Viewer grade is on'], 'in Check it is a line in the list');
+    assert.deepEqual(out.after, [0, '1,1,1', 'none']);
+});
+
 test('the bottom bar: transport, timecode, filmstrip scrubber, preview brightness labelled not saved', { skip }, async () => {
     const { out, errors } = await inPage(async () => {
         const n = __make('simple'); const v = n.radianceViewer;

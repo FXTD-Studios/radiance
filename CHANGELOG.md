@@ -165,6 +165,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+
+- **Workflows use the RUDRA features.** New **SDR → HDR Analytic** (Load Still
+  → Region → Analytic → Viewer with Rebuilt by AI → RUDRA Master Write: EXR,
+  mattes, brackets, sidecar; no model). **HDR delivery** now peak-fits the HDR10
+  output to 1000 nits and writes HDR10+ / Dolby Vision metadata, carried into
+  the H.265 file. **SDR remaster** gets suggested AI fill prompts, Shot Hold
+  and a flicker report. 45 workflows, each with its Library card.
 - **SDR → HDR Analytic (RUDRA)**, RUDRA's model-free route, ported from the
   RUDRA desktop app (Apache 2.0, commit 74f03b6): the inverse of the curve that
   made the SDR (BT.1886, RUDRA's default; BT.1886 shadows; ACES; Hable; AgX;
