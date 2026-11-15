@@ -39,6 +39,8 @@ logger = logging.getLogger("radiance.nodes.hdr.rudra_aifill")
 
 ENCODINGS = ["Linear (Rec.709)", "Linear ACES2065-1 (AP0)", "ACEScg"]
 WINDOWS = [33, 17, 9, 49]
+FOCUS_CHOICES = ["frame", "region", "areas"]          # rudra_genfill.FOCUS
+FALLBACK_CHOICES = ["none", "spikes"]                 # rudra_genfill.FALLBACKS
 
 
 def _to_acescg(rgb: np.ndarray, encoding: str) -> np.ndarray:
@@ -55,6 +57,16 @@ def _from_acescg(rgb: np.ndarray, encoding: str) -> np.ndarray:
         return rgb.astype(np.float32)
     m = M_AP1_TO_AP0 if encoding.startswith("Linear ACES2065-1") else M_AP1_TO_REC709
     return (rgb.astype(np.float64) @ m.T).astype(np.float32)
+
+
+def _focus_line(st: dict) -> str:
+    f = st.get("focus") or {}
+    mode = f.get("mode", "frame")
+    if mode == "areas" and f.get("boxes"):
+        return f"areas, {len(f['boxes'])} box(es), detail x{f.get('detail_gain', 1.0):g}"
+    if mode != "frame" and f.get("box"):
+        return f"region, detail x{f.get('detail_gain', 1.0):g}, {100 * f.get('mask_outside_box', 0.0):.1f} % of the mask left to the master"
+    return "whole frame" if mode == "frame" else f"{mode}: most of the frame, drawn whole"
 
 
 class RadianceSDRToHDRAIFill:
@@ -138,6 +150,21 @@ class RadianceSDRToHDRAIFill:
                                "resumes if interrupted. RADIANCE_ALLOW_DOWNLOADS=0 always wins."}),
                 "keep_loaded": ("BOOLEAN", {"default": True,
                     "tooltip": "Keep Wan VACE on the GPU between runs. Off frees it after this node."}),
+                # RUDRA 1.1 / 1.2 (5-8 Nov 2026). Added last so saved workflows keep their widget order.
+                "prompt_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
+                    "tooltip": "How strongly prompt_highlight / prompt_shadow steer their region. 1 = as RUDRA's "
+                               "gates (the region's prediction replaces the base one); 0 = the prompt is ignored; "
+                               "above 1 pushes further from the base prompt (experimental)."}),
+                "focus": (FOCUS_CHOICES, {"default": "frame",
+                    "tooltip": "What the model sees. frame: the whole frame at max_area (v3). region: one box round "
+                               "everything the shot fills, so a sky that is part of the frame gets more detail. "
+                               "areas: one box per group of clipped areas, each drawn at up to max_area (two lamps "
+                               "at opposite edges of a 4K frame each at full detail; one model run per box). "
+                               "Nothing is generated outside the boxes."}),
+                "fallback": (FALLBACK_CHOICES, {"default": "none",
+                    "tooltip": "spikes: a frame whose fill flickers (more than 0.25 stops beyond the master's own "
+                               "change, both into it and out of it) is returned as the master's own frame. "
+                               "none: every fill is kept (v3). A fill that is not finite always falls back."}),
             },
         }
 
@@ -147,7 +174,8 @@ class RadianceSDRToHDRAIFill:
              highlight_context_code=250, max_gain_stops=3.0, shape_gain=1.0,
              use_brightness_estimator=True, steps=30, seed=0, guidance=1.0, negative_prompt="",
              window=33, overlap=8, max_area=832 * 480, base_model="", fill_package="",
-             allow_download=True, keep_loaded=True):
+             allow_download=True, keep_loaded=True, prompt_strength=1.0, focus="frame",
+             fallback="none"):
         from radiance.model import rudra_genfill as G
         from radiance.model.rudra_aces2 import aces2_view
 
@@ -200,7 +228,8 @@ class RadianceSDRToHDRAIFill:
         s = G.FillSettings(steps=int(steps), seed=int(seed), guidance=float(guidance),
                            negative=str(negative_prompt or ""),
                            prompt_highlight=str(prompt_highlight or ""),
-                           prompt_shadow=str(prompt_shadow or "") if fill_shadows else "")
+                           prompt_shadow=str(prompt_shadow or "") if fill_shadows else "",
+                           prompt_strength=G.checked_prompt_strength(prompt_strength))
         for text in {s.prompt, s.prompt_highlight, s.prompt_shadow, s.negative} - {""}:
             model.prompts.get(text)
         model.prompts.release()
@@ -219,13 +248,13 @@ class RadianceSDRToHDRAIFill:
 
         def progress(**o):
             if "step" in o:
-                bar.update_absolute((o["window"] - 1) * int(steps) + o["step"])
+                bar.update_absolute(int((o["window"] - 1 + o["step"] / max(1, o["steps"])) * int(steps)))
 
         try:
             outs, alphas, rep = G.fill_frames(masters, model, view, s, ms, window=int(window),
                                               overlap=min(int(overlap), int(window) - 1),
                                               max_area=int(max_area), brightness=brightness,
-                                              progress=progress)
+                                              progress=progress, focus=str(focus), fallback=str(fallback))
         finally:
             if not keep_loaded:
                 G.release_model()
@@ -246,7 +275,9 @@ class RadianceSDRToHDRAIFill:
             f"generated pixels: {st['generated_pixels']} ({100 * st['generated_fraction']:.3f} %)",
             f"brightness: {'estimator, offset %+.2f stops' % brightness_offset if brightness else 'model'}; "
             f"cap {max_gain_stops:g} stops over the master",
-            f"frames flagged for flicker (> {G.TEMPORAL_FLAG} stops added): {st['flagged_frames']}",
+            f"focus: {_focus_line(st)}; prompt strength {float(prompt_strength):g}",
+            f"frames flagged for flicker (> {G.TEMPORAL_FLAG} stops added): {st['flagged_frames']}; "
+            f"fallback {fallback}: {st['fallback_frames']} frame(s) returned as the master",
             "contract: no 8-bit code of the master's ACES 2.0 SDR view changed; untouched pixels bit-identical",
             json.dumps({"model": rep["model"], "settings": rep["settings"]}, default=str),
         ]

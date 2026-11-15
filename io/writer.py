@@ -1027,6 +1027,56 @@ def hdr_light_levels(frames: Iterable[np.ndarray],
     return int(np.ceil(max_cll)), int(np.ceil(max_fall))
 
 
+def x265_param_path(path: str) -> str:
+    """A path inside -x265-params (RUDRA's rudra/video.py): ffmpeg splits the options on ':'
+    (Windows drive letters) and reads each value as a token, so backslash, ':', quote and
+    blanks are escaped."""
+    return "".join("\\" + c if c in "\\:' \t" else c for c in str(path))
+
+
+def has_hdr10plus(path: str) -> Optional[bool]:
+    """Whether the video's first frame carries HDR10+ (ST 2094-40) side data (RUDRA's check);
+    None when ffprobe is not available to say."""
+    try:
+        out = subprocess.run([_ffprobe_bin(), "-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1",
+                              "-show_frames", "-show_entries", "frame=side_data_list", "-of", "json", str(path)],
+                             capture_output=True, text=True, timeout=60)
+        if out.returncode != 0:
+            return None
+        data = json.loads(out.stdout or "{}")
+    except Exception:
+        return None
+    return any("2094-40" in side.get("side_data_type", "")
+               for frame in data.get("frames", []) for side in frame.get("side_data_list", []))
+
+
+def _check_hdr10plus_json(path: str, fmt: str, colour: "OutputColour", frame_count: int) -> str:
+    """The HDR10+ JSON for x265's --dhdr10-info, checked before anything is written: a file,
+    an x265 per-frame JSON (SceneInfo), and at least one entry per frame. "" for none, and for
+    an encode that cannot carry it (only PQ into MP4 (H.265 10-bit) can; that is logged)."""
+    path = (path or "").strip()
+    if not path:
+        return ""
+    enc = getattr(colour, "encoding", None)
+    if _fmt_stem(fmt) != "MP4 (H.265 10-bit)" or not _is_hdr_video(colour) or enc.name != "PQ (ST.2084)":
+        log.warning("RadianceWrite: hdr10plus_json is only carried by PQ into 'MP4 (H.265 10-bit)'; "
+                    "it is ignored for %s / %s.", fmt, getattr(colour, "label", "this colour space"))
+        return ""
+    if not os.path.isfile(path):
+        raise ValueError(f"RadianceWrite: hdr10plus_json is not a file: {path}. Nothing was written.")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        scenes = data["SceneInfo"]
+    except Exception as exc:
+        raise ValueError(f"RadianceWrite: hdr10plus_json is not an x265 HDR10+ JSON (no SceneInfo): {exc}. "
+                         "Use ◎ HDR Dynamic Metadata (RUDRA)'s _hdr10plus.json. Nothing was written.") from exc
+    if len(scenes) < frame_count:
+        raise ValueError(f"RadianceWrite: hdr10plus_json has {len(scenes)} frames of metadata for {frame_count} "
+                         "frames; measure the same clip. Nothing was written.")
+    return os.path.abspath(path)
+
+
 def _hdr_video_args(codec: str, dst_pix_fmt: str, colour: "OutputColour",
                     light_levels: Optional[Tuple[int, int]], fmt: str) -> List[str]:
     """Refuse an 8-bit HDR encode; HEVC colour VUI and HDR10 SEI for libx265.
@@ -1061,6 +1111,9 @@ def _hdr_video_args(codec: str, dst_pix_fmt: str, colour: "OutputColour",
         md = getattr(colour, "mastering_display", DEFAULT_MASTERING_DISPLAY)
         params += ["hdr10=1", f"master-display={_x265_master_display(md)}",
                    "max-cll={},{}".format(*light_levels)]
+        hdr10plus = getattr(colour, "hdr10plus_json", "")
+        if hdr10plus:   # ST 2094-40 per frame, as RUDRA's movie export carries it
+            params.append("dhdr10-info=" + x265_param_path(hdr10plus))
     return ["-x265-params", ":".join(params)]
 
 
@@ -1703,6 +1756,7 @@ def write_frames(
     write_audio:    bool  = False,
     audio_path:     str   = "",
     aces_amf:       bool  = False,
+    hdr10plus_json: str   = "",
     read_media:     Optional[Callable[[Any], Optional[np.ndarray]]] = None,
     on_frame:       Optional[Callable[[int, int], None]] = None,
     receipt:        Optional[Dict[str, Any]] = None,
@@ -1720,6 +1774,7 @@ def write_frames(
                           hdr_reference_nits)
     colour.mastering_display = _check_mastering_display(hdr10_mastering_display or DEFAULT_MASTERING_DISPLAY)
     frames, detected_fps = coerce_to_frames(image, read_media=read_media)   # (N, H, W, C)
+    colour.hdr10plus_json = _check_hdr10plus_json(hdr10plus_json, format, colour, len(frames))
     # ALBABIT-FIX: scene-linear HDR (values above 1.0) written unchanged into a
     # video plays back too dark: players read it as display code values.
     if format in _FMT_VIDEO and colour.is_linear and len(frames) and float(frames[0].max()) > 1.0:
@@ -2015,6 +2070,13 @@ def _dispatch_write(
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:
             receipt["frames_encoded"] = encoded[0]
+        if getattr(colour, "hdr10plus_json", ""):
+            carried = has_hdr10plus(str(out))
+            if receipt is not None:
+                receipt["hdr10plus"] = {"json": colour.hdr10plus_json, "carried": carried}
+            if carried is False:
+                log.warning("RadianceWrite: %s carries no HDR10+ (ST 2094-40) metadata: this ffmpeg's x265 was "
+                            "probably built without HDR10+. The file is HDR10 (static metadata) only.", out)
         return str(out), encoded[0]
 
     # ── Sequences ─────────────────────────────────────────────────────

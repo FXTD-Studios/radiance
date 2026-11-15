@@ -29,7 +29,7 @@ Generate in HDR, grade and review like a finishing suite, and deliver masters to
 
 ## What Radiance does
 
-109 visible nodes, grouped around four jobs:
+121 visible nodes, grouped around four jobs:
 
 <table>
 <tr>
@@ -254,6 +254,7 @@ Qwen's image model with its own RGBA VAE, so it can make and edit images with tr
 
 - **RUDRA ACES 2** (2.0, default, 2.2 MB, downloads on first use): the learned ACES 2.0 reconstruction, with the lock it was released with (RUDRA 1.2). SDR in, an ACEScg master out (diffuse white = 1.0 = 203 nits) whose ACES 2.0 SDR view keeps the source's 8-bit codes. On held-out footage it is within 0.1 code of the plain ACES 2.0 inverse at the delivered exposure and better at −3 and +3 EV. It is the inverse of the ACES 2.0 SDR view, so it suits SDR rendered through ACES 2.0; on a grade made another way, bright areas just under white can come out very bright. Universal and Recover use it whenever it can run; the `reconstructed_mask` output says where light was estimated.
 - **RUDRA AI fill v3** (271 MB, plus the 7.7 GB Wan base model; both download the first time the AI Fill node runs): a LoRA for Wan2.1-VACE-1.3B that draws the shape inside fully clipped highlights, plus an estimator that sets their brightness (±3 stops). Region prompts. Needs about 16 GB of VRAM. Experimental: what it draws is plausible, not recovered.
+- **RUDRA AI fill v4, region re-render** (experimental, not published): the **SDR → HDR AI Fill v4 Re-render** node draws a whole bright region again (a window, a door, a sky just under white) from the SDR source, with RUDRA's app finish. Put its LoRA in `models/radiance/rudra_genfill_v4/`; it is never downloaded.
 
 | Files | Download | Save in |
 |---|---|---|
