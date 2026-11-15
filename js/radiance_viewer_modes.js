@@ -1,5 +1,5 @@
 /**
- * Viewer workspaces: Review, Color, Inspect.
+ * Viewer workspaces: Review (the Simple layout); Color, Inspect and QC (Full).
  *
  * Pure data and functions, no DOM, so the rules are testable in Node.
  * radiance_viewer.js holds the DOM and calls in here.
@@ -10,7 +10,7 @@
  *  - `radiance_viewer_workspace` (new) records which workspace the person was in.
  *    It is only read when it agrees with the layout; a missing or unknown value
  *    falls back to the layout's default workspace.
- *  - Review is the old Simple layout. Color, Inspect and Compare use the old
+ *  - Review is the old Simple layout. Color, Inspect and QC use the old
  *    Advanced layout and each shows the right-panel tabs it needs (`tabs`).
  *    Hiding a tab hides only its button: no state is reset, and a shortcut to a
  *    hidden tab moves to the workspace that has it instead of doing nothing.
@@ -21,8 +21,7 @@ export const LAYOUT_ADVANCED = 'advanced';
 
 /**
  * `available: false` workspaces are defined but never offered: a button that
- * opens nothing would be a phantom feature. QC is offered since 4.0.0 (its own
- * panel tab runs radiance_qc.js over every frame).
+ * opens nothing would be a phantom feature.
  */
 export const WORKSPACES = Object.freeze([
     { id: 'review', label: 'Review', layout: LAYOUT_SIMPLE, available: true,
@@ -31,17 +30,40 @@ export const WORKSPACES = Object.freeze([
       tab: 'grade', tabs: ['grade', 'masks', 'effects', 'scopes'],
       tip: 'Grade, masks, effects and scopes' },
     { id: 'inspect', label: 'Inspect', layout: LAYOUT_ADVANCED, available: true,
-      tab: 'scopes', tabs: ['inspector', 'scopes', 'analysis', 'qc'],
-      tip: 'Scopes, probe and QC; frame inspector, channels and analysis' },
+      tab: 'inspector', tabs: ['inspector', 'scopes', 'analysis'],
+      tip: 'Frame inspector, channels, probe, scopes and analysis' },
+    // 4.1 shell: QC is a workspace again (the approved Simple / Full design
+    // has it as its own tab). It opens on the QC panel, which runs
+    // radiance_qc.js over every frame, with analysis and scopes beside it.
+    { id: 'qc', label: 'QC', layout: LAYOUT_ADVANCED, available: true,
+      tab: 'qc', tabs: ['qc', 'analysis', 'scopes'],
+      tip: 'Measured delivery checks over every frame, with analysis and scopes' },
 ]);
 
 /**
  * Workspaces that 4.0 betas offered and that are now part of another. Compare
- * had no controls of its own (A | B | Wipe | Diff | Blink is on the bar in
- * every workspace) and opened on Scopes, so it looked like Inspect; QC was one
- * panel tab. A saved graph or a call naming one lands where it went.
+ * has no panel of its own yet (A | B | Wipe | Diff | Blink is on the bar in
+ * every workspace), so a saved graph or a call naming it lands in Inspect
+ * until its panel exists.
  */
-const RETIRED = Object.freeze({ compare: 'inspect', qc: 'inspect' });
+const RETIRED = Object.freeze({ compare: 'inspect' });
+
+/**
+ * The Full layout's workspaces, in tab order: every available Advanced one.
+ * Simple / Full is the person-facing switch; Review is Simple.
+ */
+export function fullWorkspaces() {
+    return WORKSPACES.filter((w) => w.available && w.layout === LAYOUT_ADVANCED);
+}
+
+/**
+ * Where the Full button goes: the last Full workspace used, when it is still
+ * one, else the Advanced default.
+ */
+export function fullWorkspaceFor(last) {
+    const ws = workspaceById(last);
+    return ws && ws.available && ws.layout === LAYOUT_ADVANCED ? ws.id : defaultWorkspaceFor(LAYOUT_ADVANCED);
+}
 
 /** Every right-panel tab of the Advanced layout, in Alt+1..7 order. */
 export const PANEL_TABS = Object.freeze(['inspector', 'grade', 'masks', 'effects', 'scopes', 'analysis', 'qc']);
