@@ -265,6 +265,43 @@ export function issueCount(items) {
     return (items || []).filter((i) => i.tone === 'warn' || i.tone === 'fail').length;
 }
 
+/** The grade fields a person would name, in the order the Grade tab shows them. */
+const GRADE_NAMES = Object.freeze([
+    ['exposure', 'Exposure', 'stops'], ['contrast', 'Contrast'], ['highlights', 'Highlights'], ['midDetail', 'Mid detail'],
+    ['shadows', 'Shadows'], ['softClip', 'Soft clip'], ['temperature', 'Temperature'], ['tint', 'Tint'],
+    ['saturation', 'Saturation'], ['colorBoost', 'Colour boost'], ['hueShift', 'Hue'],
+    ['lift', 'Lift'], ['gamma', 'Gamma'], ['gain', 'Gain'], ['offset', 'Offset'],
+    ['logShadow', 'Log wheels'], ['logMidtone', 'Log wheels'], ['logHighlight', 'Log wheels'],
+    ['printerR', 'Printer lights'], ['printerG', 'Printer lights'], ['printerB', 'Printer lights'],
+    ['grain', 'Grain'], ['bloom', 'Bloom'], ['halation', 'Halation'], ['diffusion', 'Diffusion'],
+    ['lensDistortion', 'Lens'], ['lensFringe', 'Lens'], ['vignetteIntensity', 'Vignette'],
+    ['anamorphicStreaks', 'Streaks'], ['denoise', 'Denoise'], ['dofEnabled', 'Depth of field'],
+]);
+
+/**
+ * What the viewer's grade changes, in words: ["Exposure −4.1", "Gain", "Curves"].
+ * Empty when the grade is neutral. A saved workflow restores its grade, so a
+ * picture can open darker or tinted with no sign of why; this is the sign.
+ *   state: RadianceViewer#_captureGradingState()  defaults: GRADE_DEFAULTS
+ */
+export function gradeSummary(state, defaults) {
+    if (!state || !defaults) return [];
+    const differs = (v, d) => (Array.isArray(d)
+        ? !Array.isArray(v) || d.some((x, i) => Math.abs(Number(v[i]) - x) > 1e-4)
+        : typeof d === 'number' ? Math.abs(Number(v) - d) > 1e-4 : v !== undefined && v !== d);
+    const out = [];
+    for (const [key, name, unit] of GRADE_NAMES) {
+        if (!(key in defaults) || !differs(state[key], defaults[key])) continue;
+        const label = unit ? `${name} ${formatEV(state[key])}` : name;
+        if (!out.includes(label)) out.push(label);
+    }
+    if (state.curves) out.push('Curves');
+    if (state.manualLut) out.push('LUT');
+    if (state.maskState?.type) out.push('Mask');
+    if (state.qualifierState?.enabled) out.push('Qualifier');
+    return out;
+}
+
 /** "4K", "HD", "2K"…: a size a person recognises, else the pixels. */
 export function sizeName(w, h) {
     if (!w || !h) return '—';
@@ -533,6 +570,8 @@ export function shellCSS() {
   font: 700 13px ${T.font}; font-style: normal; background: rgba(74,222,128,.15); color: ${T.pass}; }
 .radiance-v5 .rv5-check[data-tone="warn"] i { background: rgba(245,181,68,.22); color: #f7c873; }
 .radiance-v5 .rv5-check[data-tone="fail"] i { background: rgba(255,107,122,.2); color: ${T.fail}; }
+.radiance-v5 .rv5-check[data-tone="info"] { background: rgba(90,169,255,.08); }
+.radiance-v5 .rv5-check[data-tone="info"] i { background: rgba(90,169,255,.2); color: #9ccaff; }
 .radiance-v5 .rv5-check[data-tone="skip"] i { background: rgba(255,255,255,.08); color: ${T.muted}; }
 .radiance-v5 .rv5-check > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .radiance-v5 .rv5-check b { font: 600 13px ${T.font}; }
@@ -555,6 +594,13 @@ export function shellCSS() {
 .radiance-v5 .rv5-badge button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(245,181,68,.2); color: #f7c873;
   font: 600 12px ${T.font}; cursor: pointer; }
 .radiance-v5 .rv5-hide { display: none !important; }
+.radiance-v5 .rv5-grade { top: 16px; left: 16px; height: 34px; padding: 0 6px 0 12px; border-radius: 10px; gap: 10px; max-width: calc(100% - 420px);
+  background: rgba(10,22,40,.86); border: 1px solid rgba(90,169,255,.45); color: #cfe5ff; font-weight: 600; }
+.radiance-v5 .rv5-grade span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.radiance-v5 .rv5-grade button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(90,169,255,.18); color: #cfe5ff;
+  font: 600 12px ${T.font}; cursor: pointer; flex-shrink: 0; }
+.radiance-v5 .rv5-grade button:hover { background: rgba(90,169,255,.3); }
+.radiance-v5.rv5-tiny .rv5-grade { max-width: calc(100% - 32px); }
 .radiance-v5:not(.rv5-panel-off):not(.rv5-tiny) .rv5-ovbar, .radiance-v5:not(.rv5-panel-off):not(.rv5-tiny) .rv5-badge { left: calc((100% - 368px) / 2); }
 .radiance-v5.rv5-narrow:not(.rv5-panel-off):not(.rv5-tiny) .rv5-ovbar, .radiance-v5.rv5-narrow:not(.rv5-panel-off):not(.rv5-tiny) .rv5-badge { left: calc((100% - 320px) / 2); }
 /* Bottom bar. */
@@ -967,12 +1013,19 @@ export function installShell(v) {
         aiRow.append(d);
     }
     aiLegend.append(el('div', 'rv5-sec', 'Rebuilt by AI'), aiRow);
+    // The viewer's own grade, when it is not neutral: say so on the picture.
+    const gradeChip = el('div', 'rv5-float rv5-grade rv5-stage-ui rv5-hide');
+    gradeChip.setAttribute('role', 'status');
+    const gradeText = el('span');
+    const gradeEdit = button('', 'Edit', 'Edit the grade in Pro tools', () => v.setWorkspace?.('color', { grow: true, tab: 'grade' }));
+    const gradeReset = button('', 'Reset', 'Reset the whole grade (undo with Ctrl+Z)', () => v.resetGradeAll?.());
+    gradeChip.append(gradeText, gradeEdit, gradeReset);
     const badge = el('div', 'rv5-float rv5-badge rv5-stage-ui');
     badge.setAttribute('role', 'status');
     const badgeText = el('span');
     badge.innerHTML = svgIcon('sun', 15);
     badge.append(badgeText, button('', 'Reset', 'Reset preview brightness', () => v.setViewExposure?.(0)));
-    stage.append(panel, hints, ovbar, legend, aiLegend, badge);
+    stage.append(panel, hints, ovbar, legend, aiLegend, gradeChip, badge);
 
     // ── Move the viewer's own Simple-bar controls into place.
     const sb = v.simpleBar;
@@ -1079,6 +1132,7 @@ export function installShell(v) {
     const panelOpen = () => !root.classList.contains('rv5-panel-off');
     let stripKey = '';
     let inSetTask = false;
+    let lastGradeKey = '';
     let stripRetry = 0, stripTries = 0;
 
     const shell = {
@@ -1176,6 +1230,8 @@ export function installShell(v) {
         syncChecks() {
             const regions = v.hasRegions?.() ? (v.regionShares?.() || 'loading') : null;
             const items = checkItems(v._qcReport, v.hdrData ? v._hdrZoneStats : null, v._displayPeakNits?.() || 100, regions);
+            if (lastGradeKey) items.unshift({ id: 'grade', tone: 'info', title: 'Viewer grade is on',
+                text: `${lastGradeKey}. The picture here includes it; reset it to see the frame as it is.`, action: 'resetGrade' });
             const n = issueCount(items);
             count.textContent = String(n);
             count.classList.toggle('is-on', n > 0 && task !== 'check');
@@ -1198,7 +1254,7 @@ export function installShell(v) {
                 row.dataset.tone = it.tone;
                 row.dataset.check = it.id;
                 const i = el('i');
-                i.textContent = it.tone === 'ok' ? '✓' : it.tone === 'skip' ? '–' : '!';
+                i.textContent = it.tone === 'ok' ? '\u2713' : it.tone === 'skip' ? '\u2013' : it.tone === 'info' ? 'i' : '!';
                 const col = el('div');
                 const b = el('b'); b.textContent = it.title;
                 const s = el('span'); s.textContent = it.text;
@@ -1210,6 +1266,8 @@ export function installShell(v) {
                     sb2.removeAttribute('aria-label');
                     sb2.setAttribute('aria-pressed', String(on));
                     row.append(sb2);
+                } else if (it.action === 'resetGrade') {
+                    row.append(button('rv5-soft-btn', 'Reset', 'Reset the whole grade', () => v.resetGradeAll?.()));
                 } else if (it.frames?.length) {
                     const f = it.frames[0];
                     const go = button('rv5-soft-btn', `Frame ${f + 1}`, `Go to frame ${f + 1}`, () => v.setFrame?.(f));
@@ -1237,6 +1295,17 @@ export function installShell(v) {
             const hasB = !!(v._hasCompareB?.() || v.frameCompareImages?.length || v._stills?.length);
             cmpEmpty.style.display = hasB ? 'none' : '';
             cmpTip.style.display = cm === 'wipe' ? '' : 'none';
+        },
+        /** The grade chip on the picture, and the grade line in Check. */
+        syncGrade() {
+            let parts = [];
+            try { parts = gradeSummary(v._captureGradingState?.(), v.constructor?.GRADE_DEFAULTS); } catch { parts = []; }
+            const key = parts.join(', ');
+            gradeText.textContent = key ? `Grade on: ${key}` : '';
+            gradeText.title = key ? `The viewer's grade changes the picture here: ${key}.` : '';
+            const show = !!key && task !== 'check' && v.uiMode !== 'advanced';
+            gradeChip.classList.toggle('rv5-hide', !show);
+            if (key !== lastGradeKey) { lastGradeKey = key; shell.syncChecks(); }
         },
         syncTransport() {
             if (tc) tc.textContent = smpteTimecode(v.currentFrame || 0, v.playbackFps || 24);
@@ -1304,7 +1373,7 @@ export function installShell(v) {
             panel.setAttribute('aria-label', t?.label || 'Details');
             Object.entries(bodies).forEach(([id, b]) => b.classList.toggle('is-on', id === task));
             panelBtn.setAttribute('aria-pressed', String(panelOpen()));
-            shell.syncShot(); shell.syncLook(); shell.syncDetails(); shell.syncCompare(); shell.syncChecks();
+            shell.syncShot(); shell.syncLook(); shell.syncDetails(); shell.syncCompare(); shell.syncGrade(); shell.syncChecks();
             shell.syncOverlay(); shell.syncTransport(); shell.syncExposure();
             sizeClasses();
         },
@@ -1316,7 +1385,7 @@ export function installShell(v) {
             clearTimeout(stripRetry);
             ro?.disconnect();
             mo?.disconnect();
-            [panel, hints, ovbar, legend, aiLegend, badge].forEach((n) => n.remove());
+            [panel, hints, ovbar, legend, aiLegend, gradeChip, badge].forEach((n) => n.remove());
         },
     };
     v._shell = shell;

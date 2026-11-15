@@ -165,6 +165,8 @@ radiance = [
     "js/*.html",
     "js/*.mjs",
     "js/welcome/*.webp",
+    "js/fonts/*.woff2",
+    "js/fonts/*.txt",
     "js/vendor/ocio/*.js",
     "js/vendor/ocio/*.wasm",
     "js/vendor/ocio/LICENSE",

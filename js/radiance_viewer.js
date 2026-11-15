@@ -2887,6 +2887,7 @@ class RadianceViewer {
             this.node.properties = this.node.properties || {};
             this.node.properties.radiance_viewer_mode = mode;
             this.node.properties.radiance_viewer_workspace = this.workspace;
+            this.node.properties.radiance_viewer_shell = 'v5';
         }
         this._modeBtns?.forEach((b, id) => {
             b.classList.toggle('is-active', id === this.workspace);
@@ -22656,6 +22657,7 @@ self.onmessage = async ({ data: { id, url } }) => {
         }
         this._pushGradeToRenderer();
         this.render?.();
+        this._shell?.syncGrade?.();
     }
 
     /** Send every grade field to the renderer (render() only pushes some each frame). */
@@ -22768,6 +22770,7 @@ self.onmessage = async ({ data: { id, url } }) => {
     }
 
     _schedulePersistGrade() {
+        this._shell?.syncGrade?.();
         if (this._persistGradeTimer) clearTimeout(this._persistGradeTimer);
         this._persistGradeTimer = setTimeout(() => { this._persistGradeTimer = null; this._persistGrade(); }, 250);
     }
@@ -25233,7 +25236,11 @@ app.registerExtension({
             // in Advanced (a converted Lite Viewer carries 'simple').
             const saved = info?.properties?.radiance_viewer_mode;
             // ...and in the workspace it was saved in (Inspect came back as Color).
-            const where = _resolveSavedMode({ ...(info?.properties || {}), radiance_viewer_mode: saved || 'advanced' });
+            // V5: the picture first. A graph saved before the V5 shell (its Full
+            // layout was the old default) opens in View; Pro tools is one click.
+            const v5 = info?.properties?.radiance_viewer_shell === 'v5';
+            const where = v5 ? _resolveSavedMode({ ...(info?.properties || {}), radiance_viewer_mode: saved || 'advanced' })
+                : { workspace: 'review' };
             if (this.radianceViewer?.setWorkspace) this.radianceViewer.setWorkspace(where.workspace);
             else this.radianceViewer?.setUIMode?.(saved || 'advanced');
             // The grade the workflow was saved with (written by _persistGrade
