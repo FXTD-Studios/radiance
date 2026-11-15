@@ -187,6 +187,9 @@ radiance = [
     # The prompt upsampler's system prompts (nodes/generate/upsampler.py reads
     # them at run time); a wheel without them failed on first use (audit R3).
     "nodes/generate/upsampler_prompts/*.txt",
+    # RUDRA's NOTICE and LICENSE, kept beside the code ported from it (Apache 2.0, section 4).
+    "model/RUDRA_NOTICE.txt",
+    "model/RUDRA_LICENSE.txt",
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
