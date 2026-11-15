@@ -518,6 +518,22 @@ else is fixes. Read the upgrade notes before moving a production setup.
 The viewer was reviewed end to end (controls, colour, performance) and these
 are the results.
 
+- **Viewer V5: the picture first, three tasks in plain words.** The header
+  holds View, Compare and Check; the old Simple | Full switch and the Input
+  menu are gone. A glass panel floats over the picture instead of shrinking
+  it: Details (size, colour, brightness with a warning when parts are brighter
+  than the screen shows, the node's input settings, notes and marks), Compare
+  (B, Split, Difference, Flip, B only, A only) and Check (the QC checks and
+  the picture's brightness in sentences, each with a Show button for its
+  overlay: exposure map, clipping, out of gamut). The bottom bar has a
+  filmstrip scrubber and a preview brightness slider, labelled "not saved" on
+  the picture. View transforms have names (Film, Plain, TV…) in a Look menu.
+  The Full layout is now **Pro tools**, restyled in the same near-black with
+  one blue accent; Inter and JetBrains Mono are bundled (OFL).
+- **Viewer `regions` input** (optional, last, a socket so saved widget values
+  keep their places): wire the Analytic (RUDRA) node's `regions` output into
+  it and Check offers **Rebuilt by AI**, the class picture over the frame
+  (cyan reconstructed, magenta estimated, yellow generated) with each share.
 - **One answer to "what am I looking at?"** The View select in the viewer
   bar is the one display control. With ACES 2.0 applied through OpenColorIO,
   the bar's LUT select and the Grade tab's Output Transform read "ACES
