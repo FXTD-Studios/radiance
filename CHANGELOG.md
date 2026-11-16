@@ -2,7 +2,12 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
-## [4.0.0] - Unreleased (beta, branch version-4-Beta)
+## [4.0.0] - Release candidate 1 (feature-frozen 16 Nov 2026, branch release/4.0)
+
+**Feature freeze.** 4.0 is feature-complete. Until 4.0.0 is released, the
+`release/4.0` branch takes bug fixes, documentation and test fixes only: no new
+nodes, inputs, workflows, models or UI. New work goes to 4.1. See "4.0 feature
+freeze" in CONTRIBUTING.md.
 
 A major release because saved graphs and studio scripts can see it: four
 hidden placeholder nodes and Read Mask are gone, delivered file names change, a remote DCC
