@@ -186,7 +186,7 @@ Still stuck? [Open an issue](https://github.com/fxtd-studios/radiance/issues) wi
 
 - **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
 - **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
-- **[Node reference](docs/nodes/README.md)**: every node and input
+- **[Node reference](docs/nodes/README.md)**: all 121 visible nodes and their inputs
 - **[Changelog](CHANGELOG.md)**: what changed and upgrade notes
 - **[Known issues](KNOWN_ISSUES.md)**: current limits (long-video windowing, estimated passes)
 
