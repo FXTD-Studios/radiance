@@ -46,9 +46,9 @@ function buildLauncher(node) {
     const wrap = mk("div", "display:flex;flex-direction:column;gap:6px;padding:4px 2px 6px;width:100%;height:100%;box-sizing:border-box;font-family:'Inter',system-ui,sans-serif;color:#e8e8ec;");
     wrap.appendChild(secLabel("Open"));
     const openRow = mk("div", "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;");
-    openRow.appendChild(tile("◎", "Manager", true, () => openDash("project_manager_dashboard.html", "Radiance Project Manager")));
-    openRow.appendChild(tile("▤", "Library", false, () => openDash("workspace_dashboard.html", "Radiance Workflow Library")));
-    openRow.appendChild(tile("▦", "Assets", false, () => openDash("assets_dashboard.html", "Radiance Assets")));
+    openRow.appendChild(tile("◎", "Home", true, () => openDash("studio.html#home", "Radiance")));
+    openRow.appendChild(tile("▤", "Workflows", false, () => openDash("studio.html#workflows", "Radiance")));
+    openRow.appendChild(tile("▦", "Assets", false, () => openDash("studio.html#assets", "Radiance")));
     wrap.appendChild(openRow);
     wrap.appendChild(secLabel("Save"));
     const saveRow = mk("div", "display:grid;grid-template-columns:1fr 1fr;gap:6px;");
