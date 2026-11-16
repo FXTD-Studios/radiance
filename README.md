@@ -11,7 +11,7 @@
 Generate in HDR, grade and review like a finishing suite, and deliver masters to Nuke and DaVinci Resolve,<br>without leaving ComfyUI.
 
 [![Version](https://img.shields.io/badge/version-4.0.0-c8a96e?style=flat-square)](CHANGELOG.md)
-[![Status](https://img.shields.io/badge/status-stable-brightgreen?style=flat-square)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-release%20candidate-orange?style=flat-square)](CHANGELOG.md)
 [![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Platforms](https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux-5C7CFA?style=flat-square)](#what-you-need)
