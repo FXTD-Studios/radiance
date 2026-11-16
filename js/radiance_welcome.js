@@ -184,8 +184,8 @@ async function loadStarter() {
     }
 }
 function openLibrary() {
-    const url = `${BASE}/workspace_dashboard.html`;
-    if (typeof window.showRadianceDashboard === "function") window.showRadianceDashboard(url, "Radiance Workflow Library");
+    const url = `${BASE}/studio.html#workflows`;
+    if (typeof window.showRadianceDashboard === "function") window.showRadianceDashboard(url, "Radiance");
     else window.open(url, "_blank", "noopener");
 }
 
@@ -228,12 +228,12 @@ const PAGES = {
             const f = document.createDocumentFragment();
             f.appendChild(items([
                 { mark: "T", title: "Templates, in ComfyUI’s sidebar", text: "Every Radiance workflow is listed under radiance. Click one to open it." },
-                { mark: "L", title: "The Workflow Library", text: "Cards with covers and tags, your own saved versions and a history for each. Open it from the Project Manager node." },
+                { mark: "R", title: "Workflows, assets and shots", text: "Every workflow as a card, your assets, your shots and your renders on one page. Open it from the Radiance button in the top bar." },
             ]));
             const a = el("div", "rw-actions");
             a.append(
                 softButton("Load the Starter", async () => { if (await loadStarter()) close(); }),
-                softButton("Open the Workflow Library", () => { close(); openLibrary(); }),
+                softButton("Open Radiance", () => { close(); openLibrary(); }),
             );
             f.appendChild(a);
             return f;

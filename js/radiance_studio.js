@@ -97,22 +97,22 @@ app.registerExtension({
         const selectedNodes = Object.values(canvas.selected_nodes || {});
         const projectManagerOptions = [
             {
-                content: "Open Project Manager",
+                content: "Open Radiance",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard(`${_EXT_BASE}/project_manager_dashboard.html`, "Radiance Project Manager");
+                        window.showRadianceDashboard(`${_EXT_BASE}/studio.html#home`, "Radiance");
                     } else {
-                        window.open(`${_EXT_BASE}/project_manager_dashboard.html`, "_blank");
+                        window.open(`${_EXT_BASE}/studio.html#home`, "_blank");
                     }
                 }
             },
             {
-                content: "Open Workflow Library",
+                content: "Open Workflows",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard(`${_EXT_BASE}/workspace_dashboard.html`, "Radiance Workflow Library");
+                        window.showRadianceDashboard(`${_EXT_BASE}/studio.html#workflows`, "Radiance");
                     } else {
-                        window.open(`${_EXT_BASE}/workspace_dashboard.html`, "_blank");
+                        window.open(`${_EXT_BASE}/studio.html#workflows`, "_blank");
                     }
                 }
             },
@@ -126,7 +126,7 @@ app.registerExtension({
             return [
                 null,
                 {
-                    content: "◎ Radiance Studio",
+                    content: "◎ Radiance",
                     submenu: {
                         options: projectManagerOptions,
                     },
@@ -137,7 +137,7 @@ app.registerExtension({
         return [
             null, // Separator
             {
-                content: "◎ Radiance Studio",
+                content: "◎ Radiance",
                 submenu: {
                     options: [
                         ...projectManagerOptions,

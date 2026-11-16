@@ -1,7 +1,7 @@
 // ◎ Radiance — shared DOM helpers.
 //
 // escapeHtml existed in five places (radiance_gizmo.js, radiance_workspace.js,
-// radiance_viewer.js, assets_dashboard.mjs, project_manager_dashboard.mjs) with
+// radiance_viewer.js and the two dashboards the Radiance page replaced) with
 // two behaviours: three coerced null/undefined to "" and two rendered them as
 // the literal text "null"/"undefined" in the UI. Five copies of a security
 // primitive is four too many — the day one of them needs a fix, four keep the

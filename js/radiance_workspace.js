@@ -14,12 +14,12 @@ const HEADER = "RAD_WORKSPACE_V1::";
 const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 
-// Listen for postMessage updates from Studio Dashboard
+// Listen for postMessage updates from the Radiance page
 window.addEventListener("message", async (event) => {
     // Reject cross-origin senders. Without this, any page that can get a handle
     // to this window could load an arbitrary graph, or ask for the user's graph
     // back via the radiance_save_project_version reply below. The sibling
-    // handler in project_manager_dashboard.mjs already does this check.
+    // handler in studio.mjs does the same check.
     if (event.origin !== window.location.origin) return;
     if (event.data && event.data.type === "radiance_load_workflow") {
         try {
@@ -37,6 +37,8 @@ window.addEventListener("message", async (event) => {
         } catch(err) {
             showToast("Failed to parse merged graph", "error");
         }
+    } else if (event.data && event.data.type === "radiance_close_dashboard") {
+        window.closeRadianceDashboard?.();
     } else if (event.data && event.data.type === "radiance_save_project_version") {
         try {
             const projectId = event.data.projectId || "general";
@@ -175,7 +177,10 @@ if (!window.showRadianceDashboard) {
         const close = () => {
             window.removeEventListener("keydown", onKey);
             overlay.remove();
+            if (window.closeRadianceDashboard === close) delete window.closeRadianceDashboard;
         };
+        // The Radiance page closes the overlay itself after opening a workflow.
+        window.closeRadianceDashboard = close;
         const onKey = (e) => { if (e.key === "Escape") close(); };
         closeBtn.onclick = close;
         overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
@@ -515,14 +520,14 @@ app.registerExtension({
             origOnNodeCreated?.apply(this, arguments);
 
             // Keep the Project Manager dashboard separate from the workflow library.
-            this.addWidget("button", "◎ PROJECT MANAGER", "launch_project_manager", () => {
-                window.showRadianceDashboard(`${_EXT_BASE}/project_manager_dashboard.html`, "Radiance Project Manager");
+            this.addWidget("button", "◎ STUDIO · SHOTS", "launch_project_manager", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#shots`, "Radiance");
             });
-            this.addWidget("button", "WORKFLOW LIBRARY", "launch_dashboard", () => {
-                window.showRadianceDashboard(`${_EXT_BASE}/workspace_dashboard.html`, "Radiance Workflow Library");
+            this.addWidget("button", "WORKFLOWS", "launch_dashboard", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#workflows`, "Radiance");
             });
             this.addWidget("button", "◎ ASSETS", "launch_assets", () => {
-                window.showRadianceDashboard(`${_EXT_BASE}/assets_dashboard.html`, "Radiance Assets");
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#assets`, "Radiance");
             });
             this.addWidget("button", "QUICK SAVE", "quick_save", () => this.saveToLibrary());
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
