@@ -6,7 +6,7 @@ Drag a file onto the ComfyUI canvas to open it. There are two kinds: **local** w
 
 ## Local workflows
 
-Each one is a card in the Workflow Library and a file in ComfyUI's Templates menu. Click a card to open the workflow file.
+Each one is a card in Radiance › Workflows and a file in ComfyUI's Templates menu. Click a card to open the workflow file.
 
 <table>
 <tr><td width="50%" valign="top"><a href="../workflows/start.json"><img src="images/cards/start.png" width="420" alt="Starter workflow card"></a><br><b><a href="../workflows/start.json">Starter</a></b><br>Generate an image and review it</td><td width="50%" valign="top"><a href="../workflows/sdr_to_hdr.json"><img src="images/cards/sdr_to_hdr.png" width="420" alt="SDR to HDR workflow card"></a><br><b><a href="../workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>Turn an image into an ACES 2.0 HDR master with RUDRA, compare it with the SDR and save EXR</td></tr>

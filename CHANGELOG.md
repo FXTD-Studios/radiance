@@ -165,6 +165,17 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **One Radiance page** (`js/studio.html`): Home, Workflows, Assets,
+  Shots and Renders in the Viewer V5 look. It replaces the Workflow Library,
+  Project Manager and Assets dashboards and uses the same routes and the same
+  canvas messages. Home shows what to continue, what needs you (shots in
+  review, retakes, failed renders) and three ways to start. Workflows shows
+  every card with filters (Make HDR, Generate, Video, Deliver, API, Saved by
+  you) and opens or adds one to the canvas. Assets takes dropped files and
+  bins. Shots shows statuses, versions, outputs and notes, and approves or
+  asks for changes. Renders reads ComfyUI's history. The GPU card frees memory.
+  Every launcher (the top-bar button, the Project Manager node, the canvas menu,
+  the tour) opens it.
 
 - **Workflows use the RUDRA features.** New **SDR → HDR Analytic** (Load Still
   → Region → Analytic → Viewer with Rebuilt by AI → RUDRA Master Write: EXR,
@@ -302,7 +313,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   startup" (also Settings > Radiance > Welcome) turns it off, and Radiance
   Tour opens it any time: in the ◎ Radiance menu at the top (with Project
   Manager, Workflow Library and Assets), in Help, and in the canvas
-  right-click ◎ Radiance Studio menu.
+  right-click ◎ Radiance menu.
 - **Project Manager node:** its fallback buttons opened a broken address
   (`${_EXT_BASE}` was in plain quotes); they open the Manager, Library and
   Assets again, as do the Studio node's.

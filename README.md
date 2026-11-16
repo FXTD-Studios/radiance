@@ -84,7 +84,7 @@ Restart ComfyUI and refresh your browser. Back up your workflows before a major 
 
 ## Your first HDR image
 
-Three ways in. Each one is a ready-made workflow: drag the file onto the ComfyUI canvas, or open it from **Templates › Radiance** or the **Workflow Library**.
+Three ways in. Each one is a ready-made workflow: drag the file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
 <table>
 <tr>
@@ -129,7 +129,7 @@ For another model, pick its preset in the Loader. The Sampler sets its steps and
 
 ## Example workflows
 
-Drag a file onto the ComfyUI canvas, or open it from **Templates › Radiance** or the **Workflow Library**.
+Drag a file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
 <table>
 <tr><td width="33%" valign="top"><a href="workflows/start.json"><img src="docs/images/cards/start.png" width="300" alt="Starter workflow card"></a><br><b><a href="workflows/start.json">Starter</a></b><br>Generate an image and review it</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
