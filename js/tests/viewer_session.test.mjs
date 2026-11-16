@@ -344,7 +344,8 @@ test('stepping, scrubbing and the arrow keys move a video picture frame by frame
     const { out, errors } = await inPage(async () => {
         const n = __make('simple'); const v = n.radianceViewer;
         await v.loadVideo('/view?filename=clip24.webm&type=temp');
-        await __until(() => v._videoContainerFps && !v._videoProbing, 25000);
+        // Generous: the first decoded frame can take seconds on a CI runner.
+        await __until(() => v._videoContainerFps && !v._videoProbing, 45000);
         const vid = v.videoEl;
         const settle = () => __until(() => !vid.seeking, 3000).then(() => __sleep(80));
         // The fixture's frame n is grey at 8 n (js/tests/fixtures/clip24.webm).
