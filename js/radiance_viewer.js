@@ -13245,9 +13245,11 @@ self.onmessage = async ({ data: { id, url } }) => {
         if (!vid?.requestVideoFrameCallback || this.videoEl !== vid) return null;
         const times = [];
         const muted = vid.muted;
+        let onFail = null;
         // The media time of the next frame presented, or null after 'ms'.
         const nextFrame = (ms) => new Promise((resolve) => {
             const timer = setTimeout(() => resolve(null), ms);
+            onFail = () => { clearTimeout(timer); resolve(null); };
             vid.requestVideoFrameCallback((now, meta) => { clearTimeout(timer); resolve(meta.mediaTime); });
         });
         this._videoProbing = true;
@@ -13255,9 +13257,13 @@ self.onmessage = async ({ data: { id, url } }) => {
             vid.muted = true;
             const playing = vid.play();
             let failed = false;
-            if (playing?.catch) playing.catch(() => { failed = true; });
+            // A video that will not play ends the wait at once, not after the timeout.
+            if (playing?.catch) playing.catch(() => { failed = true; onFail?.(); });
             for (let i = 0; i < 10 && !failed && this.videoEl === vid; i++) {
-                const t = await nextFrame(2500);
+                // The first frame waits on the decoder starting, which on a busy
+                // machine (or a CI runner with no GPU) can take seconds; giving up
+                // after 2.5 s left the rate unread and the video on the default fps.
+                const t = await nextFrame(i === 0 ? 10000 : 2500);
                 if (t == null) break;
                 times.push(t);
             }
