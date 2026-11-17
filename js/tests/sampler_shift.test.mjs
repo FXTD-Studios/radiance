@@ -44,10 +44,12 @@ for (const arch of ['wan', 'wan_ti2v', 'ltxv', 'lumina2']) {
     }
 }
 
-test('Wan presets do not add another native shift', () => {
+test('presets do not add another native shift', () => {
     const { presets } = samplerContext('wan');
-    assert.equal(presets['▶ WAN txt2vid (30 steps)'].flux_shift, 1);
-    assert.equal(presets['▶ WAN img2vid (20 steps)'].flux_shift, 1);
+    for (const name of ['▶ WAN txt2vid (30 steps)', '▶ WAN img2vid (20 steps)',
+        '▶ LTX-Video (25 steps)', '◈ z_image (25 steps)', '◈ Lumina2 (25 steps)']) {
+        assert.equal(presets[name].flux_shift, 1, name);
+    }
 });
 
 test('the HunyuanVideo preset runs on its embedded guidance, without another shift', () => {
@@ -68,4 +70,19 @@ test('a graph saved with the former HunyuanVideo preset loads with its new value
     };
     assert.deepEqual(loaded(6, 0, 7), [1, 6, 1]);
     assert.deepEqual(loaded(4, 0, 7), [4, 0, 7]);
+});
+
+test('a graph saved with a former doubled shift loads at the model\'s own shift', async () => {
+    const context = samplerContext('z_image');
+    const nodeType = { prototype: {} };
+    await context.extension.beforeRegisterNodeDef(nodeType, { name: 'RadianceSamplerPro' });
+    const loaded = (preset, flux_shift) => {
+        const node = { widgets: [{ name: 'preset', value: preset }, { name: 'flux_shift', value: flux_shift }] };
+        nodeType.prototype.onConfigure.call(node, {});
+        return node.widgets[1].value;
+    };
+    assert.equal(loaded('[V] LTX-Video (25 steps)', 2.37), 1);
+    assert.equal(loaded('[Q] z_image (25 steps)', 3), 1);
+    assert.equal(loaded('[Q] Lumina2 (25 steps)', 6), 1);
+    assert.equal(loaded('[Q] z_image (25 steps)', 2), 2);
 });
