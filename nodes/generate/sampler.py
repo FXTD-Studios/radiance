@@ -639,7 +639,10 @@ def _resolve_latent_previewer(model, preview_method: str):
     # ALBABIT-FIX: "TAESD" fetches the model's missing decoder first, and is
     # Latent2RGB without one. ComfyUI wires none to LTX-2 latents; taeltx2_3
     # reads LTX 2.3 and 2.5 ones, through ComfyUI's own video previewer.
-    ltx2_decoder = None
+    # ALBABIT-FIX: every video decoder is built here, not by get_previewer(), which
+    # VideoHelperSuite replaces with a previewer that decodes all frames at every
+    # step (MiniMax H3 at 768p: 68 s a step instead of 39).
+    video_decoder = None
     shown = preview_method
     if method == LatentPreviewMethod.TAESD:
         ltx2 = isinstance(latent_format, LTXAV)
@@ -650,18 +653,18 @@ def _resolve_latent_previewer(model, preview_method: str):
             shown = f"Latent2RGB ({name} unavailable)" if name else "Latent2RGB (no TAESD decoder for this model)"
         else:
             shown = f"TAESD ({os.path.basename(decoder)})"
-            if ltx2:
-                ltx2_decoder = decoder
+            if ltx2 or name in latent_preview.VIDEO_TAES:
+                video_decoder = decoder
 
     # get_previewer() reads the global --preview-method. Override it for the
     # duration of the call so the node's widget wins, then put the launch
     # setting back so other nodes in the same prompt are unaffected.
     previous_method = getattr(comfy_args, "preview_method", None)
     try:
-        if ltx2_decoder is not None:
-            taesd = VAE(comfy.utils.load_torch_file(ltx2_decoder))
+        if video_decoder is not None:
+            taesd = VAE(comfy.utils.load_torch_file(video_decoder))
             taesd.first_stage_model.show_progress_bar = False
-            previewer = latent_preview.TAEHVPreviewerImpl(taesd)
+            previewer = latent_preview.TAEHVPreviewerImpl(taesd, compile_preview=latent_format.compile_preview)
         else:
             comfy_args.preview_method = method
             previewer = latent_preview.get_previewer(device, latent_format)
