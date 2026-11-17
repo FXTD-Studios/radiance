@@ -99,8 +99,9 @@ import torch
 from typing import Optional
 
 import comfy.utils
+import node_helpers
 from comfy_api.latest import io
-from comfy_extras import nodes_edit_model, nodes_flux, nodes_post_processing, nodes_qwen, nodes_sd3
+from comfy_extras import nodes_edit_model, nodes_flux, nodes_minimax_h3, nodes_post_processing, nodes_qwen, nodes_sd3
 
 logger = logging.getLogger("radiance.prompt")
 
@@ -1918,8 +1919,9 @@ def _zero_conditioning(cond):
 
 
 # ALBABIT-FIX: the architectures whose reference images the Prompt passes on
-# (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models).
-_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3")
+# (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models,
+# minimax MiniMax H3's first and last frames).
+_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3", "minimax")
 
 # The architectures that read reference images as VAE latents only.
 _LATENT_REFERENCE_ARCHS = ("flux2", "flux2-klein", "flux3")
@@ -2026,6 +2028,24 @@ def _check_flux3_layout(text):
             raise ValueError(f"Prompt: layout box {i} needs a bbox of [ymin, xmin, ymax, xmax] "
                              "on the 0-1000 grid.")
     return json.dumps(rows, ensure_ascii=False) if rows else ""
+
+
+# ALBABIT-FIX: MiniMax H3's image_1 and image_2 are the first and last frames, by name, wired as
+# MiniMaxH3ImageToVideo: Qwen3-VL sees them with the prompt and the VAE anchors them.
+# The size and frame count are video_latent's ([B, 24, 5k + 2, H/16, W/16] for 17k + 5 frames).
+def _minimax_frames(clip, vae, prompt, references, video_latent):
+    if set(references) - {"image_1", "image_2"}:
+        raise ValueError("Prompt: MiniMax H3 reads image_1 (the first frame) and image_2 (the last "
+                         "frame) only. Disconnect image_3 and above.")
+    if vae is None or video_latent is None:
+        raise ValueError("Prompt: MiniMax H3 encodes the first and last frames at the video's size. "
+                         "Connect the vae input, and video_latent to the Resolution's latent.")
+    samples = video_latent["samples"]
+    video = samples.tensors[0] if samples.is_nested else samples
+    return nodes_minimax_h3.MiniMaxH3ImageToVideo.execute(
+        clip=clip, vae=vae, prompt=prompt, width=video.shape[-1] * 16, height=video.shape[-2] * 16,
+        length=(video.shape[2] - 2) // 5 * 17 + 5,
+        first_frame=references.get("image_1"), last_frame=references.get("image_2")).args
 
 
 def _with_reference_latents(cond, latents):
@@ -2182,7 +2202,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 io.Vae.Input(
                     "vae", optional=True,
                     tooltip=("Encodes the reference images into the latents the model edits from.\n"
-                             "• Flux.2 and Flux.3 Klein: needed.\n"
+                             "• Flux.2, Flux.3 Klein and MiniMax H3: needed.\n"
                              "• Qwen-Image 2.1 and Qwen-Image Edit: without it, they read the images "
                              "through the text encoder only."),
                 ),
@@ -2200,8 +2220,10 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                     template=io.Autogrow.TemplateNames(
                         io.Image.Input("image"), names=[f"image_{i}" for i in range(1, 17)], min=0),
                     tooltip=("Reference images for editing, read by Qwen-Image 2.1, Qwen-Image Edit, "
-                             "Flux.2 and Flux.3 Klein.\n"
+                             "Flux.2, Flux.3 Klein and MiniMax H3.\n"
                              "• image_1 is the image to edit, the others are references.\n"
+                             "• MiniMax H3: image_1 is the first frame, image_2 the last, either one "
+                             "alone too. Needs vae and video_latent.\n"
                              "• Qwen-Image 2.1: cite them in the prompt as <image1>, <image2>…\n"
                              "• Qwen-Image Edit: 3 at most.\n"
                              "• Flux.3 Klein: 10 at most, cited as <ref_image_0> (image_1), "
@@ -2241,6 +2263,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                              "or paste the table at the end of base_prompt.\n"
                              "• Cite them in the prompt as <obj_1>, <obj_2>…"),
                 ),
+                io.Latent.Input(
+                    "video_latent", optional=True,
+                    tooltip=("MiniMax H3 with images: the Resolution's latent, the one the Sampler samples on.\n"
+                             "• Gives the first and last frames the video's size.\n"
+                             "• Places image_2 on the last frame."),
+                ),
             ],
             outputs=[
                 io.Conditioning.Output(display_name="positive",
@@ -2258,6 +2286,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 io.Latent.Output(display_name="latent",
                                  tooltip=("Empty latent at image_1's size after the resize.\n"
                                           "• Sample on it to edit: any other size shifts the edit.\n"
+                                          "• MiniMax H3: an empty latent of video_latent's size.\n"
                                           "• None without reference images.")),
             ],
         )
@@ -2288,6 +2317,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         layout="",
         action="",
         text_to_video=True,
+        video_latent=None,
     ):
         # ── Validation ──────────────────────────────────────────────────────
         if clip is None:
@@ -2317,7 +2347,7 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         if references and resolved_arch not in _REFERENCE_ARCHS:
             raise ValueError(
                 f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit, "
-                f"Flux.2 and Flux.3 Klein only, and the text encoder resolves to '{resolved_arch}'. "
+                f"Flux.2, Flux.3 Klein and MiniMax H3 only, and the text encoder resolves to '{resolved_arch}'. "
                 f"Connect model_meta from the Loader, or disconnect the images.")
         # qwen_image is also plain Qwen-Image, which has no image input. The
         # weights do not tell the two apart, so the file name is the only hint;
@@ -2445,6 +2475,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             qwen_edit_images, latent = _qwen_edit_images(references)
             positive_cond = nodes_qwen.TextEncodeQwenImageEditPlus.execute(
                 clip=clip, prompt=final_prompt, vae=vae, **qwen_edit_images).args[0]
+        elif references and resolved_arch == "minimax":
+            positive_cond, latent = _minimax_frames(clip, vae, final_prompt, references, video_latent)
         else:
             positive_cond, latent = _encode_tokens(clip, pos_tokens), None
             if references and resolved_arch == "flux3":
@@ -2479,6 +2511,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
             negative_cond = _encode_tokens(clip, clip.tokenize(negative_prompt))
             if flux2_refs:
                 negative_cond = _with_reference_latents(negative_cond, flux2_refs)
+            elif references and resolved_arch == "minimax":
+                negative_cond = node_helpers.conditioning_set_values(
+                    negative_cond, {"minimax_keyframes": positive_cond[0][1]["minimax_keyframes"]})
         progress.update(1)
 
         # ALBABIT-FIX: weak_neg_arch only known post-execution (resolved_arch

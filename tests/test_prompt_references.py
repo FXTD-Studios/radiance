@@ -87,3 +87,68 @@ class TestFlux2References:
             prompt.RadianceCinematicPromptEncoder.execute(
                 _FakeClip(), base_prompt="a bag", model_meta=self.META,
                 images={"image_1": torch.zeros(1, 32, 32, 3)})
+
+
+class _FakeNestedTensor:
+    is_nested = True
+
+    def __init__(self, tensors):
+        self.tensors = list(tensors)
+
+
+class TestMiniMaxFrames:
+    """Wired as MiniMaxH3ImageToVideo: image_1 the first frame, image_2 the last,
+    at the size and frame count of the latent the Sampler samples on."""
+
+    META = json.dumps({"arch": "minimax"})
+
+    @pytest.fixture
+    def native(self, monkeypatch):
+        calls = []
+
+        class _ImageToVideo:
+            @classmethod
+            def execute(cls, **kwargs):
+                calls.append(kwargs)
+                return io.NodeOutput([["pos", {"minimax_keyframes": ["kf"]}]], {"samples": "av"})
+
+        monkeypatch.setattr(prompt.nodes_minimax_h3, "MiniMaxH3ImageToVideo", _ImageToVideo, raising=False)
+        monkeypatch.setattr(prompt.node_helpers, "conditioning_set_values",
+                            lambda cond, values: [[c[0], {**c[1], **values}] for c in cond])
+        return calls
+
+    def _run(self, images, **kwargs):
+        video_latent = {"samples": _FakeNestedTensor((torch.zeros(1, 24, 37, 46, 80), torch.zeros(1, 32, 2, 207)))}
+        out = prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="She turns to the camera", model_meta=self.META,
+            vae="vae", images=images, video_latent=video_latent, **kwargs)
+        return out["result"]
+
+    @pytest.mark.parametrize("negative_mode", ["Auto", "Always encode"])
+    def test_the_frames_go_to_the_native_node_and_both_prompts(self, native, negative_mode):
+        first, last = torch.zeros(1, 32, 32, 3), torch.ones(1, 32, 32, 3)
+        pos, neg, text, *_rest, latent = self._run({"image_2": last, "image_1": first},
+                                                   negative_mode=negative_mode)
+        (kwargs,) = native
+        assert (kwargs["prompt"], kwargs["vae"]) == (text, "vae")
+        assert (kwargs["width"], kwargs["height"], kwargs["length"]) == (1280, 736, 124)
+        assert kwargs["first_frame"] is first and kwargs["last_frame"] is last
+        assert pos[0][1]["minimax_keyframes"] == neg[0][1]["minimax_keyframes"] == ["kf"]
+        assert latent == {"samples": "av"}
+
+    def test_each_image_keeps_its_frame_alone(self, native):
+        image = torch.zeros(1, 32, 32, 3)
+        self._run({"image_1": image})
+        self._run({"image_2": image})
+        assert (native[0]["first_frame"], native[0]["last_frame"]) == (image, None)
+        assert (native[1]["first_frame"], native[1]["last_frame"]) == (None, image)
+
+    def test_a_third_image_is_refused(self, native):
+        with pytest.raises(ValueError, match="image_3"):
+            self._run({f"image_{i}": torch.zeros(1, 32, 32, 3) for i in (1, 2, 3)})
+
+    def test_the_frames_need_the_video_latent(self, native):
+        with pytest.raises(ValueError, match="video_latent"):
+            prompt.RadianceCinematicPromptEncoder.execute(
+                _FakeClip(), base_prompt="She turns", model_meta=self.META, vae="vae",
+                images={"image_1": torch.zeros(1, 32, 32, 3)})

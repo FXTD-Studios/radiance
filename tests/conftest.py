@@ -726,7 +726,7 @@ def _make_comfy_stubs():
     comfy_extras = types.ModuleType("comfy_extras")
     extras = {name: types.ModuleType(f"comfy_extras.{name}")
               for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing",
-                           "nodes_sd3", "nodes_model_advanced")}
+                           "nodes_sd3", "nodes_model_advanced", "nodes_minimax_h3")}
     for name, module in extras.items():
         setattr(comfy_extras, name, module)
 
