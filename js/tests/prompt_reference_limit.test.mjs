@@ -52,6 +52,13 @@ test('a Qwen-Image or Qwen-Image Edit Loader stops the slots at image_3', () => 
     }
 });
 
+test('a MiniMax H3 Loader stops the slots at image_2, the first and last frames', () => {
+    const node = prompt({ preset: 'MiniMax H3' }, 2);
+    context.applyLimit(node);
+    assert.equal(node.comfyDynamic.autogrow.images.max, 2);
+    assert.deepEqual(slots(node), ['image_1', 'image_2']);
+});
+
 test('a connected slot past the limit stays, for the run to report it', () => {
     const node = prompt({ preset: 'Custom', model_type: 'qwen_image' }, 4);
     context.applyLimit(node);

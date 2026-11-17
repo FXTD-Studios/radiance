@@ -234,7 +234,7 @@ test('Resolution offers Flux.3 Klein at 128ch, 16x, from the flux3 arch', () => 
 
 test('the Prompt allows 10 FLUX 3 references and shows resolution for them', () => {
     const src = readFileSync(new URL('../radiance_prompt.js', import.meta.url), 'utf8');
-    assert.match(src, /REFERENCE_LIMITS = \{ qwen_image: 3, flux3: 10 \}/);
+    assert.match(src, /REFERENCE_LIMITS = \{ qwen_image: 3, flux3: 10\b/);
     const hide = src.match(/!\[([^\]]*)\]\.includes\(loaderModelType\(source\)\)/)[1];
     assert.ok(!hide.includes('flux3'), 'resolution sizes FLUX 3 references, it must not be hidden');
 });
