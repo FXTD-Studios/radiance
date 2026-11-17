@@ -81,8 +81,8 @@ const PRESET_CONFIGS = {
     },
     "▶ LTX-Video (25 steps)": {
         steps: 25, cfg: 1.0, sampler: "euler", scheduler: "simple",
-        denoise: 1.0, flux_shift: 2.37, flux_guidance: 0.0,
-        description: "LTX-V standard — shift=2.37 per spec.",
+        denoise: 1.0, flux_shift: 1.0, flux_guidance: 0.0,
+        description: "LTX-V standard. Uses the model's own shift (2.37) without an extra shift.",
     },
     // ALBABIT-FIX: audio_cfg 3 on LTX 2.3 LowRes, which sets its diction. On 2.5 the
     // audio at cfg 3 lost its ambience (silent background behind the voice): 1 there.
@@ -224,28 +224,32 @@ const PRESET_CONFIGS = {
         denoise: 1.0, flux_shift: 1.5, flux_guidance: 4.5,
         description: "Cinema-grade 60-step with Phase-Shift SGM. Maximum fidelity.",
     },
-    // ALBABIT-FIX: cfg 1.0->4.0, sampler euler->res_multistep -- same
-    // official-workflow evidence as MODEL_TYPE_SAMPLING_DEFAULTS.z_image
-    // above (this manual preset was equally stale, not just the
-    // auto-detected defaults).
+    // ALBABIT-FIX: cfg 4 and res_multistep, as in the official workflow
+    // (MODEL_TYPE_SAMPLING_DEFAULTS.z_image).
     "◈ z_image (25 steps)": {
         steps: 25, cfg: 4.0, sampler: "res_multistep", scheduler: "simple",
-        denoise: 1.0, flux_shift: 3.0, flux_guidance: 3.5,
-        description: "z_image / Lumina variant — shift=3, CFG=4.",
+        denoise: 1.0, flux_shift: 1.0, flux_guidance: 3.5,
+        description: "z_image / Lumina variant. Uses the model's own shift (3) without an extra shift, CFG=4.",
     },
     "◈ Lumina2 (25 steps)": {
         steps: 25, cfg: 1.0, sampler: "euler", scheduler: "simple",
-        denoise: 1.0, flux_shift: 6.0, flux_guidance: 3.5,
-        description: "Lumina2 — shift=6, guidance=3.5.",
+        denoise: 1.0, flux_shift: 1.0, flux_guidance: 3.5,
+        description: "Lumina2. Uses the model's own shift (6) without an extra shift, guidance=3.5.",
     },
 };
 
 // ALBABIT-FIX: the LTX 2.5 LowRes preset's former name, migrated on load so a
 // saved graph keeps its values and does not land on an invalid combo value.
 const LEGACY_LTX25_LOWRES = "[V] LTX 2.5 LowRes (20 steps)";
-// ALBABIT-FIX: the former HunyuanVideo preset's values, still in saved graphs; its
-// guidance 0 now reaches the model, so that exact trio takes the preset's values on load.
-const LEGACY_HUNYUAN = { cfg: 6, flux_guidance: 0, flux_shift: 7 };
+// ALBABIT-FIX: former preset values, still in saved graphs (HunyuanVideo's guidance 0
+// now reaches the model; the others added the model's own shift again, so z_image ran
+// at 9). Those exact values take the preset's new ones on load.
+const LEGACY_PRESET_VALUES = {
+    "[V] HunyuanVideo (30 steps)": { cfg: 6, flux_guidance: 0, flux_shift: 7 },
+    "[V] LTX-Video (25 steps)": { flux_shift: 2.37 },
+    "[Q] z_image (25 steps)": { flux_shift: 3 },
+    "[Q] Lumina2 (25 steps)": { flux_shift: 6 },
+};
 
 const LTX_PRESETS = [
     "▶ LTX 2.3 LowRes (20 steps)",
@@ -1590,9 +1594,10 @@ app.registerExtension({
             const self = this;
             const loadedPresetW = self.widgets?.find(w => w.name === "preset");
             if (loadedPresetW?.value === LEGACY_LTX25_LOWRES) loadedPresetW.value = "[V] LTX 2.5 LowRes (30 steps)";
-            if (loadedPresetW?.value === "[V] HunyuanVideo (30 steps)") {
-                const ws = self.widgets.filter(w => w.name in LEGACY_HUNYUAN);
-                if (ws.every(w => w.value === LEGACY_HUNYUAN[w.name])) {
+            const legacy = LEGACY_PRESET_VALUES[loadedPresetW?.value];
+            if (legacy) {
+                const ws = self.widgets.filter(w => w.name in legacy);
+                if (ws.every(w => w.value === legacy[w.name])) {
                     const preset = getPresetConfig(loadedPresetW.value);
                     for (const w of ws) w.value = preset[w.name];
                 }
