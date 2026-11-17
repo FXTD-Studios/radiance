@@ -219,6 +219,32 @@ function _applyBasePromptState(node) {
 // a first and a last frame.
 const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 2 };
 
+// ALBABIT-FIX: video_latent serves MiniMax H3's frames (or an unknown family's), the latent
+// output every family's images. Each comes with an image and goes with it unless linked;
+// a returning one is appended, so no other slot moves.
+function _applyImageSockets(node, source = modelMetaSourceNode(node)) {
+    const images = node.inputs?.filter(i => i.name.startsWith("images.") && isInputLive(node, i)) ?? [];
+    const wantInput = images.length > 0 && [null, "minimax"].includes(loaderModelType(source));
+    const input = node.inputs?.find(i => i.name === "video_latent");
+    const output = node.outputs?.find(o => o.name === "latent");
+    let changed = false;
+    if (wantInput && !input) {
+        node.addInput("video_latent", "LATENT", node._radImageSlots?.input);
+        changed = true;
+    } else if (!wantInput && input && input.link == null) {
+        node.removeInput(node.inputs.indexOf(input));
+        changed = true;
+    }
+    if (images.length && !output) {
+        node.addOutput("latent", "LATENT", node._radImageSlots?.output);
+        changed = true;
+    } else if (!images.length && output && !output.links?.length) {
+        node.removeOutput(node.outputs.indexOf(output));
+        changed = true;
+    }
+    if (changed) fitNodeSize(node);
+}
+
 function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;
     if (!grow) return;
@@ -755,6 +781,7 @@ function _refreshLiveState(node) {
     const source = modelMetaSourceNode(node);
     _applyResolutionVisibility(node, source);
     _applyReferenceLimit(node, source);
+    _applyImageSockets(node, source);
     _applyUpsamplerVisibility(node, source);
     _applyLayoutVisibility(node, source);
     const liveState = _liveMiniMaxState(node, source);
@@ -867,6 +894,12 @@ app.registerExtension({
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
             _holdHiddenSeed(this);
             _addTabsWidget(this);
+            // The definition's slots, to bring video_latent and latent back as they were.
+            const slotLook = (slots, name) => {
+                const { localized_name, shape } = slots?.find(s => s.name === name) ?? {};
+                return { localized_name, shape };
+            };
+            this._radImageSlots = { input: slotLook(this.inputs, "video_latent"), output: slotLook(this.outputs, "latent") };
 
             const self = this;
             const presetWidget = this.widgets?.find(w => w.name === "style_preset");
