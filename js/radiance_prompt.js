@@ -107,7 +107,7 @@ function _applyNegStrengthLock(node, hidden) {
 function _applyResolutionVisibility(node, source = modelMetaSourceNode(node)) {
     const resW = node.widgets?.find(w => w.name === "resolution");
     const show = !!node.inputs?.some(i => i.name?.startsWith("images.") && isInputLive(node, i))
-        && !["flux2", "flux2-klein", "qwen_image"].includes(loaderModelType(source));
+        && !["flux2", "flux2-klein", "qwen_image", "minimax"].includes(loaderModelType(source));
     if (!resW || !resW.hidden === show) return;
     setWidgetVisible(resW, show, node, { fallbackType: "number" });
     fitNodeSize(node);
@@ -215,8 +215,9 @@ function _applyBasePromptState(node) {
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
-// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code).
-const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10 };
+// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code), MiniMax H3
+// a first and a last frame.
+const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 2 };
 
 function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;
