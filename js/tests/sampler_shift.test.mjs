@@ -27,9 +27,9 @@ function samplerContext(arch) {
 
 for (const arch of ['wan', 'wan_ti2v', 'ltxv', 'lumina2']) {
     for (const preset of ['Auto', 'Custom']) {
-        test(`${arch} ${preset} preserves identity and explicit extra shifts`, () => {
+        test(`${arch} ${preset} keeps flux_shift and marks an extra shift`, () => {
             const context = samplerContext(arch);
-            for (const shift of [1, 2]) {
+            for (const [shift, label] of [[1, 'flux_shift 🧲'], [2, 'flux_shift ✎']]) {
                 const widget = { name: 'flux_shift', value: shift };
                 const node = {
                     widgets: [{ name: 'preset', value: preset }, widget],
@@ -38,10 +38,21 @@ for (const arch of ['wan', 'wan_ti2v', 'ltxv', 'lumina2']) {
                 context.updateDefaults(node);
                 context.updateDefaults(node);
                 assert.equal(widget.value, shift);
-                assert.ok(!widget._radMetaLinked);
+                assert.equal(widget.label, label);
             }
         });
     }
+}
+
+for (const arch of ['sdxl', 'ltxav']) {
+    test(`${arch} Auto leaves flux_shift unmarked without its own shift`, () => {
+        const widget = { name: 'flux_shift', value: 2 };
+        samplerContext(arch).updateDefaults({
+            widgets: [{ name: 'preset', value: 'Auto' }, widget], setDirtyCanvas() {},
+        });
+        assert.equal(widget.value, 2);
+        assert.ok(!widget._radMetaLinked);
+    });
 }
 
 test('presets do not add another native shift', () => {
