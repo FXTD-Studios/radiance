@@ -1157,7 +1157,10 @@ function updateModelMetaDefaults(node) {
         // ALBABIT-FIX: the stage's schedule and guidance too. Left at the widgets' own
         // values (shift 1, inexact steps, no STG), an Auto pass ran another recipe
         // than its preset: on an upscaled pass, another sigma range.
-        [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift],
+        // ALBABIT-FIX: other flow models run their own schedule at flux_shift 1. A shift
+        // added on top is kept, never synced, but marked "✎" like any other drift.
+        [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift,
+            ltxavStage?.flux_shift ?? (modelDefaults && !["sdxl", "sd1.5", "ltxav"].includes(detectedType) ? 1 : undefined)],
         [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
         [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
         [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
@@ -1165,10 +1168,10 @@ function updateModelMetaDefaults(node) {
     ];
 
     let changed = false;
-    for (const [widget, derivedVal] of pairs) {
+    for (const [widget, derivedVal, markedVal = derivedVal] of pairs) {
         if (syncAutoValue(node, widget, derivedVal)) changed = true;
-        const linked = derivedVal !== undefined;
-        const inSync = linked && widget && widget.value === derivedVal;
+        const linked = markedVal !== undefined;
+        const inSync = linked && widget && widget.value === markedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
     }
 
