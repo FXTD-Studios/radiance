@@ -34,7 +34,7 @@ function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None',
     const node = Object.assign(add(9, 'RadianceSamplerPro', {}, 'model', nativeLora ? 3 : 1), {
         widgets: [
             w('preset', 'Auto'),
-            w('model_type', 'auto', { options: { values: ['auto', 'flux', 'qwen_image'] } }),
+            w('model_type', 'auto', { options: { values: ['auto', 'flux', 'qwen_image', 'minimax'] } }),
             w('steps', 20), w('cfg', 1.0), w('sampler', 'euler'), w('scheduler', 'normal'),
             w('flux_guidance', 3.5), w('denoise', 1.0),
         ],
@@ -63,6 +63,13 @@ test('so does a native LoraLoaderModelOnly between the Loader and the Sampler', 
                      ['qwen_image', 4, 1.0, 'euler', 'simple']);
     assert.deepEqual(sample('qwen_image_edit_2511_int8_convrot.safetensors', { nativeLora: 'style.safetensors' }),
                      ['qwen_image', 40, 4.0, 'euler', 'simple']);
+});
+
+test("a MiniMax H3 Turbo LoRA runs its 8 steps, the base model its 20", () => {
+    const unet = 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', preset = 'MiniMax H3 (Low VRAM)';
+    assert.deepEqual(sample(unet, { preset, nativeLora: 'minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors' }),
+                     ['minimax', 8, 1.0, 'res_multistep', 'simple']);
+    assert.deepEqual(sample(unet, { preset }), ['minimax', 20, 1.0, 'res_multistep', 'simple']);
 });
 
 test('the "Qwen-Image" preset runs the Text to Image templates\' steps at cfg 4', () => {
