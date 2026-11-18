@@ -765,8 +765,9 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     """
     # ALBABIT-FIX: a Lightning or Turbo LoRA is distilled to the step count in
     # its file name; the official Qwen-Image templates run it at cfg 1,
-    # whatever the checkpoint (Edit 2511's 40 steps, cfg 4 included).
-    if detected_type == "qwen_image":
+    # whatever the checkpoint (Edit 2511's 40 steps, cfg 4 included). MiniMax H3's
+    # Turbo LoRAs (lightx2v) too, at the cfg 1 its 20 steps already run at.
+    if detected_type in ("qwen_image", "minimax"):
         for lora in loras:
             match = LIGHTNING_LORA.search(lora.lower())
             if match:
