@@ -44,6 +44,21 @@ for (const arch of ['wan', 'wan_ti2v', 'ltxv', 'lumina2']) {
     }
 }
 
+test('a live sigmas_override supplies the schedule: flux_shift gets no marker', () => {
+    const widget = { name: 'flux_shift', value: 3 };
+    const graph = { links: { 7: { origin_id: 5, type: 'SIGMAS' } }, getNodeById: id => (id === 5 ? { id, mode: 0 } : null) };
+    const node = {
+        graph, inputs: [{ name: 'sigmas_override', type: 'SIGMAS', link: 7 }],
+        widgets: [{ name: 'preset', value: 'Auto' }, widget], setDirtyCanvas() {},
+    };
+    samplerContext('wan').updateDefaults(node);
+    assert.equal(widget.value, 3);
+    assert.ok(!widget._radMetaLinked);
+    node.inputs[0].link = null;
+    samplerContext('wan').updateDefaults(node);
+    assert.equal(widget.label, 'flux_shift ✎');
+});
+
 for (const arch of ['sdxl', 'ltxav']) {
     test(`${arch} Auto leaves flux_shift unmarked without its own shift`, () => {
         const widget = { name: 'flux_shift', value: 2 };

@@ -148,6 +148,16 @@ class TestQwenImageEditSampler:
         prompt["3"]["inputs"]["lora_name"] = ["5", 0]
         assert _auto(EDIT_UNET, prompt=prompt, steps=4) == (4.0, 4)
 
+    def test_a_native_lightning_lora_at_model_strength_0_is_left_out(self):
+        """ComfyUI returns the model unchanged at strength_model 0: Edit 2511's own 40 steps, cfg 4."""
+        prompt = {
+            "1": {"class_type": "RadianceUnifiedLoader", "inputs": {}},
+            "3": {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": ["1", 0], "lora_name": LIGHTNING, "strength_model": 0}},
+            "9": {"class_type": "RadianceSamplerPro", "inputs": {"model": ["3", 0]}},
+        }
+        assert _auto(EDIT_UNET, prompt=prompt) == (4.0, 40)
+
     @pytest.mark.parametrize("shape", [(1, 16, 1, 8, 8), (1, 16, 8, 8)])
     def test_the_latent_is_sampled_in_5d_like_the_native_ksampler(self, shape):
         """Qwen-Image's latent format is Wan 2.1's (latent_dimensions 3). A VAE

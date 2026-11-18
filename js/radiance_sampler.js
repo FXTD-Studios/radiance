@@ -906,13 +906,17 @@ function _modelLoraNames(node, loaderNode) {
     const input = (n, name) => n?.inputs?.find(i => i.name === name);
     const value = (n, name) => n.widgets?.find(w => w.name === name)?.value;
     let stack = liveSourceNode(loaderNode, input(loaderNode, "lora_stack"));
+    // ALBABIT-FIX: a LoRA at model strength 0 leaves the model as it is, as in Python.
     for (let depth = 0; stack && depth < 32; depth++) {
-        for (let i = 1; i <= 5; i++) names.push(value(stack, `lora_${i}`));
+        for (let i = 1; i <= 5; i++) {
+            if (value(stack, `lora_${i}_model`) !== 0) names.push(value(stack, `lora_${i}`));
+        }
         stack = liveSourceNode(stack, input(stack, "lora_stack"));
     }
     let up = liveSourceNode(node, input(node, "model"));
     for (let depth = 0; up && depth < 32; depth++) {
-        if (up.comfyClass === "LoraLoaderModelOnly" || up.comfyClass === "LoraLoader") names.push(value(up, "lora_name"));
+        if ((up.comfyClass === "LoraLoaderModelOnly" || up.comfyClass === "LoraLoader")
+            && value(up, "strength_model") !== 0) names.push(value(up, "lora_name"));
         up = liveSourceNode(up, input(up, "model"));
     }
     return names.filter(name => typeof name === "string" && name !== "None");
@@ -928,7 +932,7 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // MiniMax H3's Turbo LoRAs (lightx2v) too.
     if (detectedType === "qwen_image" || detectedType === "minimax") {
         for (const name of loraNames) {
-            const match = name.toLowerCase().match(LIGHTNING_LORA);
+            const match = name.toLowerCase().split(/[\\/]/).pop().match(LIGHTNING_LORA);
             if (match) return { cfg: 1.0, steps: Number(match[1]) };
         }
     }
@@ -1160,8 +1164,10 @@ function updateModelMetaDefaults(node) {
         // than its preset: on an upscaled pass, another sigma range.
         // ALBABIT-FIX: other flow models run their own schedule at flux_shift 1. A shift
         // added on top is kept, never synced, but marked "✎" like any other drift.
+        // ALBABIT-FIX: no marker while a live sigmas_override supplies the schedule (flux_shift is inert).
         [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift,
-            ltxavStage?.flux_shift ?? (modelDefaults && !["sdxl", "sd1.5", "ltxav"].includes(detectedType) ? 1 : undefined)],
+            isSigmaOverrideActive(node) ? undefined
+                : ltxavStage?.flux_shift ?? (modelDefaults && !["sdxl", "sd1.5", "ltxav"].includes(detectedType) ? 1 : undefined)],
         [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
         [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
         [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
