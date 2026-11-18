@@ -52,11 +52,25 @@ test('a Qwen-Image or Qwen-Image Edit Loader stops the slots at image_3', () => 
     }
 });
 
-test('a MiniMax H3 Loader stops the slots at image_2, the first and last frames', () => {
-    const node = prompt({ preset: 'MiniMax H3' }, 2);
+test('a MiniMax H3 Loader takes no images: its frames have sockets of their own', () => {
+    const node = prompt({ preset: 'MiniMax H3' }, 0);
     context.applyLimit(node);
-    assert.equal(node.comfyDynamic.autogrow.images.max, 2);
-    assert.deepEqual(slots(node), ['image_1', 'image_2']);
+    assert.equal(node.comfyDynamic.autogrow.images.max, 0);
+    assert.deepEqual(slots(node), []);
+    const old = prompt({ preset: 'MiniMax H3' }, 2);
+    context.applyLimit(old);
+    assert.deepEqual(slots(old), ['image_1', 'image_2'], 'the linked frames of an older graph stay');
+});
+
+test('back from MiniMax H3, image_1 comes back as the definition had it', () => {
+    const node = prompt({ preset: 'MiniMax H3' }, 0);
+    node._radImageSlots = { image: { localized_name: 'image_1', shape: 7 } };
+    node.addInput = function (name, type, extra) { this.inputs.push({ name, type, link: null, ...extra }); };
+    context.applyLimit(node);
+    node.graph.getNodeById(4).widgets[0].value = 'Flux.2';
+    context.applyLimit(node);
+    assert.equal(node.comfyDynamic.autogrow.images.max, 16);
+    assert.deepEqual(node.inputs.at(-1), { name: 'images.image_1', type: 'IMAGE', link: null, localized_name: 'image_1', shape: 7 });
 });
 
 test('a connected slot past the limit stays, for the run to report it', () => {
