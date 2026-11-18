@@ -53,8 +53,26 @@ const names = slots => slots.map(s => s.name);
 test('without an image, video_latent and the latent output go', () => {
     const node = prompt({ loader: { preset: 'MiniMax H3' }, image: false });
     context.applySockets(node);
-    assert.deepEqual(names(node.inputs), ['model_meta', 'images.image_1', 'text_to_video']);
+    assert.deepEqual(names(node.inputs), ['model_meta', 'images.image_1', 'text_to_video', 'first_frame', 'last_frame']);
     assert.deepEqual(names(node.outputs), ['positive']);
+});
+
+test('under MiniMax H3, a first or last frame alone brings video_latent and the latent output', () => {
+    for (const name of ['first_frame', 'last_frame']) {
+        const node = prompt({ loader: { preset: 'MiniMax H3' }, image: false, input: 'gone', output: 'gone' });
+        context.applySockets(node);
+        node.inputs.find(i => i.name === name).link = 51;
+        context.applySockets(node);
+        assert.equal(node.inputs.at(-1).name, 'video_latent');
+        assert.deepEqual(names(node.outputs), ['positive', 'latent']);
+    }
+});
+
+test('another family drops the free frame sockets and keeps a linked one', () => {
+    const node = prompt({ loader: { preset: 'Flux.2' }, image: false, input: 'gone', output: 'gone' });
+    node.inputs.push({ name: 'first_frame', type: 'IMAGE', link: null }, { name: 'last_frame', type: 'IMAGE', link: 51 });
+    context.applySockets(node);
+    assert.deepEqual(names(node.inputs).filter(n => n.endsWith('_frame')), ['last_frame']);
 });
 
 test('an image under MiniMax H3, or an unknown family, brings both back, last', () => {
