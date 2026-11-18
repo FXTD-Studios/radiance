@@ -215,19 +215,32 @@ function _applyBasePromptState(node) {
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
-// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code), MiniMax H3
-// a first and a last frame.
-const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 2 };
+// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code). MiniMax H3 reads
+// first_frame and last_frame: on images, disconnecting image_1 moved image_2's link onto it.
+const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 0 };
+const FRAME_INPUTS = ["first_frame", "last_frame"];
 
 // ALBABIT-FIX: video_latent serves MiniMax H3's frames (or an unknown family's), the latent
 // output every family's images. Each comes with an image and goes with it unless linked;
 // a returning one is appended, so no other slot moves.
 function _applyImageSockets(node, source = modelMetaSourceNode(node)) {
-    const images = node.inputs?.filter(i => i.name.startsWith("images.") && isInputLive(node, i)) ?? [];
-    const wantInput = images.length > 0 && [null, "minimax"].includes(loaderModelType(source));
+    const family = loaderModelType(source);
+    let changed = false;
+    for (const name of FRAME_INPUTS) {
+        const frame = node.inputs?.find(i => i.name === name);
+        if (family === "minimax" && !frame) {
+            node.addInput(name, "IMAGE", node._radImageSlots?.[name]);
+            changed = true;
+        } else if (family !== "minimax" && frame && frame.link == null) {
+            node.removeInput(node.inputs.indexOf(frame));
+            changed = true;
+        }
+    }
+    const images = node.inputs?.filter(i => (i.name.startsWith("images.") || FRAME_INPUTS.includes(i.name))
+        && isInputLive(node, i)) ?? [];
+    const wantInput = images.length > 0 && [null, "minimax"].includes(family);
     const input = node.inputs?.find(i => i.name === "video_latent");
     const output = node.outputs?.find(o => o.name === "latent");
-    let changed = false;
     if (wantInput && !input) {
         node.addInput("video_latent", "LATENT", node._radImageSlots?.input);
         changed = true;
@@ -249,11 +262,15 @@ function _applyReferenceLimit(node, source = modelMetaSourceNode(node)) {
     const grow = node.comfyDynamic?.autogrow?.images;
     if (!grow) return;
     const max = REFERENCE_LIMITS[loaderModelType(source)] ?? grow.names.length;
-    if (grow.max === max) return;
     const raised = max > grow.max;
-    grow.max = max;
     const slots = node.inputs.filter(i => i.name.startsWith("images."));
-    if (raised) {
+    // ALBABIT-FIX: the frontend adds an empty slot back after a disconnect, past MiniMax H3's 0 too.
+    if (grow.max === max && !slots.slice(max).some(slot => slot.link == null)) return;
+    grow.max = max;
+    if (raised && !slots.length) {
+        // Back from MiniMax H3's 0: the first slot, as the definition had it.
+        node.addInput("images.image_1", "IMAGE", node._radImageSlots?.image);
+    } else if (raised) {
         // The frontend adds the next slot when the last one connects: replay it.
         const last = slots.at(-1);
         const link = last?.link != null ? node.graph?.links?.[last.link] : null;
@@ -894,12 +911,16 @@ app.registerExtension({
             if (onNodeCreated) onNodeCreated.apply(this, arguments);
             _holdHiddenSeed(this);
             _addTabsWidget(this);
-            // The definition's slots, to bring video_latent and latent back as they were.
+            // The definition's slots, to bring video_latent, latent, the frames and image_1 back as they were.
             const slotLook = (slots, name) => {
                 const { localized_name, shape } = slots?.find(s => s.name === name) ?? {};
                 return { localized_name, shape };
             };
-            this._radImageSlots = { input: slotLook(this.inputs, "video_latent"), output: slotLook(this.outputs, "latent") };
+            this._radImageSlots = {
+                input: slotLook(this.inputs, "video_latent"), output: slotLook(this.outputs, "latent"),
+                first_frame: slotLook(this.inputs, "first_frame"), last_frame: slotLook(this.inputs, "last_frame"),
+                image: slotLook(this.inputs, "images.image_1"),
+            };
 
             const self = this;
             const presetWidget = this.widgets?.find(w => w.name === "style_preset");

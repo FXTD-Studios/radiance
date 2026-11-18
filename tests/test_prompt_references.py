@@ -144,8 +144,28 @@ class TestMiniMaxFrames:
         assert (native[1]["first_frame"], native[1]["last_frame"]) == (None, image)
 
     def test_a_third_image_is_refused(self, native):
-        with pytest.raises(ValueError, match="image_3"):
+        with pytest.raises(ValueError, match="first_frame and last_frame"):
             self._run({f"image_{i}": torch.zeros(1, 32, 32, 3) for i in (1, 2, 3)})
+
+    def test_first_frame_and_last_frame_go_to_the_native_node(self, native):
+        first, last = torch.zeros(1, 32, 32, 3), torch.ones(1, 32, 32, 3)
+        self._run(None, first_frame=first, last_frame=last)
+        self._run(None, last_frame=last)
+        assert (native[0]["first_frame"], native[0]["last_frame"]) == (first, last)
+        assert (native[1]["first_frame"], native[1]["last_frame"]) == (None, last)
+
+    def test_frames_and_images_together_are_refused(self, native):
+        with pytest.raises(ValueError, match="not both"):
+            self._run({"image_1": torch.zeros(1, 32, 32, 3)}, last_frame=torch.ones(1, 32, 32, 3))
+
+    def test_another_family_leaves_the_frames_out_with_a_warning(self, native, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(prompt.logger, "warning", lambda message, *args: warnings.append(message % args))
+        prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="A cat", model_meta=json.dumps({"arch": "flux3"}), vae="vae",
+            first_frame=torch.zeros(1, 32, 32, 3))
+        assert not native
+        assert any("first_frame and last_frame are MiniMax H3's" in w and "'flux3'" in w for w in warnings)
 
     def test_a_latent_that_is_no_minimax_video_is_refused(self, native):
         # The Resolution left on a still image gives [B, 4, H/8, W/8]: no time axis to read.
