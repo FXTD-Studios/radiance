@@ -516,10 +516,10 @@
         "Node name for S&R": "VAELoader"
       },
       "widgets_values": [
-        "sd_vae_ft_mse.safetensors"
+        "vae-ft-mse-840000-ema-pruned.safetensors"
       ],
       "widgets_values_named": {
-        "vae_name": "sd_vae_ft_mse.safetensors"
+        "vae_name": "vae-ft-mse-840000-ema-pruned.safetensors"
       }
     },
     {
