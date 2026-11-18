@@ -11,7 +11,8 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
 const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 // Loader 1, fed by LoRA Stack 2, then an optional LoraLoaderModelOnly 3, then the Sampler.
-function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None', nativeLora = null } = {}) {
+function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None', nativeLora = null,
+                           stackStrength = 1, nativeStrength = 1 } = {}) {
     const nodes = {}, links = {};
     const graph = { links, getNodeById: id => nodes[id] };
     const add = (id, comfyClass, widgets, input, from) => {
@@ -21,9 +22,9 @@ function sample(unetName, { preset = 'Qwen-Image Edit 2511', stackLora = 'None',
         if (from) links[id * 10] = { origin_id: from, origin_slot: 0, target_id: id, type: '*' };
         return nodes[id];
     };
-    add(2, 'RadianceLoraStack', { lora_1: stackLora }, 'lora_stack');
+    add(2, 'RadianceLoraStack', { lora_1: stackLora, lora_1_model: stackStrength }, 'lora_stack');
     const loader = add(1, 'RadianceUnifiedLoader', { preset, unet_name: unetName }, 'lora_stack', 2);
-    if (nativeLora) add(3, 'LoraLoaderModelOnly', { lora_name: nativeLora }, 'model', 1);
+    if (nativeLora) add(3, 'LoraLoaderModelOnly', { lora_name: nativeLora, strength_model: nativeStrength }, 'model', 1);
     const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => loader;
@@ -70,6 +71,16 @@ test("a MiniMax H3 Turbo LoRA runs its 8 steps, the base model its 20", () => {
     assert.deepEqual(sample(unet, { preset, nativeLora: 'minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors' }),
                      ['minimax', 8, 1.0, 'res_multistep', 'simple']);
     assert.deepEqual(sample(unet, { preset }), ['minimax', 20, 1.0, 'res_multistep', 'simple']);
+});
+
+test('a Turbo LoRA at model strength 0, or a "turbo_8step" folder, leaves the 20 steps', () => {
+    const unet = 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', preset = 'MiniMax H3 (Low VRAM)';
+    const turbo = 'minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors';
+    const base = ['minimax', 20, 1.0, 'res_multistep', 'simple'];
+    assert.deepEqual(sample(unet, { preset, nativeLora: turbo, nativeStrength: 0 }), base);
+    assert.deepEqual(sample(unet, { preset, stackLora: turbo, stackStrength: 0 }), base);
+    assert.deepEqual(sample(unet, { preset, nativeLora: 'turbo_8step/style.safetensors' }), base);
+    assert.deepEqual(sample(unet, { preset, nativeLora: `lightx2v\\${turbo}` }), ['minimax', 8, 1.0, 'res_multistep', 'simple']);
 });
 
 test('the "Qwen-Image" preset runs the Text to Image templates\' steps at cfg 4', () => {

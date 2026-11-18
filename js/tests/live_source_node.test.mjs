@@ -80,3 +80,12 @@ test('modelMetaSourceNode reads the model_meta input', () => {
     assert.equal(context.metaSource(node), loader);
     assert.equal(context.metaSource({ graph, inputs: [] }), null);
 });
+
+test("an input fed through its subgraph's own input node counts as live", () => {
+    vm.runInContext('globalThis.isLive = isInputLive;', context);
+    const graph = { links: { 8: { origin_id: '-10', origin_slot: 0, type: 'IMAGE' } }, getNodeById: () => undefined };
+    const node = { graph, inputs: [{ name: 'images.image_1', type: 'IMAGE', link: 8 }] };
+    assert.equal(context.isLive(node, node.inputs[0]), true);
+    graph.links[8].origin_id = 3;
+    assert.equal(context.isLive(node, node.inputs[0]), false);
+});

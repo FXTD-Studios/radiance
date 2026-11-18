@@ -147,6 +147,14 @@ class TestMiniMaxFrames:
         with pytest.raises(ValueError, match="image_3"):
             self._run({f"image_{i}": torch.zeros(1, 32, 32, 3) for i in (1, 2, 3)})
 
+    def test_a_latent_that_is_no_minimax_video_is_refused(self, native):
+        # The Resolution left on a still image gives [B, 4, H/8, W/8]: no time axis to read.
+        with pytest.raises(ValueError, match=r"MiniMax H3 \(24ch\)"):
+            prompt.RadianceCinematicPromptEncoder.execute(
+                _FakeClip(), base_prompt="She turns", model_meta=self.META, vae="vae",
+                images={"image_1": torch.zeros(1, 32, 32, 3)}, video_latent={"samples": torch.zeros(1, 4, 64, 64)})
+        assert not native
+
     def test_the_frames_need_the_video_latent(self, native):
         with pytest.raises(ValueError, match="video_latent"):
             prompt.RadianceCinematicPromptEncoder.execute(
