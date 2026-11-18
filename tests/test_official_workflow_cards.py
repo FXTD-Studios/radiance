@@ -24,6 +24,15 @@ def _png_size(data: bytes):
     return struct.unpack(">II", data[16:24])
 
 
+def _as_shipped(obj, embedded):
+    """The graph with each input file the card embeds named example.png, as its JSON names it."""
+    if isinstance(obj, dict):
+        return {key: _as_shipped(value, embedded) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_as_shipped(value, embedded) for value in obj]
+    return "example.png" if isinstance(obj, str) and obj in embedded else obj
+
+
 def test_there_are_official_cards():
     assert {p.parent.name for p in CARDS} == {"API", "Local"}
 
@@ -46,7 +55,13 @@ def test_card_matches_its_workflow(card):
     assert _png_size(z.read("preview.png")) == (960, 480)
     source = WORKFLOWS / f"{card.stem}.json"
     assert source.is_file(), f"{card.name} has no {source.name} in workflows/"
-    assert json.loads(z.read("workflow.json")) == json.loads(source.read_text(encoding="utf-8")), (
+    # ALBABIT-FIX: a card may embed the reference images its workflow was made with;
+    # the JSON keeps example.png, the only image a fresh install has.
+    inputs = manifest.get("inputs", {})
+    for name in inputs:
+        assert f"assets/{name}" in names, f"{card.name} lists {name} as an input but does not embed it"
+    graph = _as_shipped(json.loads(z.read("workflow.json")), set(inputs.values()))
+    assert graph == json.loads(source.read_text(encoding="utf-8")), (
         f"{card.relative_to(ROOT)} holds an older graph than {source.name}: rebuild the card")
 
 
