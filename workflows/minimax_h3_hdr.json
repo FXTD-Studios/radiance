@@ -2,7 +2,7 @@
   "id": "2c819bf8-1365-49d4-a281-93465484ec1c",
   "revision": 0,
   "last_node_id": 611,
-  "last_link_id": 1525,
+  "last_link_id": 1527,
   "nodes": [
     {
       "id": 103,
@@ -206,7 +206,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            1520
+            1526
           ]
         },
         {
@@ -863,7 +863,7 @@
       ],
       "size": [
         680,
-        1430
+        1390
       ],
       "flags": {},
       "order": 12,
@@ -890,20 +890,6 @@
           "link": 1509
         },
         {
-          "localized_name": "image_1",
-          "name": "images.image_1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 1520
-        },
-        {
-          "localized_name": "image_2",
-          "name": "images.image_2",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 1521
-        },
-        {
           "localized_name": "upsampler_clip",
           "name": "upsampler_clip",
           "shape": 7,
@@ -916,6 +902,20 @@
           "shape": 7,
           "type": "LATENT",
           "link": 1522
+        },
+        {
+          "localized_name": "first_frame",
+          "name": "first_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 1526
+        },
+        {
+          "localized_name": "last_frame",
+          "name": "last_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 1527
         },
         {
           "localized_name": "text_to_video",
@@ -1144,7 +1144,7 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceCinematicPromptEncoder",
-        "radExtraHeight": 842
+        "radExtraHeight": 802
       },
       "widgets_values": [
         true,
@@ -3751,7 +3751,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            1521
+            1527
           ]
         },
         {
@@ -5201,28 +5201,28 @@
       "VAE"
     ],
     [
-      1520,
-      453,
-      0,
-      535,
-      3,
-      "IMAGE"
-    ],
-    [
-      1521,
-      600,
-      0,
-      535,
-      4,
-      "IMAGE"
-    ],
-    [
       1522,
       530,
       0,
       535,
-      6,
+      4,
       "LATENT"
+    ],
+    [
+      1526,
+      453,
+      0,
+      535,
+      5,
+      "IMAGE"
+    ],
+    [
+      1527,
+      600,
+      0,
+      535,
+      6,
+      "IMAGE"
     ]
   ],
   "groups": [
