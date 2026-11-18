@@ -170,8 +170,9 @@ def test_an_empty_rewrite_is_an_error_not_an_empty_prompt(textgen, monkeypatch):
 def test_inputs_are_appended_after_every_older_one():
     from radiance.nodes.generate import prompt
     names = [i.id for i in prompt.RadianceCinematicPromptEncoder.define_schema().inputs]
-    assert names[-4:] == ["upsampler_clip", "upsample_prompt", "upsampler_seed", "layout"]
-    assert names.index("images") == len(names) - 5
+    assert names[-7:] == ["upsampler_clip", "upsample_prompt", "upsampler_seed", "layout", "video_latent",
+                          "first_frame", "last_frame"]
+    assert names.index("images") == len(names) - 8
 
 
 def test_the_system_prompts_ship_with_the_node():

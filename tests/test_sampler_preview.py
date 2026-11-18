@@ -85,6 +85,7 @@ class _LTXAV:
     """Stands in for comfy.latent_formats.LTXAV."""
 
     taesd_decoder_name = None
+    compile_preview = False
 
 
 class _FakeVAE:
@@ -96,9 +97,10 @@ class _FakeVAE:
 
 
 class _FakeTAEHVPreviewer(_FakePreviewer):
-    def __init__(self, taesd):
+    def __init__(self, taesd, compile_preview=False):
         super().__init__()
         self.taesd = taesd
+        self.compile_preview = compile_preview
 
 
 class _FakeLatent2RGB:
@@ -141,6 +143,7 @@ class _PreviewEnv:
         lp.TAEHVPreviewerImpl = _FakeTAEHVPreviewer
         lp.Latent2RGBPreviewer = _FakeLatent2RGB
         lp.MAX_PREVIEW_RESOLUTION = 512
+        lp.VIDEO_TAES = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5", "taeltx_2", "taeh3"]
 
         cli_args = types.ModuleType("comfy.cli_args")
         cli_args.args = self.args
@@ -290,6 +293,17 @@ class TestResolveLatentPreviewer(unittest.TestCase):
         self.assertIsInstance(result, _FakeTAEHVPreviewer)
         self.assertEqual(result.taesd.sd, {"w": 1})
         self.assertFalse(result.taesd.first_stage_model.show_progress_bar)
+        self.assertEqual(env.seen_methods, [])
+
+    def test_a_video_decoder_is_built_here_not_by_get_previewer(self):
+        """VideoHelperSuite replaces get_previewer() with a previewer that
+        decodes every frame at every step."""
+        minimax = types.SimpleNamespace(taesd_decoder_name="taeh3", compile_preview=True)
+        with _PreviewEnv(_FakePreviewer(), decoder="/m/taeh3.safetensors") as env, \
+                patch.object(sampler_mod.comfy.utils, "load_torch_file", return_value={"w": 1}, create=True):
+            result = _resolve_latent_previewer(_fake_model(minimax), "TAESD")
+        self.assertIsInstance(result, _FakeTAEHVPreviewer)
+        self.assertTrue(result.compile_preview)
         self.assertEqual(env.seen_methods, [])
 
     def test_ltx2_without_its_decoder_falls_back_to_latent2rgb(self):

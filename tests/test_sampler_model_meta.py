@@ -94,6 +94,26 @@ class TestRefineDistillationFromMeta:
     def test_qwen_image_2512_runs_50_steps(self):
         assert refine_distillation_from_meta("qwen_image", "qwen_image_2512_fp8_e4m3fn.safetensors") == {"steps": 50}
 
+    def test_minimax_turbo_lora_sets_its_steps(self):
+        for lora, steps in (("minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors", 8),
+                            ("minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors", 4)):
+            assert refine_distillation_from_meta("minimax", "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+                                                 [lora]) == {"cfg": 1.0, "steps": steps}
+        assert refine_distillation_from_meta("minimax", "minimax_h3_fl2va_pruned_int8_convrot.safetensors") is None
+
+    def test_turbo_steps_come_from_the_lora_file_name_not_its_folder(self):
+        unet = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+        assert refine_distillation_from_meta("minimax", unet, ["turbo_8step/style.safetensors"]) is None
+        assert refine_distillation_from_meta(
+            "minimax", unet, ["lightx2v\\minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors"]
+        ) == {"cfg": 1.0, "steps": 8}
+
+    def test_a_lora_at_model_strength_0_is_left_out(self):
+        meta = json.dumps({"arch": "minimax", "unet_file": "unet.safetensors", "loras": [
+            {"name": "minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors", "model_str": 0, "clip_str": 1.0},
+            {"name": "style.safetensors", "model_str": 0.8, "clip_str": 1.0}]})
+        assert parse_model_meta(meta) == ("minimax", "unet.safetensors", ["style.safetensors"])
+
     def test_lightning_lora_only_for_qwen_image(self):
         assert refine_distillation_from_meta("sdxl", "sd_xl_base_1.0.safetensors",
                                              ["sdxl_lightning_4step_lora.safetensors"]) is None
