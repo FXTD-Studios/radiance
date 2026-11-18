@@ -258,9 +258,11 @@ class TestQwenImage21PromptReferences:
         assert kind == "COMFY_AUTOGROW_V3"
         assert opts["template"]["names"] == [f"image_{i}" for i in range(1, 17)]
         assert opts["template"]["min"] == 0
-        # 4.0.0 appends the prompt upsampler's three and the FLUX 3 layout after them.
-        assert list(spec["optional"])[-8:] == ["model_meta", "vae", "resolution", "images",
-                                                "upsampler_clip", "upsample_prompt", "upsampler_seed", "layout"]
+        # 4.0.0 appends the prompt upsampler's three, the FLUX 3 layout and MiniMax H3's
+        # video_latent and frames after them.
+        assert list(spec["optional"])[-11:] == ["model_meta", "vae", "resolution", "images",
+                                                 "upsampler_clip", "upsample_prompt", "upsampler_seed", "layout",
+                                                 "video_latent", "first_frame", "last_frame"]
         assert spec["optional"]["vae"][0] == "VAE"
         assert spec["optional"]["resolution"][1]["default"] == 1024
         assert list(P.RETURN_TYPES)[-1] == "LATENT"
