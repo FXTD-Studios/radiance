@@ -157,6 +157,9 @@ export function syncAutoValue(node, widget, newValue) {
 
 /** True when 'input' is fed by a node that runs (see liveSourceNode). */
 export function isInputLive(node, input) {
+    // ALBABIT-FIX: a link from a subgraph's own input node ("-10") comes from outside it.
+    const link = input?.link != null ? node?.graph?.links?.[input.link] : null;
+    if (link && String(link.origin_id) === "-10") return true;
     return liveSourceNode(node, input) !== null;
 }
 

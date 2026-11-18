@@ -1368,7 +1368,8 @@ class RadianceSamplerPro:
             node = prompt.get(str(link[0])) if isinstance(link, list) else None
             if node and node["class_type"] in ("LoraLoaderModelOnly", "LoraLoader"):
                 name = node["inputs"].get("lora_name")
-                if isinstance(name, str):
+                # ALBABIT-FIX: at strength_model 0, ComfyUI returns the model unchanged.
+                if isinstance(name, str) and node["inputs"].get("strength_model", 1) != 0:
                     loras.append(name)
         return loras
 

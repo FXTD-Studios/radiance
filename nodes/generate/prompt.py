@@ -2042,6 +2042,9 @@ def _minimax_frames(clip, vae, prompt, references, video_latent):
                          "Connect the vae input, and video_latent to the Resolution's latent.")
     samples = video_latent["samples"]
     video = samples.tensors[0] if samples.is_nested else samples
+    if video.ndim != 5 or video.shape[1] != 24 or video.shape[2] < 2 or (video.shape[2] - 2) % 5:
+        raise ValueError("Prompt: video_latent is not a MiniMax H3 video. Set the Resolution's model_type "
+                         "to MiniMax H3 (24ch), with enable_video on.")
     return nodes_minimax_h3.MiniMaxH3ImageToVideo.execute(
         clip=clip, vae=vae, prompt=prompt, width=video.shape[-1] * 16, height=video.shape[-2] * 16,
         length=(video.shape[2] - 2) // 5 * 17 + 5,
@@ -2266,6 +2269,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 io.Latent.Input(
                     "video_latent", optional=True,
                     tooltip=("MiniMax H3 with images: the Resolution's latent, the one the Sampler samples on.\n"
+                             "• The Resolution's model_type is MiniMax H3 (24ch) (or its model_meta comes from "
+                             "the MiniMax H3 Loader), with enable_video on.\n"
                              "• Gives the first and last frames the video's size.\n"
                              "• Places image_2 on the last frame."),
                 ),

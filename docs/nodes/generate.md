@@ -246,7 +246,7 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `upsample_prompt` (optional) | boolean | off |  | FLUX 3 Image Klein and Qwen-Image 2.1: rewrites the prompt into the detailed caption the model was trained on, with the model authors' upsampler and system prompt (as ComfyUI's templates do). • With reference images, it uses the edit instructions and sees the images. • positive_text shows the rewritten prompt. |
 | `upsampler_seed` (optional) | int | 0 | 0 to 18446744073709551615 | Seed of the upsampler's sampling. The same seed and prompt give the same rewrite. |
 | `layout` (optional) | string |  | multi-line text | FLUX 3 Image Klein: the layout table. • A JSON list of {"id": "obj_1", "bbox": [ymin, xmin, ymax, xmax], "desc": "..."}, bbox on a 0-1000 grid, as ComfyUI's FLUX 3 Image Layout Prompt writes it. • Draw the boxes in the Viewer (Tools > FLUX 3 Layout Boxes), or paste the table at the end of base_prompt. • Cite them in the prompt as &lt;obj_1>, &lt;obj_2>… |
-| `video_latent` (optional) | LATENT |  |  | MiniMax H3 with images: the Resolution's latent, the one the Sampler samples on. • Gives the first and last frames the video's size. • Places image_2 on the last frame. |
+| `video_latent` (optional) | LATENT |  |  | MiniMax H3 with images: the Resolution's latent, the one the Sampler samples on. • The Resolution's model_type is MiniMax H3 (24ch) (or its model_meta comes from the MiniMax H3 Loader), with enable_video on. • Gives the first and last frames the video's size. • Places image_2 on the last frame. |
 
 **Outputs**
 
