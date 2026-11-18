@@ -175,6 +175,14 @@ class TestMiniMaxFrames:
                 images={"image_1": torch.zeros(1, 32, 32, 3)}, video_latent={"samples": torch.zeros(1, 4, 64, 64)})
         assert not native
 
+    def test_a_batch_of_videos_is_refused(self, native):
+        latent = {"samples": torch.zeros(2, 24, 37, 46, 80)}
+        with pytest.raises(ValueError, match="video_latent holds 2"):
+            prompt.RadianceCinematicPromptEncoder.execute(
+                _FakeClip(), base_prompt="She turns", model_meta=self.META, vae="vae",
+                first_frame=torch.zeros(1, 32, 32, 3), video_latent=latent)
+        assert not native
+
     def test_the_frames_need_the_video_latent(self, native):
         with pytest.raises(ValueError, match="video_latent"):
             prompt.RadianceCinematicPromptEncoder.execute(

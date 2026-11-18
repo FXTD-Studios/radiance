@@ -156,11 +156,16 @@ export function syncAutoValue(node, widget, newValue) {
 }
 
 /** True when 'input' is fed by a node that runs (see liveSourceNode). */
-export function isInputLive(node, input) {
-    // ALBABIT-FIX: a link from a subgraph's own input node ("-10") comes from outside it.
-    const link = input?.link != null ? node?.graph?.links?.[input.link] : null;
-    if (link && String(link.origin_id) === "-10") return true;
-    return liveSourceNode(node, input) !== null;
+export function isInputLive(node, input, depth = 0) {
+    const graph = node?.graph;
+    const link = input?.link != null ? graph?.links?.[input.link] : null;
+    if (!link || depth > 32) return false;
+    // ALBABIT-FIX: a link from a subgraph's own input node ("-10") comes from outside it,
+    // directly or through bypassed nodes; otherwise liveSourceNode's walk.
+    if (String(link.origin_id) === "-10") return true;
+    const origin = graph.getNodeById(link.origin_id);
+    if (!origin || origin.mode === 2) return false;
+    return origin.mode !== 4 || isInputLive(origin, bypassInput(origin, link.origin_slot, link.type), depth + 1);
 }
 
 // ALBABIT-FIX: fit a node to its visible widgets plus the height the user

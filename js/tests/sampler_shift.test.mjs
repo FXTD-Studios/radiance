@@ -59,6 +59,32 @@ test('a live sigmas_override supplies the schedule: flux_shift gets no marker', 
     assert.equal(widget.label, 'flux_shift ✎');
 });
 
+test('LTX-AV: a live sigmas_override leaves the stage shift unmarked, and the marker comes back without it', () => {
+    const context = vm.createContext({
+        app: { registerExtension() {} }, console: { log() {} }, setTimeout() {},
+    });
+    vm.runInContext(source + `
+        _findModelMetaSourceNode = () => ({ widgets: [{ name: "unet_name", value: "ltx-2.5-22b-dev-transformer-bf16.safetensors" }] });
+        loaderModelType = () => "ltxav";
+        _isSdTurboActive = () => false;
+        _isLtxAvHighResStage = () => false;
+        globalThis.updateDefaults = updateModelMetaDefaults;
+    `, context);
+    const widget = { name: 'flux_shift', value: 1 };
+    const graph = { links: { 7: { origin_id: 5, type: 'SIGMAS' } }, getNodeById: id => (id === 5 ? { id, mode: 0 } : null) };
+    const node = {
+        graph, inputs: [{ name: 'sigmas_override', type: 'SIGMAS', link: 7 }],
+        widgets: [{ name: 'preset', value: 'Auto' }, widget], setDirtyCanvas() {},
+    };
+    context.updateDefaults(node);
+    const stageShift = widget.value;
+    assert.notEqual(stageShift, 1, 'the LowRes stage shift is still synced');
+    assert.ok(!widget._radMetaLinked);
+    node.inputs[0].link = null;
+    context.updateDefaults(node);
+    assert.ok(widget._radMetaLinked);
+});
+
 for (const arch of ['sdxl', 'ltxav']) {
     test(`${arch} Auto leaves flux_shift unmarked without its own shift`, () => {
         const widget = { name: 'flux_shift', value: 2 };
