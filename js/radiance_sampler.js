@@ -1166,7 +1166,7 @@ function updateModelMetaDefaults(node) {
         // added on top is kept, never synced, but marked "✎" like any other drift.
         // ALBABIT-FIX: no marker while a live sigmas_override supplies the schedule (flux_shift is inert).
         [node.widgets.find(w => w.name === "flux_shift"), ltxavStage?.flux_shift,
-            isSigmaOverrideActive(node) ? undefined
+            isSigmaOverrideActive(node) ? null
                 : ltxavStage?.flux_shift ?? (modelDefaults && !["sdxl", "sd1.5", "ltxav"].includes(detectedType) ? 1 : undefined)],
         [node.widgets.find(w => w.name === "force_exact_steps"), ltxavStage?.force_exact_steps],
         [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
@@ -1175,9 +1175,10 @@ function updateModelMetaDefaults(node) {
     ];
 
     let changed = false;
+    // A null markedVal suppresses the marker; an omitted one marks the synced value.
     for (const [widget, derivedVal, markedVal = derivedVal] of pairs) {
         if (syncAutoValue(node, widget, derivedVal)) changed = true;
-        const linked = markedVal !== undefined;
+        const linked = markedVal != null;
         const inSync = linked && widget && widget.value === markedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
     }
