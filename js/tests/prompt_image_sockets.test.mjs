@@ -73,6 +73,7 @@ test('another family drops the free frame sockets and keeps a linked one', () =>
     node.inputs.push({ name: 'first_frame', type: 'IMAGE', link: null }, { name: 'last_frame', type: 'IMAGE', link: 51 });
     context.applySockets(node);
     assert.deepEqual(names(node.inputs).filter(n => n.endsWith('_frame')), ['last_frame']);
+    assert.deepEqual(names(node.outputs), ['positive'], 'the linked frame is left out: no empty latent output');
 });
 
 test('an image under MiniMax H3, or an unknown family, brings both back, last', () => {

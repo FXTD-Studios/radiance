@@ -236,9 +236,11 @@ function _applyImageSockets(node, source = modelMetaSourceNode(node)) {
             changed = true;
         }
     }
-    const images = node.inputs?.filter(i => (i.name.startsWith("images.") || FRAME_INPUTS.includes(i.name))
+    // A frame counts under MiniMax H3 (or an unknown family) only: another family leaves it out.
+    const framesRead = [null, "minimax"].includes(family);
+    const images = node.inputs?.filter(i => (i.name.startsWith("images.") || (framesRead && FRAME_INPUTS.includes(i.name)))
         && isInputLive(node, i)) ?? [];
-    const wantInput = images.length > 0 && [null, "minimax"].includes(family);
+    const wantInput = images.length > 0 && framesRead;
     const input = node.inputs?.find(i => i.name === "video_latent");
     const output = node.outputs?.find(o => o.name === "latent");
     if (wantInput && !input) {

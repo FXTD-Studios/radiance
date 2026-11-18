@@ -2045,6 +2045,9 @@ def _minimax_frames(clip, vae, prompt, references, video_latent):
     if video.ndim != 5 or video.shape[1] != 24 or video.shape[2] < 2 or (video.shape[2] - 2) % 5:
         raise ValueError("Prompt: video_latent is not a MiniMax H3 video. Set the Resolution's model_type "
                          "to MiniMax H3 (24ch), with enable_video on.")
+    if video.shape[0] != 1:
+        raise ValueError(f"Prompt: MiniMax H3 encodes its frames for one video, and video_latent holds "
+                         f"{video.shape[0]}. Set the Resolution's batch_size to 1.")
     return nodes_minimax_h3.MiniMaxH3ImageToVideo.execute(
         clip=clip, vae=vae, prompt=prompt, width=video.shape[-1] * 16, height=video.shape[-2] * 16,
         length=(video.shape[2] - 2) // 5 * 17 + 5,
@@ -2225,7 +2228,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                     tooltip=("Reference images for editing, read by Qwen-Image 2.1, Qwen-Image Edit, "
                              "Flux.2 and Flux.3 Klein.\n"
                              "• image_1 is the image to edit, the others are references.\n"
-                             "• MiniMax H3 takes first_frame and last_frame instead.\n"
+                             "• MiniMax H3 takes first_frame and last_frame instead. Graphs wired to image_1 "
+                             "and image_2 still run; to move them, connect both frames there and remove "
+                             "the image links.\n"
                              "• Qwen-Image 2.1: cite them in the prompt as <image1>, <image2>…\n"
                              "• Qwen-Image Edit: 3 at most.\n"
                              "• Flux.3 Klein: 10 at most, cited as <ref_image_0> (image_1), "
