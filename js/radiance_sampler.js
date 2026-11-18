@@ -925,7 +925,8 @@ function _modelLoraNames(node, loaderNode) {
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
     // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
-    if (detectedType === "qwen_image") {
+    // MiniMax H3's Turbo LoRAs (lightx2v) too.
+    if (detectedType === "qwen_image" || detectedType === "minimax") {
         for (const name of loraNames) {
             const match = name.toLowerCase().match(LIGHTNING_LORA);
             if (match) return { cfg: 1.0, steps: Number(match[1]) };
