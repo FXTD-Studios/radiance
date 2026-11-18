@@ -153,7 +153,7 @@
       ],
       "size": [
         580,
-        1570
+        1650
       ],
       "flags": {},
       "order": 0,
@@ -176,7 +176,7 @@
       "type": "ResizeImageMaskNode",
       "pos": [
         -1870,
-        4890
+        4970
       ],
       "size": [
         230,
@@ -282,7 +282,7 @@
       "type": "LTXVConcatAVLatent",
       "pos": [
         -1330,
-        5050
+        5130
       ],
       "size": [
         230,
@@ -335,7 +335,7 @@
       "type": "LTXVSeparateAVLatent",
       "pos": [
         -610,
-        3370
+        3520
       ],
       "size": [
         230,
@@ -547,7 +547,7 @@
       "type": "LTXVPreprocess",
       "pos": [
         -1600,
-        4890
+        4970
       ],
       "size": [
         230,
@@ -610,7 +610,7 @@
       "type": "LTXVEmptyLatentAudio",
       "pos": [
         -1870,
-        5050
+        5130
       ],
       "size": [
         230,
@@ -694,7 +694,7 @@
       "type": "LTXVImgToVideoInplace",
       "pos": [
         -1600,
-        5050
+        5130
       ],
       "size": [
         230,
@@ -778,7 +778,7 @@
       "id": 304,
       "type": "LTXVConditioning",
       "pos": [
-        -1260,
+        -610,
         3370
       ],
       "size": [
@@ -2032,7 +2032,7 @@
       "type": "ComfyNumberConvert",
       "pos": [
         -2140,
-        5050
+        5130
       ],
       "size": [
         230,
@@ -2464,8 +2464,8 @@
         3370
       ],
       "size": [
-        420,
-        1360
+        680,
+        1130
       ],
       "flags": {},
       "order": 16,
@@ -2738,7 +2738,7 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceCinematicPromptEncoder",
-        "radExtraHeight": 748
+        "radExtraHeight": 538
       },
       "widgets_values": [
         true,
@@ -4439,7 +4439,7 @@
       "type": "RadianceDepthMapGenerator",
       "pos": [
         2620,
-        3600
+        3620
       ],
       "size": [
         260,
@@ -4540,7 +4540,7 @@
       ],
       "size": [
         2660,
-        1680
+        1760
       ],
       "flags": {},
       "order": 55,
@@ -5109,7 +5109,7 @@
       "type": "ComfyMathExpression",
       "pos": [
         -2140,
-        4860
+        4940
       ],
       "size": [
         400,
@@ -5182,7 +5182,7 @@
       "type": "ComfyMathExpression",
       "pos": [
         -2140,
-        4920
+        5000
       ],
       "size": [
         400,
@@ -5922,12 +5922,12 @@
       "id": 561,
       "type": "PreviewAny",
       "pos": [
-        -1260,
-        3520
+        -1710,
+        4560
       ],
       "size": [
-        230,
-        1210
+        680,
+        250
       ],
       "flags": {},
       "order": 20,
@@ -5968,7 +5968,7 @@
       "type": "RadianceWrite",
       "pos": [
         2220,
-        4480
+        4490
       ],
       "size": [
         310,
@@ -6278,7 +6278,7 @@
       "type": "RadianceWrite",
       "pos": [
         1420,
-        4480
+        4490
       ],
       "size": [
         310,
@@ -6696,7 +6696,7 @@
       "type": "RegexMatch",
       "pos": [
         -2140,
-        3820
+        3850
       ],
       "size": [
         340,
@@ -6846,7 +6846,7 @@
       "type": "MarkdownNote",
       "pos": [
         -2140,
-        3880
+        3910
       ],
       "size": [
         340,
@@ -6873,7 +6873,7 @@
       "type": "LoadImage",
       "pos": [
         -2570,
-        5180
+        5260
       ],
       "size": [
         340,
@@ -6935,7 +6935,7 @@
       "type": "MarkdownNote",
       "pos": [
         -2200,
-        5180
+        5260
       ],
       "size": [
         300,
@@ -6962,7 +6962,7 @@
       "type": "ResizeImageMaskNode",
       "pos": [
         -1870,
-        5180
+        5260
       ],
       "size": [
         230,
@@ -7068,7 +7068,7 @@
       "type": "LTXVPreprocess",
       "pos": [
         -1600,
-        5180
+        5260
       ],
       "size": [
         230,
@@ -7130,7 +7130,7 @@
       "type": "LTXVAddGuide",
       "pos": [
         -1330,
-        5180
+        5260
       ],
       "size": [
         270,
@@ -7248,7 +7248,7 @@
       "type": "LTXVCropGuides",
       "pos": [
         -610,
-        3490
+        3640
       ],
       "size": [
         230,
@@ -7619,7 +7619,7 @@
       "type": "MarkdownNote",
       "pos": [
         1820,
-        4280
+        4300
       ],
       "size": [
         310,
@@ -8412,7 +8412,7 @@
         -2170,
         3300,
         400,
-        1460
+        1540
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8424,7 +8424,7 @@
         -970,
         3300,
         620,
-        1780
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8436,7 +8436,7 @@
         -1740,
         3300,
         740,
-        1460
+        1540
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8448,7 +8448,7 @@
         0,
         3300,
         990,
-        1780
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8460,7 +8460,7 @@
         -320,
         3300,
         290,
-        1780
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8472,7 +8472,7 @@
         -2600,
         3300,
         400,
-        1780
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8482,7 +8482,7 @@
       "title": "Image Preprocess",
       "bounding": [
         -2170,
-        4790,
+        4870,
         1170,
         160
       ],
@@ -8494,7 +8494,7 @@
       "title": "Empty Latent",
       "bounding": [
         -2170,
-        4980,
+        5060,
         1170,
         100
       ],
@@ -8532,7 +8532,7 @@
         1020,
         3300,
         340,
-        1780
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -8556,7 +8556,7 @@
         1390,
         3300,
         370,
-        1080
+        1090
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8568,7 +8568,7 @@
         2190,
         3300,
         370,
-        1080
+        1090
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8578,9 +8578,9 @@
       "title": "Write Video (SDR)",
       "bounding": [
         1390,
-        4410,
+        4420,
         370,
-        670
+        740
       ],
       "color": "#8A8",
       "flags": {}
@@ -8590,9 +8590,9 @@
       "title": "Write Video (PQ HDR)",
       "bounding": [
         2190,
-        4410,
+        4420,
         370,
-        670
+        740
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8604,7 +8604,7 @@
         2590,
         3300,
         3010,
-        1780
+        1860
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8626,7 +8626,7 @@
       "title": "Keyframes - (Optional)",
       "bounding": [
         -2600,
-        5110,
+        5190,
         1600,
         530
       ],
@@ -8640,7 +8640,7 @@
         1790,
         3300,
         370,
-        1780
+        1860
       ],
       "color": "#a1309b",
       "flags": {}
