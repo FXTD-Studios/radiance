@@ -51,6 +51,14 @@ except ImportError:
         _HAS_EXR = True
     except ImportError:
         _HAS_EXR = False
+try:  # pure numpy helpers: the AOV conventions both pass writers share
+    from ....hdr.io import (
+        DATA_AOVS, REC709_CHROMATICITIES, aov_channels, camera_attributes, depth_with_empty, signed_normals,
+    )
+except ImportError:
+    from hdr.io import (  # type: ignore[import]
+        DATA_AOVS, REC709_CHROMATICITIES, aov_channels, camera_attributes, depth_with_empty, signed_normals,
+    )
 
 # Try importing ComfyUI folder_paths
 try:
@@ -116,33 +124,25 @@ def _image_to_3ch(image: torch.Tensor) -> torch.Tensor:
 
 
 def _pass_channels_for_multilayer(name: str, image: np.ndarray) -> Dict[str, np.ndarray]:
-    arr = np.asarray(image, dtype=np.float32)
-    if arr.ndim == 2:
-        arr = arr[..., np.newaxis]
+    """EXR channels for one pass: hdr/io.py's AOV conventions (Z, N, P,
+    forward/backward u v, one channel for scalar passes)."""
+    return aov_channels(name, image)
 
-    channels: Dict[str, np.ndarray] = {}
-    count = arr.shape[2] if arr.ndim == 3 else 1
-    if name == "beauty":
-        names = ["R", "G", "B", "A"][:count]
-    elif name == "depth":
-        # ALBABIT-FIX: was ["depth.R","depth.G","depth.B"] since extract() always
-        # triples depth to 3 identical channels for ComfyUI's IMAGE type -- no
-        # compositor auto-recognizes "depth.R/G/B" as a Z-depth buffer. Bare "Z"
-        # (matching write_exr_multipart()'s already-correct convention) is what
-        # Nuke/Fusion look for; the duplicate channels carry no extra data anyway.
-        names = ["Z"]
-    elif name == "normal":
-        names = ["normal.NX", "normal.NY", "normal.NZ", "normal.A"][:count]
-    elif name == "motion_vector":
-        names = ["MV.X", "MV.Y"][:count]
-    elif name == "alpha":
-        names = ["A"]
-    else:
-        names = [f"{name}.{ch}" for ch in ["R", "G", "B", "A"][:count]]
 
-    for idx, channel_name in enumerate(names):
-        channels[channel_name] = arr[..., idx if idx < count else 0]
-    return channels
+def _exr_frame_pass(name: str, frame: np.ndarray, passes: Dict[str, Any]) -> np.ndarray:
+    """One frame of a pass as it is stored in the EXR.
+
+    The bundle keeps normals 0..1 encoded and depth 0 for "no surface",
+    because that is what IMAGE consumers (the Viewer, Relight) expect. A file
+    is read by a compositor: normals go signed, empty depth goes far away.
+    """
+    if name == "normal":
+        enc = passes.get("_normal_encoding")
+        return signed_normals(frame, str(passes.get("_normal_convention", "OpenGL (Y-Up)")),
+                              encoded=None if enc is None else enc == "0..1")
+    if name == "depth":
+        return depth_with_empty(frame)[..., None]
+    return frame
 
 
 #: Frames written at once by the EXR Passes Writer. OpenEXR compresses outside
@@ -521,9 +521,9 @@ class RadianceEXRPassesWriter:
         ]
         return {
             "required": {
-                "passes": ("RADIANCE_PASSES", {"tooltip": "Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Pixel values are written as is, with no colour conversion."}),
+                "passes": ("RADIANCE_PASSES", {"tooltip": "Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Values are written as is, with no colour conversion, except: normals are stored signed (-1..1, camera space, Y up) as N.R/G/B, and depth Z holds 1e10 where there is no surface. Channels: R G B A, Z, N, P (camera space), forward/backward u v, one .Y channel for ao, roughness, metallic, curvature and geometry_mask. The camera (field of view, focal length) goes in the header."}),
                 "filename_prefix": ("STRING", {"default": "radiance_vfx_passes", "tooltip": "File name stem, not a path. Files are named <prefix>.<frame>.exr with a 4-digit padded frame number."}),
-                "bit_depth": (["16-bit Half Float", "32-bit Float"], {"default": "16-bit Half Float", "tooltip": "EXR pixel type. Files containing depth, world_position, motion_vector or object_id passes are always written as 32-bit float."}),
+                "bit_depth": (["16-bit Half Float", "32-bit Float"], {"default": "16-bit Half Float", "tooltip": "EXR pixel type. Files containing depth, position, motion vectors or object_id are always written as 32-bit float."}),
                 "compression": (compressions, {"default": "ZIP", "tooltip": "EXR compression. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; lossy B44/B44A/DWAA/DWAB raise an error when data passes (depth, position, motion, object ID) are present."}),
             },
             "optional": {
@@ -532,6 +532,7 @@ class RadianceEXRPassesWriter:
                 "frame_index": ("INT", {"default": 1001, "min": 0, "max": 999999, "tooltip": "Frame number of the first image in the batch; later images count up from it."}),
                 "exr_layout": (["Single-part multilayer", "Multi-part"], {"default": "Single-part multilayer", "tooltip": "Single-part multilayer: all passes as named channel layers in one part (widest compatibility). Multi-part: one EXR 2.0 part per pass."}),
                 "custom_metadata": ("STRING", {"default": "", "multiline": True, "tooltip": "Extra EXR header attributes, one key=value per line, stored as strings. Lines without = are ignored."}),
+                "beauty": ("IMAGE", {"tooltip": "Optional: the beauty written in the file instead of the bundle's, for example the HDR master from SDR -> HDR Universal, so the passes and the master share one beauty. Same size as the passes, scene-linear Rec.709."}),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -552,6 +553,7 @@ class RadianceEXRPassesWriter:
         custom_metadata: str = "",
         prompt: Optional[Any] = None,
         extra_pnginfo: Optional[Any] = None,
+        beauty: Optional[torch.Tensor] = None,
     ) -> Tuple[str]:
         import datetime
         import tempfile
@@ -593,6 +595,13 @@ class RadianceEXRPassesWriter:
         meta.update(_workflow_metadata(prompt, extra_pnginfo))
 
         # Retrieve beauty shape to detect batch size
+        if beauty is not None:
+            bundle_beauty = passes.get("beauty")
+            if isinstance(bundle_beauty, torch.Tensor) and tuple(beauty.shape[1:3]) != tuple(bundle_beauty.shape[1:3]):
+                raise ValueError(
+                    f"[EXR Passes Writer] the beauty input is {beauty.shape[2]}x{beauty.shape[1]}, the passes are "
+                    f"{bundle_beauty.shape[2]}x{bundle_beauty.shape[1]}.")
+            passes = {**passes, "beauty": beauty}
         beauty = passes.get("beauty")
         if not isinstance(beauty, torch.Tensor):
             raise ValueError("[EXR Passes Writer] passes dictionary must contain a 'beauty' tensor.")
@@ -618,7 +627,7 @@ class RadianceEXRPassesWriter:
                 raise ValueError(f"[EXR Passes Writer] pass '{name}' batch must be 1 or {B}, got {tensor.shape[0]}.")
             pass_tensors[name] = tensor
 
-        data_passes = {"depth", "world_position", "motion_vector", "object_id"}
+        data_passes = set(DATA_AOVS)
         if data_passes.intersection(pass_tensors):
             if compression.upper() in {"B44", "B44A", "DWAA", "DWAB"}:
                 raise ValueError("[EXR Passes Writer] lossy compression is not allowed with data AOVs; use ZIP, ZIPS, PIZ, RLE, or Uncompressed.")
@@ -641,13 +650,22 @@ class RadianceEXRPassesWriter:
             parts: Dict[str, np.ndarray] = {}
             for name, tensor in pass_tensors.items():
                 frame = tensor if tensor.dim() == 3 else tensor[0 if tensor.shape[0] == 1 else b]
-                parts[name] = frame.detach().float().cpu().numpy()
+                parts[name] = _exr_frame_pass(name, frame.detach().float().cpu().numpy(), passes)
+
+            frame_meta = dict(meta)
+            frame_meta.update(camera_attributes(passes.get("_camera"), b))
+            if str(passes.get("_colorspace", "")).startswith("Linear Rec.709"):
+                frame_meta["chromaticities"] = REC709_CHROMATICITIES
+                frame_meta["rad_colorspace"] = "beauty and colour passes: scene-linear Rec.709 (sRGB primaries, D65); data passes raw"
 
             # Write the EXR file
             if exr_layout == "Single-part multilayer":
-                ok = _write_exr_singlepart_multilayer(filepath, parts, bit_depth, comp, meta)
+                ok = _write_exr_singlepart_multilayer(filepath, parts, bit_depth, comp, frame_meta)
             else:
-                ok = write_exr_multipart(filepath, parts, bit_depth, comp, meta)
+                ok = write_exr_multipart(
+                    filepath, parts, bit_depth, comp, frame_meta,
+                    channel_names={n: list(aov_channels(n, a).keys()) for n, a in parts.items()},
+                    float_parts=data_passes)
             # write_exr_multipart is True only when this exact file holds every
             # pass (FIX-015); it used to be True after writing per-pass files
             # under other names, and this node then reported filepath.

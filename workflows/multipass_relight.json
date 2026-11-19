@@ -767,6 +767,23 @@
             "name": "batch_is_sequence"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "material_detail",
+          "locked": null,
+          "name": "material_detail",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "material_detail"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1014,7 +1031,7 @@
         "Node name for S&R": "RadianceMultipassEstimate"
       },
       "widgets_values": [
-        "sRGB (display)",
+        "Auto",
         true,
         true,
         true,
@@ -1029,10 +1046,11 @@
         1,
         0,
         "fixed",
+        true,
         true
       ],
       "widgets_values_named": {
-        "beauty_encoding": "sRGB (display)",
+        "beauty_encoding": "Auto",
         "geometry": true,
         "materials": true,
         "lighting": true,
@@ -1047,7 +1065,8 @@
         "ensemble_size": 1,
         "seed": 0,
         "control_after_generate": "fixed",
-        "batch_is_sequence": true
+        "batch_is_sequence": true,
+        "material_detail": true
       }
     },
     {
@@ -1692,6 +1711,23 @@
             "name": "output_premultiplied"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "relight_output",
+          "locked": null,
+          "name": "relight_output",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "relight_output"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1806,7 +1842,8 @@
         10,
         true,
         0,
-        false
+        false,
+        "Replace (relit only)"
       ],
       "widgets_values_named": {
         "normal_convention": "OpenGL (Y-Up)",
@@ -1823,7 +1860,8 @@
         "depth_scale": 10,
         "depth_near_is_white": true,
         "mix_with_beauty": 0,
-        "output_premultiplied": false
+        "output_premultiplied": false,
+        "relight_output": "Replace (relit only)"
       }
     },
     {
