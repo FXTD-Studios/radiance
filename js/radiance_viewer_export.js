@@ -44,7 +44,7 @@ function install(RV) {
         
         const infoIcon = document.createElement('span');
         infoIcon.textContent = 'ⓘ';
-        infoIcon.style.cssText = 'color: #00a8ff; font-size: 14px; font-weight: bold;';
+        infoIcon.style.cssText = 'color: #0a84ff; font-size: 14px; font-weight: bold;';
         
         const text = document.createElement('span');
         text.textContent = 'Use the Write node in your workflow for video and sequence export. Save PNG exports the current Viewer frame. Viewer adjustments are preview-only unless applied in the workflow.';

@@ -1283,7 +1283,7 @@ async function exportPreset(node) {
 
 function showSamplerToast(message, tone = "info") {
     const toast = document.createElement("div");
-    const toneColor = tone === "error" ? "#ff6b6b" : tone === "success" ? "#4cd964" : "#00a8ff";
+    const toneColor = tone === "error" ? "#ff453a" : tone === "success" ? "#30d158" : "#0a84ff";
     Object.assign(toast.style, {
         position: "fixed",
         left: "50%",
@@ -1369,7 +1369,7 @@ function promptSamplerAction(titleText, message, defaultValue = "", confirmLabel
         const confirm = document.createElement("button");
         confirm.type = "button";
         confirm.textContent = confirmLabel;
-        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(10,132,255,0.45);background:rgba(10,132,255,0.16);color:#409cff;cursor:pointer;font-weight:700;";
 
         const close = (value) => {
             overlay.remove();

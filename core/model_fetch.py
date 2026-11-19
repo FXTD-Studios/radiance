@@ -34,7 +34,7 @@ import re
 import time
 import urllib.error
 import urllib.request
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger("radiance.model_fetch")
 
@@ -182,6 +182,8 @@ def fetch(
     size: Optional[int] = None,
     label: Optional[str] = None,
     legacy_offline_env: Optional[str] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> str:
     """Make sure `dest` holds the file at `url` with digest `sha256`; return `dest`.
 
@@ -190,6 +192,10 @@ def fetch(
     Until 4.0 an existing file was trusted when its size matched, so a
     corrupt or swapped file of the right size loaded silently. A mismatching
     file is downloaded again, or reported when downloads are off.
+
+    `progress(done, total)` is called as bytes arrive (total 0 when unknown);
+    `should_cancel()` returning True stops the download and keeps the .part
+    file, so the next call resumes it. Both are for the Radiance setup check.
     """
     label = label or os.path.basename(dest)
     expected = (sha256 or "").strip().lower()
@@ -257,9 +263,14 @@ def fetch(
             done, last_pct, last_t = have, -1, time.time()
             with open(part, mode) as out:
                 for block in iter(lambda: resp.read(_CHUNK), b""):
+                    if should_cancel is not None and should_cancel():
+                        raise ModelFetchError(f"[Radiance] {label}: download cancelled; "
+                                              f"the partial file at {part} is resumed next time.")
                     out.write(block)
                     hasher.update(block)
                     done += len(block)
+                    if progress is not None:
+                        progress(done, total)
                     if bar is not None:
                         bar.update_absolute(done // _CHUNK)
                     if total:

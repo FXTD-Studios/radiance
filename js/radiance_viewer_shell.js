@@ -34,23 +34,24 @@ import { fullWorkspaceFor } from "./radiance_viewer_modes.js";
  * 4.5:1 on the surfaces it sits on.
  */
 export const TOKENS = Object.freeze({
-    canvas: '#08080a',
-    chrome: '#0e0e11',
-    raised: '#18181b',
+    canvas: '#111113',
+    chrome: '#1c1c1e',
+    raised: '#242426',
     card: 'rgba(255,255,255,.04)',
-    glass: 'rgba(18,18,22,.84)',
-    control: '#27272a',
-    line: 'rgba(255,255,255,.08)',
-    text: '#fafafa',
-    soft: '#d4d4d8',
-    muted: '#a1a1aa',
-    accent: '#5aa9ff',
-    accentInk: '#06101f',
-    warn: '#f5b544',
-    warnText: '#fde7bd',
-    info: '#3be0ff',
-    fail: '#ff6b7a',
-    pass: '#86efac',
+    glass: 'rgba(28,28,30,.84)',
+    control: '#2c2c2e',
+    line: 'rgba(84,84,88,.45)',
+    text: '#f5f5f7',
+    soft: '#d1d1d6',
+    muted: '#98989d',
+    accent: '#0a84ff',
+    link: '#409cff',
+    accentInk: '#ffffff',
+    warn: '#ffd60a',
+    warnText: '#fff3c4',
+    info: '#409cff',
+    fail: '#ff453a',
+    pass: '#30d158',
     font: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     mono: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, 'Liberation Mono', monospace",
 });
@@ -431,7 +432,7 @@ export function shellCSS() {
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .radiance-v5 .rv5-ib:hover { background: rgba(255,255,255,.07); color: ${T.text}; }
 .radiance-v5 .rv5-ib[aria-pressed="true"] { background: rgba(255,255,255,.08); color: ${T.text}; }
-.radiance-v5 button:focus-visible, .radiance-v5 select:focus-visible, .radiance-v5 input:focus-visible { outline: 2px solid #9ccaff; outline-offset: 2px; }
+.radiance-v5 button:focus-visible, .radiance-v5 select:focus-visible, .radiance-v5 input:focus-visible { outline: 2px solid #409cff; outline-offset: 2px; }
 .radiance-v5 .rv5-btn { height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.10); background: transparent;
   color: ${T.text}; font: 500 13px ${T.font}; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .radiance-v5 .rv5-btn:hover { background: rgba(255,255,255,.06); }
@@ -450,8 +451,8 @@ export function shellCSS() {
 .radiance-v5 .rv5-shot-name { font: 600 14px ${T.font}; color: ${T.text}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 .radiance-v5 .rv5-chip { height: 24px; padding: 0 8px; border-radius: 7px; font: 500 11px ${T.mono}; color: ${T.soft};
   background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); display: inline-flex; align-items: center; white-space: nowrap; }
-.radiance-v5 .rv5-hdr { height: 22px; padding: 0 8px; border-radius: 6px; font: 600 11px ${T.font}; color: #f7c873;
-  background: rgba(245,181,68,.14); display: none; align-items: center; }
+.radiance-v5 .rv5-hdr { height: 22px; padding: 0 8px; border-radius: 6px; font: 600 11px ${T.font}; color: #ffd60a;
+  background: rgba(255,214,10,.14); display: none; align-items: center; }
 .radiance-v5 .rv5-hdr.is-on { display: inline-flex; }
 .radiance-v5 .rv5-tasks { display: flex; flex-shrink: 0; gap: 4px; padding: 4px;
   border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
@@ -480,7 +481,7 @@ export function shellCSS() {
 .radiance-v5 .rv5-mi-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .radiance-v5 .rv5-mi-txt b { font: 600 13px ${T.font}; }
 .radiance-v5 .rv5-mi-txt span { font: 12px/1.4 ${T.font}; color: ${T.muted}; }
-.radiance-v5 .rv5-mi .rv5-mi-tick { color: var(--rv5-accent); visibility: hidden; }
+.radiance-v5 .rv5-mi .rv5-mi-tick { color: ${T.link}; visibility: hidden; }
 .radiance-v5 .rv5-mi[aria-checked="true"] .rv5-mi-tick { visibility: visible; }
 .radiance-v5 .rv5-menu-note { margin: 6px 4px 2px; padding: 10px; border-radius: 10px; background: rgba(255,255,255,.04);
   font: 12px/1.45 ${T.font}; color: ${T.muted}; }
@@ -489,7 +490,7 @@ export function shellCSS() {
 .radiance-v5 .rv5-split > .rv5-btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding: 0 8px; }
 /* Pro tools (the Full layout): the tasks sit inline beside the workspace tabs. */
 .radiance-v5:not(.radiance-mode-simple) .rv5-tasks button.is-active { background: transparent; box-shadow: none; color: ${T.muted}; }
-.radiance-v5:not(.radiance-mode-simple) .rv5-pro-btn { background: rgba(90,169,255,.14); border-color: rgba(90,169,255,.4); color: ${T.text}; }
+.radiance-v5:not(.radiance-mode-simple) .rv5-pro-btn { background: rgba(10,132,255,.14); border-color: rgba(10,132,255,.4); color: ${T.text}; }
 .radiance-v5 .rv5-simple-only { display: none !important; }
 .radiance-v5.radiance-mode-simple .rv5-simple-only { display: flex !important; }
 .radiance-v5 .radiance-mode-switch { align-self: stretch; gap: 2px; padding: 0; border: 0; border-radius: 0; background: transparent; }
@@ -522,16 +523,16 @@ export function shellCSS() {
 .radiance-v5 .rv5-stat small { display: block; font-size: 11px; color: ${T.muted}; }
 .radiance-v5 .rv5-stat b { display: block; font: 600 14px ${T.font}; margin-top: 3px; }
 .radiance-v5 .rv5-note { font: 12px/1.45 ${T.font}; color: ${T.muted}; }
-.radiance-v5 .rv5-callout { padding: 12px 14px; border-radius: 12px; background: rgba(245,181,68,.10); border: 1px solid rgba(245,181,68,.28);
+.radiance-v5 .rv5-callout { padding: 12px 14px; border-radius: 12px; background: rgba(255,214,10,.10); border: 1px solid rgba(255,214,10,.28);
   display: none; gap: 10px; color: ${T.warnText}; }
 .radiance-v5 .rv5-callout.is-on { display: flex; }
-.radiance-v5 .rv5-callout svg { flex-shrink: 0; margin-top: 1px; color: #f7c873; }
+.radiance-v5 .rv5-callout svg { flex-shrink: 0; margin-top: 1px; color: #ffd60a; }
 .radiance-v5 .rv5-callout div { display: flex; flex-direction: column; gap: 8px; font: 13px/1.45 ${T.font}; }
 .radiance-v5 .rv5-soft-btn { align-self: flex-start; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12);
   background: transparent; color: ${T.text}; font: 600 12px ${T.font}; cursor: pointer; white-space: nowrap; }
 .radiance-v5 .rv5-soft-btn:hover { background: rgba(255,255,255,.08); }
 .radiance-v5 .rv5-soft-btn[aria-pressed="true"] { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); }
-.radiance-v5 .rv5-callout .rv5-soft-btn { border: 0; background: rgba(245,181,68,.22); color: ${T.warnText}; }
+.radiance-v5 .rv5-callout .rv5-soft-btn { border: 0; background: rgba(255,214,10,.22); color: ${T.warnText}; }
 .radiance-v5 .rv5-primary { height: 38px; padding: 0 14px; border-radius: 10px; border: 0; background: var(--rv5-accent); color: ${T.accentInk};
   font: 700 13px ${T.font}; cursor: pointer; }
 .radiance-v5 .rv5-primary:hover { filter: brightness(1.08); }
@@ -554,7 +555,7 @@ export function shellCSS() {
 .radiance-v5 .rv5-panel .rsb-group button:hover:not(:disabled), .radiance-v5 .rv5-panel .rv5-moved:hover:not(:disabled),
 .radiance-v5 .rv5-panel .rv5-cmp button:hover:not(:disabled) { color: ${T.text}; background: rgba(255,255,255,.06); }
 .radiance-v5 .rv5-panel .rsb-group button.is-active, .radiance-v5 .rv5-panel .rv5-moved.is-active, .radiance-v5 .rv5-panel .rv5-cmp button.is-active { background: rgba(255,255,255,.10);
-  color: ${T.text}; border-color: var(--rv5-accent); }
+  color: ${T.text}; border-color: ${T.accent}; }
 .radiance-v5 .rv5-panel button:disabled { opacity: .4; cursor: default; }
 .radiance-v5 .rv5-panel .rv5-cmp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .radiance-v5 .rv5-panel .rv5-cmp button { height: 40px; }
@@ -564,14 +565,14 @@ export function shellCSS() {
 .radiance-v5 .rv5-panel .rsb-qc { display: none; }
 .radiance-v5 .rv5-checks { display: flex; flex-direction: column; gap: 4px; margin: 0 -6px; }
 .radiance-v5 .rv5-check { padding: 12px; border-radius: 12px; display: flex; gap: 12px; align-items: flex-start; }
-.radiance-v5 .rv5-check[data-tone="warn"] { background: rgba(245,181,68,.10); }
-.radiance-v5 .rv5-check[data-tone="fail"] { background: rgba(255,107,122,.10); }
+.radiance-v5 .rv5-check[data-tone="warn"] { background: rgba(255,214,10,.10); }
+.radiance-v5 .rv5-check[data-tone="fail"] { background: rgba(255,69,58,.10); }
 .radiance-v5 .rv5-check i { width: 24px; height: 24px; flex-shrink: 0; border-radius: 12px; display: flex; align-items: center; justify-content: center;
-  font: 700 13px ${T.font}; font-style: normal; background: rgba(74,222,128,.15); color: ${T.pass}; }
-.radiance-v5 .rv5-check[data-tone="warn"] i { background: rgba(245,181,68,.22); color: #f7c873; }
-.radiance-v5 .rv5-check[data-tone="fail"] i { background: rgba(255,107,122,.2); color: ${T.fail}; }
-.radiance-v5 .rv5-check[data-tone="info"] { background: rgba(90,169,255,.08); }
-.radiance-v5 .rv5-check[data-tone="info"] i { background: rgba(90,169,255,.2); color: #9ccaff; }
+  font: 700 13px ${T.font}; font-style: normal; background: rgba(48,209,88,.15); color: ${T.pass}; }
+.radiance-v5 .rv5-check[data-tone="warn"] i { background: rgba(255,214,10,.22); color: #ffd60a; }
+.radiance-v5 .rv5-check[data-tone="fail"] i { background: rgba(255,69,58,.2); color: ${T.fail}; }
+.radiance-v5 .rv5-check[data-tone="info"] { background: rgba(10,132,255,.08); }
+.radiance-v5 .rv5-check[data-tone="info"] i { background: rgba(10,132,255,.2); color: #409cff; }
 .radiance-v5 .rv5-check[data-tone="skip"] i { background: rgba(255,255,255,.08); color: ${T.muted}; }
 .radiance-v5 .rv5-check > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .radiance-v5 .rv5-check b { font: 600 13px ${T.font}; }
@@ -590,16 +591,16 @@ export function shellCSS() {
 .radiance-v5 .rv5-legend-row > div { width: 70px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: ${T.soft}; }
 .radiance-v5 .rv5-legend-row i { height: 8px; display: block; }
 .radiance-v5 .rv5-badge { left: 50%; bottom: 16px; transform: translateX(-50%); height: 34px; padding: 0 8px 0 12px; border-radius: 10px;
-  background: rgba(40,30,8,.86); border: 1px solid rgba(245,181,68,.45); color: #f7c873; font-weight: 600; gap: 10px; }
-.radiance-v5 .rv5-badge button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(245,181,68,.2); color: #f7c873;
+  background: rgba(40,30,8,.86); border: 1px solid rgba(255,214,10,.45); color: #ffd60a; font-weight: 600; gap: 10px; }
+.radiance-v5 .rv5-badge button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(255,214,10,.2); color: #ffd60a;
   font: 600 12px ${T.font}; cursor: pointer; }
 .radiance-v5 .rv5-hide { display: none !important; }
 .radiance-v5 .rv5-grade { top: 16px; left: 16px; height: 34px; padding: 0 6px 0 12px; border-radius: 10px; gap: 10px; max-width: calc(100% - 420px);
-  background: rgba(10,22,40,.86); border: 1px solid rgba(90,169,255,.45); color: #cfe5ff; font-weight: 600; }
+  background: rgba(10,22,40,.86); border: 1px solid rgba(10,132,255,.45); color: #ffffff; font-weight: 600; }
 .radiance-v5 .rv5-grade span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.radiance-v5 .rv5-grade button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(90,169,255,.18); color: #cfe5ff;
+.radiance-v5 .rv5-grade button { height: 24px; padding: 0 8px; border-radius: 6px; border: 0; background: rgba(10,132,255,.18); color: #ffffff;
   font: 600 12px ${T.font}; cursor: pointer; flex-shrink: 0; }
-.radiance-v5 .rv5-grade button:hover { background: rgba(90,169,255,.3); }
+.radiance-v5 .rv5-grade button:hover { background: rgba(10,132,255,.3); }
 .radiance-v5.rv5-tiny .rv5-grade { max-width: calc(100% - 32px); }
 .radiance-v5:not(.rv5-panel-off):not(.rv5-tiny) .rv5-ovbar, .radiance-v5:not(.rv5-panel-off):not(.rv5-tiny) .rv5-badge { left: calc((100% - 368px) / 2); }
 .radiance-v5.rv5-narrow:not(.rv5-panel-off):not(.rv5-tiny) .rv5-ovbar, .radiance-v5.rv5-narrow:not(.rv5-panel-off):not(.rv5-tiny) .rv5-badge { left: calc((100% - 320px) / 2); }
@@ -625,13 +626,13 @@ export function shellCSS() {
 .radiance-v5 .rv5-strip-wrap .rsb-scrub { -webkit-appearance: none; appearance: none; width: 100%; height: 100%; margin: 0; background: transparent; cursor: pointer; }
 .radiance-v5 .rv5-strip-wrap .rsb-scrub::-webkit-slider-runnable-track { height: 100%; background: transparent; }
 .radiance-v5 .rv5-strip-wrap .rsb-scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 66px; margin-top: -8px; border-radius: 2px;
-  background: #fafafa; box-shadow: 0 0 8px rgba(0,0,0,.7); }
+  background: #f5f5f7; box-shadow: 0 0 8px rgba(0,0,0,.7); }
 .radiance-v5 .rv5-strip-wrap .rsb-scrub::-moz-range-track { height: 100%; background: transparent; }
-.radiance-v5 .rv5-strip-wrap .rsb-scrub::-moz-range-thumb { width: 4px; height: 66px; border: 0; border-radius: 2px; background: #fafafa; }
+.radiance-v5 .rv5-strip-wrap .rsb-scrub::-moz-range-thumb { width: 4px; height: 66px; border: 0; border-radius: 2px; background: #f5f5f7; }
 .radiance-v5 .rv5-bright { display: flex; align-items: center; gap: 10px; flex-shrink: 0; color: ${T.muted}; }
-.radiance-v5 .rv5-bright input { width: 130px; accent-color: var(--rv5-accent); }
+.radiance-v5 .rv5-bright input { width: 130px; accent-color: ${T.accent}; }
 .radiance-v5 .rv5-bright output { width: 40px; font: 12px ${T.mono}; color: ${T.soft}; }
-.radiance-v5 .rv5-bright.is-on output { color: #f7c873; }
+.radiance-v5 .rv5-bright.is-on output { color: #ffd60a; }
 .radiance-v5 .rv5-zoom { height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,.10); background: transparent; color: ${T.text};
   font: 13px ${T.font}; padding: 0 8px; flex-shrink: 0; }
 .radiance-v5 .rv5-zoom option, .radiance-v5 .rv5-panel select option { background: ${T.raised}; color: ${T.text}; }

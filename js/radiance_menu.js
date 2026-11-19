@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Launcher so the Radiance dashboards are reachable without adding the
 // Project Manager node. Adds a ◎ button to ComfyUI's action bar that opens a
-// small menu — Radiance (Home / Workflows / Assets / Shots) / Radiance Tour — via the in-canvas
+// small menu — Radiance (Home / Workflows / Gizmos / Assets / Shots / Models) / Radiance Tour — via the in-canvas
 // overlay (window.showRadianceDashboard, defined by radiance_workspace.js).
 // To revert: delete this file.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,8 +54,10 @@ function buildMenu() {
     };
     menu.appendChild(item("◎", "Home", "studio.html#home", "Radiance"));
     menu.appendChild(item("▤", "Workflows", "studio.html#workflows", "Radiance"));
+    menu.appendChild(item("◇", "Gizmos", "studio.html#gizmos", "Radiance"));
     menu.appendChild(item("▦", "Assets", "studio.html#assets", "Radiance"));
     menu.appendChild(item("▭", "Shots", "studio.html#shots", "Radiance"));
+    menu.appendChild(item("⬇", "Models and setup", "studio.html#models", "Radiance"));
     // The welcome tour (radiance_welcome.js), also under Help > Radiance Tour.
     const sep = document.createElement("div");
     Object.assign(sep.style, { height: "1px", margin: "4px 6px", background: "rgba(255,255,255,0.08)" });

@@ -8,7 +8,7 @@
  *  Help > Radiance Tour opens the tour whatever these say.
  */
 
-export const TOUR_PAGES = Object.freeze(['welcome', 'workflows', 'viewer', 'backdrops', 'gizmos', 'learn']);
+export const TOUR_PAGES = Object.freeze(['welcome', 'setup', 'workflows', 'viewer', 'backdrops', 'gizmos', 'learn']);
 
 export const LINKS = Object.freeze({
     radiance: 'https://www.fxtdstudios.com/radiance-comfyui.html',
@@ -67,4 +67,51 @@ export function stepPage(page, delta) {
     const i = TOUR_PAGES.indexOf(page);
     const j = Math.max(0, Math.min(TOUR_PAGES.length - 1, (i < 0 ? 0 : i) + delta));
     return TOUR_PAGES[j];
+}
+
+// ── The "Set up" page: what /radiance/setup/scan found, in a few lines ────────
+
+/** Bytes in decimal GB / MB, as GPU memory and downloads are quoted. */
+export function sizeText(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e9) return `${(v / 1e9).toFixed(v >= 1e10 ? 0 : 1)} GB`;
+    if (v >= 1e6) return `${Math.round(v / 1e6)} MB`;
+    return v > 0 ? `${Math.max(1, Math.round(v / 1e3))} KB` : '0 MB';
+}
+
+/** GPU and RAM sizes in binary GB, as cards are sold (a 24 GB card reads 24 GB). */
+export function memoryText(n) {
+    const gb = (Number(n) || 0) / 1024 ** 3;
+    return gb >= 10 ? `${Math.round(gb)} GB` : gb > 0 ? `${gb.toFixed(1)} GB` : '';
+}
+
+/**
+ * The tour's summary of a setup scan:
+ *   gpu, memory, disk: one line each for this machine
+ *   tier: { tone, text } what the GPU can run
+ *   rudra: { installed, path } RUDRA ACES 2, the model SDR -> HDR needs
+ *   ready: "N of M local workflows are ready to run"
+ */
+export function setupSummary(scan) {
+    const hw = scan?.hardware || {};
+    const gpus = hw.gpus || [];
+    const g = gpus.find((x) => x.vram) || gpus[0];
+    const vram = Math.max(0, ...gpus.map((x) => Number(x.vram) || 0));
+    const gb = vram / 1024 ** 3;
+    const tier = !vram ? { tone: 'warn', text: 'No CUDA GPU found: SDR to HDR and grading work; generation is very slow.' }
+        : gb >= 22 ? { tone: 'ok', text: 'This GPU runs every local workflow, the 22B video models included.' }
+            : gb >= 15 ? { tone: 'ok', text: 'This GPU runs the image workflows and the AI fill; big video models offload to RAM.' }
+                : gb >= 7.5 ? { tone: 'warn', text: 'This GPU runs SDR to HDR and the Starter; larger models offload to RAM (slow).' }
+                    : { tone: 'warn', text: 'This GPU is fine for SDR to HDR and grading; generation will be slow.' };
+    const rudra = (scan?.core || [])[0] || scan?.models?.['radiance/RUDRA_ACES_2'] || null;
+    const s = scan?.summary || { workflows: 0, ready: 0 };
+    return {
+        gpu: g ? (g.vram ? `${g.name} · ${memoryText(g.vram)}` : g.name) : 'No GPU found',
+        memory: hw.ram ? `${memoryText(hw.ram)} RAM` : '',
+        disk: hw.disk_free != null ? `${sizeText(hw.disk_free)} free for models` : '',
+        tier,
+        rudra: { installed: !!rudra?.installed, path: scan?.paths?.radiance || '' },
+        ready: `${s.ready} of ${s.workflows} local workflows are ready to run`,
+        downloadsOff: scan ? !scan.downloads_allowed : false,
+    };
 }

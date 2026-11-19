@@ -8,6 +8,8 @@ from radiance.nodes.pipeline.workspace import RadianceProjectManager
 from radiance.nodes.pipeline.overlay import RadianceBlendComposite
 from radiance.nodes.pipeline.dcc import RadianceMCP
 from radiance.nodes.pipeline.studio_integrations import RadianceDaVinciSend, RadianceNukeSend
+# Routes only (the tour's Set up page and the Models page): no nodes.
+from radiance.nodes.pipeline import setup_routes  # noqa: F401
 from radiance.nodes.aggregate import fold_in_module_nodes
 
 logger = logging.getLogger("radiance.nodes.pipeline")

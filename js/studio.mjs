@@ -1,4 +1,4 @@
-// ◎ Radiance — one page for Home, Workflows, Assets, Shots and Renders.
+// ◎ Radiance — one page for Home, Workflows, Gizmos, Assets, Shots, Renders and Models.
 //
 // Replaces the Workflow Library, Project Manager and Assets dashboards. It
 // opens in ComfyUI's dashboard overlay (window.showRadianceDashboard) and
@@ -16,8 +16,10 @@ const ICON = {
     shots: "M3 6h18v12H3zM7 6v12M17 6v12",
     renders: "M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6",
     upload: "M12 15V3M7 8l5-5 5 5M4 15v5h16v-5",
+    gizmos: "M12 3 4 7.5v9L12 21l8-4.5v-9zM4 7.5 12 12l8-4.5M12 12v9",
+    models: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
 };
-const NAV = [["home", "Home"], ["workflows", "Workflows"], ["assets", "Assets"], ["shots", "Shots"], ["renders", "Renders"]];
+const NAV = [["home", "Home"], ["workflows", "Workflows"], ["gizmos", "Gizmos"], ["assets", "Assets"], ["shots", "Shots"], ["renders", "Renders"], ["models", "Models"]];
 const svg = (d, size = 18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -34,7 +36,9 @@ const S = {
     dashboard: null, projectId: store.get("radiance_studio_project") || "",
     project: { versions: [], outputs: [], notes: [] },
     renders: [], gpu: null,
-    loaded: { workflows: false, assets: false, dashboard: false, renders: false },
+    gizmos: [], gizmo: null, gizmoFolder: "",
+    setup: null, downloads: [], scanning: false,
+    loaded: { workflows: false, assets: false, dashboard: false, renders: false, gizmos: false, setup: false },
     errors: {},
 };
 
@@ -113,6 +117,41 @@ async function loadRenders() {
     } catch (e) { S.errors.renders = e.message; }
     S.loaded.renders = true;
 }
+async function loadGizmos() {
+    try {
+        const data = await getJSON("/radiance/gizmos/list");
+        if (data && data.success === false) throw new Error(data.error || "could not list gizmos");
+        S.gizmos = M.gizmoCards(data.gizmos);
+        S.gizmoFolder = data.folder || "";
+        S.errors.gizmos = "";
+    } catch (e) { S.errors.gizmos = e.message; }
+    S.loaded.gizmos = true;
+}
+async function loadSetup() {
+    S.scanning = true;
+    try {
+        S.setup = await postJSON("/radiance/setup/scan");
+        S.downloads = S.setup.downloads || [];
+        S.errors.setup = "";
+    } catch (e) { S.errors.setup = e.message; }
+    S.scanning = false;
+    S.loaded.setup = true;
+}
+let pollTimer = 0;
+function pollDownloads() {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(async () => {
+        try {
+            const before = S.downloads.filter((j) => j.status === "done").length;
+            S.downloads = (await getJSON("/radiance/setup/downloads")).downloads || [];
+            const active = M.downloadsSummary(S.downloads).active;
+            // A download finished: scan again so the workflow rows update.
+            if (S.downloads.filter((j) => j.status === "done").length !== before || !active) await loadSetup();
+            if (S.screen === "models") render();
+            if (active) pollDownloads();
+        } catch { pollDownloads(); }
+    }, 1000);
+}
 async function loadGpu() {
     try { S.gpu = M.gpuSummary(await getJSON("/system_stats")); } catch { S.gpu = null; }
     renderGpu();
@@ -170,7 +209,7 @@ function render() {
     renderNav();
     renderProjects();
     const body = $("stBody");
-    const fn = { home: homeView, workflows: workflowsView, assets: assetsView, shots: shotsView, renders: rendersView }[S.screen];
+    const fn = { home: homeView, workflows: workflowsView, gizmos: gizmosView, assets: assetsView, shots: shotsView, renders: rendersView, models: modelsView }[S.screen];
     body.innerHTML = fn();
     $("studio").setAttribute("aria-busy", "false");
 }
@@ -279,6 +318,168 @@ function workflowRail(w) {
         ${w.official ? "" : `<div class="st-actions"><button type="button" class="st-btn" data-act="history-wf" data-file="${h(w.filename)}">Earlier saves</button><button type="button" class="st-btn st-danger" data-act="delete-wf" data-file="${h(w.filename)}">Delete</button></div><div id="stHistory"></div>`}
         <div class="st-path st-mono">${h(w.filename)}</div>
       </div></aside>`;
+}
+
+// ── brand covers ─────────────────────────────────────────────────────────────
+// Drawn the way the workflow cards are: the RADIANCE 4 lock-up, a blue kicker,
+// the title, one line under it and a mono footer, art on the right. Sized in
+// container units, so a tile and the rail show the same picture.
+
+const LOGO = `<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22.5" fill="#1C1C1E"/><path d="M52.2 28.4A24 24 0 1 0 71.6 47.8" fill="none" stroke="#F5F5F7" stroke-width="14"/><rect x="58" y="28" width="14" height="14" rx="3" fill="#0A84FF"/></svg>`;
+
+function cover({ kicker, title, sub = "", foot = [], badge = "", art = "", cls = "" }) {
+    return `<span class="st-cover ${cls}" aria-hidden="true"><span class="st-cover-art">${art}</span>
+      <span class="st-cover-lock">${LOGO}<b>RADIANCE 4</b></span>${badge ? `<span class="st-cover-badge">${h(badge)}</span>` : ""}
+      <span class="st-cover-text"><span class="st-cover-kick">${h(kicker)}</span><span class="st-cover-title">${h(title)}</span>${sub ? `<span class="st-cover-sub">${h(sub)}</span>` : ""}</span>
+      ${foot.length ? `<span class="st-cover-foot">${foot.map(h).join("<i>/</i>")}</span>` : ""}</span>`;
+}
+
+/** A gizmo as what it is: wires in, its nodes packed into one, wires out. */
+function gizmoArt(g) {
+    const n = Math.max(1, Math.min(4, g.nodes || 1));
+    const ins = Math.max(1, Math.min(3, g.inputs.length || 1));
+    const outs = Math.max(1, Math.min(3, g.outputs.length || 1));
+    const box = { x: 92, y: 18, w: 76, h: 64 };
+    const pin = (count, i) => box.y + 14 + ((box.h - 28) * (count === 1 ? 0.5 : i / (count - 1)));
+    const wiresIn = Array.from({ length: ins }, (_, i) => `<path d="M20 ${pin(ins, i)}C56 ${pin(ins, i)} 56 ${pin(ins, i)} ${box.x} ${pin(ins, i)}"/><circle cx="20" cy="${pin(ins, i)}" r="2.6"/>`).join("");
+    const wiresOut = Array.from({ length: outs }, (_, i) => `<path d="M${box.x + box.w} ${pin(outs, i)}C${box.x + box.w + 18} ${pin(outs, i)} ${box.x + box.w + 18} ${pin(outs, i)} 196 ${pin(outs, i)}"/><circle cx="196" cy="${pin(outs, i)}" r="2.6"/>`).join("");
+    const cols = n > 2 ? 2 : n, rows = Math.ceil(n / cols);
+    const cw = (box.w - 14 - (cols - 1) * 5) / cols, ch = (box.h - 22 - (rows - 1) * 5) / rows;
+    const inner = Array.from({ length: n }, (_, i) => {
+        const x = box.x + 7 + (i % cols) * (cw + 5), y = box.y + 15 + Math.floor(i / cols) * (ch + 5);
+        return `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" rx="2.5" fill="#26262a" stroke="#3a3a3c" stroke-width=".6"/><rect x="${x}" y="${y}" width="${cw}" height="4.5" rx="2" fill="#303034"/>`;
+    }).join("");
+    return `<svg viewBox="0 0 200 100" preserveAspectRatio="xMaxYMid meet">
+      <defs><radialGradient id="gzGlow" cx="65%" cy="50%" r="50%"><stop offset="0" stop-color="#0A84FF" stop-opacity=".30"/><stop offset="1" stop-color="#0A84FF" stop-opacity="0"/></radialGradient></defs>
+      <rect width="200" height="100" fill="url(#gzGlow)"/>
+      <g fill="none" stroke="#409cff" stroke-width="1.4" stroke-linecap="round">${wiresIn}${wiresOut}</g>
+      <rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" rx="6" fill="#141419" stroke="#0A84FF" stroke-width="1.2"/>
+      <rect x="${box.x}" y="${box.y}" width="${box.w}" height="10" rx="5" fill="#0A84FF" fill-opacity=".28"/>
+      <text x="${box.x + 6}" y="${box.y + 7.4}" font-size="5.6" font-family="JetBrains Mono, monospace" fill="#cfe5ff" letter-spacing=".6">◎ GIZMO</text>
+      ${inner}
+      <g fill="#409cff">${Array.from({ length: ins }, (_, i) => `<circle cx="${box.x}" cy="${pin(ins, i)}" r="2.2"/>`).join("")}${Array.from({ length: outs }, (_, i) => `<circle cx="${box.x + box.w}" cy="${pin(outs, i)}" r="2.2"/>`).join("")}</g>
+    </svg>`;
+}
+
+function gizmoCover(g, cls = "") {
+    const types = (list) => [...new Set(list.map((p) => String(p.type || "").toUpperCase()).filter(Boolean))].join("+") || "—";
+    return cover({ kicker: "Gizmo", title: g.title, sub: g.description && !g.description.startsWith(g.title + ":") ? g.description : "",
+                   foot: [M.plural(g.nodes, "node").toUpperCase(), `${types(g.inputs)} → ${types(g.outputs)}`, M.plural(g.knobs.length, "knob").toUpperCase()],
+                   badge: "GIZMO", art: gizmoArt(g), cls });
+}
+
+/** RUDRA's card, in the SDR | HDR split every RUDRA cover uses. */
+function rudraCover(installed) {
+    return cover({ kicker: "HDR · RUDRA", title: "RUDRA ACES 2", sub: "SDR to a scene-linear ACES 2.0 master",
+                   foot: ["MODELS/RADIANCE", "SHA-256", installed ? "INSTALLED" : "3 MB"], badge: "HDR", cls: "is-rudra",
+                   art: `<span class="st-split"><span class="st-split-sdr"><em>SDR</em></span><span class="st-split-hdr"><em>HDR</em></span><span class="st-split-line"></span></span>` });
+}
+
+// ── gizmos ───────────────────────────────────────────────────────────────────
+
+function gizmosView() {
+    if (!S.loaded.gizmos) return `<div class="st-page">${loading()}</div>`;
+    if (S.errors.gizmos) return `<div class="st-page">${failed("gizmos", S.errors.gizmos)}</div>`;
+    const shown = M.filterGizmos(S.gizmos, S.query);
+    const sel = S.gizmos.find((g) => g.id === S.gizmo) || shown[0] || null;
+    if (sel) S.gizmo = sel.id;
+    const restart = S.gizmos.filter((g) => g.status.key === "restart").length;
+    const grid = shown.length
+        ? `<div class="st-grid">${shown.map((g) => `<button type="button" class="st-tile" data-act="pick-gizmo" data-id="${h(g.id)}" aria-pressed="${sel && g.id === sel.id}">
+            <span class="st-thumb">${gizmoCover(g)}</span>
+            <span class="st-tile-text"><span class="st-kicker">Gizmo</span><span class="st-tile-title" title="${h(g.title)}">${h(g.title)}</span>
+            <span class="st-tile-sub"><span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></span></span></button>`).join("")}</div>`
+        : S.query ? empty("Nothing matches your search", "Try another word, or clear the search.")
+            : `<div class="st-empty"><b>No gizmos yet</b>Select some nodes on the canvas, right-click and choose ◎ Create Radiance Gizmo… It is saved here, and in the node menu after a restart.<br><br><button type="button" class="st-btn st-sm" data-act="import-gizmo">Import a .gizmo file</button></div>`;
+    return `<div class="st-page">
+      <div class="st-h1"><h1>Gizmos</h1><span class="st-dim">${M.plural(shown.length, "gizmo")} · your node setups packed into one node</span><span class="st-grow"></span>
+        <button type="button" class="st-btn st-sm" data-act="import-gizmo">Import .gizmo</button><button type="button" class="st-btn st-sm" data-act="reload">Refresh</button></div>
+      ${restart ? `<div class="st-card st-notice"><span class="st-dot warn"></span>${h(M.plural(restart, "gizmo"))} saved since ComfyUI started: restart ComfyUI to find ${restart === 1 ? "it" : "them"} in the node menu under Radiance › ◎ Gizmos.</div>` : ""}
+      ${grid}
+      ${S.gizmoFolder ? `<div class="st-path st-mono">${h(S.gizmoFolder)}</div>` : ""}
+    </div>${sel ? gizmoRail(sel) : ""}`;
+}
+
+function gizmoRail(g) {
+    const ports = (list) => list.length ? list.map((p) => `<span class="st-tag" title="${h(p.type || "")}">${h(p.name)}${p.type ? ` · ${h(p.type)}` : ""}</span>`).join("") : `<span class="st-dim" style="font-size:13px">None</span>`;
+    const facts = [["Nodes inside", String(g.nodes)], ["Saved", g.mtime ? M.relativeTime(g.mtime) : ""], ["Size", g.size ? M.formatBytes(g.size) : ""]].filter(([, v]) => v);
+    return `<aside class="st-rail" aria-label="Gizmo details">
+      <div class="st-thumb">${gizmoCover(g)}</div>
+      <div class="st-rail-body">
+        <div><div class="st-kicker">Gizmo</div><h2>${h(g.title)}</h2>${g.description ? `<p>${h(g.description)}</p>` : ""}<span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></div>
+        ${g.error ? `<div class="st-note">${h(g.error)}</div>` : ""}
+        <div class="st-rail-section"><div class="st-sec">Inputs</div><div class="st-tags">${ports(g.inputs)}</div></div>
+        <div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-tags">${ports(g.outputs)}</div></div>
+        <div class="st-rail-section"><div class="st-sec">Knobs</div><div class="st-tags">${g.knobs.length ? g.knobs.map((k) => `<span class="st-tag">${h(k)}</span>`).join("") : `<span class="st-dim" style="font-size:13px">None</span>`}</div></div>
+        ${g.nodeTypes.length ? `<div class="st-rail-section"><div class="st-sec">Made of</div><div class="st-tags">${g.nodeTypes.map((t) => `<span class="st-tag">${h(t)}</span>`).join("")}</div></div>` : ""}
+        <div class="st-facts">${facts.map(([k, v]) => `<div><span>${h(k)}</span><span>${h(v)}</span></div>`).join("")}</div>
+        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="add-gizmo" data-id="${h(g.id)}" ${g.status.key === "ready" ? "" : `disabled title="Restart ComfyUI first"`}>Add to canvas</button><button type="button" class="st-btn st-lg" data-act="export-gizmo" data-id="${h(g.id)}">Export .gizmo</button></div>
+        <div class="st-actions"><button type="button" class="st-btn st-danger" data-act="delete-gizmo" data-id="${h(g.id)}">Delete</button></div>
+        <div class="st-path st-mono">${h(g.file)}</div>
+      </div></aside>`;
+}
+
+// ── models (setup check) ─────────────────────────────────────────────────────
+
+function modelsView() {
+    if (!S.loaded.setup) return `<div class="st-page"><div class="st-h1"><h1>Models</h1></div>${loading()}</div>`;
+    if (S.errors.setup) return `<div class="st-page">${failed("the setup check", S.errors.setup)}</div>`;
+    const sc = S.setup;
+    const hw = sc.hardware || {};
+    const tier = M.gpuTier(hw);
+    const jobs = S.downloads || [];
+    const byId = Object.fromEntries(jobs.map((j) => [j.id, j]));
+    const rows = M.setupRows(sc);
+    const core = (sc.core || [])[0];
+    const dl = M.downloadsSummary(jobs);
+    const off = !sc.downloads_allowed;
+    const jobLine = (id) => {
+        const j = byId[id];
+        if (!j) return "";
+        const p = M.jobProgress(j);
+        return `<div class="st-job"><div class="st-meter"><div style="width:${p.pct ?? 0}%"></div></div><span class="st-dim st-small">${h(p.text)}</span>
+          ${j.status === "running" || j.status === "queued" ? `<button type="button" class="st-link" data-act="cancel-dl" data-id="${h(id)}">Cancel</button>` : ""}
+          ${j.error ? `<div class="st-note">${h(j.error)}</div>` : ""}</div>`;
+    };
+    const model = (id) => {
+        const m = sc.models[id] || { title: id };
+        return `<div class="st-model"><div class="st-model-head"><span class="st-dot ${m.installed ? "ok" : m.gated ? "warn" : "info"}"></span>
+          <span class="st-mono st-model-name" title="${h(m.path || "")}">${h(m.title)}</span>
+          <span class="st-dim st-small">${h(m.kind === "radiance" ? "models/radiance" : "models/" + (m.folder || ""))}</span><span class="st-grow"></span>
+          <span class="st-dim st-small">${h(m.installed ? "Installed" : M.formatSize(m.size) + (m.size && !m.size_exact ? " (about)" : ""))}</span>
+          ${m.installed || off ? "" : `<button type="button" class="st-btn st-sm" data-act="dl-ids" data-id="${h(id)}">Download</button>`}
+          ${m.gated && !m.installed ? `<a class="st-link" href="${h(m.page)}" target="_blank" rel="noopener">Licence</a>` : ""}</div>${jobLine(id)}</div>`;
+    };
+    const card = (r) => `<div class="st-card st-setup-row${r.status.key === "ready" ? " is-ready" : ""}">
+        <div class="st-setup-head"><span class="st-thumb">${img(coverUrl(`official/Local/${r.id}.rad`), "", shortName(r.title))}</span>
+        <div class="st-row-between st-grow"><div><div class="st-tile-title">${h(r.title)}</div>
+          <div class="st-dim st-small">${r.needsNothing ? "Needs no models" : r.status.key === "ready" ? `${M.plural(r.required.length, "model")} installed` : `${h(M.plural(r.missing.length, "model"))} missing${r.size ? " · " + h(r.size) : ""}`}</div></div>
+          <div class="st-actions" style="margin:0"><span class="st-pill ${r.status.tone}">${h(r.status.label)}</span>
+          ${r.status.key !== "ready" && !off ? `<button type="button" class="st-btn st-primary st-sm" data-act="dl-workflow" data-id="${h(r.id)}">Download missing</button>` : ""}</div></div></div>
+        ${r.note ? `<div class="st-note">${h(r.note)}</div>` : ""}
+        ${r.missing.length ? `<details ${r.missing.some((m) => byId[m.id]) ? "open" : ""}><summary class="st-dim st-small">What is missing</summary>${r.missing.map((m) => model(m.id)).join("")}</details>` : ""}
+      </div>`;
+    return `<div class="st-page">
+      <div class="st-h1"><h1>Models</h1><span class="st-dim">This computer, and what each workflow needs</span><span class="st-grow"></span>
+        <button type="button" class="st-btn st-sm" data-act="rescan" ${S.scanning ? "disabled" : ""}>${S.scanning ? "Checking…" : "Check again"}</button></div>
+      <div class="st-card st-rudra-hero"><div class="st-thumb">${rudraCover(core && sc.models[core.id]?.installed)}</div>
+        <div class="st-rudra-body"><div class="st-sec">Radiance's own models</div>
+          ${core ? model(core.id) : ""}
+          <div class="st-facts"><div><span>Folder</span><span class="st-mono st-tail" title="${h(sc.paths.radiance)}"><bdi>${h(sc.paths.radiance)}</bdi></span></div>
+          <div><span>Hugging Face token</span><span>${sc.hf_token ? "Found" : "Not set"}</span></div>
+          <div><span>Downloads</span><span>${off ? "Off (RADIANCE_ALLOW_DOWNLOADS=0 or offline)" : "On"}</span></div></div>
+          ${dl.active ? `<div class="st-note">${h(M.plural(dl.active, "download"))} running${dl.percent != null ? ` · ${dl.percent}%` : ""}</div>` : ""}</div>
+      </div>
+      <div class="st-home-top">
+        <div class="st-card"><div class="st-sec" style="margin-bottom:8px">This computer</div>
+          <div class="st-facts">${M.hardwareRows(hw).map(([k, v]) => `<div><span>${h(k)}</span><span title="${h(v)}">${h(v)}</span></div>`).join("")}</div>
+          <div class="st-note"><span class="st-dot ${tier.tone}"></span> ${h(tier.text)}</div></div>
+        <div class="st-kpis-col"><div class="st-card st-kpi"><span>Local workflows</span><span>${sc.summary.workflows}</span></div><div class="st-card st-kpi"><span>Ready to run</span><span style="color:var(--ok)">${sc.summary.ready}</span></div>
+          <div class="st-card st-kpi"><span>Need downloads</span><span style="color:var(--info)">${sc.summary.workflows - sc.summary.ready}</span></div></div>
+      </div>
+      <div class="st-dim st-small">Files go where ComfyUI looks for them (models/diffusion_models, text_encoders, vae, loras…); Radiance's own models go in models/radiance. Each file is checked against its SHA-256 before it is installed. 🔒 models need their licence accepted on Hugging Face and a token (HF_TOKEN, or <span class="st-mono">hf auth login</span>), then a restart.</div>
+      <div class="st-setup">${rows.map(card).join("")}</div>
+    </div>`;
 }
 
 // ── assets ───────────────────────────────────────────────────────────────────
@@ -510,14 +711,36 @@ async function newBin(assetId) {
     } catch (e) { toast(`Could not make the bin: ${e.message}`, true); }
 }
 
+async function startDownloads(body) {
+    try {
+        const res = await postJSON("/radiance/setup/download", body);
+        S.downloads = res.downloads || S.downloads;
+        toast(res.queued?.length ? `Downloading ${M.plural(res.queued.length, "model")}` : "Nothing to download");
+        render();
+        pollDownloads();
+    } catch (e) { toast(`Could not start the download: ${e.message}`, true); }
+}
+
+async function importGizmo(file) {
+    try {
+        const data = JSON.parse(await file.text());
+        const res = await postJSON("/radiance/gizmos/import", data);
+        toast(res.message || `Imported ${file.name}`);
+        await loadGizmos();
+        S.gizmo = res.name || S.gizmo;
+        render();
+    } catch (e) { toast(`Import failed: ${e.message}`, true); }
+}
+
 async function reloadScreen() {
-    const jobs = { home: [loadDashboard, loadWorkflows, loadRenders], workflows: [loadWorkflows], assets: [loadAssets], shots: [loadDashboard], renders: [loadRenders] }[S.screen] || [];
+    const jobs = { home: [loadDashboard, loadWorkflows, loadRenders], workflows: [loadWorkflows], gizmos: [loadGizmos], assets: [loadAssets], shots: [loadDashboard], renders: [loadRenders], models: [loadSetup] }[S.screen] || [];
     await Promise.all(jobs.map((f) => f()));
     render();
 }
 
 function go(screen, extra = {}) {
     S.screen = M.SCREENS.includes(screen) ? screen : "home";
+    if (S.screen === "models" && !S.loaded.setup && !S.scanning) loadSetup().then(() => { render(); if (M.downloadsSummary(S.downloads).active) pollDownloads(); });
     Object.assign(S, extra);
     if (location.hash !== `#${S.screen}`) history.replaceState(null, "", `#${S.screen}`);
     render();
@@ -568,6 +791,32 @@ async function onClick(e) {
             break;
         case "export": await exportPackage(); break;
         case "new": await openWorkflow("official/Local/start.rad"); break;
+        case "pick-gizmo": S.gizmo = id; render(); break;
+        case "add-gizmo": {
+            const g = S.gizmos.find((x) => x.id === id);
+            if (g && tellCanvas({ type: "radiance_add_node", nodeType: g.className, title: g.title })) toast(`Adding ${g.title}…`);
+            break;
+        }
+        case "export-gizmo": {
+            const a = document.createElement("a");
+            a.href = `/radiance/gizmos/file?name=${encodeURIComponent(id)}`;
+            a.download = `${id}.gizmo`;
+            a.click();
+            break;
+        }
+        case "delete-gizmo":
+            if (!confirm(`Delete the gizmo ${id}? It is moved to the gizmos/.trash folder; its node stays until ComfyUI restarts.`)) break;
+            try { await postJSON("/radiance/gizmos/delete", { name: id }); toast("Gizmo deleted"); S.gizmo = null; await loadGizmos(); render(); }
+            catch (err) { toast(`Delete failed: ${err.message}`, true); }
+            break;
+        case "import-gizmo": $("stGizmoFile").click(); break;
+        case "rescan": render(); await loadSetup(); render(); break;
+        case "dl-workflow": await startDownloads({ workflow: id }); break;
+        case "dl-ids": await startDownloads({ ids: [id] }); break;
+        case "cancel-dl":
+            try { S.downloads = (await postJSON("/radiance/setup/cancel", { id })).downloads || S.downloads; render(); }
+            catch (err) { toast(err.message, true); }
+            break;
         case "reload": await reloadScreen(); break;
         default: break;
     }
@@ -585,6 +834,7 @@ function wire() {
     $("stImport").onclick = () => $("stImportFile").click();
     $("stNew").onclick = () => openWorkflow("official/Local/start.rad");
     $("stImportFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); };
+    $("stGizmoFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importGizmo(f); };
     $("stUploadFile").onchange = (e) => { const fs = e.target.files; if (fs?.length) uploadAssets(fs).finally(() => { e.target.value = ""; }); };
     $("stFree").onclick = async () => {
         try { await getJSON("/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unload_models: true, free_memory: true }) }); toast("Freed GPU memory"); setTimeout(loadGpu, 600); }
@@ -613,7 +863,10 @@ function wire() {
             closeStudio();
         }
     });
-    window.addEventListener("hashchange", () => go(M.screenFromHash(location.hash)));
+    window.addEventListener("hashchange", () => {
+        go(M.screenFromHash(location.hash));
+        if (S.screen === "models" && !S.loaded.setup) loadSetup().then(render);
+    });
     // Files dropped anywhere on the Assets screen are uploaded.
     document.addEventListener("dragover", (e) => { if (S.screen === "assets" && e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); $("stDrop")?.classList.add("over"); } });
     document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("stDrop")?.classList.remove("over"); });
@@ -637,7 +890,9 @@ async function start() {
     loadGpu();
     // Each source renders as soon as it arrives; a slow one does not hold up the rest.
     const after = (p) => p.then(render, render);
-    await Promise.all([after(loadWorkflows()), after(loadDashboard()), after(loadAssets()), after(loadRenders())]);
+    // The setup check scans the disk and the GPU: only when its page is opened.
+    if (S.screen === "models") after(loadSetup()).then(() => { if (M.downloadsSummary(S.downloads).active) pollDownloads(); });
+    await Promise.all([after(loadWorkflows()), after(loadDashboard()), after(loadAssets()), after(loadRenders()), after(loadGizmos())]);
 }
 
 start();

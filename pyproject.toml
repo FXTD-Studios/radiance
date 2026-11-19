@@ -160,6 +160,9 @@ radiance = [
     "viewer.png",
     "basic_workflow.png",
     "ACES/*.ocio",
+    # The models every shipped workflow needs (tools/build_model_catalog.py),
+    # read by the setup check (core/setup_check.py).
+    "config/*.json",
     "js/*.js",
     "js/*.css",
     "js/*.html",

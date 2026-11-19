@@ -157,11 +157,13 @@ test('the viewer installs the shell and keeps it in step', () => {
     assert.match(viewerSrc, /destroy\(\) \{\s*this\._destroyed = true;\s*this\._shell\?\.destroy\(\);/);
 });
 
-test('the V5 colours: near-black, one blue for state, amber only for warnings', () => {
-    assert.equal(TOKENS.canvas, '#08080a');
-    assert.equal(TOKENS.accent, '#5aa9ff');
-    assert.equal(TOKENS.accentInk, '#06101f');
-    assert.equal(TOKENS.warn, '#f5b544');
+test('the brand colours, Apple Pro dark: system greys, system blue for state, yellow only for warnings', () => {
+    assert.equal(TOKENS.canvas, '#111113');
+    assert.equal(TOKENS.chrome, '#1c1c1e');
+    assert.equal(TOKENS.accent, '#0a84ff');
+    assert.equal(TOKENS.accentInk, '#ffffff');
+    assert.equal(TOKENS.warn, '#ffd60a');
+    assert.doesNotMatch(viewerSrc, /#5aa9ff/i, 'the V5 blue is gone');
     assert.match(TOKENS.font, /^'Inter'/);
     assert.match(TOKENS.mono, /^'JetBrains Mono'/);
     assert.doesNotMatch(viewerSrc, /#4da3ff/i, 'the old blue is gone');
