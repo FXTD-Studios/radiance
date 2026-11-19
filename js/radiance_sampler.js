@@ -1195,9 +1195,11 @@ function updateModelMetaDefaults(node) {
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
     };
     pairs.forEach(sync);
-    // ALBABIT-FIX: Wan 2.2's low-noise expert takes over at half the steps just synced, as in the Sampler.
+    // ALBABIT-FIX: Wan 2.2's low-noise expert takes over at half the steps just synced, as in the Sampler;
+    // a sigmas_override sets its own length, which only the Sampler knows.
     sync([node.widgets.find(w => w.name === "refiner_start_step"),
-          sourceNode && lowNoise && refinerIn?.link != null && stepsW ? Math.floor(stepsW.value / 2) : undefined]);
+          sourceNode && lowNoise && refinerIn?.link != null && stepsW && !isSigmaOverrideActive(node)
+              ? Math.floor(stepsW.value / 2) : undefined]);
 
     // ALBABIT-FIX: under Wan 2.2 refiner_model takes the Loader's low-noise expert:
     // the input shows that name, its real name (links, API, saved graphs) is unchanged.

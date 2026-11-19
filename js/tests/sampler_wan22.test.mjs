@@ -11,7 +11,7 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
 const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 // Loader 1, an optional LoraLoaderModelOnly 3 on its model, then the Sampler 9.
-function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true, lora = null, then = null } = {}) {
+function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true, lora = null, then = null, override = false } = {}) {
     const nodes = {}, links = {};
     const graph = { links, getNodeById: id => nodes[id] };
     const loader = nodes[1] = { id: 1, comfyClass: 'RadianceUnifiedLoader', mode: 0, graph, inputs: [],
@@ -22,6 +22,10 @@ function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner
         links[30] = { origin_id: 1, origin_slot: 0, target_id: 3 };
     }
     links[1] = { origin_id: lora ? 3 : 1, origin_slot: 0, target_id: 9 };
+    if (override) {                     // a sigmas node 5 on sigmas_override
+        nodes[5] = { id: 5, mode: 0, graph, inputs: [], widgets: [] };
+        links[50] = { origin_id: 5, origin_slot: 0, target_id: 9 };
+    }
     const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => loader;
@@ -31,7 +35,8 @@ function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner
     const w = (name, value, extra = {}) => ({ name, value, ...extra });
     const node = {
         id: 9, graph,
-        inputs: [{ name: 'model', link: 1 }, { name: 'refiner_model', link: refiner ? 2 : null }],
+        inputs: [{ name: 'model', link: 1 }, { name: 'refiner_model', link: refiner ? 2 : null },
+                 { name: 'sigmas_override', link: override ? 50 : null }],
         widgets: [
             w('preset', samplerPreset),
             w('model_type', 'auto', { options: { values: ['auto', 'wan', 'wan_ti2v'] } }),
@@ -61,6 +66,10 @@ test("refiner_model shows as model_low_noise under Wan 2.2, under any Sampler pr
     assert.equal(sampler(HIGH).label, 'model_low_noise');
     assert.equal(sampler(HIGH, { samplerPreset: '[V] WAN txt2vid (30 steps)' }).label, 'model_low_noise');
     assert.equal(sampler('wan2.1_t2v_14B_fp16.safetensors', { preset: 'Wan 2.1' }).label, undefined);
+});
+
+test('with a sigmas_override, the start step is left to the Sampler, which knows the schedule', () => {
+    assert.equal(sampler(HIGH, { override: true }).values[4], 20);
 });
 
 test('refiner_model gets its own name back when the Loader moves from Wan 2.2 to Wan 2.1', () => {
