@@ -466,8 +466,8 @@
       "id": 2,
       "type": "RadianceWrite",
       "pos": [
-        1040,
-        70
+        2780,
+        1960
       ],
       "size": [
         310,
@@ -925,8 +925,8 @@
       "id": 3,
       "type": "RadianceWrite",
       "pos": [
-        1850,
-        70
+        2350,
+        2020
       ],
       "size": [
         310,
@@ -1391,8 +1391,8 @@
       "id": 4,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        2250,
-        70
+        1070,
+        2020
       ],
       "size": [
         320,
@@ -1606,8 +1606,8 @@
       "id": 5,
       "type": "RadianceWrite",
       "pos": [
-        2660,
-        70
+        1480,
+        2020
       ],
       "size": [
         310,
@@ -2065,7 +2065,7 @@
       "id": 6,
       "type": "RadianceViewer",
       "pos": [
-        3060,
+        1040,
         70
       ],
       "size": [
@@ -2347,8 +2347,8 @@
       "id": 8,
       "type": "RadianceRudraPeakFit",
       "pos": [
-        1440,
-        70
+        1940,
+        2020
       ],
       "size": [
         320,
@@ -2445,8 +2445,8 @@
       "id": 9,
       "type": "RadianceRudraDynamicMetadata",
       "pos": [
-        1440,
-        348
+        1940,
+        2298
       ],
       "size": [
         320,
@@ -2781,10 +2781,22 @@
       "id": 2,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        1010,
-        0,
+        2750,
+        1890,
         370,
-        910
+        1000
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "HDR10 Output (MP4)",
+      "bounding": [
+        1880,
+        1890,
+        840,
+        1000
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -2793,8 +2805,8 @@
       "id": 3,
       "title": "HDR10 Peak Fit and Metadata",
       "bounding": [
-        1410,
-        0,
+        1910,
+        1950,
         380,
         910
       ],
@@ -2805,8 +2817,8 @@
       "id": 4,
       "title": "Write HDR10 (MP4)",
       "bounding": [
-        1820,
-        0,
+        2320,
+        1950,
         370,
         910
       ],
@@ -2814,11 +2826,23 @@
       "flags": {}
     },
     {
+      "id": 8,
+      "title": "SDR Output (MP4)",
+      "bounding": [
+        1010,
+        1890,
+        840,
+        1000
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
       "id": 5,
       "title": "SDR Output Transform",
       "bounding": [
-        2220,
-        0,
+        1040,
+        1950,
         380,
         910
       ],
@@ -2829,8 +2853,8 @@
       "id": 6,
       "title": "Write SDR (MP4)",
       "bounding": [
-        2630,
-        0,
+        1450,
+        1950,
         370,
         910
       ],
@@ -2841,7 +2865,7 @@
       "id": 7,
       "title": "Viewer",
       "bounding": [
-        3030,
+        1010,
         0,
         2720,
         1860
@@ -2853,12 +2877,89 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3248,
+      "scale": 0.3177,
       "offset": [
-        153.9,
-        615.8
+        157.4,
+        377.7
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          995,
+          84
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          995,
+          1875
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1025,
+          1875
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          1895,
+          1875
+        ],
+        "linkIds": [
+          1,
+          6
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          2735,
+          1875
+        ],
+        "linkIds": [
+          1
+        ],
+        "parentId": 4
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 1,
+        "parentId": 5
+      },
+      {
+        "id": 3,
+        "parentId": 3
+      },
+      {
+        "id": 6,
+        "parentId": 4
+      }
+    ]
   },
   "version": 0.4
 }

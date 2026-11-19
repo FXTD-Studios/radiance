@@ -1558,7 +1558,7 @@
       "id": 3,
       "type": "RadianceViewer",
       "pos": [
-        2250,
+        1850,
         70
       ],
       "size": [
@@ -1841,7 +1841,7 @@
       "type": "RadianceWrite",
       "pos": [
         1850,
-        70
+        1960
       ],
       "size": [
         310,
@@ -2356,7 +2356,7 @@
         -160
       ],
       "size": [
-        1180,
+        780,
         130
       ],
       "inputs": [],
@@ -2469,9 +2469,9 @@
       "title": "Write HDR Master (EXR)",
       "bounding": [
         1820,
-        0,
+        1890,
         370,
-        1090
+        600
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -2480,7 +2480,7 @@
       "id": 5,
       "title": "Viewer",
       "bounding": [
-        2220,
+        1820,
         0,
         2720,
         1860
@@ -2492,12 +2492,41 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.377,
+      "scale": 0.3417,
       "offset": [
-        132.6,
-        530.5
+        146.3,
+        541.2
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1805,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1805,
+          1875
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 2
+      }
+    ]
   },
   "version": 0.4
 }

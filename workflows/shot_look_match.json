@@ -986,8 +986,8 @@
       "id": 7,
       "type": "RadianceQC",
       "pos": [
-        3040,
-        70
+        3070,
+        3910
       ],
       "size": [
         310,
@@ -1195,8 +1195,8 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        3440,
-        70
+        3470,
+        3910
       ],
       "size": [
         310,
@@ -1504,7 +1504,7 @@
       "id": 9,
       "type": "RadianceViewer",
       "pos": [
-        3840,
+        3040,
         1960
       ],
       "size": [
@@ -1725,7 +1725,7 @@
       "id": 10,
       "type": "RadianceViewer",
       "pos": [
-        3840,
+        3040,
         70
       ],
       "size": [
@@ -2161,13 +2161,25 @@
       "flags": {}
     },
     {
+      "id": 11,
+      "title": "Shot Output (EXR)",
+      "bounding": [
+        3010,
+        3780,
+        830,
+        800
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
       "id": 7,
       "title": "QC",
       "bounding": [
-        3010,
-        0,
+        3040,
+        3840,
         370,
-        740
+        710
       ],
       "color": "#3f789e",
       "flags": {}
@@ -2176,10 +2188,10 @@
       "id": 8,
       "title": "Write Shot (EXR)",
       "bounding": [
-        3410,
-        0,
+        3440,
+        3840,
         370,
-        740
+        710
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -2188,7 +2200,7 @@
       "id": 9,
       "title": "Scene Cut Viewer",
       "bounding": [
-        3810,
+        3010,
         0,
         2720,
         1860
@@ -2200,7 +2212,7 @@
       "id": 10,
       "title": "Viewer",
       "bounding": [
-        3810,
+        3010,
         1890,
         2720,
         1860
@@ -2212,12 +2224,52 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.2393,
+      "scale": 0.203,
       "offset": [
-        208.9,
-        835.8
+        246.3,
+        591.1
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2995,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          2995,
+          3765
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          3025,
+          3765
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 2
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 3
+      }
+    ]
   },
   "version": 0.4
 }
