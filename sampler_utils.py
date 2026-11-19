@@ -754,6 +754,12 @@ def refine_flux3_from_model(model) -> Optional[Dict[str, Any]]:
     return dict(FLUX3_DISTILLED) if flow_map else {}
 
 
+def is_wan22_expert(unet_file: str) -> bool:
+    """Wan 2.2 14B ships as two experts, paired by the Loader on these tags."""
+    name = re.split(r"[\\/]", unet_file)[-1].lower()
+    return "high_noise" in name or "low_noise" in name
+
+
 def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) -> Optional[Dict[str, Any]]:
     """
     Some checkpoints need settings that differ from their model_type's generic
@@ -780,6 +786,10 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     name = re.split(r"[\\/]", unet_file)[-1].lower()
     if detected_type == "flux3":
         return FLUX3_DISTILLED if _flux3_name_is_distilled(name) else None
+    # ALBABIT-FIX: Wan 2.2 14B shares "wan" with Wan 2.1, but its official templates
+    # run euler at cfg 3.5-4 (20 steps), not Wan 2.1's uni_pc at cfg 6.
+    if detected_type == "wan" and is_wan22_expert(name):
+        return {"sampler": "euler", "cfg": 3.5}
     # ALBABIT-FIX: the LTX 2.3 / 2.5 Distilled models run at cfg 1 in both passes; the
     # frontend's stage presets set their steps (8, then 3), which differ per pass.
     if detected_type == "ltxav" and "distilled" in name:
