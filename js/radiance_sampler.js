@@ -896,7 +896,7 @@ function _isLtxAvHighResStage(node) {
 }
 
 // ALBABIT-FIX: mirrors sampler_utils.py's LIGHTNING_LORA (test_sampler_js_mirror.py).
-const LIGHTNING_LORA = /(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
+const LIGHTNING_LORA = /(?:lightning|turbo|lightx2v)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
 
 // ALBABIT-FIX: the LoRA files this Sampler's model carries: the LoRA Stacks
 // feeding the Loader (model_meta's "loras") and the native loaders between
@@ -929,11 +929,11 @@ function _modelLoraNames(node, loaderNode) {
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
     // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
-    // MiniMax H3's Turbo LoRAs (lightx2v) too.
-    if (detectedType === "qwen_image" || detectedType === "minimax") {
+    // MiniMax H3's Turbo LoRAs (lightx2v) too, and Wan 2.2's lightx2v ones, at euler.
+    if (detectedType === "qwen_image" || detectedType === "minimax" || detectedType === "wan") {
         for (const name of loraNames) {
             const match = name.toLowerCase().split(/[\\/]/).pop().match(LIGHTNING_LORA);
-            if (match) return { cfg: 1.0, steps: Number(match[1]) };
+            if (match) return { cfg: 1.0, steps: Number(match[1]), ...(detectedType === "wan" && { sampler: "euler" }) };
         }
     }
     if (!filename) return null;
@@ -973,7 +973,14 @@ function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, Qwen-Image Edit 2511 and 2512.
     if (detectedType === "qwen_image" && f.includes("edit") && f.includes("2511")) return { cfg: 4.0, steps: 40 };
     if (detectedType === "qwen_image" && f.includes("2512")) return { steps: 50 };
+    // ALBABIT-FIX: mirrors refine_distillation_from_meta, Wan 2.2 14B's experts at euler, cfg 3.5.
+    if (detectedType === "wan" && _isWan22Expert(f)) return { cfg: 3.5, sampler: "euler" };
     return null;
+}
+
+// Wan 2.2 14B ships as two experts, paired by the Loader on these tags (is_wan22_expert).
+function _isWan22Expert(fileName) {
+    return /high_noise|low_noise/.test(fileName.toLowerCase().split(/[\\/]/).pop());
 }
 
 // ALBABIT-FIX: reuses the already-vetted "LTX 2.3/2.5 LowRes/HighRes" preset
@@ -1123,8 +1130,13 @@ function updateModelMetaDefaults(node) {
     const presetVal = presetW ? presetW.value : "Auto";
     const eligible = presetVal === "Auto" || presetVal === "Custom";
 
-    const sourceNode = eligible ? _findModelMetaSourceNode(node) : null;
+    const metaSource = _findModelMetaSourceNode(node);
+    const sourceNode = eligible ? metaSource : null;
     const unetName = sourceNode?.widgets?.find(w => w.name === "unet_name")?.value ?? null;
+    const metaUnet = metaSource?.widgets?.find(w => w.name === "unet_name")?.value;
+    const lowNoise = loaderModelType(metaSource) === "wan" && typeof metaUnet === "string" && _isWan22Expert(metaUnet);
+    const refinerIn = node.inputs?.find(i => i.name === "refiner_model");
+    const stepsW = node.widgets.find(w => w.name === "steps");
     const detectedType = loaderModelType(sourceNode);
     const override = _deriveDistillationOverride(unetName, detectedType, _modelLoraNames(node, sourceNode));
     const modelDefaults = MODEL_TYPE_SAMPLING_DEFAULTS[detectedType] ?? null;
@@ -1150,7 +1162,7 @@ function updateModelMetaDefaults(node) {
     const pairs = [
         [modelTypeW, validModelType],
         [node.widgets.find(w => w.name === "flux_guidance"), override?.flux_guidance ?? ltxavStage?.flux_guidance ?? modelDefaults?.guidance],
-        [node.widgets.find(w => w.name === "steps"), override?.steps ?? ltxavStage?.steps ?? modelDefaults?.steps],
+        [stepsW, override?.steps ?? ltxavStage?.steps ?? modelDefaults?.steps],
         [node.widgets.find(w => w.name === "cfg"), override?.cfg ?? ltxavStage?.cfg ?? modelDefaults?.cfg],
         [node.widgets.find(w => w.name === "sampler"), override?.sampler ?? ltxavStage?.sampler ?? modelDefaults?.sampler],
         // ALBABIT-FIX: denoise isn't part of the generic per-architecture
@@ -1176,11 +1188,28 @@ function updateModelMetaDefaults(node) {
 
     let changed = false;
     // A null markedVal suppresses the marker; an omitted one marks the synced value.
-    for (const [widget, derivedVal, markedVal = derivedVal] of pairs) {
+    const sync = ([widget, derivedVal, markedVal = derivedVal]) => {
         if (syncAutoValue(node, widget, derivedVal)) changed = true;
         const linked = markedVal != null;
         const inSync = linked && widget && widget.value === markedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
+    };
+    pairs.forEach(sync);
+    // ALBABIT-FIX: Wan 2.2's low-noise expert takes over at half the steps just synced, as in the Sampler;
+    // a sigmas_override sets its own length, which only the Sampler knows.
+    sync([node.widgets.find(w => w.name === "refiner_start_step"),
+          sourceNode && lowNoise && refinerIn?.link != null && stepsW && !isSigmaOverrideActive(node)
+              ? Math.floor(stepsW.value / 2) : undefined]);
+
+    // ALBABIT-FIX: under Wan 2.2 refiner_model takes the Loader's low-noise expert:
+    // the input shows that name, its real name (links, API, saved graphs) is unchanged.
+    if (refinerIn) {
+        if (!("_radOrigLabel" in refinerIn)) refinerIn._radOrigLabel = refinerIn.label;
+        const wanted = lowNoise ? "model_low_noise" : refinerIn._radOrigLabel;
+        if (refinerIn.label !== wanted) {
+            refinerIn.label = wanted;
+            changed = true;
+        }
     }
 
     const schedulerW = node.widgets.find(w => w.name === "scheduler");
