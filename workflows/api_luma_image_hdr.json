@@ -1469,7 +1469,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/luma_image",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "luma_image_sdr",
         1,
@@ -1494,7 +1494,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/luma_image",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "luma_image_sdr",
         "version": 1,

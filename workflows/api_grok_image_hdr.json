@@ -1475,7 +1475,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/grok_image",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "grok_image_sdr",
         1,
@@ -1500,7 +1500,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/grok_image",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "grok_image_sdr",
         "version": 1,

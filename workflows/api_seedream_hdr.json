@@ -1504,7 +1504,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/seedream",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "seedream_sdr",
         1,
@@ -1529,7 +1529,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/seedream",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "seedream_sdr",
         "version": 1,

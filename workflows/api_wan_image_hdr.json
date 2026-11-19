@@ -1490,7 +1490,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/wan_image",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "wan_image_sdr",
         1,
@@ -1515,7 +1515,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/wan_image",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "wan_image_sdr",
         "version": 1,
