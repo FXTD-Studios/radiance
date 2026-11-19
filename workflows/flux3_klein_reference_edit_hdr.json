@@ -1,18 +1,18 @@
 {
   "id": "3ca41ed2-4c6c-4906-bacf-70ee70f59396",
   "revision": 0,
-  "last_node_id": 13,
-  "last_link_id": 20,
+  "last_node_id": 19,
+  "last_link_id": 21,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceUnifiedLoader",
       "pos": [
-        -1400,
-        0
+        1070,
+        70
       ],
       "size": [
-        286.4375,
+        340,
         314
       ],
       "flags": {},
@@ -342,12 +342,12 @@
       "id": 2,
       "type": "RadianceCinematicPromptEncoder",
       "pos": [
-        -1000,
-        0
+        2300,
+        70
       ],
       "size": [
-        400,
-        666
+        680,
+        890
       ],
       "flags": {},
       "order": 5,
@@ -606,7 +606,9 @@
           "localized_name": "positive_text",
           "name": "positive_text",
           "type": "STRING",
-          "links": null
+          "links": [
+            21
+          ]
         },
         {
           "localized_name": "negative_text",
@@ -634,7 +636,8 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceCinematicPromptEncoder"
+        "Node name for S&R": "RadianceCinematicPromptEncoder",
+        "radExtraHeight": 224
       },
       "widgets_values": [
         true,
@@ -683,11 +686,11 @@
       "id": 3,
       "type": "RadianceResolution",
       "pos": [
-        -1400,
-        640
+        640,
+        70
       ],
       "size": [
-        273.5234375,
+        340,
         478
       ],
       "flags": {},
@@ -964,11 +967,11 @@
       "id": 4,
       "type": "RadianceSamplerPro",
       "pos": [
-        -520,
-        0
+        3070,
+        70
       ],
       "size": [
-        325.189453125,
+        340,
         878
       ],
       "flags": {},
@@ -1648,11 +1651,11 @@
       "id": 5,
       "type": "RadianceHDRVAEDecode",
       "pos": [
-        -80,
-        0
+        3500,
+        70
       ],
       "size": [
-        278.556640625,
+        280,
         382
       ],
       "flags": {},
@@ -1929,11 +1932,11 @@
       "id": 6,
       "type": "RadianceRead",
       "pos": [
-        -1400,
-        1400
+        1500,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -2218,11 +2221,11 @@
       "id": 7,
       "type": "RadianceRead",
       "pos": [
-        -1400,
-        2000
+        1900,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -2506,11 +2509,11 @@
       "id": 8,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        400,
-        0
+        3870,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -2864,11 +2867,11 @@
       "id": 9,
       "type": "RadianceWrite",
       "pos": [
-        900,
-        0
+        4270,
+        70
       ],
       "size": [
-        302.744140625,
+        310,
         362
       ],
       "flags": {},
@@ -3119,9 +3122,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/ref_edit",
+        "radiance_examples/flux3_klein_reference_edit",
         "IMG │ EXR (32-bit float)",
-        "product_master",
+        "flux3_klein_reference_edit_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -3144,9 +3147,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/ref_edit",
+        "output_path": "radiance_examples/flux3_klein_reference_edit",
         "format": "IMG │ EXR (32-bit float)",
-        "filename": "product_master",
+        "filename": "flux3_klein_reference_edit_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -3173,11 +3176,11 @@
       "id": 10,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        900,
-        600
+        4670,
+        70
       ],
       "size": [
-        313.513671875,
+        320,
         246
       ],
       "flags": {},
@@ -3313,11 +3316,11 @@
       "id": 11,
       "type": "RadianceWrite",
       "pos": [
-        1300,
-        600
+        4670,
+        432
       ],
       "size": [
-        302.744140625,
+        320,
         362
       ],
       "flags": {},
@@ -3568,9 +3571,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/ref_edit",
+        "radiance_examples/flux3_klein_reference_edit",
         "IMG │ PNG (16-bit)",
-        "product_sdr",
+        "flux3_klein_reference_edit_sdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -3593,9 +3596,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/ref_edit",
+        "output_path": "radiance_examples/flux3_klein_reference_edit",
         "format": "IMG │ PNG (16-bit)",
-        "filename": "product_sdr",
+        "filename": "flux3_klein_reference_edit_sdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -3622,12 +3625,12 @@
       "id": 12,
       "type": "RadianceViewer",
       "pos": [
-        1300,
-        0
+        5080,
+        70
       ],
       "size": [
-        960,
-        640
+        2660,
+        1760
       ],
       "flags": {},
       "order": 11,
@@ -3821,8 +3824,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -3840,30 +3843,175 @@
       }
     },
     {
-      "id": 13,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
-        -1400,
-        -760
+        1070,
+        488
       ],
       "size": [
-        560,
-        420
+        340,
+        150
       ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
+      "title": "Note: Base or Distilled",
       "properties": {},
       "widgets_values": [
-        "Flux.3 Klein reference edit -> HDR\n\nRead 1 -> image_1 = <ref_image_0> (the product). Read 2 -> image_2 = <ref_image_1> (look/lighting reference). Flux.3 Klein takes up to 10 references; cite them in the prompt as <ref_image_0>, <ref_image_1>...\nThe Prompt's resolution (1024) scales each reference to ~1 MP; its VAE input encodes them.\nThe frame goes through RUDRA ACES 2 to an EXR 32-bit master and an ACES 2.0 SDR PNG. Viewer: result vs the product reference."
+        "**Base or Distilled**:\n- Pick the model file in the Loader. The Sampler, in \"Auto\", follows it.\n- FLUX 3 Klein: base 50 steps at CFG 3.5, distilled 16 steps."
       ],
       "widgets_values_named": {
-        "text": "Flux.3 Klein reference edit -> HDR\n\nRead 1 -> image_1 = <ref_image_0> (the product). Read 2 -> image_2 = <ref_image_1> (look/lighting reference). Flux.3 Klein takes up to 10 references; cite them in the prompt as <ref_image_0>, <ref_image_1>...\nThe Prompt's resolution (1024) scales each reference to ~1 MP; its VAE input encodes them.\nThe frame goes through RUDRA ACES 2 to an EXR 32-bit master and an ACES 2.0 SDR PNG. Viewer: result vs the product reference."
+        "text": "**Base or Distilled**:\n- Pick the model file in the Loader. The Sampler, in \"Auto\", follows it.\n- FLUX 3 Klein: base 50 steps at CFG 3.5, distilled 16 steps."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 14,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "PreviewAny",
+      "pos": [
+        2300,
+        1020
+      ],
+      "size": [
+        680,
+        250
+      ],
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 21
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "id": 15,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        2300,
+        1330
+      ],
+      "size": [
+        680,
+        100
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Prompt",
+      "properties": {},
+      "widgets_values": [
+        "**Prompt**:\n- FLUX 3 Klein expects a full caption. For a short prompt, pick the upsampler in the Loader and turn on \"upsample_prompt\": \"Preview as Text\" shows the rewrite."
+      ],
+      "widgets_values_named": {
+        "text": "**Prompt**:\n- FLUX 3 Klein expects a full caption. For a short prompt, pick the upsampler in the Loader and turn on \"upsample_prompt\": \"Preview as Text\" shows the rewrite."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 16,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 17,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        1250
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## Flux.3 Klein reference edit → HDR Workflow for Radiance:\n\nRead 1 -> image_1 = <ref_image_0> (the product). Read 2 -> image_2 = <ref_image_1> (look/lighting reference). Flux.3 Klein takes up to 10 references; cite them in the prompt as <ref_image_0>, <ref_image_1>...\nThe Prompt's resolution (1024) scales each reference to ~1 MP; its VAE input encodes them.\nThe frame goes through RUDRA ACES 2 to an EXR 32-bit master and an ACES 2.0 SDR PNG. Viewer: result vs the product reference.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n2. **References**: Cite them as <ref_image_0>, <ref_image_1>... in the order of the Prompt's images\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   └── 📂 vae/\n│       └── flux2-vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## Flux.3 Klein reference edit → HDR Workflow for Radiance:\n\nRead 1 -> image_1 = <ref_image_0> (the product). Read 2 -> image_2 = <ref_image_1> (look/lighting reference). Flux.3 Klein takes up to 10 references; cite them in the prompt as <ref_image_0>, <ref_image_1>...\nThe Prompt's resolution (1024) scales each reference to ~1 MP; its VAE input encodes them.\nThe frame goes through RUDRA ACES 2 to an EXR 32-bit master and an ACES 2.0 SDR PNG. Viewer: result vs the product reference.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n2. **References**: Cite them as <ref_image_0>, <ref_image_1>... in the order of the Prompt's images\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   └── 📂 vae/\n│       └── flux2-vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 18,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        3840,
+        -160
+      ],
+      "size": [
+        1180,
+        130
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Outputs",
+      "properties": {},
+      "widgets_values": [
+        "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits); the PNG is its ACES 2.0 SDR view.\n- The Viewer shows the HDR, with the product reference as compare (wipe)."
+      ],
+      "widgets_values_named": {
+        "text": "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits); the PNG is its ACES 2.0 SDR view.\n- The Viewer shows the HDR, with the product reference as compare (wipe)."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 19,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -4026,16 +4174,157 @@
       2,
       4,
       "IMAGE"
+    ],
+    [
+      21,
+      2,
+      2,
+      15,
+      0,
+      "STRING"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Image Settings",
+      "bounding": [
+        610,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Models Loading",
+      "bounding": [
+        1040,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Reference Image 1 (Product)",
+      "bounding": [
+        1470,
+        0,
+        370,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Reference Image 2 (Look)",
+      "bounding": [
+        1870,
+        0,
+        370,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Prompt",
+      "bounding": [
+        2270,
+        0,
+        740,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Generate",
+      "bounding": [
+        3040,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Decode",
+      "bounding": [
+        3470,
+        0,
+        340,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "HDR Conversion",
+      "bounding": [
+        3840,
+        0,
+        370,
+        1460
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        4240,
+        0,
+        370,
+        1460
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 10,
+      "title": "Write Image (SDR)",
+      "bounding": [
+        4640,
+        0,
+        380,
+        1460
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 11,
+      "title": "Viewer",
+      "bounding": [
+        5050,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.23907910271546634,
+      "scale": 0.2414,
       "offset": [
-        2871.5555555555557,
-        1286
+        207.1,
+        828.5
       ]
     }
   },

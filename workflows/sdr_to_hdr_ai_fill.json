@@ -1,18 +1,18 @@
 {
   "id": "68be048a-a3b0-46d0-b006-34b8850ee5fe",
   "revision": 0,
-  "last_node_id": 6,
+  "last_node_id": 9,
   "last_link_id": 7,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -464,11 +464,11 @@
       "id": 2,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        400,
-        0
+        1040,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -1061,8 +1061,8 @@
       "id": 6,
       "type": "RadianceSDRToHDRAIFill",
       "pos": [
-        800,
-        0
+        1440,
+        70
       ],
       "size": [
         320,
@@ -1558,12 +1558,12 @@
       "id": 3,
       "type": "RadianceViewer",
       "pos": [
-        1180,
-        -40
+        2250,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
       "order": 4,
@@ -1708,8 +1708,8 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
         "radiance_grade": {
           "version": 2,
           "exposure": 0,
@@ -1840,11 +1840,11 @@
       "id": 4,
       "type": "RadianceWrite",
       "pos": [
-        1180,
-        620
+        1850,
+        70
       ],
       "size": [
-        270,
+        310,
         362
       ],
       "flags": {},
@@ -2245,9 +2245,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/sdr_to_hdr",
+        "radiance_examples/sdr_to_hdr_ai_fill",
         "IMG │ EXR (32-bit float)",
-        "sdr_to_hdr",
+        "sdr_to_hdr_ai_fill",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -2270,9 +2270,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/sdr_to_hdr",
+        "output_path": "radiance_examples/sdr_to_hdr_ai_fill",
         "format": "IMG │ EXR (32-bit float)",
-        "filename": "sdr_to_hdr",
+        "filename": "sdr_to_hdr_ai_fill",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -2296,31 +2296,85 @@
       }
     },
     {
-      "id": 5,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
         0,
-        560
+        30
       ],
       "size": [
-        380,
-        300
+        580,
+        120
       ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "SDR to HDR",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "SDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame."
+        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "SDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame."
+        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 7,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        880
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## SDR → HDR with AI Fill Workflow for Radiance:\n\nSDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves into `ComfyUI/models/radiance` on the first run: nothing to install.\n\n**RUDRA ACES 2** (Apache 2.0, about 3 MB) and **RUDRA AI fill v3** (Apache 2.0, 271 MB)\n- [fxtdstudios/rudra-models](https://huggingface.co/fxtdstudios/rudra-models), folders `models/RUDRA_ACES_2` and `models/rudra_genfill_v3`\n**Wan2.1-VACE-1.3B** (Wan-AI, Apache 2.0, 7.7 GB), the AI fill's base model\n- [Wan-AI/Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers)\n- Its umT5 text encoder (11.4 GB) downloads only the first time a custom prompt is encoded.\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 radiance/\n│       ├── 📂 RUDRA_ACES_2/\n│       ├── 📂 rudra_genfill_v3/\n│       └── 📂 Wan2.1-VACE-1.3B-diffusers/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## SDR → HDR with AI Fill Workflow for Radiance:\n\nSDR to HDR with RUDRA AI fill (experimental).\n\n1. Read an 8-bit image or video with blown highlights (a sun, a sky, a window).\n2. SDR to HDR Universal makes the RUDRA ACES 2 master.\n3. AI Fill draws the shape inside the fully clipped areas and sets their brightness. Type what should be there in prompt_highlight (for example \"soft clouds in a bright blue sky\"), or leave it empty.\n4. Compare with the SDR in the Viewer, then Write the EXR.\n\nFirst run downloads the AI fill models into models/radiance (about 8 GB; a custom prompt adds the 11.4 GB text encoder once). Needs about 16 GB of VRAM. What it draws is plausible, not recovered: review every frame.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves into `ComfyUI/models/radiance` on the first run: nothing to install.\n\n**RUDRA ACES 2** (Apache 2.0, about 3 MB) and **RUDRA AI fill v3** (Apache 2.0, 271 MB)\n- [fxtdstudios/rudra-models](https://huggingface.co/fxtdstudios/rudra-models), folders `models/RUDRA_ACES_2` and `models/rudra_genfill_v3`\n**Wan2.1-VACE-1.3B** (Wan-AI, Apache 2.0, 7.7 GB), the AI fill's base model\n- [Wan-AI/Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers)\n- Its umT5 text encoder (11.4 GB) downloads only the first time a custom prompt is encoded.\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 radiance/\n│       ├── 📂 RUDRA_ACES_2/\n│       ├── 📂 rudra_genfill_v3/\n│       └── 📂 Wan2.1-VACE-1.3B-diffusers/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        1010,
+        -160
+      ],
+      "size": [
+        1180,
+        130
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Outputs",
+      "properties": {},
+      "widgets_values": [
+        "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits).\n- The Viewer shows the HDR through ACES 2.0, with the SDR source as compare (wipe)."
+      ],
+      "widgets_values_named": {
+        "text": "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits).\n- The Viewer shows the HDR through ACES 2.0, with the SDR source as compare (wipe)."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 9,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2373,14 +2427,75 @@
       "IMAGE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load SDR Image or Video",
+      "bounding": [
+        610,
+        0,
+        370,
+        1090
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "HDR Conversion",
+      "bounding": [
+        1010,
+        0,
+        370,
+        1090
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "AI Fill",
+      "bounding": [
+        1410,
+        0,
+        380,
+        1090
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        1820,
+        0,
+        370,
+        1090
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        2220,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.377,
       "offset": [
-        2871.5555555555557,
-        1286
+        132.6,
+        530.5
       ]
     }
   },

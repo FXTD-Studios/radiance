@@ -1,18 +1,18 @@
 {
   "id": "6f1d2c4e-5a7b-4c3d-9e8f-0a1b2c3d4e5f",
   "revision": 0,
-  "last_node_id": 6,
+  "last_node_id": 8,
   "last_link_id": 8,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRudraLoadStill",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        300,
+        310,
         420
       ],
       "flags": {},
@@ -83,11 +83,11 @@
       "id": 2,
       "type": "RadianceRudraRegion",
       "pos": [
-        0,
-        480
+        1040,
+        70
       ],
       "size": [
-        300,
+        310,
         330
       ],
       "flags": {},
@@ -216,8 +216,8 @@
       "id": 3,
       "type": "RadianceSDRToHDRAnalytic",
       "pos": [
-        380,
-        0
+        1440,
+        70
       ],
       "size": [
         340,
@@ -465,12 +465,12 @@
       "id": 4,
       "type": "RadianceViewer",
       "pos": [
-        800,
-        -40
+        2300,
+        70
       ],
       "size": [
-        960,
-        640
+        2660,
+        1760
       ],
       "flags": {},
       "order": 3,
@@ -622,8 +622,8 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
         "radiance_grade": {
           "version": 2,
           "exposure": 0,
@@ -755,8 +755,8 @@
       "id": 5,
       "type": "RadianceRudraMasterWrite",
       "pos": [
-        800,
-        680
+        1870,
+        70
       ],
       "size": [
         340,
@@ -902,31 +902,58 @@
       ]
     },
     {
-      "id": 6,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
-        -460,
-        0
+        0,
+        30
       ],
       "size": [
-        420,
-        600
+        580,
+        120
       ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "SDR to HDR, analytic (RUDRA)",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "SDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU)."
+        "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "SDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU)."
+        "text": "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 7,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        480
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -995,14 +1022,75 @@
       "RUDRA_MATTES"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load SDR Still",
+      "bounding": [
+        610,
+        0,
+        370,
+        690
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Region (Optional)",
+      "bounding": [
+        1010,
+        0,
+        370,
+        690
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "HDR Conversion",
+      "bounding": [
+        1410,
+        0,
+        400,
+        690
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        1840,
+        0,
+        400,
+        690
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        2270,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8,
+      "scale": 0.3733,
       "offset": [
-        400,
-        300
+        133.9,
+        535.8
       ]
     }
   },
