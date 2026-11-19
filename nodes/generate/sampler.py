@@ -50,7 +50,7 @@ try:
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model, is_wan22_expert,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
@@ -78,7 +78,7 @@ except (ImportError, ValueError):
         TILE_BLEND_MODES, SamplerMode, SigmaCache, _sigma_cache,
         RadianceModelRegistry, detect_by_config, detect_by_architecture,
         detect_by_sampling, detect_model_type, get_model_defaults,
-        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model,
+        parse_model_meta, refine_distillation_from_meta, refine_flux3_from_model, is_wan22_expert,
         gradual_sigma_blend, log_tensor, SigmaIndexer, SamplingStage,
         apply_flux_guidance, compute_dynamic_guidance, compute_dynamic_cfg,
         compute_base_sigmas, WORKFLOW_PRESETS, flux_shift_sigmas, get_flux_sigmas, get_sd_turbo_sigmas,
@@ -1108,12 +1108,16 @@ class RadianceSamplerPro:
             "optional": {
                 "refiner_model": ("MODEL", {"tooltip": (
                     "Optional second model that takes over from refiner_start_step with the same conditioning, "
-                    "so it must accept the same text-encoder width. PAG, guidance rescale, ltx_guidance and the SDR anchor are "
-                    "not applied to it. Ignored in tile_mode.")}),
+                    "so it must accept the same text-encoder width.\n"
+                    "• Wan 2.2 14B: the Loader's model_low_noise, its low-noise expert (the input then shows that name).\n"
+                    "• PAG, guidance rescale, ltx_guidance and the SDR anchor are not applied to it. Ignored in tile_mode.")}),
                 "refiner_start_step": (
                     "INT",
                     {"default": 20, "min": 0, "max": 200, "step": 1,
-                     "tooltip": "Step index (0-based, out of steps) where refiner_model takes over. At or above the last step being run, the refiner never runs."},
+                     "tooltip": ("Step index (0-based, out of steps) where refiner_model takes over. At or above the last "
+                                 "step being run, the refiner never runs.\n"
+                                 "• Under Auto or Custom, Wan 2.2's low-noise expert then takes over at half the steps, "
+                                 "as in its templates.")},
                 ),
                 "noise_override": ("LATENT", {"tooltip": (
                     "Use this latent's samples as the initial noise instead of generating it from seed and "
@@ -1885,6 +1889,13 @@ class RadianceSamplerPro:
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
         sampler, scheduler, steps = params['sampler'], params['scheduler'], params['steps']
 
+        # ALBABIT-FIX: Wan 2.2's low-noise expert on refiner_model never ran at the default
+        # start (step 20 of 20); its templates hand over at half the steps.
+        if (refiner_model is not None and preset in ("Auto", "Custom") and detected_type == "wan"
+                and is_wan22_expert(meta_unet_file) and refiner_start_step >= steps):
+            refiner_start_step = steps // 2
+            logger.info(f"Auto-applied refiner_start_step={refiner_start_step} for Wan 2.2's low-noise expert")
+
         # ALBABIT-FIX: SD/SDXL-Turbo were distilled on 10 discrete timesteps only,
         # so they get get_sd_turbo_sigmas (same "sdxl" + "turbo" file name test).
         use_sd_turbo_schedule = detected_type == "sdxl" and "turbo" in meta_unet_file.lower()
@@ -1926,14 +1937,6 @@ class RadianceSamplerPro:
             if not getattr(latent_samples, "is_nested", False):
                 latent_samples = ensure_5d(latent_samples, "RadianceSamplerPro")
             frames = latent_samples.shape[2]
-            logger.warning(
-                "[RadianceSamplerPro] Video model '%s' detected. "
-                "For native video-model parity, especially LTX/LTX 2.3, prefer "
-                "RadianceVideoSampler. SamplerPro remains a universal/experimental "
-                "sampler and may differ because guidance, noise, callbacks, and "
-                "staged sampling are still Radiance-controlled.",
-                detected_type,
-            )
             if sigmas_override is not None:
                 logger.warning(
                     "[RadianceSamplerPro] sigmas_override only replaces the sigma "
