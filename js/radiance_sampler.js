@@ -896,7 +896,7 @@ function _isLtxAvHighResStage(node) {
 }
 
 // ALBABIT-FIX: mirrors sampler_utils.py's LIGHTNING_LORA (test_sampler_js_mirror.py).
-const LIGHTNING_LORA = /(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
+const LIGHTNING_LORA = /(?:lightning|turbo|lightx2v)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?/;
 
 // ALBABIT-FIX: the LoRA files this Sampler's model carries: the LoRA Stacks
 // feeding the Loader (model_meta's "loras") and the native loaders between
@@ -929,11 +929,11 @@ function _modelLoraNames(node, loaderNode) {
 function _deriveDistillationOverride(filename, detectedType, loraNames = []) {
     // ALBABIT-FIX: mirrors refine_distillation_from_meta, a Qwen-Image
     // Lightning or Turbo LoRA: the step count in its file name, at cfg 1.
-    // MiniMax H3's Turbo LoRAs (lightx2v) too.
-    if (detectedType === "qwen_image" || detectedType === "minimax") {
+    // MiniMax H3's Turbo LoRAs (lightx2v) too, and Wan 2.2's lightx2v ones, at euler.
+    if (detectedType === "qwen_image" || detectedType === "minimax" || detectedType === "wan") {
         for (const name of loraNames) {
             const match = name.toLowerCase().split(/[\\/]/).pop().match(LIGHTNING_LORA);
-            if (match) return { cfg: 1.0, steps: Number(match[1]) };
+            if (match) return { cfg: 1.0, steps: Number(match[1]), ...(detectedType === "wan" && { sampler: "euler" }) };
         }
     }
     if (!filename) return null;
@@ -1184,19 +1184,20 @@ function updateModelMetaDefaults(node) {
         [node.widgets.find(w => w.name === "terminal_sigma_to_zero"), ltxavStage?.terminal_sigma_to_zero],
         [node.widgets.find(w => w.name === "ltx_guidance"), ltxavStage?.ltx_guidance],
         [node.widgets.find(w => w.name === "guidance_rescale_phi"), ltxavStage?.guidance_rescale_phi],
-        // ALBABIT-FIX: Wan 2.2's low-noise expert takes over at half the steps, as in the Sampler.
-        [node.widgets.find(w => w.name === "refiner_start_step"),
-            sourceNode && lowNoise && refinerIn?.link != null && stepsW ? Math.floor(stepsW.value / 2) : undefined],
     ];
 
     let changed = false;
     // A null markedVal suppresses the marker; an omitted one marks the synced value.
-    for (const [widget, derivedVal, markedVal = derivedVal] of pairs) {
+    const sync = ([widget, derivedVal, markedVal = derivedVal]) => {
         if (syncAutoValue(node, widget, derivedVal)) changed = true;
         const linked = markedVal != null;
         const inSync = linked && widget && widget.value === markedVal;
         if (_markLinkedWidget(widget, linked, inSync)) changed = true;
-    }
+    };
+    pairs.forEach(sync);
+    // ALBABIT-FIX: Wan 2.2's low-noise expert takes over at half the steps just synced, as in the Sampler.
+    sync([node.widgets.find(w => w.name === "refiner_start_step"),
+          sourceNode && lowNoise && refinerIn?.link != null && stepsW ? Math.floor(stepsW.value / 2) : undefined]);
 
     // ALBABIT-FIX: under Wan 2.2 refiner_model takes the Loader's low-noise expert:
     // the input shows that name, its real name (links, API, saved graphs) is unchanged.
