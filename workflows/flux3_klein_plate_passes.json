@@ -4064,7 +4064,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/flux3_plate_passes",
+        "radiance_examples/plate_passes",
         "IMG │ PNG (8-bit)",
         "sh030_sdr",
         1,
@@ -4089,7 +4089,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/flux3_plate_passes",
+        "output_path": "radiance_examples/plate_passes",
         "format": "IMG │ PNG (8-bit)",
         "filename": "sh030_sdr",
         "version": 1,

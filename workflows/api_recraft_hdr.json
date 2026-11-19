@@ -1461,7 +1461,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/recraft",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "recraft_sdr",
         1,
@@ -1486,7 +1486,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/recraft",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "recraft_sdr",
         "version": 1,

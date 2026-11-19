@@ -1535,7 +1535,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/nano_banana",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "nano_banana_sdr",
         1,
@@ -1560,7 +1560,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/nano_banana",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "nano_banana_sdr",
         "version": 1,
