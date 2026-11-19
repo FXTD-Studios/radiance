@@ -1,18 +1,18 @@
 {
   "id": "2bdfcee5-e649-44f7-9d9e-0b4baff1888b",
   "revision": 0,
-  "last_node_id": 11,
+  "last_node_id": 13,
   "last_link_id": 11,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        -1400,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -297,11 +297,11 @@
       "id": 2,
       "type": "RadianceRead",
       "pos": [
-        -1400,
-        700
+        1040,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -585,11 +585,11 @@
       "id": 3,
       "type": "RadianceSceneCutDetect",
       "pos": [
-        -1000,
-        0
+        1440,
+        70
       ],
       "size": [
-        270,
+        310,
         146
       ],
       "flags": {},
@@ -672,11 +672,11 @@
       "id": 4,
       "type": "RadianceSceneCutSplit",
       "pos": [
-        -600,
-        0
+        1840,
+        70
       ],
       "size": [
-        270,
+        310,
         162
       ],
       "flags": {},
@@ -759,11 +759,11 @@
       "id": 5,
       "type": "RadianceGradeMatch",
       "pos": [
-        -200,
-        0
+        2240,
+        70
       ],
       "size": [
-        270,
+        310,
         78
       ],
       "flags": {},
@@ -822,11 +822,11 @@
       "id": 6,
       "type": "RadianceCDLTransform",
       "pos": [
-        200,
-        0
+        2640,
+        70
       ],
       "size": [
-        270,
+        310,
         294
       ],
       "flags": {},
@@ -986,11 +986,11 @@
       "id": 7,
       "type": "RadianceQC",
       "pos": [
-        600,
-        0
+        3040,
+        70
       ],
       "size": [
-        293.673828125,
+        310,
         382
       ],
       "flags": {},
@@ -1195,11 +1195,11 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        1000,
-        0
+        3440,
+        70
       ],
       "size": [
-        302.744140625,
+        310,
         458
       ],
       "flags": {},
@@ -1450,9 +1450,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/look_match",
+        "radiance_examples/shot_look_match",
         "SEQ │ EXR (16-bit half)",
-        "shot_matched",
+        "shot_look_match_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -1475,9 +1475,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/look_match",
+        "output_path": "radiance_examples/shot_look_match",
         "format": "SEQ │ EXR (16-bit half)",
-        "filename": "shot_matched",
+        "filename": "shot_look_match_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -1504,12 +1504,12 @@
       "id": 9,
       "type": "RadianceViewer",
       "pos": [
-        1000,
-        650
+        3840,
+        1960
       ],
       "size": [
-        960,
-        640
+        2660,
+        1760
       ],
       "flags": {},
       "order": 9,
@@ -1703,8 +1703,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -1725,12 +1725,12 @@
       "id": 10,
       "type": "RadianceViewer",
       "pos": [
-        -600,
-        400
+        3840,
+        70
       ],
       "size": [
-        640,
-        614
+        2660,
+        1760
       ],
       "flags": {},
       "order": 5,
@@ -1924,8 +1924,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -1943,30 +1943,58 @@
       }
     },
     {
-      "id": 11,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
-        -1400,
-        -700
+        0,
+        30
       ],
       "size": [
-        560,
-        420
+        580,
+        120
       ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "Shot look match across a sequence\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original."
+        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "Shot look match across a sequence\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original."
+        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 12,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        530
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## Shot look match across a sequence Workflow for Radiance:\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## Shot look match across a sequence Workflow for Radiance:\n\n1. Read (top): the edited sequence or generated shots. Read (bottom): the hero/reference frame.\n2. Scene Cut Detect finds the cuts; its score plot shows in the small viewer.\n3. Scene Cut Split takes one shot by shot_index: step it 0, 1, 2... and queue once per shot.\n4. Grade Match matches that shot to the reference; CDL adds a shared trim.\n5. QC checks clipping and banding; Write saves each shot as an EXR sequence. Put the shot number in filename so shots don't overwrite each other.\nViewer: matched shot vs the original.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 13,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2059,14 +2087,135 @@
       "IMAGE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load Sequence",
+      "bounding": [
+        610,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Load Reference Frame",
+      "bounding": [
+        1010,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Scene Cut Detect",
+      "bounding": [
+        1410,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Scene Cut Split",
+      "bounding": [
+        1810,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Grade Match",
+      "bounding": [
+        2210,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "CDL Trim",
+      "bounding": [
+        2610,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "QC",
+      "bounding": [
+        3010,
+        0,
+        370,
+        740
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Write Shot (EXR)",
+      "bounding": [
+        3410,
+        0,
+        370,
+        740
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Scene Cut Viewer",
+      "bounding": [
+        3810,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 10,
+      "title": "Viewer",
+      "bounding": [
+        3810,
+        1890,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.39705882352941174,
+      "scale": 0.2393,
       "offset": [
-        2871.5555555555557,
-        1286
+        208.9,
+        835.8
       ]
     }
   },
