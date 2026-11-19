@@ -2278,8 +2278,8 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        3470,
-        70
+        5140,
+        3850
       ],
       "size": [
         310,
@@ -2587,8 +2587,8 @@
       "id": 9,
       "type": "RadianceWrite",
       "pos": [
-        3870,
-        70
+        4740,
+        3850
       ],
       "size": [
         310,
@@ -2896,8 +2896,8 @@
       "id": 10,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        4270,
-        70
+        3900,
+        3910
       ],
       "size": [
         320,
@@ -3037,8 +3037,8 @@
       "id": 11,
       "type": "RadianceWrite",
       "pos": [
-        4270,
-        432
+        3900,
+        4272
       ],
       "size": [
         320,
@@ -3346,8 +3346,8 @@
       "id": 12,
       "type": "RadianceQC",
       "pos": [
-        4680,
-        70
+        4310,
+        3910
       ],
       "size": [
         310,
@@ -3553,7 +3553,7 @@
       "id": 13,
       "type": "RadianceViewer",
       "pos": [
-        5480,
+        3870,
         1960
       ],
       "size": [
@@ -3774,7 +3774,7 @@
       "id": 14,
       "type": "RadianceFalseColorMonitor",
       "pos": [
-        5080,
+        3470,
         70
       ],
       "size": [
@@ -3855,7 +3855,7 @@
       "id": 15,
       "type": "RadianceViewer",
       "pos": [
-        5480,
+        3870,
         70
       ],
       "size": [
@@ -4480,10 +4480,10 @@
       "id": 7,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        3440,
-        0,
+        5110,
+        3780,
         370,
-        1460
+        1050
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -4492,22 +4492,34 @@
       "id": 8,
       "title": "Write HDR10 (TIFF)",
       "bounding": [
-        3840,
-        0,
+        4710,
+        3780,
         370,
-        1460
+        1050
       ],
       "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 14,
+      "title": "SDR Output (PNG)",
+      "bounding": [
+        3840,
+        3780,
+        840,
+        1050
+      ],
+      "color": "#8A8",
       "flags": {}
     },
     {
       "id": 9,
       "title": "Write Image (SDR)",
       "bounding": [
-        4240,
-        0,
+        3870,
+        3840,
         380,
-        1460
+        960
       ],
       "color": "#8A8",
       "flags": {}
@@ -4516,10 +4528,10 @@
       "id": 10,
       "title": "QC (SDR)",
       "bounding": [
-        4650,
-        0,
+        4280,
+        3840,
         370,
-        1460
+        960
       ],
       "color": "#8A8",
       "flags": {}
@@ -4528,7 +4540,7 @@
       "id": 11,
       "title": "False Color",
       "bounding": [
-        5050,
+        3440,
         0,
         370,
         1460
@@ -4540,7 +4552,7 @@
       "id": 12,
       "title": "False Color Viewer",
       "bounding": [
-        5450,
+        3840,
         0,
         2720,
         1860
@@ -4552,7 +4564,7 @@
       "id": 13,
       "title": "Viewer",
       "bounding": [
-        5450,
+        3840,
         1890,
         2720,
         1860
@@ -4564,12 +4576,89 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.2297,
+      "scale": 0.1927,
       "offset": [
-        217.7,
-        870.7
+        259.5,
+        622.7
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          3425,
+          84
+        ],
+        "linkIds": [
+          13,
+          14,
+          15
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          3425,
+          3765
+        ],
+        "linkIds": [
+          13,
+          14,
+          15
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          3855,
+          3765
+        ],
+        "linkIds": [
+          13,
+          14,
+          15
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          4695,
+          3765
+        ],
+        "linkIds": [
+          13,
+          14
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          5095,
+          3765
+        ],
+        "linkIds": [
+          13
+        ],
+        "parentId": 4
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 13,
+        "parentId": 5
+      },
+      {
+        "id": 14,
+        "parentId": 4
+      },
+      {
+        "id": 15,
+        "parentId": 3
+      }
+    ]
   },
   "version": 0.4
 }

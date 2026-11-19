@@ -2869,8 +2869,8 @@
       "id": 9,
       "type": "RadianceWrite",
       "pos": [
-        4270,
-        70
+        4680,
+        1960
       ],
       "size": [
         310,
@@ -3178,8 +3178,8 @@
       "id": 10,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        4670,
-        70
+        4270,
+        1960
       ],
       "size": [
         320,
@@ -3318,8 +3318,8 @@
       "id": 11,
       "type": "RadianceWrite",
       "pos": [
-        4670,
-        432
+        4270,
+        2322
       ],
       "size": [
         320,
@@ -3627,7 +3627,7 @@
       "id": 12,
       "type": "RadianceViewer",
       "pos": [
-        5080,
+        4270,
         70
       ],
       "size": [
@@ -3995,7 +3995,7 @@
         -160
       ],
       "size": [
-        1180,
+        370,
         130
       ],
       "inputs": [],
@@ -4295,10 +4295,10 @@
       "id": 9,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        4240,
-        0,
+        4650,
+        1890,
         370,
-        1460
+        960
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -4307,10 +4307,10 @@
       "id": 10,
       "title": "Write Image (SDR)",
       "bounding": [
-        4640,
-        0,
+        4240,
+        1890,
         380,
-        1460
+        960
       ],
       "color": "#8A8",
       "flags": {}
@@ -4319,7 +4319,7 @@
       "id": 11,
       "title": "Viewer",
       "bounding": [
-        5050,
+        4240,
         0,
         2720,
         1860
@@ -4331,12 +4331,58 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.2414,
+      "scale": 0.2691,
       "offset": [
-        207.1,
-        828.5
+        185.8,
+        635.9
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          4225,
+          84
+        ],
+        "linkIds": [
+          16,
+          17
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          4225,
+          1875
+        ],
+        "linkIds": [
+          16,
+          17
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          4635,
+          1875
+        ],
+        "linkIds": [
+          16
+        ],
+        "parentId": 2
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 16,
+        "parentId": 3
+      },
+      {
+        "id": 17,
+        "parentId": 2
+      }
+    ]
   },
   "version": 0.4
 }

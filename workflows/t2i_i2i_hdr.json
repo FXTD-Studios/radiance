@@ -9,7 +9,7 @@
       "type": "RadianceDepthMapGenerator",
       "pos": [
         660,
-        1180
+        70
       ],
       "size": [
         310,
@@ -2449,8 +2449,8 @@
       "id": 86,
       "type": "RadianceWrite",
       "pos": [
-        660,
-        70
+        1460,
+        2250
       ],
       "size": [
         310,
@@ -2772,7 +2772,7 @@
       "type": "RadianceEXRMultiPart",
       "pos": [
         660,
-        1450
+        340
       ],
       "size": [
         310,
@@ -3080,8 +3080,8 @@
       "id": 111,
       "type": "RadianceWrite",
       "pos": [
-        -140,
-        1190
+        1060,
+        2250
       ],
       "size": [
         310,
@@ -4789,7 +4789,7 @@
         -170,
         0,
         370,
-        1090
+        2150
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -4798,10 +4798,10 @@
       "id": 8,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        630,
-        0,
+        1430,
+        2180,
         370,
-        1080
+        850
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -4810,10 +4810,10 @@
       "id": 9,
       "title": "Write Image (SDR)",
       "bounding": [
-        -170,
-        1120,
+        1030,
+        2180,
         370,
-        1030
+        850
       ],
       "color": "#8A8",
       "flags": {}
@@ -4823,9 +4823,9 @@
       "title": "Depth Map - (Optional)",
       "bounding": [
         630,
-        1110,
+        0,
         370,
-        1040
+        2150
       ],
       "color": "#a1309b",
       "flags": {}
@@ -5914,7 +5914,83 @@
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
-    "VHS_KeepIntermediate": true
+    "VHS_KeepIntermediate": true,
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          618,
+          84
+        ],
+        "linkIds": [
+          240
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          618,
+          2162
+        ],
+        "linkIds": [
+          240
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1418,
+          2162
+        ],
+        "linkIds": [
+          240
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          -188,
+          84
+        ],
+        "linkIds": [
+          215
+        ]
+      },
+      {
+        "id": 5,
+        "pos": [
+          -188,
+          2168
+        ],
+        "linkIds": [
+          215
+        ],
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "pos": [
+          1012,
+          2168
+        ],
+        "linkIds": [
+          215
+        ],
+        "parentId": 5
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 240,
+        "parentId": 3
+      },
+      {
+        "id": 215,
+        "parentId": 6
+      }
+    ]
   },
   "version": 0.4
 }

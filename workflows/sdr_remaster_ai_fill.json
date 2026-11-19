@@ -964,7 +964,7 @@
       "id": 4,
       "type": "RadianceCDLTransform",
       "pos": [
-        2650,
+        2250,
         70
       ],
       "size": [
@@ -1130,8 +1130,8 @@
       "id": 5,
       "type": "RadianceWrite",
       "pos": [
-        3050,
-        70
+        3460,
+        3850
       ],
       "size": [
         310,
@@ -1439,8 +1439,8 @@
       "id": 6,
       "type": "RadianceWrite",
       "pos": [
-        3450,
-        70
+        3060,
+        3850
       ],
       "size": [
         310,
@@ -1748,8 +1748,8 @@
       "id": 7,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        3850,
-        70
+        2650,
+        3850
       ],
       "size": [
         320,
@@ -1888,8 +1888,8 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        3850,
-        432
+        2650,
+        4212
       ],
       "size": [
         320,
@@ -2197,7 +2197,7 @@
       "id": 9,
       "type": "RadianceViewer",
       "pos": [
-        4260,
+        2650,
         1960
       ],
       "size": [
@@ -2418,7 +2418,7 @@
       "id": 10,
       "type": "RadianceViewer",
       "pos": [
-        4260,
+        2650,
         70
       ],
       "size": [
@@ -2891,8 +2891,8 @@
       "id": 15,
       "type": "RadianceRudraFlickerReport",
       "pos": [
-        2250,
-        70
+        3860,
+        3850
       ],
       "size": [
         310,
@@ -3002,8 +3002,8 @@
       "id": 16,
       "type": "PreviewAny",
       "pos": [
-        2250,
-        364
+        3860,
+        4144
       ],
       "size": [
         310,
@@ -3297,10 +3297,10 @@
       "id": 5,
       "title": "Flicker Report",
       "bounding": [
-        2220,
-        0,
+        3830,
+        3780,
         370,
-        1330
+        1080
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -3309,7 +3309,7 @@
       "id": 6,
       "title": "CDL Trim",
       "bounding": [
-        2620,
+        2220,
         0,
         370,
         1330
@@ -3321,10 +3321,10 @@
       "id": 7,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        3020,
-        0,
+        3430,
+        3780,
         370,
-        1330
+        1080
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -3333,10 +3333,10 @@
       "id": 8,
       "title": "Write Video (PQ HDR)",
       "bounding": [
-        3420,
-        0,
+        3030,
+        3780,
         370,
-        1330
+        1080
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -3345,10 +3345,10 @@
       "id": 9,
       "title": "Write Video (SDR)",
       "bounding": [
-        3820,
-        0,
+        2620,
+        3780,
         380,
-        1330
+        1080
       ],
       "color": "#8A8",
       "flags": {}
@@ -3357,7 +3357,7 @@
       "id": 10,
       "title": "AI Fill Mask Viewer",
       "bounding": [
-        4230,
+        2620,
         0,
         2720,
         1860
@@ -3369,7 +3369,7 @@
       "id": 11,
       "title": "Viewer",
       "bounding": [
-        4230,
+        2620,
         1890,
         2720,
         1860
@@ -3381,12 +3381,184 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.2393,
+      "scale": 0.1915,
       "offset": [
-        208.9,
-        835.8
+        261.1,
+        626.6
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2614,
+          84
+        ],
+        "linkIds": [
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          2614,
+          3756
+        ],
+        "linkIds": [
+          5,
+          6,
+          7
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          3024,
+          3756
+        ],
+        "linkIds": [
+          5,
+          6
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          3424,
+          3756
+        ],
+        "linkIds": [
+          5
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          2208,
+          84
+        ],
+        "linkIds": [
+          19
+        ]
+      },
+      {
+        "id": 6,
+        "pos": [
+          2208,
+          3762
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 5
+      },
+      {
+        "id": 7,
+        "pos": [
+          3818,
+          3762
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 6
+      },
+      {
+        "id": 8,
+        "pos": [
+          2202,
+          108
+        ],
+        "linkIds": [
+          20
+        ]
+      },
+      {
+        "id": 9,
+        "pos": [
+          2202,
+          3768
+        ],
+        "linkIds": [
+          20
+        ],
+        "parentId": 8
+      },
+      {
+        "id": 10,
+        "pos": [
+          3812,
+          3768
+        ],
+        "linkIds": [
+          20
+        ],
+        "parentId": 9
+      },
+      {
+        "id": 11,
+        "pos": [
+          986,
+          84
+        ],
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 12,
+        "pos": [
+          986,
+          3774
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 11
+      },
+      {
+        "id": 13,
+        "pos": [
+          3806,
+          3774
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 12
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 5,
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "parentId": 3
+      },
+      {
+        "id": 7,
+        "parentId": 2
+      },
+      {
+        "id": 19,
+        "parentId": 7
+      },
+      {
+        "id": 20,
+        "parentId": 10
+      },
+      {
+        "id": 18,
+        "parentId": 13
+      }
+    ]
   },
   "version": 0.4
 }

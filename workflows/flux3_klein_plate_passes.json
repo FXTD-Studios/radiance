@@ -1,8 +1,8 @@
 {
   "id": "c77ba63c-d170-4232-83ef-45c68652d3b8",
   "revision": 0,
-  "last_node_id": 18,
-  "last_link_id": 31,
+  "last_node_id": 19,
+  "last_link_id": 32,
   "nodes": [
     {
       "id": 1,
@@ -1860,7 +1860,8 @@
           "type": "IMAGE",
           "links": [
             12,
-            13
+            13,
+            32
           ]
         },
         {
@@ -2610,8 +2611,8 @@
       "id": 8,
       "type": "RadianceEXRPassesWriter",
       "pos": [
-        4370,
-        70
+        5170,
+        3850
       ],
       "size": [
         400,
@@ -2747,8 +2748,8 @@
       "id": 9,
       "type": "RadianceEXRMultiPart",
       "pos": [
-        3920,
-        70
+        4720,
+        3850
       ],
       "size": [
         360,
@@ -2957,7 +2958,7 @@
       "id": 10,
       "type": "RadianceMultipassRelight",
       "pos": [
-        4860,
+        3920,
         70
       ],
       "size": [
@@ -3276,7 +3277,7 @@
       "id": 11,
       "type": "RadianceViewer",
       "pos": [
-        5260,
+        4320,
         1960
       ],
       "size": [
@@ -3497,7 +3498,7 @@
       "id": 12,
       "type": "RadianceViewer",
       "pos": [
-        5260,
+        4320,
         70
       ],
       "size": [
@@ -3805,6 +3806,315 @@
       "mode": 0
     },
     {
+      "id": 17,
+      "type": "RadianceWrite",
+      "pos": [
+        4320,
+        3850
+      ],
+      "size": [
+        310,
+        362
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 32
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/flux3_plate_passes",
+        "IMG │ PNG (8-bit)",
+        "sh030_sdr",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/flux3_plate_passes",
+        "format": "IMG │ PNG (8-bit)",
+        "filename": "sh030_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
+    },
+    {
       "type": "MarkdownNote",
       "pos": [
         0,
@@ -3819,14 +4129,14 @@
       "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
       "color": "#222",
       "bgcolor": "#000",
-      "id": 17,
+      "id": 18,
       "flags": {},
       "order": 0,
       "mode": 0
@@ -3853,7 +4163,7 @@
       },
       "color": "#222",
       "bgcolor": "#000",
-      "id": 18,
+      "id": 19,
       "flags": {},
       "order": 0,
       "mode": 0
@@ -4107,6 +4417,14 @@
       15,
       0,
       "STRING"
+    ],
+    [
+      32,
+      5,
+      0,
+      17,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -4198,10 +4516,10 @@
       "id": 8,
       "title": "Write EXR MultiPart",
       "bounding": [
-        3890,
-        0,
+        4690,
+        3780,
         420,
-        1460
+        660
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -4210,19 +4528,31 @@
       "id": 9,
       "title": "Write EXR Passes",
       "bounding": [
-        4340,
-        0,
+        5140,
+        3780,
         460,
-        1460
+        660
       ],
       "color": "#b58b2a",
       "flags": {}
     },
     {
       "id": 10,
+      "title": "Write Image (SDR)",
+      "bounding": [
+        4290,
+        3780,
+        370,
+        660
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 11,
       "title": "Relight",
       "bounding": [
-        4830,
+        3890,
         0,
         370,
         1460
@@ -4231,10 +4561,10 @@
       "flags": {}
     },
     {
-      "id": 11,
+      "id": 12,
       "title": "Relight Viewer",
       "bounding": [
-        5230,
+        4290,
         0,
         2720,
         1860
@@ -4243,10 +4573,10 @@
       "flags": {}
     },
     {
-      "id": 12,
+      "id": 13,
       "title": "Viewer",
       "bounding": [
-        5230,
+        4290,
         1890,
         2720,
         1860
@@ -4258,12 +4588,268 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.236,
+      "scale": 0.2093,
       "offset": [
-        211.9,
-        847.5
+        238.9,
+        573.3
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          3893,
+          84
+        ],
+        "linkIds": [
+          14
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          3893,
+          3747
+        ],
+        "linkIds": [
+          14
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          5143,
+          3747
+        ],
+        "linkIds": [
+          14
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          3887,
+          132
+        ],
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 5,
+        "pos": [
+          3887,
+          3753
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "pos": [
+          4687,
+          3753
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 5
+      },
+      {
+        "id": 7,
+        "pos": [
+          3881,
+          252
+        ],
+        "linkIds": [
+          17
+        ]
+      },
+      {
+        "id": 8,
+        "pos": [
+          3881,
+          3759
+        ],
+        "linkIds": [
+          17
+        ],
+        "parentId": 7
+      },
+      {
+        "id": 9,
+        "pos": [
+          4681,
+          3759
+        ],
+        "linkIds": [
+          17
+        ],
+        "parentId": 8
+      },
+      {
+        "id": 10,
+        "pos": [
+          3875,
+          276
+        ],
+        "linkIds": [
+          16
+        ]
+      },
+      {
+        "id": 11,
+        "pos": [
+          3875,
+          3765
+        ],
+        "linkIds": [
+          16
+        ],
+        "parentId": 10
+      },
+      {
+        "id": 12,
+        "pos": [
+          4675,
+          3765
+        ],
+        "linkIds": [
+          16
+        ],
+        "parentId": 11
+      },
+      {
+        "id": 13,
+        "pos": [
+          3419,
+          84
+        ],
+        "linkIds": [
+          15
+        ]
+      },
+      {
+        "id": 14,
+        "pos": [
+          3419,
+          3771
+        ],
+        "linkIds": [
+          15
+        ],
+        "parentId": 13
+      },
+      {
+        "id": 15,
+        "pos": [
+          4669,
+          3771
+        ],
+        "linkIds": [
+          15
+        ],
+        "parentId": 14
+      },
+      {
+        "id": 16,
+        "pos": [
+          3413,
+          228
+        ],
+        "linkIds": [
+          19
+        ]
+      },
+      {
+        "id": 17,
+        "pos": [
+          3413,
+          3777
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 16
+      },
+      {
+        "id": 18,
+        "pos": [
+          4663,
+          3777
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 17
+      },
+      {
+        "id": 19,
+        "pos": [
+          3007,
+          84
+        ],
+        "linkIds": [
+          32
+        ]
+      },
+      {
+        "id": 20,
+        "pos": [
+          3007,
+          3783
+        ],
+        "linkIds": [
+          32
+        ],
+        "parentId": 19
+      },
+      {
+        "id": 21,
+        "pos": [
+          4257,
+          3783
+        ],
+        "linkIds": [
+          32
+        ],
+        "parentId": 20
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 14,
+        "parentId": 3
+      },
+      {
+        "id": 18,
+        "parentId": 6
+      },
+      {
+        "id": 17,
+        "parentId": 9
+      },
+      {
+        "id": 16,
+        "parentId": 12
+      },
+      {
+        "id": 15,
+        "parentId": 15
+      },
+      {
+        "id": 19,
+        "parentId": 18
+      },
+      {
+        "id": 32,
+        "parentId": 21
+      }
+    ]
   },
   "version": 0.4
 }

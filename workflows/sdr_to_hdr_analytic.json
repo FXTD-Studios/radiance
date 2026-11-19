@@ -465,7 +465,7 @@
       "id": 4,
       "type": "RadianceViewer",
       "pos": [
-        2300,
+        1870,
         70
       ],
       "size": [
@@ -756,7 +756,7 @@
       "type": "RadianceRudraMasterWrite",
       "pos": [
         1870,
-        70
+        1960
       ],
       "size": [
         340,
@@ -1064,9 +1064,9 @@
       "title": "Write HDR Master (EXR)",
       "bounding": [
         1840,
-        0,
+        1890,
         400,
-        690
+        490
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -1075,7 +1075,7 @@
       "id": 5,
       "title": "Viewer",
       "bounding": [
-        2270,
+        1840,
         0,
         2720,
         1860
@@ -1087,12 +1087,66 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3733,
+      "scale": 0.3831,
       "offset": [
-        133.9,
-        535.8
+        130.5,
+        313.2
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1828,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1828,
+          1872
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1822,
+          180
+        ],
+        "linkIds": [
+          8
+        ]
+      },
+      {
+        "id": 4,
+        "pos": [
+          1822,
+          1878
+        ],
+        "linkIds": [
+          8
+        ],
+        "parentId": 3
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 2
+      },
+      {
+        "id": 8,
+        "parentId": 4
+      }
+    ]
   },
   "version": 0.4
 }
