@@ -449,6 +449,15 @@ def resolve_input_space(img: torch.Tensor, input_color_space: str) -> str:
     return "sRGB"
 
 
+def resolve_ai_upscale_mode(img: torch.Tensor, mode: str) -> str:
+    """AI Upscale's 'Auto': Refine (HDR) when any colour value is above 1.0
+    (the ESRGAN-family models are trained on 0-1), else Standard."""
+    if mode != "Auto":
+        return mode
+    rgb = img[..., :3]
+    return "Refine (HDR)" if rgb.numel() and float(rgb.max()) > 1.0 + 1e-4 else "Standard"
+
+
 # =============================================================================
 # DETAIL ENHANCEMENT (v1.1.0: true 32-bit, no PIL roundtrip)
 # =============================================================================
@@ -1017,6 +1026,7 @@ class RadianceProUpscale:
                      "proportion to edge strength. 0 = off; counteracts sharpening on edges."},
                 ),
                 "input_color_space": (["sRGB", "Linear", "Auto"], {
+                    "default": "Auto",
                     "tooltip": "Encoding of the input. sRGB allows the linear-light conversion; Linear leaves "
                     "values untouched. Auto: Linear when any value is outside 0-1 (HDR), else sRGB; the "
                     "info output says which.",
@@ -1265,7 +1275,7 @@ class RadianceUpscaleBySize:
                 "input_color_space": (
                     ["sRGB", "Linear", "Auto"],
                     {
-                        "default": "sRGB",
+                        "default": "Auto",
                         "tooltip": "Colour space of the input. Linear skips the sRGB-to-linear conversion "
                         "for HDR/linear input. Auto: Linear when any value is outside 0-1, else sRGB.",
                     },
@@ -1411,7 +1421,7 @@ class RadianceDownscale32bit:
                 "input_color_space": (
                     ["sRGB", "Linear", "Auto"],
                     {
-                        "default": "sRGB",
+                        "default": "Auto",
                         "tooltip": (
                             "Colour space of the input image. Linear skips the sRGB-linear conversion "
                             "for HDR or already-linear input. Auto: Linear when any value is outside "
@@ -1843,10 +1853,12 @@ class RadianceAIUpscale:
                     },
                 ),
                 "mode": (
-                    ["Standard", "Refine (HDR)", "Normalize (HDR)"],
+                    ["Auto", "Standard", "Refine (HDR)", "Normalize (HDR)"],
                     {
-                        "default": "Standard",
-                        "tooltip": "Processing mode. 'Standard' = direct upscale. 'Refine (HDR)' = log-compression for highlights. 'Normalize (HDR)' = scales to safe range.",
+                        "default": "Auto",
+                        "tooltip": "Processing mode. 'Auto' = Refine (HDR) when any value is above 1.0, else Standard; "
+                                   "the info output says which ran. 'Standard' = direct upscale. 'Refine (HDR)' = "
+                                   "log-compression for highlights. 'Normalize (HDR)' = scales to safe range.",
                     },
                 ),
                 "tile_size": (
@@ -2384,6 +2396,7 @@ class RadianceAIUpscale:
     ):
         """Upscale image using AI model with tiled processing."""
         self.used_fallback = False
+        mode, auto_mode = resolve_ai_upscale_mode(image, mode), mode == "Auto"
 
         # Load model if needed
         if self.model is None or self.current_model_name != model_name:
@@ -2535,7 +2548,7 @@ class RadianceAIUpscale:
             # But avoid clamping max for HDR modes
             result = torch.clamp(result, min=0)
 
-            info = f"Upscaled with {model_name} ({scale}x) [{mode}]"
+            info = f"Upscaled with {model_name} ({scale}x) [{mode}{' (Auto)' if auto_mode else ''}]"
 
             if unload_model:
                 # Drop the cache entry too. Clearing self.model alone left the

@@ -29,7 +29,7 @@ AI-powered upscaling using neural network models. Supports tiled processing for 
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | Input image to upscale. |
 | `model_name` | choice | `RealESRGAN_x4plus` | `RealESRGAN_x4plus`, `RealESRGAN_x4plus_anime_6B`, `RealESRGAN_x2plus`, `ESRGAN_4x`, `4x-UltraSharp`, `4x-AnimeSharp`, `SwinIR_4x`, `HAT_4x`, `SUPIR-v0F_fp16`, `SUPIR-v0Q_fp16` | AI upscaling model. RealESRGAN_x4plus is recommended for general use. |
-| `mode` | choice | `Standard` | `Standard`, `Refine (HDR)`, `Normalize (HDR)` | Processing mode. 'Standard' = direct upscale. 'Refine (HDR)' = log-compression for highlights. 'Normalize (HDR)' = scales to safe range. |
+| `mode` | choice | `Auto` | `Auto`, `Standard`, `Refine (HDR)`, `Normalize (HDR)` | Processing mode. 'Auto' = Refine (HDR) when any value is above 1.0, else Standard; the info output says which ran. 'Standard' = direct upscale. 'Refine (HDR)' = log-compression for highlights. 'Normalize (HDR)' = scales to safe range. |
 | `tile_size` | int | 512 | 128 to 1024, step 64 | Tile size for processing. Smaller = less VRAM, slower. |
 | `tile_overlap` | int | 32 | 0 to 128, step 8 | Overlap between tiles to avoid seams. |
 | `auto_download` | boolean | on |  | Automatically download models if not found. |
@@ -86,7 +86,7 @@ Convert between bit depths with professional dithering to reduce banding.
 | `pre_blur` (optional) | float | 0 | 0 to 2, step 0.1 | Gaussian sigma in input pixels applied before downscaling to suppress aliasing and moire. 0 = off. |
 | `process_in_linear` (optional) | boolean | on |  | Decode sRGB to linear before resampling and re-encode after, for gamma-correct filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted. |
 | `use_gpu` (optional) | boolean | on |  | Run on CUDA when available (MPS is not used). Falls back to the CPU path, which uses the exact resampling kernels. |
-| `input_color_space` (optional) | choice | `sRGB` | `sRGB`, `Linear`, `Auto` | Colour space of the input image. Linear skips the sRGB-linear conversion for HDR or already-linear input. Auto: Linear when any value is outside 0-1, else sRGB. |
+| `input_color_space` (optional) | choice | `Auto` | `sRGB`, `Linear`, `Auto` | Colour space of the input image. Linear skips the sRGB-linear conversion for HDR or already-linear input. Auto: Linear when any value is outside 0-1, else sRGB. |
 
 **Outputs**
 
@@ -114,7 +114,7 @@ Professional 32-bit upscaler optimized for Flux with HDR support.
 | `sharpen_radius` (optional) | float | 1 | 0.5 to 5, step 0.1 | Gaussian sigma in output pixels for the unsharp mask. Larger sharpens coarser detail. |
 | `detail_enhancement` (optional) | float | 0.2 | 0 to 1, step 0.05 | Multi-scale luma detail boost (blur sigmas 1, 2 and 4 px) added equally to RGB after resizing. 0 = off. |
 | `antialiasing` (optional) | float | 0.3 | 0 to 1, step 0.05 | Edge-aware softening applied last: blends in a 1 px Gaussian blur in proportion to edge strength. 0 = off; counteracts sharpening on edges. |
-| `input_color_space` (optional) | choice |  | `sRGB`, `Linear`, `Auto` | Encoding of the input. sRGB allows the linear-light conversion; Linear leaves values untouched. Auto: Linear when any value is outside 0-1 (HDR), else sRGB; the info output says which. |
+| `input_color_space` (optional) | choice | `Auto` | `sRGB`, `Linear`, `Auto` | Encoding of the input. sRGB allows the linear-light conversion; Linear leaves values untouched. Auto: Linear when any value is outside 0-1 (HDR), else sRGB; the info output says which. |
 | `process_in_linear` (optional) | boolean | on |  | Decode sRGB to linear before resampling and re-encode after, for gamma-correct filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted. |
 | `use_tiles` (optional) | boolean | off |  | Process image in overlapping tiles to handle large images that exceed VRAM. |
 | `tile_size` (optional) | int | 512 | 128 to 2048, step 64 | Input tile size in pixels for the tiled CPU path. Used only when tiling is on (or forced above 64 MP) and the image is larger than this. |
@@ -148,7 +148,7 @@ Upscale to exact dimensions with aspect ratio control.
 | `aspect_mode` (optional) | choice |  | `fit`, `fill`, `stretch` | With maintain_aspect on. fit: largest size inside the box. fill: smallest size covering the box (not cropped, so one side exceeds it). stretch: exactly width x height. |
 | `sharpening` (optional) | float | 0.2 | 0 to 2, step 0.05 | Unsharp-mask amount (1 px sigma) applied after resizing. 0 = off. |
 | `process_in_linear` (optional) | boolean | on |  | Decode sRGB to linear before resampling and re-encode after, for gamma-correct filtering. Only acts when input_color_space is sRGB; linear/HDR input is never converted. |
-| `input_color_space` (optional) | choice | `sRGB` | `sRGB`, `Linear`, `Auto` | Colour space of the input. Linear skips the sRGB-to-linear conversion for HDR/linear input. Auto: Linear when any value is outside 0-1, else sRGB. |
+| `input_color_space` (optional) | choice | `Auto` | `sRGB`, `Linear`, `Auto` | Colour space of the input. Linear skips the sRGB-to-linear conversion for HDR/linear input. Auto: Linear when any value is outside 0-1, else sRGB. |
 
 **Outputs**
 
