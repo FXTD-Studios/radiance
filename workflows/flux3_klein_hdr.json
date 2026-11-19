@@ -1,18 +1,18 @@
 {
   "id": "7d9a78f3-f6b1-4932-ac01-4c48ab33508a",
   "revision": 0,
-  "last_node_id": 9,
-  "last_link_id": 15,
+  "last_node_id": 16,
+  "last_link_id": 18,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceUnifiedLoader",
       "pos": [
-        -1400,
-        0
+        1070,
+        70
       ],
       "size": [
-        286.4375,
+        340,
         314
       ],
       "flags": {},
@@ -341,12 +341,12 @@
       "id": 2,
       "type": "RadianceCinematicPromptEncoder",
       "pos": [
-        -1000,
-        0
+        1500,
+        70
       ],
       "size": [
-        400,
-        642
+        680,
+        890
       ],
       "flags": {},
       "order": 2,
@@ -589,7 +589,9 @@
           "localized_name": "positive_text",
           "name": "positive_text",
           "type": "STRING",
-          "links": null
+          "links": [
+            17
+          ]
         },
         {
           "localized_name": "negative_text",
@@ -617,7 +619,8 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceCinematicPromptEncoder"
+        "Node name for S&R": "RadianceCinematicPromptEncoder",
+        "radExtraHeight": 268
       },
       "widgets_values": [
         true,
@@ -666,11 +669,11 @@
       "id": 3,
       "type": "RadianceResolution",
       "pos": [
-        -1400,
-        640
+        640,
+        70
       ],
       "size": [
-        273.5234375,
+        340,
         478
       ],
       "flags": {},
@@ -900,7 +903,9 @@
           "localized_name": "crop_bbox",
           "name": "crop_bbox",
           "type": "BOUNDING_BOX",
-          "links": null
+          "links": [
+            16
+          ]
         }
       ],
       "properties": {
@@ -947,11 +952,11 @@
       "id": 4,
       "type": "RadianceSamplerPro",
       "pos": [
-        -520,
-        0
+        2270,
+        70
       ],
       "size": [
-        325.189453125,
+        340,
         878
       ],
       "flags": {},
@@ -1631,11 +1636,11 @@
       "id": 5,
       "type": "RadianceHDRVAEDecode",
       "pos": [
-        -80,
-        0
+        2700,
+        70
       ],
       "size": [
-        278.556640625,
+        280,
         382
       ],
       "flags": {},
@@ -1666,7 +1671,7 @@
           "name": "crop_bbox",
           "shape": 7,
           "type": "BOUNDING_BOX",
-          "link": null
+          "link": 16
         },
         {
           "localized_name": "target_space",
@@ -1855,7 +1860,8 @@
           "type": "IMAGE",
           "links": [
             12,
-            14
+            14,
+            18
           ]
         },
         {
@@ -1913,11 +1919,11 @@
       "id": 6,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        400,
-        0
+        3070,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -2270,12 +2276,12 @@
       "id": 7,
       "type": "RadianceViewer",
       "pos": [
-        900,
-        0
+        3470,
+        70
       ],
       "size": [
-        960,
-        640
+        2660,
+        1760
       ],
       "flags": {},
       "order": 7,
@@ -2469,8 +2475,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -2491,11 +2497,11 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        900,
-        700
+        3870,
+        1960
       ],
       "size": [
-        302.744140625,
+        310,
         362
       ],
       "flags": {},
@@ -2746,9 +2752,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/flux3_klein_hdr",
+        "radiance_examples/flux3_klein",
         "IMG │ EXR (32-bit float)",
-        "flux3_hdr",
+        "flux3_klein_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -2771,9 +2777,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/flux3_klein_hdr",
+        "output_path": "radiance_examples/flux3_klein",
         "format": "IMG │ EXR (32-bit float)",
-        "filename": "flux3_hdr",
+        "filename": "flux3_klein_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -2797,30 +2803,484 @@
       }
     },
     {
-      "id": 9,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
-        -1400,
-        -760
+        1070,
+        488
       ],
       "size": [
-        560,
-        420
+        340,
+        150
       ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
+      "title": "Note: Base or Distilled",
       "properties": {},
       "widgets_values": [
-        "Flux.3 Klein -> HDR\n\n1. Loader: Flux.3 Klein preset, flux3-image-klein (base or distilled), Qwen3-VL-4B, flux2-vae. model_meta feeds Prompt, Resolution and Sampler, so the latent is always 128ch at 16x.\n2. Sampler preset Auto picks steps and guidance from the weights.\n3. VAE Decode gives the SDR sRGB frame; SDR to HDR Universal (Auto = RUDRA ACES 2) builds the scene-linear master (1.0 = 203 nits).\n4. Viewer: HDR master through ACES 2.0, SDR decode as compare (wipe).\n5. Write: 32-bit float EXR, Linear Rec.709."
+        "**Base or Distilled**:\n- Pick the model file in the Loader. The Sampler, in \"Auto\", follows it.\n- FLUX 3 Klein: base 50 steps at CFG 3.5, distilled 16 steps."
       ],
       "widgets_values_named": {
-        "text": "Flux.3 Klein -> HDR\n\n1. Loader: Flux.3 Klein preset, flux3-image-klein (base or distilled), Qwen3-VL-4B, flux2-vae. model_meta feeds Prompt, Resolution and Sampler, so the latent is always 128ch at 16x.\n2. Sampler preset Auto picks steps and guidance from the weights.\n3. VAE Decode gives the SDR sRGB frame; SDR to HDR Universal (Auto = RUDRA ACES 2) builds the scene-linear master (1.0 = 203 nits).\n4. Viewer: HDR master through ACES 2.0, SDR decode as compare (wipe).\n5. Write: 32-bit float EXR, Linear Rec.709."
+        "text": "**Base or Distilled**:\n- Pick the model file in the Loader. The Sampler, in \"Auto\", follows it.\n- FLUX 3 Klein: base 50 steps at CFG 3.5, distilled 16 steps."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 10,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "PreviewAny",
+      "pos": [
+        1500,
+        1020
+      ],
+      "size": [
+        680,
+        250
+      ],
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "id": 11,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        1500,
+        1330
+      ],
+      "size": [
+        680,
+        100
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Prompt",
+      "properties": {},
+      "widgets_values": [
+        "**Prompt**:\n- FLUX 3 Klein expects a full caption. For a short prompt, pick the upsampler in the Loader and turn on \"upsample_prompt\": \"Preview as Text\" shows the rewrite."
+      ],
+      "widgets_values_named": {
+        "text": "**Prompt**:\n- FLUX 3 Klein expects a full caption. For a short prompt, pick the upsampler in the Loader and turn on \"upsample_prompt\": \"Preview as Text\" shows the rewrite."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 12,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "id": 13,
+      "type": "RadianceWrite",
+      "pos": [
+        3470,
+        1960
+      ],
+      "size": [
+        310,
+        362
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 18
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
+      "widgets_values": [
+        "radiance_examples/flux3_klein",
+        "IMG │ PNG (8-bit)",
+        "flux3_klein_sdr",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
+      ],
+      "widgets_values_named": {
+        "output_path": "radiance_examples/flux3_klein",
+        "format": "IMG │ PNG (8-bit)",
+        "filename": "flux3_klein_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 14,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        1250
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## Flux.3 Klein → HDR Workflow for Radiance:\n\n1. Loader: Flux.3 Klein preset, flux3-image-klein (base or distilled), Qwen3-VL-4B, flux2-vae. model_meta feeds Prompt, Resolution and Sampler, so the latent is always 128ch at 16x.\n2. Sampler preset Auto picks steps and guidance from the weights.\n3. VAE Decode gives the SDR sRGB frame; SDR to HDR Universal (Auto = RUDRA ACES 2) builds the scene-linear master (1.0 = 203 nits).\n4. Viewer: HDR master through ACES 2.0, SDR decode as compare (wipe).\n5. Write: 32-bit float EXR, Linear Rec.709.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   └── 📂 vae/\n│       └── flux2-vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## Flux.3 Klein → HDR Workflow for Radiance:\n\n1. Loader: Flux.3 Klein preset, flux3-image-klein (base or distilled), Qwen3-VL-4B, flux2-vae. model_meta feeds Prompt, Resolution and Sampler, so the latent is always 128ch at 16x.\n2. Sampler preset Auto picks steps and guidance from the weights.\n3. VAE Decode gives the SDR sRGB frame; SDR to HDR Universal (Auto = RUDRA ACES 2) builds the scene-linear master (1.0 = 203 nits).\n4. Viewer: HDR master through ACES 2.0, SDR decode as compare (wipe).\n5. Write: 32-bit float EXR, Linear Rec.709.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   └── 📂 vae/\n│       └── flux2-vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 15,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        3040,
+        -160
+      ],
+      "size": [
+        370,
+        130
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Outputs",
+      "properties": {},
+      "widgets_values": [
+        "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits).\n- The Viewer shows the HDR, with the SDR decode as compare (wipe). Bypass \"SDR → HDR Universal\" (Ctrl+B) to see the SDR there; the EXR then holds the SDR too.\n- \"Write Image (SDR)\" (bypassed, Ctrl+B to turn it on) saves the SDR decode as an 8-bit PNG."
+      ],
+      "widgets_values_named": {
+        "text": "**Outputs**:\n- The EXR is the HDR master (scene-linear Rec.709, 1.0 = 203 nits).\n- The Viewer shows the HDR, with the SDR decode as compare (wipe). Bypass \"SDR → HDR Universal\" (Ctrl+B) to see the SDR there; the EXR then holds the SDR too.\n- \"Write Image (SDR)\" (bypassed, Ctrl+B to turn it on) saves the SDR decode as an 8-bit PNG."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 16,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2943,18 +3403,227 @@
       8,
       0,
       "IMAGE"
+    ],
+    [
+      16,
+      3,
+      9,
+      5,
+      3,
+      "BOUNDING_BOX"
+    ],
+    [
+      17,
+      2,
+      2,
+      11,
+      0,
+      "STRING"
+    ],
+    [
+      18,
+      5,
+      0,
+      13,
+      0,
+      "IMAGE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Image Settings",
+      "bounding": [
+        610,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Models Loading",
+      "bounding": [
+        1040,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Prompt",
+      "bounding": [
+        1470,
+        0,
+        740,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Generate",
+      "bounding": [
+        2240,
+        0,
+        400,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Decode",
+      "bounding": [
+        2670,
+        0,
+        340,
+        1460
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "HDR Conversion",
+      "bounding": [
+        3040,
+        0,
+        370,
+        1460
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        3840,
+        1890,
+        370,
+        600
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Write Image (SDR)",
+      "bounding": [
+        3440,
+        1890,
+        370,
+        600
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Viewer",
+      "bounding": [
+        3440,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.35034602076124566,
+      "scale": 0.3035,
       "offset": [
-        2871.5555555555557,
-        1286
+        164.7,
+        585.4
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          3428,
+          84
+        ],
+        "linkIds": [
+          15
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          3428,
+          1872
+        ],
+        "linkIds": [
+          15
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          3828,
+          1872
+        ],
+        "linkIds": [
+          15
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          3022,
+          84
+        ],
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 5,
+        "pos": [
+          3022,
+          1878
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "pos": [
+          3422,
+          1878
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 5
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 15,
+        "parentId": 3
+      },
+      {
+        "id": 18,
+        "parentId": 6
+      }
+    ]
   },
   "version": 0.4
 }
