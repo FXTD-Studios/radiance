@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import json
+import time
 import logging
 import traceback
 import torch
@@ -318,6 +319,11 @@ def generate_gizmo_class(gizmo_data: Dict[str, Any]) -> Tuple[str, Any]:
     return class_name, dynamic_class
 
 
+#: Gizmos registered at this start-up: file stem -> node class name. A gizmo
+#: saved since then is listed on the Gizmos page as needing a restart.
+LOADED_GIZMOS: Dict[str, str] = {}
+
+
 def load_dynamic_gizmos() -> Tuple[Dict[str, Any], Dict[str, str]]:
     """
     Scans the gizmos/ directory, compiles valid JSON .gizmo specs into dynamic
@@ -338,6 +344,7 @@ def load_dynamic_gizmos() -> Tuple[Dict[str, Any], Dict[str, str]]:
 
                 class_name, dynamic_class = generate_gizmo_class(gizmo_data)
                 class_mappings[class_name] = dynamic_class
+                LOADED_GIZMOS[filename[:-len(".gizmo")]] = class_name
 
                 # Register display name prefixing with custom glyph
                 display_name = gizmo_data.get("display_name", gizmo_data["name"])
@@ -357,6 +364,92 @@ def load_dynamic_gizmos() -> Tuple[Dict[str, Any], Dict[str, str]]:
 _MAX_GIZMO_BYTES = 5 * 1024 * 1024
 
 
+def _save_gizmo(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate a gizmo definition and write it to gizmos/<name>.gizmo.
+
+    Returns {"name", "display_name", "replaced"}; raises ValueError when it is
+    not a gizmo. Re-saving one is how it is edited: the previous file is kept
+    as .bak.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("A gizmo is a JSON object")
+    name = str(data.get("name", "")).strip()
+    display_name = str(data.get("display_name", "")).strip() or name
+    category = (str(data.get("category", "")).strip() or "FXTD STUDIOS/Radiance/◎ Gizmos").replace("\\", "/")
+    description = str(data.get("description", "")).strip() or "Custom Dynamic Gizmo."
+    lists = {k: data.get(k, []) for k in ("inputs", "outputs", "widgets", "nodes", "links")}
+    if not name or not lists["nodes"]:
+        raise ValueError("Missing Gizmo name or internal node definitions")
+    if not all(isinstance(v, list) for v in lists.values()):
+        raise ValueError("inputs, outputs, widgets, nodes and links must be lists")
+    safe_name = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+    payload = {"name": safe_name, "display_name": display_name, "category": category,
+               "description": description, **lists}
+    filepath = os.path.join(GIZMOS_DIR, f"{safe_name}.gizmo")
+    replaced = os.path.isfile(filepath)
+    if replaced:
+        try:
+            shutil.copy2(filepath, filepath + ".bak")
+        except OSError as exc:
+            logger.warning("[Radiance Gizmo] could not back up %s: %s", filepath, exc)
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(filepath, json.dumps(payload, indent=2))
+    logger.info("[Radiance Gizmo] Saved %s", filepath)
+    return {"name": safe_name, "display_name": display_name, "replaced": replaced}
+
+
+def _gizmo_path(name: str) -> Optional[str]:
+    """gizmos/<name>.gizmo for a name the list returned; None for anything else."""
+    safe = "".join(c if c.isalnum() or c == "_" else "_" for c in str(name or ""))
+    if not safe or safe != name:
+        return None
+    path = os.path.join(GIZMOS_DIR, f"{safe}.gizmo")
+    return path if os.path.isfile(path) else None
+
+
+def gizmo_summaries() -> List[Dict[str, Any]]:
+    """Every saved gizmo, for the Gizmos page of the Radiance window."""
+    out: List[Dict[str, Any]] = []
+    if not os.path.isdir(GIZMOS_DIR):
+        return out
+    for filename in sorted(os.listdir(GIZMOS_DIR)):
+        if not filename.endswith(".gizmo"):
+            continue
+        path = os.path.join(GIZMOS_DIR, filename)
+        stem = filename[:-len(".gizmo")]
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as err:  # noqa: BLE001
+            out.append({"name": stem, "display_name": stem, "error": f"cannot be read: {err}",
+                        "file": path, "loaded": False})
+            continue
+        st = os.stat(path)
+        class_name = generate_class_name(data.get("name") or stem)
+        out.append({
+            "name": data.get("name") or stem,
+            "display_name": data.get("display_name") or data.get("name") or stem,
+            "category": data.get("category"),
+            "description": data.get("description"),
+            "inputs": [{"name": i.get("name"), "type": i.get("type")} for i in data.get("inputs", []) if isinstance(i, dict)],
+            "outputs": [{"name": o.get("name"), "type": o.get("type")} for o in data.get("outputs", []) if isinstance(o, dict)],
+            "knobs": [w.get("name") for w in data.get("widgets", []) if isinstance(w, dict)],
+            "input_count": len(data.get("inputs", [])),
+            "output_count": len(data.get("outputs", [])),
+            "widget_count": len(data.get("widgets", [])),
+            "node_count": len(data.get("nodes", [])),
+            "node_types": sorted({str(n.get("type")) for n in data.get("nodes", []) if isinstance(n, dict)}),
+            "class_name": class_name,
+            "loaded": LOADED_GIZMOS.get(stem) == class_name,
+            "file": path, "size": st.st_size, "mtime": st.st_mtime,
+        })
+    return out
+
+
+def generate_class_name(name: str) -> str:
+    return name if name.startswith("RadianceGizmo_") else f"RadianceGizmo_{name}"
+
+
 @_route("post", "/radiance/gizmos/create")
 async def create_gizmo_api(request) -> web.Response:
     """API Endpoint: Receives a dynamic Gizmo configuration, validates and saves it."""
@@ -364,54 +457,15 @@ async def create_gizmo_api(request) -> web.Response:
         if request.content_length is not None and request.content_length > _MAX_GIZMO_BYTES:
             return web.json_response({"success": False, "error": "Gizmo definition is too large"}, status=413)
         data = await request.json()
-        name = data.get("name", "").strip()
-        display_name = data.get("display_name", "").strip() or name
-        category = (data.get("category", "").strip() or "FXTD STUDIOS/Radiance/◎ Gizmos").replace("\\", "/")
-        description = data.get("description", "").strip() or "Custom Dynamic Gizmo."
-        
-        inputs = data.get("inputs", [])
-        outputs = data.get("outputs", [])
-        widgets = data.get("widgets", [])
-        nodes_list = data.get("nodes", [])
-        links = data.get("links", [])
-
-        if not name or not nodes_list:
-            return web.json_response({"success": False, "error": "Missing Gizmo name or internal node definitions"}, status=400)
-
-        # Standardize naming to alphanumeric/underscores
-        safe_name = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
-        
-        # Package JSON payload
-        gizmo_payload = {
-            "name": safe_name,
-            "display_name": display_name,
-            "category": category,
-            "description": description,
-            "inputs": inputs,
-            "outputs": outputs,
-            "widgets": widgets,
-            "nodes": nodes_list,
-            "links": links
-        }
-
-        # Write to disk
-        filepath = os.path.join(GIZMOS_DIR, f"{safe_name}.gizmo")
-        replaced = os.path.isfile(filepath)
-        if replaced:
-            # Re-saving a gizmo is how it is edited, so allow it, but keep the
-            # previous definition: it is loaded at the next restart.
-            try:
-                shutil.copy2(filepath, filepath + ".bak")
-            except OSError as exc:
-                logger.warning("[Radiance Gizmo] could not back up %s: %s", filepath, exc)
-        from radiance.core.sequence_safety import write_text_atomic
-        write_text_atomic(filepath, json.dumps(gizmo_payload, indent=2))
-
-        logger.info(f"[Radiance Gizmo] Successfully wrote new dynamic Gizmo payload: {filepath}")
+        try:
+            saved = _save_gizmo(data)
+        except ValueError as exc:
+            return web.json_response({"success": False, "error": str(exc)}, status=400)
         return web.json_response({
-            "success": True, 
-            "message": f"Gizmo '{display_name}' {'replaced (previous kept as .bak)' if replaced else 'created'} successfully. Please restart your ComfyUI server to load it.",
-            "name": safe_name
+            "success": True,
+            "message": f"Gizmo '{saved['display_name']}' {'replaced (previous kept as .bak)' if saved['replaced'] else 'created'} successfully. "
+                       "Please restart your ComfyUI server to load it. It is listed in Radiance > Gizmos.",
+            "name": saved["name"],
         })
 
     except Exception as e:
@@ -421,28 +475,51 @@ async def create_gizmo_api(request) -> web.Response:
 
 @_route("get", "/radiance/gizmos/list")
 async def list_gizmos_api(request) -> web.Response:
-    """API Endpoint: Lists all saved Gizmos with their visual and pipeline metadata."""
+    """Every saved gizmo, with what it holds and whether this start-up loaded it."""
     try:
-        gizmos_list = []
-        if os.path.exists(GIZMOS_DIR):
-            for filename in os.listdir(GIZMOS_DIR):
-                if filename.endswith(".gizmo"):
-                    filepath = os.path.join(GIZMOS_DIR, filename)
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        gizmos_list.append({
-                            "name": data.get("name"),
-                            "display_name": data.get("display_name"),
-                            "category": data.get("category"),
-                            "description": data.get("description"),
-                            "input_count": len(data.get("inputs", [])),
-                            "output_count": len(data.get("outputs", [])),
-                            "widget_count": len(data.get("widgets", []))
-                        })
-                    except Exception as err:
-                        logger.warning(f"[Radiance Gizmo] Failed to read gizmo file metadata {filename}: {err}")
+        return web.json_response({"success": True, "folder": GIZMOS_DIR, "gizmos": gizmo_summaries()})
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"success": False, "error": str(e)}, status=500)
 
-        return web.json_response({"success": True, "gizmos": gizmos_list})
-    except Exception as e:
+
+@_route("get", "/radiance/gizmos/file")
+async def gizmo_file_api(request) -> web.Response:
+    """Download one .gizmo, to share it."""
+    path = _gizmo_path(request.query.get("name", ""))
+    if path is None:
+        return web.json_response({"success": False, "error": "No such gizmo"}, status=404)
+    return web.FileResponse(path, headers={
+        "Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'})
+
+
+@_route("post", "/radiance/gizmos/import")
+async def import_gizmo_api(request) -> web.Response:
+    """Save a shared .gizmo (its JSON as the body) into gizmos/."""
+    try:
+        if request.content_length is not None and request.content_length > _MAX_GIZMO_BYTES:
+            return web.json_response({"success": False, "error": "Gizmo definition is too large"}, status=413)
+        saved = _save_gizmo(await request.json())
+        return web.json_response({"success": True, **saved,
+                                  "message": f"Gizmo '{saved['display_name']}' imported. Restart ComfyUI to use it."})
+    except ValueError as e:
+        return web.json_response({"success": False, "error": str(e)}, status=400)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"success": False, "error": f"Not a gizmo file: {e}"}, status=400)
+
+
+@_route("post", "/radiance/gizmos/delete")
+async def delete_gizmo_api(request) -> web.Response:
+    """Move a gizmo to gizmos/.trash (kept, not erased). Its node stays until a restart."""
+    try:
+        data = await request.json()
+        path = _gizmo_path(str(data.get("name", "")))
+        if path is None:
+            return web.json_response({"success": False, "error": "No such gizmo"}, status=404)
+        trash = os.path.join(GIZMOS_DIR, ".trash")
+        os.makedirs(trash, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest = os.path.join(trash, f"{os.path.basename(path)[:-len('.gizmo')]}.{stamp}.gizmo")
+        os.replace(path, dest)
+        return web.json_response({"success": True, "trash": dest})
+    except Exception as e:  # noqa: BLE001
         return web.json_response({"success": False, "error": str(e)}, status=500)

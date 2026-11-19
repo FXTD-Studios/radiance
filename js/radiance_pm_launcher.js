@@ -39,7 +39,7 @@ function buildLauncher(node) {
         el.onclick = on;
         return el;
     };
-    const primary = (label, on) => { const b = mk("div", "height:30px;background:#0a84ff;color:#ffffff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "#d8bd87"; }; b.onmouseleave = () => { b.style.background = "#0a84ff"; }; b.onclick = on; return b; };
+    const primary = (label, on) => { const b = mk("div", "height:30px;background:#0a84ff;color:#ffffff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "#409cff"; }; b.onmouseleave = () => { b.style.background = "#0a84ff"; }; b.onclick = on; return b; };
     const ghost = (label, on) => { const b = mk("div", "height:30px;background:none;border:1px solid rgba(255,255,255,0.12);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#cdd0d6;cursor:pointer;", label); b.onmouseenter = () => { b.style.background = "rgba(255,255,255,0.05)"; }; b.onmouseleave = () => { b.style.background = "none"; }; b.onclick = on; return b; };
     const flink = (label, url) => { const s = mk("span", "cursor:pointer;", label); s.onmouseenter = () => { s.style.color = "#cdd0d6"; }; s.onmouseleave = () => { s.style.color = "#6c707a"; }; s.onclick = () => window.open(url, "_blank"); return s; };
 

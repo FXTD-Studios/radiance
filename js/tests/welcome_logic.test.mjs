@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { TOUR_PAGES, WHATS_NEW, LINKS, compareVersions, startupView, notesFor, stepPage } from '../radiance_welcome_logic.js';
+import { TOUR_PAGES, WHATS_NEW, LINKS, compareVersions, startupView, notesFor, stepPage, setupSummary, sizeText } from '../radiance_welcome_logic.js';
 import { RADIANCE_VERSION } from '../radiance_version.js';
 
 test('first install opens the tour; a newer version opens What\'s new; the same version opens nothing', () => {
@@ -24,11 +24,34 @@ test('versions compare by number, not as text', () => {
     assert.equal(compareVersions('3.5.4', '4.0.0'), -1);
 });
 
-test('the tour has six pages and Next and Back stop at its ends', () => {
-    assert.deepEqual(TOUR_PAGES, ['welcome', 'workflows', 'viewer', 'backdrops', 'gizmos', 'learn']);
+test('the tour has seven pages, Set up second, and Next and Back stop at its ends', () => {
+    assert.deepEqual(TOUR_PAGES, ['welcome', 'setup', 'workflows', 'viewer', 'backdrops', 'gizmos', 'learn']);
     assert.equal(stepPage('welcome', -1), 'welcome');
-    assert.equal(stepPage('welcome', 1), 'workflows');
+    assert.equal(stepPage('welcome', 1), 'setup');
+    assert.equal(stepPage('setup', 1), 'workflows');
     assert.equal(stepPage('learn', 1), 'learn');
+});
+
+test('the Set up page sums up a scan: GPU, memory, disk, RUDRA and ready workflows', () => {
+    const scan = {
+        hardware: { gpus: [{ name: 'NVIDIA GeForce RTX 4090', kind: 'cuda', vram: 25_757_220_864 }], ram: 68_719_476_736, disk_free: 812_000_000_000, torch: '2.12.1', cuda: '13.0' },
+        paths: { radiance: 'E:/ComfyUI/models/radiance' }, downloads_allowed: true,
+        core: [{ id: 'radiance/RUDRA_ACES_2', installed: false }],
+        summary: { workflows: 21, ready: 5 },
+    };
+    const s = setupSummary(scan);
+    assert.equal(s.gpu, 'NVIDIA GeForce RTX 4090 · 24 GB');
+    assert.equal(s.memory, '64 GB RAM');
+    assert.equal(s.disk, '812 GB free for models');
+    assert.equal(s.tier.tone, 'ok');
+    assert.deepEqual(s.rudra, { installed: false, path: 'E:/ComfyUI/models/radiance' });
+    assert.equal(s.ready, '5 of 21 local workflows are ready to run');
+    assert.equal(s.downloadsOff, false);
+    const none = setupSummary({ hardware: { gpus: [] }, summary: { workflows: 21, ready: 3 }, downloads_allowed: false });
+    assert.equal(none.gpu, 'No GPU found');
+    assert.equal(none.tier.tone, 'warn');
+    assert.equal(none.downloadsOff, true);
+    assert.equal(sizeText(3_000_000), '3 MB');
 });
 
 test('the current version has release notes for the update page', () => {

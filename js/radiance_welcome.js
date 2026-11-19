@@ -1,12 +1,12 @@
 /**
- * The Radiance welcome: a six-page tour on first install, a What's new page
+ * The Radiance welcome: a seven-page tour on first install, a What's new page
  * after an update, and Help > Radiance Tour to open it again. When it shows
  * is decided in radiance_welcome_logic.js.
  */
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { RADIANCE_VERSION } from "./radiance_version.js";
-import { LINKS, TOUR_PAGES, notesFor, startupView, stepPage } from "./radiance_welcome_logic.js";
+import { LINKS, TOUR_PAGES, notesFor, setupSummary, startupView, stepPage } from "./radiance_welcome_logic.js";
 
 const BASE = import.meta.url.replace(/\/[^/]+$/, "");
 const SHOW_ID = "Radiance.Welcome.ShowAtStartup";
@@ -116,6 +116,27 @@ const CSS = `
 .rw-node>div{height:18px;border-radius:6px 6px 0 0;background:#303034;font-size:9px;padding:3px 6px;box-sizing:border-box;color:#bcbcc1}
 .rw-dot{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;background:#2c2c2e;font-size:12px;color:#bcbcc1}
 .rw-dot i{width:8px;height:8px;border-radius:2px}
+.rw-hw{width:316px;box-sizing:border-box;border-radius:12px;background:#1c1c1e;border:1px solid #2f2f32;padding:16px;display:flex;flex-direction:column;gap:10px}
+.rw-hw-row{display:grid;grid-template-columns:62px minmax(0,1fr);gap:10px;font-size:13px}
+.rw-hw-row span:first-child{color:#8e8e93}.rw-hw-row span:last-child{color:#e8e8ea;overflow-wrap:anywhere}
+.rw-state{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5;color:#bcbcc1}
+.rw-state i{flex:0 0 8px;height:8px;margin-top:6px;border-radius:50%;background:#48484a}
+.rw-state i.ok{background:#30d158}.rw-state i.warn{background:#ffd60a}.rw-state i.bad{background:#ff453a}.rw-state i.info{background:#409cff}
+.rw-bar{height:6px;border-radius:3px;background:#2c2c2e;overflow:hidden;margin-top:6px}.rw-bar>div{height:100%;background:#0a84ff;width:0;transition:width .3s}
+.rw-cover{position:relative;width:316px;height:158px;box-sizing:border-box;border-radius:10px;border:1px solid #2f2f32;overflow:hidden;
+  background:radial-gradient(120% 90% at 85% 50%,#101626 0%,#0a0a0d 60%);color:#fafafa;flex-shrink:0}
+.rw-cover-art{position:absolute;inset:0 0 0 40%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 22%);mask-image:linear-gradient(90deg,transparent 0,#000 22%)}
+.rw-cover-art>i{position:absolute;top:0;bottom:0;width:50%}
+.rw-cover-art>i:nth-child(1){left:0;background:radial-gradient(30% 22% at 100% 56%,#fff 0%,rgba(255,255,255,.85) 40%,rgba(255,255,255,0) 100%),linear-gradient(180deg,#f2f2f2 0%,#d0d0d0 40%,#8a8a8a 56%,#3a3a3a 72%,#1c1c1c 100%)}
+.rw-cover-art>i:nth-child(2){right:0;background:radial-gradient(10% 7% at 0% 56%,#fff 0%,rgba(255,255,255,0) 100%),radial-gradient(34% 18% at 0% 56%,rgba(245,245,247,.75) 0%,rgba(245,245,247,0) 100%),linear-gradient(180deg,#1c1c1e 0%,#3a3a3c 30%,#8e8e93 52%,#d1d1d6 56%,#48484a 64%,#1c1c1e 78%,#111113 100%)}
+.rw-cover-art>b{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#0a84ff;box-shadow:0 0 8px rgba(10,132,255,.7)}
+.rw-cover-lock{position:absolute;left:11px;top:11px;display:flex;align-items:center;gap:6px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:7px;letter-spacing:.32em;color:#e8e8ea}
+.rw-cover-badge{position:absolute;right:10px;top:10px;padding:2px 5px;border:1px solid rgba(64,156,255,.75);border-radius:4px;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:7px;color:#9ccaff;background:rgba(8,8,10,.55)}
+.rw-cover-text{position:absolute;left:11px;top:42px;width:56%;display:flex;flex-direction:column;gap:3px}
+.rw-cover-text>span:nth-child(1){font-size:9px;font-weight:700;letter-spacing:.04em;color:#409cff}
+.rw-cover-text>span:nth-child(2){font-size:20px;line-height:1.05;font-weight:750}
+.rw-cover-text>span:nth-child(3){font-size:9px;line-height:1.3;color:#bcbcc1}
+.rw-cover-foot{position:absolute;left:11px;right:46%;bottom:10px;padding-top:5px;border-top:1px solid rgba(255,255,255,.22);font-family:"JetBrains Mono",ui-monospace,monospace;font-size:6.5px;letter-spacing:.08em;color:#d4d4d8;white-space:nowrap}
 @media (max-width: 760px){.rw-art{display:none}.rw-card{height:auto}}
 `;
 
@@ -183,11 +204,95 @@ async function loadStarter() {
         return false;
     }
 }
-function openLibrary() {
-    const url = `${BASE}/studio.html#workflows`;
+function openStudio(screen = "workflows") {
+    const url = `${BASE}/studio.html#${screen}`;
     if (typeof window.showRadianceDashboard === "function") window.showRadianceDashboard(url, "Radiance");
     else window.open(url, "_blank", "noopener");
 }
+const openLibrary = () => openStudio("workflows");
+
+// ── The Set up page: one scan per tour, painted into its two panes ──────────
+const setup = {
+    scanResult: null, error: "", busy: false, job: null, timer: 0,
+    async post(path, body) {
+        const r = await fetch(api.apiURL(path), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        return data;
+    },
+    async scan(force) {
+        if (this.busy || (this.scanResult && !force)) { this.paint(); return; }
+        this.busy = true; this.error = ""; this.paint();
+        try { this.scanResult = await this.post("/radiance/setup/scan"); }
+        catch (e) { this.error = e.message; }
+        this.busy = false;
+        const j = (this.scanResult?.downloads || []).find((x) => x.id === "radiance/RUDRA_ACES_2");
+        if (j && (j.status === "running" || j.status === "queued")) { this.job = j; this.poll(); }
+        this.paint();
+    },
+    async downloadRudra() {
+        try {
+            const res = await this.post("/radiance/setup/download", { ids: ["radiance/RUDRA_ACES_2"] });
+            this.job = (res.downloads || []).find((x) => x.id === "radiance/RUDRA_ACES_2") || { status: "queued" };
+            this.paint(); this.poll();
+        } catch (e) { this.error = e.message; this.paint(); }
+    },
+    poll() {
+        clearTimeout(this.timer);
+        this.timer = setTimeout(async () => {
+            try {
+                const r = await fetch(api.apiURL("/radiance/setup/downloads"));
+                const data = await r.json();
+                this.job = (data.downloads || []).find((x) => x.id === "radiance/RUDRA_ACES_2") || this.job;
+            } catch { /* try again */ }
+            if (this.job && (this.job.status === "running" || this.job.status === "queued")) { this.paint(); this.poll(); return; }
+            await this.scan(true);
+        }, 800);
+    },
+    paint() {
+        const art = document.getElementById("rw-setup-art");
+        const body = document.getElementById("rw-setup-body");
+        const again = document.getElementById("rw-setup-again");
+        if (again) again.disabled = this.busy;
+        if (!art || !body) return;
+        const sum = this.scanResult ? setupSummary(this.scanResult) : null;
+        art.replaceChildren(el("div", "rw-brand", "THIS COMPUTER"));
+        if (!sum) art.appendChild(el("div", "rw-note", this.error ? "Could not check" : "Checking…"));
+        else {
+            const row = (k, v) => { if (!v) return; const d = el("div", "rw-hw-row"); d.append(el("span", null, k), el("span", null, v)); d.lastChild.title = v; art.appendChild(d); };
+            row("GPU", sum.gpu); row("Memory", sum.memory); row("Disk", sum.disk);
+            row("PyTorch", [this.scanResult.hardware?.torch, this.scanResult.hardware?.cuda ? `CUDA ${this.scanResult.hardware.cuda}` : ""].filter(Boolean).join(" · "));
+        }
+        const state = (tone, text) => { const d = el("div", "rw-state"); const i = el("i", tone); d.append(i, el("span", null, text)); return d; };
+        body.replaceChildren();
+        if (this.error) { body.appendChild(state("bad", `The check did not finish: ${this.error}`)); return; }
+        if (!sum) { body.appendChild(state("info", "Looking at the GPU, the disk and the models folder…")); return; }
+        body.appendChild(state(sum.tier.tone, sum.tier.text));
+        const job = this.job;
+        if (sum.rudra.installed) {
+            body.appendChild(state("ok", `RUDRA ACES 2, the SDR to HDR model, is installed in ${sum.rudra.path}.`));
+        } else if (job && (job.status === "running" || job.status === "queued")) {
+            const d = state("info", "Downloading RUDRA ACES 2 from Hugging Face (fxtdstudios/rudra-models)…");
+            const bar = el("div", "rw-bar"); const fill = el("div");
+            fill.style.width = `${job.total ? Math.min(100, Math.round((job.done / job.total) * 100)) : 10}%`;
+            bar.appendChild(fill); d.lastChild.appendChild(bar); body.appendChild(d);
+        } else {
+            const d = state(job?.status === "failed" ? "bad" : "warn", job?.status === "failed"
+                ? `RUDRA ACES 2 did not download: ${job.error || "see the ComfyUI console"}`
+                : `RUDRA ACES 2 (3 MB, Apache 2.0) goes in ${sum.rudra.path}. SDR to HDR uses it; it also downloads on its first run.`);
+            body.appendChild(d);
+            if (!sum.downloadsOff) {
+                const a = el("div", "rw-actions"); a.style.marginTop = "0";
+                const b = el("button", "rw-btn is-primary", "Download RUDRA ACES 2"); b.type = "button";
+                b.addEventListener("click", () => this.downloadRudra());
+                a.appendChild(b); body.appendChild(a);
+            }
+        }
+        body.appendChild(state(this.scanResult.summary.ready === this.scanResult.summary.workflows ? "ok" : "info",
+            `${sum.ready}. The Models page lists what the others need and downloads it, each file checked before it is installed.`));
+        if (sum.downloadsOff) body.appendChild(state("warn", "Downloads are switched off on this machine (RADIANCE_ALLOW_DOWNLOADS=0 or an offline setting)."));
+    },
+};
 
 // ── Pages ───────────────────────────────────────────────────────────────────
 const PAGES = {
@@ -210,6 +315,40 @@ const PAGES = {
                 { mark: "45", title: "45 workflows, 25 of them API", text: "Nano Banana, Seedance, Veo, Kling and more, each lifted to HDR with RUDRA." },
                 { mark: "F3", title: "FLUX 3 Klein and Prompt tabs", text: "A new image model, and one Prompt node that holds several prompts." },
             ]);
+        },
+    },
+    setup: {
+        kicker: "SET UP", title: "Check this computer",
+        lead: "Radiance looks at your GPU, memory and disk, makes its models folder (ComfyUI/models/radiance) and says which workflows can run. Nothing downloads until you choose it.",
+        art() {
+            const f = document.createDocumentFragment();
+            const cv = el("div", "rw-cover");
+            cv.setAttribute("aria-hidden", "true");
+            const artBox = el("div", "rw-cover-art"); artBox.append(el("i"), el("i"), el("b"));
+            const lock = el("div", "rw-cover-lock"); lock.appendChild(svg(RING.replace('width="18" height="18"', 'width="12" height="12"'))); lock.appendChild(el("span", null, "RADIANCE 4"));
+            const text = el("div", "rw-cover-text");
+            text.append(el("span", null, "HDR · RUDRA"), el("span", null, "RUDRA ACES 2"), el("span", null, "SDR to a scene-linear ACES 2.0 master"));
+            cv.append(artBox, lock, el("div", "rw-cover-badge", "HDR"), text, el("div", "rw-cover-foot", "MODELS/RADIANCE  /  3 MB  /  APACHE 2.0"));
+            f.appendChild(cv);
+            const box = el("div", "rw-hw");
+            box.id = "rw-setup-art";
+            box.appendChild(el("div", "rw-brand", "THIS COMPUTER"));
+            box.appendChild(el("div", "rw-note", "Checking…"));
+            setTimeout(() => setup.paint(), 0);
+            f.appendChild(box);
+            return f;
+        },
+        body(close) {
+            const f = document.createDocumentFragment();
+            const live = el("div"); live.id = "rw-setup-body"; live.style.cssText = "margin-top:20px;display:flex;flex-direction:column;gap:14px";
+            f.appendChild(live);
+            const a = el("div", "rw-actions");
+            const again = softButton("Check again", () => setup.scan(true));
+            again.id = "rw-setup-again";
+            a.append(again, softButton("Models for every workflow", () => { close(); openStudio("models"); }));
+            f.appendChild(a);
+            setup.scan(false);
+            return f;
         },
     },
     workflows: {
@@ -324,12 +463,17 @@ const PAGES = {
             wrap.append(row, arrow, node);
             return wrap;
         },
-        body() {
-            return items([
+        body(close) {
+            const f = document.createDocumentFragment();
+            f.appendChild(items([
                 { mark: "1", text: "Select the nodes, then right-click the canvas and choose ◎ Create Radiance Gizmo…" },
                 { mark: "2", text: "Name it, and tick the inputs, outputs and knobs the node should show." },
-                { mark: "3", text: "Restart ComfyUI. It is in the node menu under Radiance > ◎ Gizmos, ready to share as a .gizmo file." },
-            ], true);
+                { mark: "3", text: "Restart ComfyUI. It is in the node menu under Radiance > ◎ Gizmos, and on the Gizmos page of the Radiance window to add, share as a .gizmo file, or import one." },
+            ], true));
+            const a = el("div", "rw-actions");
+            a.appendChild(softButton("Open Gizmos", () => { close(); openStudio("gizmos"); }));
+            f.appendChild(a);
+            return f;
         },
     },
     learn: {

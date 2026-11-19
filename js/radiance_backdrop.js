@@ -10,7 +10,7 @@ import { app } from "../../scripts/app.js";
 import { DISCIPLINES, DEFAULT_GROUP, dominantDiscipline } from "./radiance_palette.js";
 
 // ─── Constants & Palette Tokens ──────────────────────────────────────────────
-const ACCENT_BLUE = "#00a8ff";
+const ACCENT_BLUE = "#0a84ff";
 
 // Group colours: radiance_palette.js (ComfyUI's own group palette, one code
 // shared by Smart Backdrop, the Studio presets and the shipped workflows).
@@ -62,7 +62,7 @@ function promptBackdropTitle(defaultValue = "") {
         const confirm = document.createElement("button");
         confirm.type = "button";
         confirm.textContent = "Rename";
-        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(10,132,255,0.45);background:rgba(10,132,255,0.16);color:#409cff;cursor:pointer;font-weight:700;";
         const close = (value) => {
             overlay.remove();
             resolve(value);

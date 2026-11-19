@@ -188,15 +188,7 @@ R.prototype.createKnob = function(label, min, max, initial, step, callback) {
             activeColor = val < 0 ? '#4fa3ff' : (val > 0 ? '#ffb03a' : 'rgba(255,255,255,0.4)');
         } else if (uLabel === 'TINT') {
             activeColor = val < 0 ? '#38ef7d' : (val > 0 ? '#ff3a85' : 'rgba(255,255,255,0.4)');
-        } else if (uLabel === 'CONTRAST') {
-            activeColor = '#c084fc'; // purple
-        } else if (uLabel === 'PIVOT') {
-            activeColor = '#fbbf24'; // amber
-        } else if (uLabel === 'M.DETAIL') {
-            activeColor = '#22d3ee'; // light-cyan
-        } else if (uLabel === 'SOFT CLIP') {
-            activeColor = '#f43f5e'; // rose
-        }
+        }   // Temperature and tint keep their colour directions; every other knob uses the brand blue.
 
         if (isAtLimit && val !== initial) {
             progress.setAttribute("stroke", "#ff4a4a");
@@ -362,16 +354,7 @@ R.prototype.createColorWheel = function(label, min, max, defaults, step, callbac
 
     // Colorscience styling setup based on label
     let wheelAccent = this.theme.accent;
-    const uLabel = label.toUpperCase();
-    if (uLabel === 'LIFT' || uLabel === 'SHADOW') {
-        wheelAccent = '#00f2ff'; // cyber cyan
-    } else if (uLabel === 'GAMMA' || uLabel === 'MIDTONE') {
-        wheelAccent = '#ffb800'; // warm gold
-    } else if (uLabel === 'GAIN' || uLabel === 'HILIGHT') {
-        wheelAccent = '#ff00b8'; // cyber magenta
-    } else if (uLabel === 'OFFSET') {
-        wheelAccent = '#e0f7fa'; // ice blue
-    }
+    // One colour for every wheel: the brand blue (the theme accent).
 
     const lbl = document.createElement('div');
     lbl.textContent = label;
