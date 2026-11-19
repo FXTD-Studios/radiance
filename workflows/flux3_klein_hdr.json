@@ -2,7 +2,7 @@
   "id": "7d9a78f3-f6b1-4932-ac01-4c48ab33508a",
   "revision": 0,
   "last_node_id": 16,
-  "last_link_id": 17,
+  "last_link_id": 18,
   "nodes": [
     {
       "id": 1,
@@ -590,7 +590,7 @@
           "name": "positive_text",
           "type": "STRING",
           "links": [
-            16
+            17
           ]
         },
         {
@@ -903,7 +903,9 @@
           "localized_name": "crop_bbox",
           "name": "crop_bbox",
           "type": "BOUNDING_BOX",
-          "links": null
+          "links": [
+            16
+          ]
         }
       ],
       "properties": {
@@ -1669,7 +1671,7 @@
           "name": "crop_bbox",
           "shape": 7,
           "type": "BOUNDING_BOX",
-          "link": null
+          "link": 16
         },
         {
           "localized_name": "target_space",
@@ -1859,7 +1861,7 @@
           "links": [
             12,
             14,
-            17
+            18
           ]
         },
         {
@@ -2842,7 +2844,7 @@
           "localized_name": "source",
           "name": "source",
           "type": "*",
-          "link": 16
+          "link": 17
         }
       ],
       "outputs": [
@@ -2909,7 +2911,7 @@
           "localized_name": "image",
           "name": "image",
           "type": "*",
-          "link": 17
+          "link": 18
         },
         {
           "localized_name": "audio",
@@ -3404,6 +3406,14 @@
     ],
     [
       16,
+      3,
+      9,
+      5,
+      3,
+      "BOUNDING_BOX"
+    ],
+    [
+      17,
       2,
       2,
       11,
@@ -3411,7 +3421,7 @@
       "STRING"
     ],
     [
-      17,
+      18,
       5,
       0,
       13,

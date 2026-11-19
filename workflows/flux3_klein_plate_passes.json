@@ -2,7 +2,7 @@
   "id": "c77ba63c-d170-4232-83ef-45c68652d3b8",
   "revision": 0,
   "last_node_id": 18,
-  "last_link_id": 30,
+  "last_link_id": 31,
   "nodes": [
     {
       "id": 1,
@@ -590,7 +590,7 @@
           "name": "positive_text",
           "type": "STRING",
           "links": [
-            30
+            31
           ]
         },
         {
@@ -903,7 +903,9 @@
           "localized_name": "crop_bbox",
           "name": "crop_bbox",
           "type": "BOUNDING_BOX",
-          "links": null
+          "links": [
+            30
+          ]
         }
       ],
       "properties": {
@@ -1669,7 +1671,7 @@
           "name": "crop_bbox",
           "shape": 7,
           "type": "BOUNDING_BOX",
-          "link": null
+          "link": 30
         },
         {
           "localized_name": "target_space",
@@ -3754,7 +3756,7 @@
           "localized_name": "source",
           "name": "source",
           "type": "*",
-          "link": 30
+          "link": 31
         }
       ],
       "outputs": [
@@ -4092,6 +4094,14 @@
     ],
     [
       30,
+      3,
+      9,
+      5,
+      3,
+      "BOUNDING_BOX"
+    ],
+    [
+      31,
       2,
       2,
       15,
