@@ -1889,13 +1889,6 @@ class RadianceSamplerPro:
         cfg, flux_guidance, flux_shift = params['cfg'], params['flux_guidance'], params['flux_shift']
         sampler, scheduler, steps = params['sampler'], params['scheduler'], params['steps']
 
-        # ALBABIT-FIX: Wan 2.2's low-noise expert on refiner_model never ran at the default
-        # start (step 20 of 20); its templates hand over at half the steps.
-        if (refiner_model is not None and preset in ("Auto", "Custom") and detected_type == "wan"
-                and is_wan22_expert(meta_unet_file) and refiner_start_step >= steps):
-            refiner_start_step = steps // 2
-            logger.info(f"Auto-applied refiner_start_step={refiner_start_step} for Wan 2.2's low-noise expert")
-
         # ALBABIT-FIX: SD/SDXL-Turbo were distilled on 10 discrete timesteps only,
         # so they get get_sd_turbo_sigmas (same "sdxl" + "turbo" file name test).
         use_sd_turbo_schedule = detected_type == "sdxl" and "turbo" in meta_unet_file.lower()
@@ -2010,6 +2003,13 @@ class RadianceSamplerPro:
             image_seq_len=image_seq_len,
         )
         timings["prepare_sigmas"] = time.time() - t0
+
+        # ALBABIT-FIX: Wan 2.2's low-noise expert on refiner_model never ran at the default
+        # start (step 20 of 20); its templates hand over at half the steps of the schedule.
+        if (refiner_model is not None and preset in ("Auto", "Custom") and detected_type == "wan"
+                and is_wan22_expert(meta_unet_file) and refiner_start_step >= target_total_steps):
+            refiner_start_step = target_total_steps // 2
+            logger.info(f"Auto-applied refiner_start_step={refiner_start_step} for Wan 2.2's low-noise expert")
 
         # 5. LTX-AV Detection (Specific logic for audio/video separation)
         is_ltx_av = False

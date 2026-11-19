@@ -142,6 +142,15 @@ class TestRefineDistillationFromMeta:
         assert refine_distillation_from_meta("wan", "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", [lora]) == {
             "cfg": 1.0, "steps": 4, "sampler": "euler"}
 
+    def test_wan21_lora_follows_the_steps_in_its_name_too(self):
+        # A step count in a LoRA's name means a step distillation, whatever the Wan checkpoint;
+        # lightx2v's Wan 2.1 LoRAs name none and keep Wan 2.1's defaults.
+        wan21 = "wan2.1_t2v_14B_fp16.safetensors"
+        assert refine_distillation_from_meta("wan", wan21, ["wan2.1_t2v_lightx2v_4steps_lora.safetensors"]) == {
+            "cfg": 1.0, "steps": 4, "sampler": "euler"}
+        assert refine_distillation_from_meta(
+            "wan", wan21, ["Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors"]) is None
+
     def test_ltx_dev_not_affected_even_with_the_distilled_lora(self):
         # The Dev workflows add the distilled LoRA at a low strength and keep the Dev recipe.
         assert refine_distillation_from_meta("ltxav", "ltx-2.3-22b-dev.safetensors",

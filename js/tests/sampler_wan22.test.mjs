@@ -11,7 +11,7 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
 const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
 // Loader 1, an optional LoraLoaderModelOnly 3 on its model, then the Sampler 9.
-function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true, lora = null } = {}) {
+function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true, lora = null, then = null } = {}) {
     const nodes = {}, links = {};
     const graph = { links, getNodeById: id => nodes[id] };
     const loader = nodes[1] = { id: 1, comfyClass: 'RadianceUnifiedLoader', mode: 0, graph, inputs: [],
@@ -41,6 +41,11 @@ function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner
         setDirtyCanvas() {},
     };
     context.updateDefaults(node);
+    if (then) {                         // the Loader moves to another model
+        loader.widgets[0].value = then.preset;
+        loader.widgets[1].value = then.unet;
+        context.updateDefaults(node);
+    }
     const value = name => node.widgets.find(x => x.name === name).value;
     return { values: ['steps', 'cfg', 'sampler', 'scheduler', 'refiner_start_step'].map(value), label: node.inputs[1].label };
 }
@@ -56,6 +61,10 @@ test("refiner_model shows as model_low_noise under Wan 2.2, under any Sampler pr
     assert.equal(sampler(HIGH).label, 'model_low_noise');
     assert.equal(sampler(HIGH, { samplerPreset: '[V] WAN txt2vid (30 steps)' }).label, 'model_low_noise');
     assert.equal(sampler('wan2.1_t2v_14B_fp16.safetensors', { preset: 'Wan 2.1' }).label, undefined);
+});
+
+test('refiner_model gets its own name back when the Loader moves from Wan 2.2 to Wan 2.1', () => {
+    assert.equal(sampler(HIGH, { then: { preset: 'Wan 2.1', unet: 'wan2.1_t2v_14B_fp16.safetensors' } }).label, undefined);
 });
 
 test('Wan 2.1 keeps uni_pc at cfg 6, and the start step stays without a refiner', () => {
