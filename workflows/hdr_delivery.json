@@ -1,18 +1,18 @@
 {
   "id": "42386a87-9309-44c9-8a18-f42febf2ab5b",
   "revision": 0,
-  "last_node_id": 9,
+  "last_node_id": 11,
   "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -466,11 +466,11 @@
       "id": 2,
       "type": "RadianceWrite",
       "pos": [
-        400,
-        -60
+        1040,
+        70
       ],
       "size": [
-        270,
+        310,
         362
       ],
       "flags": {},
@@ -871,9 +871,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
+        "radiance_examples/hdr_delivery",
         "IMG │ EXR (16-bit half)",
-        "master",
+        "hdr_delivery_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -896,9 +896,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/delivery",
+        "output_path": "radiance_examples/hdr_delivery",
         "format": "IMG │ EXR (16-bit half)",
-        "filename": "master",
+        "filename": "hdr_delivery_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -925,11 +925,11 @@
       "id": 3,
       "type": "RadianceWrite",
       "pos": [
-        800,
-        380
+        1850,
+        70
       ],
       "size": [
-        270,
+        310,
         482
       ],
       "flags": {},
@@ -1337,9 +1337,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
+        "radiance_examples/hdr_delivery",
         "VID │ MP4 (H.265 10-bit)",
-        "hdr10",
+        "hdr_delivery_hdr10",
         1,
         "fixed",
         "PQ (HDR10 / ST.2084)",
@@ -1362,9 +1362,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/delivery",
+        "output_path": "radiance_examples/hdr_delivery",
         "format": "VID │ MP4 (H.265 10-bit)",
-        "filename": "hdr10",
+        "filename": "hdr_delivery_hdr10",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "PQ (HDR10 / ST.2084)",
@@ -1391,11 +1391,11 @@
       "id": 4,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        400,
-        1120
+        2250,
+        70
       ],
       "size": [
-        313.513671875,
+        320,
         246
       ],
       "flags": {},
@@ -1606,11 +1606,11 @@
       "id": 5,
       "type": "RadianceWrite",
       "pos": [
-        800,
-        1120
+        2660,
+        70
       ],
       "size": [
-        270,
+        310,
         458
       ],
       "flags": {},
@@ -2011,9 +2011,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
+        "radiance_examples/hdr_delivery",
         "VID │ MP4 (H.264)",
-        "sdr",
+        "hdr_delivery_sdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -2036,9 +2036,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/delivery",
+        "output_path": "radiance_examples/hdr_delivery",
         "format": "VID │ MP4 (H.264)",
-        "filename": "sdr",
+        "filename": "hdr_delivery_sdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -2065,12 +2065,12 @@
       "id": 6,
       "type": "RadianceViewer",
       "pos": [
-        1240,
-        -60
+        3060,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
       "order": 4,
@@ -2215,8 +2215,8 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
         "radiance_grade": {
           "version": 2,
           "exposure": 0,
@@ -2344,38 +2344,11 @@
       }
     },
     {
-      "id": 7,
-      "type": "Note",
-      "pos": [
-        -460,
-        0
-      ],
-      "size": [
-        420,
-        520
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Deliver HDR",
-      "properties": {},
-      "widgets_values": [
-        "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself."
-      ],
-      "widgets_values_named": {
-        "text": "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself."
-      },
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 8,
       "type": "RadianceRudraPeakFit",
       "pos": [
-        400,
-        380
+        1440,
+        70
       ],
       "size": [
         320,
@@ -2472,8 +2445,8 @@
       "id": 9,
       "type": "RadianceRudraDynamicMetadata",
       "pos": [
-        400,
-        620
+        1440,
+        348
       ],
       "size": [
         320,
@@ -2669,6 +2642,60 @@
         ""
       ],
       "title": "HDR10+ / Dolby Vision metadata"
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 10,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        700
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## HDR Delivery Workflow for Radiance:\n\nFrom one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## HDR Delivery Workflow for Radiance:\n\nFrom one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 11,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2737,14 +2764,99 @@
       "STRING"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load HDR Master",
+      "bounding": [
+        610,
+        0,
+        370,
+        910
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        1010,
+        0,
+        370,
+        910
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "HDR10 Peak Fit and Metadata",
+      "bounding": [
+        1410,
+        0,
+        380,
+        910
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR10 (MP4)",
+      "bounding": [
+        1820,
+        0,
+        370,
+        910
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "SDR Output Transform",
+      "bounding": [
+        2220,
+        0,
+        380,
+        910
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Write SDR (MP4)",
+      "bounding": [
+        2630,
+        0,
+        370,
+        910
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Viewer",
+      "bounding": [
+        3030,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.3248,
       "offset": [
-        2871.5555555555557,
-        1286
+        153.9,
+        615.8
       ]
     }
   },

@@ -1,18 +1,18 @@
 {
   "id": "fa2530fe-2fd6-4ac9-a5b3-03d194d04f49",
   "revision": 0,
-  "last_node_id": 7,
+  "last_node_id": 9,
   "last_link_id": 7,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -464,11 +464,11 @@
       "id": 2,
       "type": "VAELoader",
       "pos": [
-        0,
-        440
+        640,
+        770
       ],
       "size": [
-        270,
+        310,
         58
       ],
       "flags": {},
@@ -526,11 +526,11 @@
       "id": 3,
       "type": "RadianceHDRVAEEncode",
       "pos": [
-        400,
-        0
+        1040,
+        70
       ],
       "size": [
-        270,
+        310,
         306
       ],
       "flags": {},
@@ -808,11 +808,11 @@
       "id": 4,
       "type": "RadianceHDRVAEDecode",
       "pos": [
-        800,
-        0
+        1440,
+        70
       ],
       "size": [
-        278.556640625,
+        310,
         382
       ],
       "flags": {},
@@ -1266,12 +1266,12 @@
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        1200,
-        -40
+        2240,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
       "order": 5,
@@ -1416,8 +1416,8 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
         "radiance_grade": {
           "version": 2,
           "exposure": 0,
@@ -1548,11 +1548,11 @@
       "id": 6,
       "type": "RadianceWrite",
       "pos": [
-        1200,
-        540
+        1840,
+        70
       ],
       "size": [
-        270,
+        310,
         362
       ],
       "flags": {},
@@ -1953,9 +1953,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/hdr_vae",
+        "radiance_examples/hdr_vae_encode_decode",
         "IMG │ EXR (32-bit float)",
-        "vae_roundtrip",
+        "hdr_vae_encode_decode_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -1978,9 +1978,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/hdr_vae",
+        "output_path": "radiance_examples/hdr_vae_encode_decode",
         "format": "IMG │ EXR (32-bit float)",
-        "filename": "vae_roundtrip",
+        "filename": "hdr_vae_encode_decode_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -2004,31 +2004,58 @@
       }
     },
     {
-      "id": 7,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
         0,
-        560
+        30
       ],
       "size": [
-        380,
-        300
+        580,
+        120
       ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "HDR through a VAE",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "VAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode."
+        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "VAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode."
+        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        680
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## HDR VAE Encode / Decode Workflow for Radiance:\n\nVAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe file goes in `ComfyUI/models/vae`. Pick the VAE your model uses: this one is an example.\n\n**SD 1.5 VAE** (Stability AI)\n- vae: [vae-ft-mse-840000-ema-pruned](https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 vae/\n│       └── vae-ft-mse-840000-ema-pruned.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## HDR VAE Encode / Decode Workflow for Radiance:\n\nVAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe file goes in `ComfyUI/models/vae`. Pick the VAE your model uses: this one is an example.\n\n**SD 1.5 VAE** (Stability AI)\n- vae: [vae-ft-mse-840000-ema-pruned](https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 vae/\n│       └── vae-ft-mse-840000-ema-pruned.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 9,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2089,14 +2116,75 @@
       "IMAGE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load HDR Image and VAE",
+      "bounding": [
+        610,
+        0,
+        370,
+        890
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "VAE Encode (HDR)",
+      "bounding": [
+        1010,
+        0,
+        370,
+        890
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "VAE Decode (HDR)",
+      "bounding": [
+        1410,
+        0,
+        370,
+        890
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR (EXR)",
+      "bounding": [
+        1810,
+        0,
+        370,
+        890
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        2210,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.3777,
       "offset": [
-        2871.5555555555557,
-        1286
+        132.4,
+        529.5
       ]
     }
   },
