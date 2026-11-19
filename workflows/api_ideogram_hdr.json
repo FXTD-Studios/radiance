@@ -1,15 +1,15 @@
 {
   "id": "8991c001-789c-473e-8ddd-65c53d83957b",
   "revision": 0,
-  "last_node_id": 6,
-  "last_link_id": 7,
+  "last_node_id": 9,
+  "last_link_id": 8,
   "nodes": [
     {
       "id": 1,
       "type": "IdeogramV4",
       "pos": [
-        40,
-        60
+        640,
+        70
       ],
       "size": [
         420,
@@ -63,7 +63,8 @@
           "type": "IMAGE",
           "links": [
             1,
-            5
+            5,
+            8
           ]
         }
       ],
@@ -89,11 +90,11 @@
       "id": 2,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        530,
-        60
+        1150,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -448,11 +449,11 @@
       "id": 3,
       "type": "RadianceSDRToHDRAIFill",
       "pos": [
-        530,
-        850
+        1550,
+        70
       ],
       "size": [
-        400,
+        320,
         658
       ],
       "flags": {},
@@ -753,12 +754,12 @@
       "id": 4,
       "type": "RadianceViewer",
       "pos": [
-        1000,
-        60
+        1960,
+        70
       ],
       "size": [
-        620,
-        540
+        2660,
+        1760
       ],
       "flags": {},
       "order": 4,
@@ -952,8 +953,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -974,8 +975,8 @@
       "id": 5,
       "type": "RadianceEXRMultiPart",
       "pos": [
-        1000,
-        690
+        2360,
+        1960
       ],
       "size": [
         400,
@@ -1181,30 +1182,367 @@
       }
     },
     {
-      "id": 6,
-      "type": "Note",
+      "id": 7,
+      "type": "RadianceWrite",
       "pos": [
-        40,
-        340
+        1960,
+        1960
       ],
       "size": [
-        520,
-        420
+        310,
+        362
       ],
       "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 8
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
       "outputs": [],
-      "properties": {},
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
       "widgets_values": [
-        "Ideogram V4 → HDR\n\n1. Ideogram V4 generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/."
+        "radiance_api/ideogram",
+        "IMG │ PNG (8-bit)",
+        "ideogram_sdr",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
       "widgets_values_named": {
-        "text": "Ideogram V4 → HDR\n\n1. Ideogram V4 generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/."
+        "output_path": "radiance_api/ideogram",
+        "format": "IMG │ PNG (8-bit)",
+        "filename": "ideogram_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        880
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## Ideogram V4 → HDR Workflow for Radiance:\n\n1. Ideogram V4 generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links\n\nNo model to download: Ideogram V4 runs through ComfyUI's API nodes (sign in to your Comfy account; each run uses API credits). RUDRA ACES 2 (about 3 MB) downloads itself into `ComfyUI/models/radiance` on the first run.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## Ideogram V4 → HDR Workflow for Radiance:\n\n1. Ideogram V4 generates the image through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt.\n3. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n4. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n5. Write EXR saves a 32-bit float EXR: the master as beauty and rudra.reconstructed as its own channel. Output: output/radiance_api/.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links\n\nNo model to download: Ideogram V4 runs through ComfyUI's API nodes (sign in to your Comfy account; each run uses API credits). RUDRA ACES 2 (about 3 MB) downloads itself into `ComfyUI/models/radiance` on the first run.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 9,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -1263,53 +1601,97 @@
       5,
       6,
       "MASK"
+    ],
+    [
+      8,
+      1,
+      0,
+      7,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
     {
       "id": 1,
-      "title": "Ideogram · API generation",
+      "title": "Generate (Ideogram V4 API)",
       "bounding": [
-        20,
-        -10,
-        460,
-        290
+        610,
+        0,
+        480,
+        1090
       ],
       "color": "#3f789e",
       "flags": {}
     },
     {
       "id": 2,
-      "title": "RUDRA HDR",
+      "title": "HDR Conversion",
       "bounding": [
-        510,
-        -10,
-        440,
-        1538
+        1120,
+        0,
+        370,
+        1090
       ],
       "color": "#b58b2a",
       "flags": {}
     },
     {
       "id": 3,
-      "title": "Review and EXR",
+      "title": "AI Fill - (Optional)",
       "bounding": [
-        980,
-        -10,
-        660,
-        1164
+        1520,
+        0,
+        380,
+        1090
       ],
-      "color": "#444",
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        2330,
+        1890,
+        460,
+        660
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Write Image (SDR)",
+      "bounding": [
+        1930,
+        1890,
+        370,
+        660
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Viewer",
+      "bounding": [
+        1930,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
       "flags": {}
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.5944931163954944,
+      "scale": 0.3585,
       "offset": [
-        60,
-        80
+        139.5,
+        334.7
       ]
     },
     "radiance": {
@@ -1321,7 +1703,119 @@
         "EXR 32F"
       ],
       "api": "IdeogramV4"
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1921,
+          84
+        ],
+        "linkIds": [
+          6
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1921,
+          1869
+        ],
+        "linkIds": [
+          6
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          2321,
+          1869
+        ],
+        "linkIds": [
+          6
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          1505,
+          228
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 5,
+        "pos": [
+          1505,
+          1875
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "pos": [
+          2315,
+          1875
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 5
+      },
+      {
+        "id": 7,
+        "pos": [
+          1099,
+          84
+        ],
+        "linkIds": [
+          8
+        ]
+      },
+      {
+        "id": 8,
+        "pos": [
+          1099,
+          1881
+        ],
+        "linkIds": [
+          8
+        ],
+        "parentId": 7
+      },
+      {
+        "id": 9,
+        "pos": [
+          1909,
+          1881
+        ],
+        "linkIds": [
+          8
+        ],
+        "parentId": 8
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 6,
+        "parentId": 3
+      },
+      {
+        "id": 7,
+        "parentId": 6
+      },
+      {
+        "id": 8,
+        "parentId": 9
+      }
+    ]
   },
   "version": 0.4
 }
