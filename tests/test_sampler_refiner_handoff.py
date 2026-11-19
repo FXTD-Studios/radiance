@@ -34,13 +34,13 @@ def test_the_refiner_keeps_the_supplied_sigmas():
     assert torch.allclose(torch.cat([base, ref[1:]]), override), (base, ref)
 
 
-def _wan_stages(unet, refiner_start_step):
+def _wan_stages(unet, refiner_start_step, **kw):
     rec = SampleCustomRecorder()
     refiner = FakeModelPatcher()
     meta = json.dumps({"arch": "wan", "unet_file": unet, "loras": []})
     run_sampler(latent=make_latent((1, 16, 2, 8, 8)), recorder=rec, preset="Auto", model_type="wan",
                 model_meta=meta, scheduler="simple", steps=20, refiner_model=refiner,
-                refiner_start_step=refiner_start_step)
+                refiner_start_step=refiner_start_step, **kw)
     base = [c["sigmas"] for c in rec.calls if c["model"].model is not refiner.model]
     ref = [c["sigmas"] for c in rec.calls if c["model"].model is refiner.model]
     return base, ref
@@ -52,6 +52,13 @@ def test_wan22_low_noise_expert_takes_over_at_half_the_steps():
     assert ref and len(base[-1]) == 11 and len(ref[0]) == 11, (base, ref)
     base, ref = _wan_stages("wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", 6)
     assert len(base[-1]) == 7, base
+
+
+def test_wan22_hand_over_follows_a_supplied_schedule():
+    # sigmas_override sets the step count (8 here, steps says 20): the hand-over is at 4 of 8.
+    base, ref = _wan_stages("wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", 20,
+                            sigmas_override=torch.linspace(1.0, 0.0, 9))
+    assert ref and len(base[-1]) == 5 and len(ref[0]) == 5, (base, ref)
 
 
 def test_other_refiners_keep_their_start():
