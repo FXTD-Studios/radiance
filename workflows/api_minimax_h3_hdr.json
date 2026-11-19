@@ -1,15 +1,15 @@
 {
   "id": "f95f5e43-1343-4e6d-bccf-ee1d092bf81b",
   "revision": 0,
-  "last_node_id": 8,
-  "last_link_id": 13,
+  "last_node_id": 11,
+  "last_link_id": 16,
   "nodes": [
     {
       "id": 1,
       "type": "MinimaxHailuo03TextToVideoNode",
       "pos": [
-        40,
-        60
+        640,
+        70
       ],
       "size": [
         420,
@@ -121,11 +121,11 @@
       "id": 2,
       "type": "GetVideoComponents",
       "pos": [
-        530,
-        60
+        1150,
+        70
       ],
       "size": [
-        193.530859375,
+        280,
         106
       ],
       "flags": {},
@@ -146,7 +146,8 @@
           "type": "IMAGE",
           "links": [
             2,
-            6
+            6,
+            14
           ]
         },
         {
@@ -155,7 +156,8 @@
           "type": "AUDIO",
           "links": [
             10,
-            13
+            13,
+            15
           ]
         },
         {
@@ -165,7 +167,8 @@
           "links": [
             7,
             9,
-            12
+            12,
+            16
           ]
         },
         {
@@ -189,11 +192,11 @@
       "id": 3,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        793.530859375,
-        60
+        1520,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -547,11 +550,11 @@
       "id": 4,
       "type": "RadianceSDRToHDRAIFill",
       "pos": [
-        793.530859375,
-        850
+        1920,
+        70
       ],
       "size": [
-        400,
+        320,
         658
       ],
       "flags": {},
@@ -853,12 +856,12 @@
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        1263.530859375,
-        60
+        2330,
+        70
       ],
       "size": [
-        620,
-        540
+        2660,
+        1760
       ],
       "flags": {},
       "order": 5,
@@ -1052,8 +1055,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -1074,11 +1077,11 @@
       "id": 6,
       "type": "RadianceWrite",
       "pos": [
-        1263.530859375,
-        690
+        3130,
+        1960
       ],
       "size": [
-        302.744140625,
+        310,
         458
       ],
       "flags": {},
@@ -1384,11 +1387,11 @@
       "id": 7,
       "type": "RadianceWrite",
       "pos": [
-        1606.275,
-        690
+        2730,
+        1960
       ],
       "size": [
-        302.744140625,
+        310,
         458
       ],
       "flags": {},
@@ -1691,30 +1694,367 @@
       }
     },
     {
-      "id": 8,
-      "type": "Note",
+      "id": 9,
+      "type": "RadianceWrite",
       "pos": [
-        40,
-        396
+        2330,
+        1960
       ],
       "size": [
-        683.530859375,
-        420
+        310,
+        458
       ],
       "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
+      "order": 0,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "*",
+          "link": 14
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 15
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "widget": {
+            "name": "output_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "filename"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "version",
+          "name": "version",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "version"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "color_space",
+          "name": "color_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "color_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": 16
+        },
+        {
+          "localized_name": "quality",
+          "name": "quality",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "quality"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "exr_compression",
+          "name": "exr_compression",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "exr_compression"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "start_frame",
+          "name": "start_frame",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "start_frame"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "frame_padding",
+          "name": "frame_padding",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "frame_padding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "broadcast_safe",
+          "name": "broadcast_safe",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "broadcast_safe"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overwrite",
+          "name": "overwrite",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "overwrite"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "proxy_scale",
+          "name": "proxy_scale",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "proxy_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "working_space",
+          "name": "working_space",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "working_space"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_colorspace",
+          "name": "ocio_colorspace",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_colorspace"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "ocio_config",
+          "name": "ocio_config",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "ocio_config"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr_reference_nits",
+          "name": "hdr_reference_nits",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "hdr_reference_nits"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_source",
+          "name": "audio_source",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        }
+      ],
       "outputs": [],
-      "properties": {},
+      "properties": {
+        "Node name for S&R": "RadianceWrite"
+      },
       "widgets_values": [
-        "MiniMax H3 → HDR Video\n\n1. MiniMax H3 Text to Video generates the clip through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. Get Video Components splits the clip into frames, sound and frame rate.\n3. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt; Video Frames keeps the clip in order.\n4. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n5. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n6. Write saves a 16-bit half EXR sequence with a .wav at the first frame's timecode, and an HDR10 (PQ) MP4 with sound for review. Output: output/radiance_api/."
+        "radiance_api/minimax_h3",
+        "VID │ MP4 (H.264)",
+        "minimax_h3_sdr",
+        1,
+        "fixed",
+        "Linear (pass-through)",
+        0,
+        18,
+        "ZIP",
+        1001,
+        4,
+        false,
+        false,
+        0,
+        "Linear Rec.709 (sRGB)",
+        "",
+        "",
+        203,
+        "P3-D65 · 1000 nits",
+        true,
+        "",
+        "Auto",
+        ""
       ],
       "widgets_values_named": {
-        "text": "MiniMax H3 → HDR Video\n\n1. MiniMax H3 Text to Video generates the clip through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. Get Video Components splits the clip into frames, sound and frame rate.\n3. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt; Video Frames keeps the clip in order.\n4. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n5. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n6. Write saves a 16-bit half EXR sequence with a .wav at the first frame's timecode, and an HDR10 (PQ) MP4 with sound for review. Output: output/radiance_api/."
+        "output_path": "radiance_api/minimax_h3",
+        "format": "VID │ MP4 (H.264)",
+        "filename": "minimax_h3_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": true,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 10,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        880
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## MiniMax H3 → HDR Video Workflow for Radiance:\n\n1. MiniMax H3 Text to Video generates the clip through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. Get Video Components splits the clip into frames, sound and frame rate.\n3. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt; Video Frames keeps the clip in order.\n4. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n5. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n6. Write saves a 16-bit half EXR sequence with a .wav at the first frame's timecode, and an HDR10 (PQ) MP4 with sound for review. Output: output/radiance_api/.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links\n\nNo model to download: MiniMax H3 runs through ComfyUI's API nodes (sign in to your Comfy account; each run uses API credits). RUDRA ACES 2 (about 3 MB) downloads itself into `ComfyUI/models/radiance` on the first run.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## MiniMax H3 → HDR Video Workflow for Radiance:\n\n1. MiniMax H3 Text to Video generates the clip through ComfyUI's API nodes (sign in to your Comfy account; the run uses API credits). Edit the prompt and settings there.\n2. Get Video Components splits the clip into frames, sound and frame rate.\n3. SDR → HDR Universal runs RUDRA ACES 2 (Auto, about 3 MB, downloaded on first run): a scene-linear master (1.0 = 203 nits) whose ACES 2.0 SDR view keeps the generated codes. reconstructed_mask marks where light was rebuilt; Video Frames keeps the clip in order.\n4. SDR → HDR AI Fill (RUDRA v3) is bypassed. Select it and press Ctrl+B to regenerate large blown highlights (needs Wan2.1-VACE-1.3B and a 16 GB GPU; downloaded on first use).\n5. The Viewer shows the master through ACES 2.0 against the SDR source: use the wipe to see what RUDRA rebuilt.\n6. Write saves a 16-bit half EXR sequence with a .wav at the first frame's timecode, and an HDR10 (PQ) MP4 with sound for review. Output: output/radiance_api/.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links\n\nNo model to download: MiniMax H3 runs through ComfyUI's API nodes (sign in to your Comfy account; each run uses API credits). RUDRA ACES 2 (about 3 MB) downloads itself into `ComfyUI/models/radiance` on the first run.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 11,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -1821,53 +2161,137 @@
       7,
       1,
       "AUDIO"
+    ],
+    [
+      14,
+      2,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      15,
+      2,
+      1,
+      9,
+      1,
+      "AUDIO"
+    ],
+    [
+      16,
+      2,
+      2,
+      9,
+      8,
+      "FLOAT"
     ]
   ],
   "groups": [
     {
       "id": 1,
-      "title": "MiniMax · API generation",
+      "title": "Generate (MiniMax H3 API)",
       "bounding": [
-        20,
-        -10,
-        723.530859375,
-        346
+        610,
+        0,
+        480,
+        1090
       ],
       "color": "#3f789e",
       "flags": {}
     },
     {
       "id": 2,
-      "title": "RUDRA HDR",
+      "title": "Video Components",
       "bounding": [
-        773.530859375,
-        -10,
-        440.0000000000001,
-        1538
+        1120,
+        0,
+        340,
+        1090
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "HDR Conversion",
+      "bounding": [
+        1490,
+        0,
+        370,
+        1090
       ],
       "color": "#b58b2a",
       "flags": {}
     },
     {
-      "id": 3,
-      "title": "Review and delivery",
+      "id": 4,
+      "title": "AI Fill - (Optional)",
       "bounding": [
-        1243.530859375,
-        -10,
-        685.48828125,
-        1178
+        1890,
+        0,
+        380,
+        1090
       ],
-      "color": "#444",
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Write HDR Master (EXR + Audio)",
+      "bounding": [
+        3100,
+        1890,
+        370,
+        830
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Write Video (PQ HDR)",
+      "bounding": [
+        2700,
+        1890,
+        370,
+        830
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Write Video (SDR)",
+      "bounding": [
+        2300,
+        1890,
+        370,
+        830
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Viewer",
+      "bounding": [
+        2300,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
       "flags": {}
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.5944931163954944,
+      "scale": 0.3369,
       "offset": [
-        60,
-        80
+        148.4,
+        356.2
       ]
     },
     "radiance": {
@@ -1879,7 +2303,247 @@
         "EXR seq"
       ],
       "api": "MinimaxHailuo03TextToVideoNode"
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2294,
+          84
+        ],
+        "linkIds": [
+          8,
+          11
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          2294,
+          1866
+        ],
+        "linkIds": [
+          8,
+          11
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          2694,
+          1866
+        ],
+        "linkIds": [
+          8,
+          11
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          3094,
+          1866
+        ],
+        "linkIds": [
+          8
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          1478,
+          84
+        ],
+        "linkIds": [
+          14
+        ]
+      },
+      {
+        "id": 6,
+        "pos": [
+          1478,
+          1872
+        ],
+        "linkIds": [
+          14
+        ],
+        "parentId": 5
+      },
+      {
+        "id": 7,
+        "pos": [
+          2288,
+          1872
+        ],
+        "linkIds": [
+          14
+        ],
+        "parentId": 6
+      },
+      {
+        "id": 8,
+        "pos": [
+          1472,
+          108
+        ],
+        "linkIds": [
+          10,
+          13,
+          15
+        ]
+      },
+      {
+        "id": 9,
+        "pos": [
+          1472,
+          1878
+        ],
+        "linkIds": [
+          10,
+          13,
+          15
+        ],
+        "parentId": 8
+      },
+      {
+        "id": 10,
+        "pos": [
+          2282,
+          1878
+        ],
+        "linkIds": [
+          10,
+          13,
+          15
+        ],
+        "parentId": 9
+      },
+      {
+        "id": 11,
+        "pos": [
+          2682,
+          1878
+        ],
+        "linkIds": [
+          10,
+          13
+        ],
+        "parentId": 10
+      },
+      {
+        "id": 12,
+        "pos": [
+          3082,
+          1878
+        ],
+        "linkIds": [
+          10
+        ],
+        "parentId": 11
+      },
+      {
+        "id": 13,
+        "pos": [
+          1466,
+          132
+        ],
+        "linkIds": [
+          9,
+          12,
+          16
+        ]
+      },
+      {
+        "id": 14,
+        "pos": [
+          1466,
+          1884
+        ],
+        "linkIds": [
+          9,
+          12,
+          16
+        ],
+        "parentId": 13
+      },
+      {
+        "id": 15,
+        "pos": [
+          2276,
+          1884
+        ],
+        "linkIds": [
+          9,
+          12,
+          16
+        ],
+        "parentId": 14
+      },
+      {
+        "id": 16,
+        "pos": [
+          2676,
+          1884
+        ],
+        "linkIds": [
+          9,
+          12
+        ],
+        "parentId": 15
+      },
+      {
+        "id": 17,
+        "pos": [
+          3076,
+          1884
+        ],
+        "linkIds": [
+          9
+        ],
+        "parentId": 16
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 8,
+        "parentId": 4
+      },
+      {
+        "id": 11,
+        "parentId": 3
+      },
+      {
+        "id": 14,
+        "parentId": 7
+      },
+      {
+        "id": 10,
+        "parentId": 12
+      },
+      {
+        "id": 13,
+        "parentId": 11
+      },
+      {
+        "id": 15,
+        "parentId": 10
+      },
+      {
+        "id": 9,
+        "parentId": 17
+      },
+      {
+        "id": 12,
+        "parentId": 16
+      },
+      {
+        "id": 16,
+        "parentId": 15
+      }
+    ]
   },
   "version": 0.4
 }
