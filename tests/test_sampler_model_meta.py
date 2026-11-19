@@ -130,6 +130,12 @@ class TestRefineDistillationFromMeta:
         for f in ("ltx-2.3-22b-distilled-1.1.safetensors", "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"):
             assert refine_distillation_from_meta("ltxav", f) == {"cfg": 1.0}
 
+    def test_wan22_experts_run_euler_at_cfg_3_5(self):
+        # Wan 2.2 14B's templates run euler at cfg 3.5-4; Wan 2.1 keeps its own uni_pc at cfg 6.
+        for f in ("wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", "Wan/wan2.2_i2v_low_noise_14B_fp16.safetensors"):
+            assert refine_distillation_from_meta("wan", f) == {"sampler": "euler", "cfg": 3.5}
+        assert refine_distillation_from_meta("wan", "wan2.1_t2v_14B_fp16.safetensors") is None
+
     def test_ltx_dev_not_affected_even_with_the_distilled_lora(self):
         # The Dev workflows add the distilled LoRA at a low strength and keep the Dev recipe.
         assert refine_distillation_from_meta("ltxav", "ltx-2.3-22b-dev.safetensors",
@@ -153,3 +159,12 @@ def test_auto_ltx_cfg_follows_the_stage():
     assert _auto_ltx_cfg(dev, 0.45) == 1.0
     assert _auto_ltx_cfg(distilled, 1.0) == 1.0
     assert _auto_ltx_cfg(distilled, 0.375) == 1.0
+
+
+def test_auto_wan22_follows_its_templates():
+    from radiance.nodes.generate.sampler import RadianceSamplerPro
+    meta = json.dumps({"arch": "wan", "unet_file": "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", "loras": []})
+    _, kwargs, _ = RadianceSamplerPro()._configure_model_and_defaults(
+        None, "auto", "Auto", model_meta=meta, cfg=1.0, flux_guidance=3.5, steps=20, denoise=1.0,
+        sampler="euler", scheduler="simple", scheduler_mode="Manual")
+    assert (kwargs["sampler"], kwargs["cfg"], kwargs["steps"]) == ("euler", 3.5, 20)

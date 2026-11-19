@@ -1,8 +1,10 @@
 """A refiner takes over where the base model stops, on the same schedule: shifted by flux_shift
 like the base stage, and on sigmas_override when one is supplied."""
+import json
+
 import torch
 
-from _sampler_harness import FakeModelPatcher, SampleCustomRecorder, run_sampler
+from _sampler_harness import FakeModelPatcher, SampleCustomRecorder, make_latent, run_sampler
 
 
 def _stages(**kw):
@@ -30,3 +32,28 @@ def test_the_refiner_keeps_the_supplied_sigmas():
     override = torch.linspace(1.0, 0.0, 9) ** 3
     base, ref = _stages(sigmas_override=override)
     assert torch.allclose(torch.cat([base, ref[1:]]), override), (base, ref)
+
+
+def _wan_stages(unet, refiner_start_step):
+    rec = SampleCustomRecorder()
+    refiner = FakeModelPatcher()
+    meta = json.dumps({"arch": "wan", "unet_file": unet, "loras": []})
+    run_sampler(latent=make_latent((1, 16, 2, 8, 8)), recorder=rec, preset="Auto", model_type="wan",
+                model_meta=meta, scheduler="simple", steps=20, refiner_model=refiner,
+                refiner_start_step=refiner_start_step)
+    base = [c["sigmas"] for c in rec.calls if c["model"].model is not refiner.model]
+    ref = [c["sigmas"] for c in rec.calls if c["model"].model is refiner.model]
+    return base, ref
+
+
+def test_wan22_low_noise_expert_takes_over_at_half_the_steps():
+    # At the default start (20 of 20) the low-noise expert never ran; its templates hand over at 10.
+    base, ref = _wan_stages("wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", 20)
+    assert ref and len(base[-1]) == 11 and len(ref[0]) == 11, (base, ref)
+    base, ref = _wan_stages("wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors", 6)
+    assert len(base[-1]) == 7, base
+
+
+def test_other_refiners_keep_their_start():
+    base, ref = _wan_stages("wan2.1_t2v_14B_fp16.safetensors", 20)
+    assert not ref, ref
