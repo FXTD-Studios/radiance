@@ -1,9 +1,11 @@
 /**
  * Inspect reads the frame; Review compares against a version you choose.
  *
- *  - Inspect opens on Scopes: waveform, parade, vectorscope and the QC result
- *    in a 2 x 2, a 10-bit | % | Nits switch (Nits only for a PQ or HLG view),
- *    and a probe row that follows the pointer.
+ *  - Inspect opens on the Inspector (the 4.1 shell: "Channels and pixel
+ *    probe"); its Scopes tab (More tools > Scopes) shows waveform, parade,
+ *    vectorscope and the QC result in a 2 x 2, a 10-bit | % | Nits switch (Nits
+ *    only for a PQ or HLG view), and a probe row that follows the pointer.
+ *    QC Details opens the QC workspace, which has its own tab since 4.1.
  *  - Review: Grab still keeps the frame as shown and makes it B; the B menu
  *    lists the stills, the compare input, Release and Clear. Releasing B keeps
  *    the stills; Clear forgets them.
@@ -19,7 +21,7 @@ const session = await startSession();
 const skip = session ? false : 'Playwright is not installed: the viewers cannot be driven.';
 after(() => session?.close());
 
-test('Inspect opens on a 2 x 2 of scopes and QC, with the scale switch and a probe row', { skip }, async () => {
+test('Inspect scopes are a 2 x 2 of scopes and QC, with the scale switch and a probe row', { skip }, async () => {
     const page = await session.open();
     try {
         const r = await page.evaluate(async () => {
@@ -27,7 +29,9 @@ test('Inspect opens on a 2 x 2 of scopes and QC, with the scale switch and a pro
             n.onExecuted(__frames(6, 160, 90));
             await __until(() => v.hdrData); await __sleep(300);
             v.setWorkspace('inspect', { persist: false }); await __sleep(300);
-            const out = { tab: v._referenceRightTab };
+            const out = { opensOn: v._referenceRightTab };
+            v._setReferenceTab('scopes'); await __sleep(300);
+            out.tab = v._referenceRightTab;
             const grid = v.controlsPanel.querySelector('.radiance-ref-scopes-grid');
             out.quad = grid.classList.contains('is-quad');
             out.cells = [...grid.children].map((e) => e.dataset.scope);
@@ -42,8 +46,8 @@ test('Inspect opens on a 2 x 2 of scopes and QC, with the scale switch and a pro
             out.qcLines = v.controlsPanel.querySelectorAll('.radiance-scope-qc-line').length;
             out.qcAfter = v.controlsPanel.querySelector('.radiance-scope-qc-run')?.textContent;
             v.controlsPanel.querySelector('.radiance-scope-qc-more').click(); await __sleep(100);
-            out.details = v._referenceRightTab;
-            v._setReferenceTab('scopes'); await __sleep(200);
+            out.details = [v.workspace, v._referenceRightTab];
+            v.setWorkspace('inspect', { persist: false, tab: 'scopes' }); await __sleep(200);
             window.__v = v; window.__n = n;
             return out;
         });
@@ -65,6 +69,7 @@ test('Inspect opens on a 2 x 2 of scopes and QC, with the scale switch and a pro
             return out;
         }));
         assert.deepEqual(page.errors, []);
+        assert.equal(r.opensOn, 'inspector', 'Inspect opens on the Inspector (4.1 shell)');
         assert.equal(r.tab, 'scopes');
         assert.equal(r.quad, true);
         assert.deepEqual(r.cells, ['waveform', 'parade', 'vectorscope', 'qc']);
@@ -76,7 +81,7 @@ test('Inspect opens on a 2 x 2 of scopes and QC, with the scale switch and a pro
         assert.equal(r.qcBefore, 'Run QC');
         assert.ok(r.qcLines > 0, 'the QC cell lists the checks after a run');
         assert.equal(r.qcAfter, 'Run again');
-        assert.equal(r.details, 'qc');
+        assert.deepEqual(r.details, ['qc', 'qc'], 'QC Details opens the QC workspace');
         assert.match(r.probe.light, /^\d+ nits {2}· {2}[+-]\d+\.\d st$/);
         assert.match(r.probe.where, /^\d+, \d+ {2}· {2}f\d+$/);
         assert.notEqual(r.probe.linear, '—');
