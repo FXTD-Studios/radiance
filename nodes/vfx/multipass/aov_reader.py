@@ -50,7 +50,8 @@ _LAYER_ALIASES: Dict[str, Tuple[str, ...]] = {
     "midtone_mask":   ("midtone", "midtone_mask", "midtones"),
     "highlight_mask": ("highlight", "highlight_mask", "highlights"),
     "reflection_mask": ("reflection_mask", "reflectionmask"),
-    "motion_vector":  ("mv", "motion", "motionvector", "motion_vector", "velocity", "vector", "motionvectors"),
+    "motion_vector":  ("mv", "motion", "motionvector", "motion_vector", "velocity", "vector", "motionvectors",
+                       "backward"),
     "object_id":      ("id", "crypto", "cryptomatte", "objectid", "object_id", "segmentation", "matteid"),
 }
 
@@ -72,6 +73,7 @@ def _suffix_rank(suf: str) -> Tuple[int, str]:
         "R": 0, "G": 1, "B": 2, "A": 3,
         "X": 0, "Y": 1, "Z": 2,
         "NX": 0, "NY": 1, "NZ": 2,
+        "U": 0, "V": 1,
     }
     s = suf.upper()
     return (order.get(s, 99), suf)

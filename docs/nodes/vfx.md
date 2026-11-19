@@ -488,7 +488,7 @@ Estimate render passes from a plate with trained models: MoGe-2 for metric geome
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `beauty` | IMAGE |  |  | The plate. One image or a batch of frames. |
-| `beauty_encoding` | choice | `sRGB (display)` | `sRGB (display)`, `Linear (scene)` | How the plate is encoded. Ordinary images and video frames are sRGB. Choose Linear for scene-linear EXR plates; values above 1.0 are clipped for the models and left out of the lighting fit. |
+| `beauty_encoding` | choice | `Auto` | `Auto`, `sRGB (display)`, `Linear (scene)` | How the plate is encoded. Auto: Linear when any value is above 1.0 (an HDR or EXR plate), else sRGB; info says which ran. Ordinary images and video frames are sRGB. Pick Linear for a scene-linear plate that stays below 1.0. Values above 1.0 are clipped for the models and left out of the lighting fit. |
 | `geometry` | boolean | on |  | Depth, position, normals, AO and curvature (MoGe-2, 662 MB). |
 | `materials` | boolean | on |  | Albedo, roughness, metallic (Marigold IID Appearance, 2.5 GB). |
 | `lighting` | boolean | on |  | Diffuse and specular lighting (Marigold IID Lighting, 1.7 GB; shares files with Appearance). |
@@ -496,7 +496,7 @@ Estimate render passes from a plate with trained models: MoGe-2 for metric geome
 | `prev_frame` (optional) | IMAGE |  |  | Previous frame for motion vectors of a single image. |
 | `moge_model` (optional) | MOGE_MODEL |  |  | Optional: a model from ComfyUI's Load MoGe Model. Must be MoGe-2 for normals. |
 | `geometry_detail` (optional) | int | 9 | 0 to 9 | MoGe resolution level: 0 fastest, 9 most detail. |
-| `fov_x_degrees` (optional) | float | 0 | 0 to 170, step 0.1 | Known horizontal field of view. 0 = estimate it. |
+| `fov_x_degrees` (optional) | float | 0 | 0 to 170, step 0.1 | Known horizontal field of view. 0 = estimate it; in a sequence (batch_is_sequence) it is estimated on the first frame and held for every frame, so depth and position do not breathe. A 35 mm lens on a 36 mm filmback is 54.4. |
 | `normal_convention` (optional) | choice | `OpenGL (Y-Up)` | `OpenGL (Y-Up)`, `DirectX (Y-Down)` | Encoding of the camera-space normal pass (0..1, +Z toward the camera). DirectX (Y-Down) flips the green channel; match the renderer or tool reading it. |
 | `ao_radius_m` (optional) | float | 0.5 | 0.01 to 50, step 0.01 | Occlusion search radius in metres of scene space. |
 | `ao_quality` (optional) | int | 8 | 2 to 32 | AO slices and steps per slice. |
@@ -504,7 +504,8 @@ Estimate render passes from a plate with trained models: MoGe-2 for metric geome
 | `material_resolution` (optional) | int | 768 | 0 to 2048, step 64 | Marigold processing size (long edge). 768 is the trained size; 0 = native. |
 | `ensemble_size` (optional) | int | 1 | 1 to 10 | Average several Marigold predictions. Slower, steadier. |
 | `seed` (optional) | int | 0 | 0 to 4294967295 | Marigold noise seed, reused on every frame to limit flicker. |
-| `batch_is_sequence` (optional) | boolean | on |  | Treat the batch as consecutive frames for motion vectors. |
+| `batch_is_sequence` (optional) | boolean | on |  | Treat the batch as consecutive frames: forward and backward motion vectors, and one field of view for the whole shot. |
+| `material_detail` (optional) | boolean | on |  | Marigold runs at material_resolution and is resized to the plate. On: a guided filter takes the plate's edges back into albedo, roughness, metallic and lighting when the plate is larger. Off: the plain resize. |
 
 **Outputs**
 
@@ -517,9 +518,9 @@ Estimate render passes from a plate with trained models: MoGe-2 for metric geome
 | `metallic` | IMAGE | Metallic 0..1 (Marigold IID Appearance). |
 | `diffuse_lighting` | IMAGE | Diffuse light contribution, scene-linear, scaled to the plate (Marigold IID Lighting). |
 | `specular_lighting` | IMAGE | Non-diffuse light (reflections, highlights), scene-linear, scaled to the plate. |
-| `normal_map` | IMAGE | Camera-space normals, 0..1 encoded (MoGe-2). |
-| `depth` | IMAGE | Metric z depth in metres; 0 where there is no surface (MoGe-2). |
-| `world_position` | IMAGE | Camera-space position in metres, OpenGL axes (MoGe-2). |
+| `normal_map` | IMAGE | Camera-space normals, 0..1 encoded for display (MoGe-2). EXR writers store them signed -1..1 as N. |
+| `depth` | IMAGE | Metric z depth in metres; 0 where there is no surface (MoGe-2). EXR writers store those pixels as 1e10 (far). |
+| `world_position` | IMAGE | Position in metres in camera space (camera at the origin looking down -Z, OpenGL axes; MoGe-2). Written as the P layer, with an identity worldToCamera in the EXR header. |
 | `ao` | IMAGE | Ambient occlusion from the metric geometry, 1 = open. |
 | `curvature` | IMAGE | Mean curvature in 1/metre, convex positive. |
 | `motion_vector` | IMAGE | Backward optical flow to the previous frame in pixels, +y up. |
@@ -546,7 +547,7 @@ Relights a CG or estimated plate from its albedo and normal passes with one dire
 | `alpha` (optional) | IMAGE |  |  | Coverage matte, first channel, 0..1. Passed through to the alpha output and used for output_premultiplied; defaults to 1. |
 | `shadow_mask` (optional) | IMAGE |  |  | Shadow pass, first channel: 1 = fully shadowed, 0 = lit. Blocks direct diffuse and specular light but not ambient. |
 | `depth_map` (optional) | IMAGE |  |  | Normalised 0..1 depth pass. Only used by a Point light when world_position is not connected, to give pixels a synthetic Z. |
-| `world_position` (optional) | IMAGE |  |  | Position pass in camera space metres (OpenGL axes: X right, Y up, +Z toward the camera). Only used by a Point light, and overrides depth_map. |
+| `world_position` (optional) | IMAGE |  |  | Position pass in camera space metres (OpenGL axes: X right, Y up, +Z toward the camera), as Multipass Estimate writes it. Gives the specular a perspective view direction; for a Point light it also places the pixels, overriding depth_map. |
 | `normal_convention` (optional) | choice | `OpenGL (Y-Up)` | `OpenGL (Y-Up)`, `DirectX (Y-Down)` | Green channel convention of the normal pass. DirectX (Y-Down) flips the Y component before lighting. |
 | `light_type` (optional) | choice | `Directional` | `Directional`, `Point` | Directional: light_x/y/z is a direction, no falloff. Point: light_x/y/z is a position, with soft distance falloff 1 / (1 + 0.08 d^2). |
 | `light_x` (optional) | float | -0.35 | -10 to 10, step 0.01 | Light X (+ = screen right). Directional: component of the direction toward the light. Point: position in world_position units, or in screen units (X spans +/- aspect ratio) without it. |
@@ -562,6 +563,7 @@ Relights a CG or estimated plate from its albedo and normal passes with one dire
 | `depth_near_is_white` (optional) | boolean | on |  | Set on when near pixels are white in depth_map. Only used for a Point light with depth_map and no world_position. |
 | `mix_with_beauty` (optional) | float | 0 | 0 to 1, step 0.01 | Linear blend of the relit result toward the beauty input: 0 = relight only, 1 = original beauty. Needs beauty connected. |
 | `output_premultiplied` (optional) | boolean | off |  | Multiply the relit output (and the beauty mix) by alpha. Off leaves it unpremultiplied. |
+| `relight_output` (optional) | choice | `Replace (relit only)` | `Replace (relit only)`, `Add light to beauty` | Replace: relit = albedo lit by this light plus ambient (a new lighting setup). Add light to beauty: relit = beauty + this light's diffuse and specular on the albedo, the plate's own light, texture and shadows kept, as a compositor adds a key or a kicker. Needs beauty. |
 
 **Outputs**
 
@@ -765,15 +767,16 @@ Write all passes inside the RADIANCE_PASSES bundle into a single-part multilayer
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `passes` | RADIANCE_PASSES |  |  | Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Pixel values are written as is, with no colour conversion. |
+| `passes` | RADIANCE_PASSES |  |  | Pass bundle to write; must contain a beauty pass, and every pass must match its width and height. Values are written as is, with no colour conversion, except: normals are stored signed (-1..1, camera space, Y up) as N.R/G/B, and depth Z holds 1e10 where there is no surface. Channels: R G B A, Z, N, P (camera space), forward/backward u v, one .Y channel for ao, roughness, metallic, curvature and geometry_mask. The camera (field of view, focal length) goes in the header. |
 | `filename_prefix` | string | `radiance_vfx_passes` |  | File name stem, not a path. Files are named &lt;prefix>.&lt;frame>.exr with a 4-digit padded frame number. |
-| `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | EXR pixel type. Files containing depth, world_position, motion_vector or object_id passes are always written as 32-bit float. |
+| `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | EXR pixel type. Files containing depth, position, motion vectors or object_id are always written as 32-bit float. |
 | `compression` | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; lossy B44/B44A/DWAA/DWAB raise an error when data passes (depth, position, motion, object ID) are present. |
 | `output_path` (optional) | string |  |  | Output folder. Empty = ComfyUI output folder; a relative path is a subfolder of it; an absolute path is used as is. Created if missing. |
 | `remote_path` (optional) | string |  |  | Optional absolute folder (for example a NAS share) that each written file is also copied to. A failed copy only logs a warning. |
 | `frame_index` (optional) | int | 1001 | 0 to 999999 | Frame number of the first image in the batch; later images count up from it. |
 | `exr_layout` (optional) | choice | `Single-part multilayer` | `Single-part multilayer`, `Multi-part` | Single-part multilayer: all passes as named channel layers in one part (widest compatibility). Multi-part: one EXR 2.0 part per pass. |
 | `custom_metadata` (optional) | string |  | multi-line text | Extra EXR header attributes, one key=value per line, stored as strings. Lines without = are ignored. |
+| `beauty` (optional) | IMAGE |  |  | Optional: the beauty written in the file instead of the bundle's, for example the HDR master from SDR -> HDR Universal, so the passes and the master share one beauty. Same size as the passes, scene-linear Rec.709. |
 
 **Outputs**
 
