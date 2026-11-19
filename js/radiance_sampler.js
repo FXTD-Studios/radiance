@@ -1202,7 +1202,7 @@ function updateModelMetaDefaults(node) {
     // ALBABIT-FIX: under Wan 2.2 refiner_model takes the Loader's low-noise expert:
     // the input shows that name, its real name (links, API, saved graphs) is unchanged.
     if (refinerIn) {
-        refinerIn._radOrigLabel ??= refinerIn.label;
+        if (!("_radOrigLabel" in refinerIn)) refinerIn._radOrigLabel = refinerIn.label;
         const wanted = lowNoise ? "model_low_noise" : refinerIn._radOrigLabel;
         if (refinerIn.label !== wanted) {
             refinerIn.label = wanted;
