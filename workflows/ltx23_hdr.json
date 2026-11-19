@@ -163,10 +163,10 @@
       "title": "Model Links",
       "properties": {},
       "widgets_values": [
-        "## Albabit LTX 2.3 Workflow for Radiance:\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## LTX-2.3 Prompting Tips\n\n1. **Core Actions**: Describe events and actions as they occur over time  \n2. **Visual Details**: Describe all visual details you want to appear in the video  \n3. **Audio**: Describe sounds and dialogue needed for the scene\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n## Report LTX-2.3 Issues\nTo report any issues when running this workflow, [go to GitHub](https://github.com/Lightricks/ComfyUI-LTXVideo/issues)\n\n## Model Links (for Local Users)\n\n**checkpoints**\n\n- [ltx-2.3-22b-dev.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-dev.safetensors) (used)\n- [ltx-2.3-22b-distilled-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-1.1.safetensors) (alternative: distilled model, no distilled LoRA needed)\n\n**text_encoders**\n\n- [gemma_3_12B_it.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors) (used)\n- [gemma_3_12B_it_fp4_mixed.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors) (alternative for less VRAM)\n- [ltx-2.3_text_projection_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors) (used)\n\n**loras**\n\n- [ltx-2.3-22b-distilled-lora-384-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384-1.1.safetensors) (used, \"Distilled LoRA\")\n- [ltx-2-19b-ic-lora-detailer.safetensors](https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Detailer/resolve/main/ltx-2-19b-ic-lora-detailer.safetensors) (used, \"Detailer LoRA (Optional)\")\n- [LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors) (optional, \"Pre Latent Upscale LoRA\", bypassed by default)\n\n**latent_upscale_models**\n\n- [ltx-2.3-spatial-upscaler-x2-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors) (used)\n\n**vae**\n\n- [LTX23_video_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors) (used)\n- [LTX23_audio_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors) (used)\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 checkpoints/\n│   │   ├── ltx-2.3-22b-dev.safetensors\n│   │   └── ltx-2.3-22b-distilled-1.1.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── gemma_3_12B_it.safetensors\n│   │   ├── gemma_3_12B_it_fp4_mixed.safetensors\n│   │   └── ltx-2.3_text_projection_bf16.safetensors\n│   ├── 📂 loras/\n│   │   ├── ltx-2.3-22b-distilled-lora-384-1.1.safetensors\n│   │   ├── ltx-2-19b-ic-lora-detailer.safetensors\n│   │   └── LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors\n│   ├── 📂 latent_upscale_models/\n│   │   └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors\n│   └── 📂 vae/\n│       ├── LTX23_video_vae_bf16.safetensors\n│       └── LTX23_audio_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+        "## LTX 2.3 Workflow for Radiance:\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## LTX-2.3 Prompting Tips\n\n1. **Core Actions**: Describe events and actions as they occur over time  \n2. **Visual Details**: Describe all visual details you want to appear in the video  \n3. **Audio**: Describe sounds and dialogue needed for the scene\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n## Report LTX-2.3 Issues\nTo report any issues when running this workflow, [go to GitHub](https://github.com/Lightricks/ComfyUI-LTXVideo/issues)\n\n## Model Links (for Local Users)\n\n**checkpoints**\n\n- [ltx-2.3-22b-dev.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-dev.safetensors) (used)\n- [ltx-2.3-22b-distilled-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-1.1.safetensors) (alternative: distilled model, no distilled LoRA needed)\n\n**text_encoders**\n\n- [gemma_3_12B_it.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors) (used)\n- [gemma_3_12B_it_fp4_mixed.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors) (alternative for less VRAM)\n- [ltx-2.3_text_projection_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors) (used)\n\n**loras**\n\n- [ltx-2.3-22b-distilled-lora-384-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384-1.1.safetensors) (used, \"Distilled LoRA\")\n- [ltx-2-19b-ic-lora-detailer.safetensors](https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Detailer/resolve/main/ltx-2-19b-ic-lora-detailer.safetensors) (used, \"Detailer LoRA (Optional)\")\n- [LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors) (optional, \"Pre Latent Upscale LoRA\", bypassed by default)\n\n**latent_upscale_models**\n\n- [ltx-2.3-spatial-upscaler-x2-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors) (used)\n\n**vae**\n\n- [LTX23_video_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors) (used)\n- [LTX23_audio_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors) (used)\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 checkpoints/\n│   │   ├── ltx-2.3-22b-dev.safetensors\n│   │   └── ltx-2.3-22b-distilled-1.1.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── gemma_3_12B_it.safetensors\n│   │   ├── gemma_3_12B_it_fp4_mixed.safetensors\n│   │   └── ltx-2.3_text_projection_bf16.safetensors\n│   ├── 📂 loras/\n│   │   ├── ltx-2.3-22b-distilled-lora-384-1.1.safetensors\n│   │   ├── ltx-2-19b-ic-lora-detailer.safetensors\n│   │   └── LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors\n│   ├── 📂 latent_upscale_models/\n│   │   └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors\n│   └── 📂 vae/\n│       ├── LTX23_video_vae_bf16.safetensors\n│       └── LTX23_audio_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
       ],
       "widgets_values_named": {
-        "text": "## Albabit LTX 2.3 Workflow for Radiance:\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## LTX-2.3 Prompting Tips\n\n1. **Core Actions**: Describe events and actions as they occur over time  \n2. **Visual Details**: Describe all visual details you want to appear in the video  \n3. **Audio**: Describe sounds and dialogue needed for the scene\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n## Report LTX-2.3 Issues\nTo report any issues when running this workflow, [go to GitHub](https://github.com/Lightricks/ComfyUI-LTXVideo/issues)\n\n## Model Links (for Local Users)\n\n**checkpoints**\n\n- [ltx-2.3-22b-dev.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-dev.safetensors) (used)\n- [ltx-2.3-22b-distilled-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-1.1.safetensors) (alternative: distilled model, no distilled LoRA needed)\n\n**text_encoders**\n\n- [gemma_3_12B_it.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors) (used)\n- [gemma_3_12B_it_fp4_mixed.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors) (alternative for less VRAM)\n- [ltx-2.3_text_projection_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors) (used)\n\n**loras**\n\n- [ltx-2.3-22b-distilled-lora-384-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384-1.1.safetensors) (used, \"Distilled LoRA\")\n- [ltx-2-19b-ic-lora-detailer.safetensors](https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Detailer/resolve/main/ltx-2-19b-ic-lora-detailer.safetensors) (used, \"Detailer LoRA (Optional)\")\n- [LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors) (optional, \"Pre Latent Upscale LoRA\", bypassed by default)\n\n**latent_upscale_models**\n\n- [ltx-2.3-spatial-upscaler-x2-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors) (used)\n\n**vae**\n\n- [LTX23_video_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors) (used)\n- [LTX23_audio_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors) (used)\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 checkpoints/\n│   │   ├── ltx-2.3-22b-dev.safetensors\n│   │   └── ltx-2.3-22b-distilled-1.1.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── gemma_3_12B_it.safetensors\n│   │   ├── gemma_3_12B_it_fp4_mixed.safetensors\n│   │   └── ltx-2.3_text_projection_bf16.safetensors\n│   ├── 📂 loras/\n│   │   ├── ltx-2.3-22b-distilled-lora-384-1.1.safetensors\n│   │   ├── ltx-2-19b-ic-lora-detailer.safetensors\n│   │   └── LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors\n│   ├── 📂 latent_upscale_models/\n│   │   └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors\n│   └── 📂 vae/\n│       ├── LTX23_video_vae_bf16.safetensors\n│       └── LTX23_audio_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
+        "text": "## LTX 2.3 Workflow for Radiance:\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## LTX-2.3 Prompting Tips\n\n1. **Core Actions**: Describe events and actions as they occur over time  \n2. **Visual Details**: Describe all visual details you want to appear in the video  \n3. **Audio**: Describe sounds and dialogue needed for the scene\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n## Report LTX-2.3 Issues\nTo report any issues when running this workflow, [go to GitHub](https://github.com/Lightricks/ComfyUI-LTXVideo/issues)\n\n## Model Links (for Local Users)\n\n**checkpoints**\n\n- [ltx-2.3-22b-dev.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-dev.safetensors) (used)\n- [ltx-2.3-22b-distilled-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-1.1.safetensors) (alternative: distilled model, no distilled LoRA needed)\n\n**text_encoders**\n\n- [gemma_3_12B_it.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors) (used)\n- [gemma_3_12B_it_fp4_mixed.safetensors](https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors) (alternative for less VRAM)\n- [ltx-2.3_text_projection_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors) (used)\n\n**loras**\n\n- [ltx-2.3-22b-distilled-lora-384-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384-1.1.safetensors) (used, \"Distilled LoRA\")\n- [ltx-2-19b-ic-lora-detailer.safetensors](https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Detailer/resolve/main/ltx-2-19b-ic-lora-detailer.safetensors) (used, \"Detailer LoRA (Optional)\")\n- [LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors) (optional, \"Pre Latent Upscale LoRA\", bypassed by default)\n\n**latent_upscale_models**\n\n- [ltx-2.3-spatial-upscaler-x2-1.1.safetensors](https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors) (used)\n\n**vae**\n\n- [LTX23_video_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors) (used)\n- [LTX23_audio_vae_bf16.safetensors](https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors) (used)\n\n## Model Storage Location\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 checkpoints/\n│   │   ├── ltx-2.3-22b-dev.safetensors\n│   │   └── ltx-2.3-22b-distilled-1.1.safetensors\n│   ├── 📂 text_encoders/\n│   │   ├── gemma_3_12B_it.safetensors\n│   │   ├── gemma_3_12B_it_fp4_mixed.safetensors\n│   │   └── ltx-2.3_text_projection_bf16.safetensors\n│   ├── 📂 loras/\n│   │   ├── ltx-2.3-22b-distilled-lora-384-1.1.safetensors\n│   │   ├── ltx-2-19b-ic-lora-detailer.safetensors\n│   │   └── LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors\n│   ├── 📂 latent_upscale_models/\n│   │   └── ltx-2.3-spatial-upscaler-x2-1.1.safetensors\n│   └── 📂 vae/\n│       ├── LTX23_video_vae_bf16.safetensors\n│       └── LTX23_audio_vae_bf16.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)\n- Workflow issues: [workflow_templates/issues](https://github.com/Comfy-Org/workflow_templates/issues)\n"
       },
       "color": "#222",
       "bgcolor": "#000"
@@ -907,7 +907,7 @@
       "id": 389,
       "type": "CreateVideo",
       "pos": [
-        2620,
+        2220,
         3370
       ],
       "size": [
@@ -4438,7 +4438,7 @@
       "id": 546,
       "type": "RadianceDepthMapGenerator",
       "pos": [
-        2620,
+        2220,
         3620
       ],
       "size": [
@@ -4535,7 +4535,7 @@
       "id": 552,
       "type": "RadianceViewer",
       "pos": [
-        2910,
+        2510,
         3370
       ],
       "size": [
@@ -5254,8 +5254,8 @@
       "id": 555,
       "type": "RadianceWrite",
       "pos": [
-        2220,
-        3370
+        3020,
+        5260
       ],
       "size": [
         310,
@@ -5967,8 +5967,8 @@
       "id": 569,
       "type": "RadianceWrite",
       "pos": [
-        2220,
-        4490
+        2620,
+        5260
       ],
       "size": [
         310,
@@ -6277,8 +6277,8 @@
       "id": 570,
       "type": "RadianceWrite",
       "pos": [
-        1420,
-        4490
+        2220,
+        5260
       ],
       "size": [
         310,
@@ -6618,7 +6618,7 @@
         3140
       ],
       "size": [
-        1170,
+        770,
         130
       ],
       "flags": {},
@@ -6641,7 +6641,7 @@
       "id": 573,
       "type": "MarkdownNote",
       "pos": [
-        2590,
+        2190,
         3140
       ],
       "size": [
@@ -8556,7 +8556,7 @@
         1390,
         3300,
         370,
-        1090
+        1860
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8565,10 +8565,10 @@
       "id": 29,
       "title": "Write HDR Master (EXR + Audio)",
       "bounding": [
-        2190,
-        3300,
+        2990,
+        5190,
         370,
-        1090
+        830
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8577,10 +8577,10 @@
       "id": 30,
       "title": "Write Video (SDR)",
       "bounding": [
-        1390,
-        4420,
+        2190,
+        5190,
         370,
-        740
+        830
       ],
       "color": "#8A8",
       "flags": {}
@@ -8589,10 +8589,10 @@
       "id": 31,
       "title": "Write Video (PQ HDR)",
       "bounding": [
-        2190,
-        4420,
+        2590,
+        5190,
         370,
-        740
+        830
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -8601,7 +8601,7 @@
       "id": 32,
       "title": "Viewer",
       "bounding": [
-        2590,
+        2190,
         3300,
         3010,
         1860
@@ -8708,13 +8708,14 @@
         "id": 4,
         "parentId": 2,
         "pos": [
-          2160,
+          2184,
           3264
         ],
         "linkIds": [
           1435,
           1436,
-          1466
+          1466,
+          1469
         ]
       },
       {
@@ -8755,48 +8756,179 @@
         ]
       },
       {
-        "id": 8,
-        "parentId": 4,
+        "id": 12,
         "pos": [
-          2560,
-          3264
+          2184,
+          5166
         ],
         "linkIds": [
-          1436
-        ]
-      },
-      {
-        "id": 9,
-        "parentId": 2,
-        "pos": [
-          1360,
-          3264
-        ],
-        "linkIds": [
+          1435,
+          1466,
           1469
-        ]
+        ],
+        "parentId": 4
       },
       {
-        "id": 10,
-        "parentId": 9,
+        "id": 13,
         "pos": [
-          1360,
-          4444
+          2584,
+          5166
         ],
         "linkIds": [
-          1469
-        ]
-      },
-      {
-        "id": 11,
-        "parentId": 4,
-        "pos": [
-          2160,
-          4444
-        ],
-        "linkIds": [
+          1435,
           1466
+        ],
+        "parentId": 12
+      },
+      {
+        "id": 14,
+        "pos": [
+          2984,
+          5166
+        ],
+        "linkIds": [
+          1435
+        ],
+        "parentId": 13
+      },
+      {
+        "id": 15,
+        "pos": [
+          2178,
+          3384
+        ],
+        "linkIds": [
+          1502,
+          1504
         ]
+      },
+      {
+        "id": 16,
+        "pos": [
+          2178,
+          5172
+        ],
+        "linkIds": [
+          1502,
+          1504
+        ],
+        "parentId": 15
+      },
+      {
+        "id": 17,
+        "pos": [
+          2578,
+          5172
+        ],
+        "linkIds": [
+          1502,
+          1504
+        ],
+        "parentId": 16
+      },
+      {
+        "id": 18,
+        "pos": [
+          2978,
+          5172
+        ],
+        "linkIds": [
+          1502
+        ],
+        "parentId": 17
+      },
+      {
+        "id": 19,
+        "pos": [
+          1372,
+          3384
+        ],
+        "linkIds": [
+          1467
+        ]
+      },
+      {
+        "id": 20,
+        "pos": [
+          1372,
+          5178
+        ],
+        "linkIds": [
+          1467
+        ],
+        "parentId": 19
+      },
+      {
+        "id": 21,
+        "pos": [
+          2172,
+          5178
+        ],
+        "linkIds": [
+          1467
+        ],
+        "parentId": 20
+      },
+      {
+        "id": 22,
+        "pos": [
+          1366,
+          3784
+        ],
+        "linkIds": [
+          1465,
+          1468,
+          1470
+        ]
+      },
+      {
+        "id": 23,
+        "pos": [
+          1366,
+          5184
+        ],
+        "linkIds": [
+          1465,
+          1468,
+          1470
+        ],
+        "parentId": 22
+      },
+      {
+        "id": 24,
+        "pos": [
+          2166,
+          5184
+        ],
+        "linkIds": [
+          1465,
+          1468,
+          1470
+        ],
+        "parentId": 23
+      },
+      {
+        "id": 25,
+        "pos": [
+          2566,
+          5184
+        ],
+        "linkIds": [
+          1465,
+          1470
+        ],
+        "parentId": 24
+      },
+      {
+        "id": 26,
+        "pos": [
+          2966,
+          5184
+        ],
+        "linkIds": [
+          1470
+        ],
+        "parentId": 25
       }
     ],
     "linkExtensions": [
@@ -8810,7 +8942,7 @@
       },
       {
         "id": 1436,
-        "parentId": 8
+        "parentId": 4
       },
       {
         "id": 1438,
@@ -8830,15 +8962,39 @@
       },
       {
         "id": 1435,
-        "parentId": 4
+        "parentId": 14
       },
       {
         "id": 1466,
-        "parentId": 11
+        "parentId": 13
       },
       {
         "id": 1469,
-        "parentId": 10
+        "parentId": 12
+      },
+      {
+        "id": 1502,
+        "parentId": 18
+      },
+      {
+        "id": 1504,
+        "parentId": 17
+      },
+      {
+        "id": 1467,
+        "parentId": 21
+      },
+      {
+        "id": 1465,
+        "parentId": 25
+      },
+      {
+        "id": 1468,
+        "parentId": 24
+      },
+      {
+        "id": 1470,
+        "parentId": 26
       }
     ]
   },

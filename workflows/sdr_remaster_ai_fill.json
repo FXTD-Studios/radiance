@@ -1,18 +1,18 @@
 {
   "id": "b5959a16-0d36-4170-a379-91925257b5bf",
   "revision": 0,
-  "last_node_id": 16,
+  "last_node_id": 18,
   "last_link_id": 21,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        -1400,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -300,11 +300,11 @@
       "id": 2,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        -1000,
-        0
+        1040,
+        70
       ],
       "size": [
-        283.37890625,
+        310,
         730
       ],
       "flags": {},
@@ -658,11 +658,11 @@
       "id": 3,
       "type": "RadianceSDRToHDRAIFill",
       "pos": [
-        -600,
-        0
+        1440,
+        380
       ],
       "size": [
-        400,
+        320,
         658
       ],
       "flags": {},
@@ -964,11 +964,11 @@
       "id": 4,
       "type": "RadianceCDLTransform",
       "pos": [
-        -200,
-        0
+        2250,
+        70
       ],
       "size": [
-        270,
+        310,
         294
       ],
       "flags": {},
@@ -1130,11 +1130,11 @@
       "id": 5,
       "type": "RadianceWrite",
       "pos": [
-        200,
-        0
+        3460,
+        3850
       ],
       "size": [
-        302.744140625,
+        310,
         458
       ],
       "flags": {},
@@ -1385,9 +1385,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/remaster",
+        "radiance_examples/sdr_remaster_ai_fill",
         "SEQ │ EXR (16-bit half)",
-        "remaster_master",
+        "sdr_remaster_ai_fill_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -1410,9 +1410,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/remaster",
+        "output_path": "radiance_examples/sdr_remaster_ai_fill",
         "format": "SEQ │ EXR (16-bit half)",
-        "filename": "remaster_master",
+        "filename": "sdr_remaster_ai_fill_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -1439,11 +1439,11 @@
       "id": 6,
       "type": "RadianceWrite",
       "pos": [
-        200,
-        600
+        3060,
+        3850
       ],
       "size": [
-        302.744140625,
+        310,
         482
       ],
       "flags": {},
@@ -1694,9 +1694,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/remaster",
+        "radiance_examples/sdr_remaster_ai_fill",
         "VID │ MP4 (H.265 10-bit)",
-        "remaster_hdr10",
+        "sdr_remaster_ai_fill_hdr10",
         1,
         "fixed",
         "PQ (HDR10 / ST.2084)",
@@ -1719,9 +1719,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/remaster",
+        "output_path": "radiance_examples/sdr_remaster_ai_fill",
         "format": "VID │ MP4 (H.265 10-bit)",
-        "filename": "remaster_hdr10",
+        "filename": "sdr_remaster_ai_fill_hdr10",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "PQ (HDR10 / ST.2084)",
@@ -1748,11 +1748,11 @@
       "id": 7,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        200,
-        1200
+        2650,
+        3850
       ],
       "size": [
-        313.513671875,
+        320,
         246
       ],
       "flags": {},
@@ -1888,11 +1888,11 @@
       "id": 8,
       "type": "RadianceWrite",
       "pos": [
-        600,
-        1200
+        2650,
+        4212
       ],
       "size": [
-        302.744140625,
+        320,
         458
       ],
       "flags": {},
@@ -2143,9 +2143,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/remaster",
+        "radiance_examples/sdr_remaster_ai_fill",
         "VID │ MP4 (H.264)",
-        "remaster_sdr",
+        "sdr_remaster_ai_fill_sdr",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -2168,9 +2168,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/remaster",
+        "output_path": "radiance_examples/sdr_remaster_ai_fill",
         "format": "VID │ MP4 (H.264)",
-        "filename": "remaster_sdr",
+        "filename": "sdr_remaster_ai_fill_sdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -2197,12 +2197,12 @@
       "id": 9,
       "type": "RadianceViewer",
       "pos": [
-        600,
-        0
+        2650,
+        1960
       ],
       "size": [
-        960,
-        640
+        2660,
+        1760
       ],
       "flags": {},
       "order": 13,
@@ -2396,8 +2396,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -2418,12 +2418,12 @@
       "id": 10,
       "type": "RadianceViewer",
       "pos": [
-        -200,
-        -700
+        2650,
+        70
       ],
       "size": [
-        640,
-        614
+        2660,
+        1760
       ],
       "flags": {},
       "order": 6,
@@ -2617,8 +2617,8 @@
           "inputSpace": "None",
           "manualLut": null
         },
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review"
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color"
       },
       "widgets_values": [
         false,
@@ -2639,11 +2639,11 @@
       "id": 11,
       "type": "MaskToImage",
       "pos": [
-        -520,
-        -700
+        1440,
+        1262
       ],
       "size": [
-        193.2779296875,
+        320,
         26
       ],
       "flags": {},
@@ -2672,37 +2672,11 @@
       }
     },
     {
-      "id": 12,
-      "type": "Note",
-      "pos": [
-        -1400,
-        -900
-      ],
-      "size": [
-        560,
-        560
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
-      ],
-      "widgets_values_named": {
-        "text": "SDR footage -> HDR remaster (RUDRA AI Fill)\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels."
-      },
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 13,
       "type": "RadianceRudraFillPrompt",
       "pos": [
-        -1000,
-        800
+        1440,
+        70
       ],
       "size": [
         320,
@@ -2794,11 +2768,11 @@
       "id": 14,
       "type": "RadianceRudraShotHold",
       "pos": [
-        -600,
-        760
+        1850,
+        70
       ],
       "size": [
-        320,
+        310,
         280
       ],
       "flags": {},
@@ -2917,11 +2891,11 @@
       "id": 15,
       "type": "RadianceRudraFlickerReport",
       "pos": [
-        -200,
-        420
+        3860,
+        3850
       ],
       "size": [
-        300,
+        310,
         230
       ],
       "flags": {},
@@ -3028,11 +3002,11 @@
       "id": 16,
       "type": "PreviewAny",
       "pos": [
-        -200,
-        700
+        3860,
+        4144
       ],
       "size": [
-        300,
+        310,
         220
       ],
       "flags": {},
@@ -3052,6 +3026,60 @@
         "Node name for S&R": "PreviewAny"
       },
       "widgets_values": []
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 17,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        1120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## SDR footage → HDR remaster (RUDRA AI Fill) Workflow for Radiance:\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves into `ComfyUI/models/radiance` on the first run: nothing to install.\n\n**RUDRA ACES 2** (Apache 2.0, about 3 MB) and **RUDRA AI fill v3** (Apache 2.0, 271 MB)\n- [fxtdstudios/rudra-models](https://huggingface.co/fxtdstudios/rudra-models), folders `models/RUDRA_ACES_2` and `models/rudra_genfill_v3`\n**Wan2.1-VACE-1.3B** (Wan-AI, Apache 2.0, 7.7 GB), the AI fill's base model\n- [Wan-AI/Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers)\n- Its umT5 text encoder (11.4 GB) downloads only the first time a custom prompt is encoded.\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 radiance/\n│       ├── 📂 RUDRA_ACES_2/\n│       ├── 📂 rudra_genfill_v3/\n│       └── 📂 Wan2.1-VACE-1.3B-diffusers/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## SDR footage → HDR remaster (RUDRA AI Fill) Workflow for Radiance:\n\n1. Read: an 8-bit video, image sequence or still.\n2. SDR to HDR Universal expands to scene-linear (1.0 = 203 nits) and outputs reconstructed_mask. Mode Hybrid with learned_backend Auto runs RUDRA ACES 2 on every frame (batch_mode Video Frames also smooths the knee over time).\n3. AI fill prompts (RUDRA) looks at the frames and suggests what is in the blown areas (a sky, the sun, a lamp), or pick one of its 9 presets; it says whether the prompt is already cached. Its prompt drives AI Fill. To type your own, add text in extra, or right-click AI Fill > convert prompt_highlight back to a widget.\n4. SDR to HDR AI Fill (RUDRA v3) regenerates detail inside blown highlights (Wan2.1-VACE-1.3B + FXTD LoRA, 16 GB GPU, downloads on first run).\n5. Hold steady within each shot (RUDRA) stops the HDR breathing from frame to frame; it resets at cuts. Set its fps to the source's.\n6. Flicker report measures what is left, per shot, in EV (warns above 0.1 EV).\n7. CDL: trim the remaster.\n8. EXR 16-bit half master, HDR10 MP4 (PQ) and SDR MP4 via ACES 2.0. For a still, switch the Write formats to IMG and bypass Hold and Flicker (Ctrl+B); set fps on the Writes if the source is not 24 fps.\nViewer: remaster vs source. Small viewer: where AI Fill generated pixels.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves into `ComfyUI/models/radiance` on the first run: nothing to install.\n\n**RUDRA ACES 2** (Apache 2.0, about 3 MB) and **RUDRA AI fill v3** (Apache 2.0, 271 MB)\n- [fxtdstudios/rudra-models](https://huggingface.co/fxtdstudios/rudra-models), folders `models/RUDRA_ACES_2` and `models/rudra_genfill_v3`\n**Wan2.1-VACE-1.3B** (Wan-AI, Apache 2.0, 7.7 GB), the AI fill's base model\n- [Wan-AI/Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers)\n- Its umT5 text encoder (11.4 GB) downloads only the first time a custom prompt is encoded.\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 radiance/\n│       ├── 📂 RUDRA_ACES_2/\n│       ├── 📂 rudra_genfill_v3/\n│       └── 📂 Wan2.1-VACE-1.3B-diffusers/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 18,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -3216,16 +3244,321 @@
       "STRING"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load SDR Image or Video",
+      "bounding": [
+        610,
+        0,
+        370,
+        1330
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "HDR Conversion",
+      "bounding": [
+        1010,
+        0,
+        370,
+        1330
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "AI Fill",
+      "bounding": [
+        1410,
+        0,
+        380,
+        1330
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Hold Steady",
+      "bounding": [
+        1820,
+        0,
+        370,
+        1330
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Flicker Report",
+      "bounding": [
+        3830,
+        3780,
+        370,
+        1080
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "CDL Trim",
+      "bounding": [
+        2220,
+        0,
+        370,
+        1330
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        3430,
+        3780,
+        370,
+        1080
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Write Video (PQ HDR)",
+      "bounding": [
+        3030,
+        3780,
+        370,
+        1080
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "Write Video (SDR)",
+      "bounding": [
+        2620,
+        3780,
+        380,
+        1080
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 10,
+      "title": "AI Fill Mask Viewer",
+      "bounding": [
+        2620,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 11,
+      "title": "Viewer",
+      "bounding": [
+        2620,
+        1890,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.30728376327769347,
+      "scale": 0.1915,
       "offset": [
-        2871.5555555555557,
-        1286
+        261.1,
+        626.6
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2614,
+          84
+        ],
+        "linkIds": [
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          2614,
+          3756
+        ],
+        "linkIds": [
+          5,
+          6,
+          7
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          3024,
+          3756
+        ],
+        "linkIds": [
+          5,
+          6
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          3424,
+          3756
+        ],
+        "linkIds": [
+          5
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          2208,
+          84
+        ],
+        "linkIds": [
+          19
+        ]
+      },
+      {
+        "id": 6,
+        "pos": [
+          2208,
+          3762
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 5
+      },
+      {
+        "id": 7,
+        "pos": [
+          3818,
+          3762
+        ],
+        "linkIds": [
+          19
+        ],
+        "parentId": 6
+      },
+      {
+        "id": 8,
+        "pos": [
+          2202,
+          108
+        ],
+        "linkIds": [
+          20
+        ]
+      },
+      {
+        "id": 9,
+        "pos": [
+          2202,
+          3768
+        ],
+        "linkIds": [
+          20
+        ],
+        "parentId": 8
+      },
+      {
+        "id": 10,
+        "pos": [
+          3812,
+          3768
+        ],
+        "linkIds": [
+          20
+        ],
+        "parentId": 9
+      },
+      {
+        "id": 11,
+        "pos": [
+          986,
+          84
+        ],
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 12,
+        "pos": [
+          986,
+          3774
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 11
+      },
+      {
+        "id": 13,
+        "pos": [
+          3806,
+          3774
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 12
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 5,
+        "parentId": 4
+      },
+      {
+        "id": 6,
+        "parentId": 3
+      },
+      {
+        "id": 7,
+        "parentId": 2
+      },
+      {
+        "id": 19,
+        "parentId": 7
+      },
+      {
+        "id": 20,
+        "parentId": 10
+      },
+      {
+        "id": 18,
+        "parentId": 13
+      }
+    ]
   },
   "version": 0.4
 }

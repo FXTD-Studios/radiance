@@ -1,18 +1,18 @@
 {
   "id": "21035dee-161b-494d-9c9c-f96c651595de",
   "revision": 0,
-  "last_node_id": 6,
+  "last_node_id": 8,
   "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
+        310,
         632
       ],
       "flags": {},
@@ -463,8 +463,8 @@
       "id": 2,
       "type": "RadianceMultipassEstimate",
       "pos": [
-        400,
-        0
+        1040,
+        70
       ],
       "size": [
         360,
@@ -1054,8 +1054,8 @@
       "id": 3,
       "type": "RadianceEXRPassesWriter",
       "pos": [
-        800,
-        -40
+        1890,
+        1960
       ],
       "size": [
         400,
@@ -1264,11 +1264,11 @@
       "id": 4,
       "type": "RadianceMultipassRelight",
       "pos": [
-        800,
-        300
+        1490,
+        70
       ],
       "size": [
-        280.150390625,
+        310,
         594
       ],
       "flags": {},
@@ -1830,12 +1830,12 @@
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        1200,
-        200
+        1890,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
       "order": 5,
@@ -1980,8 +1980,8 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceViewer",
-        "radiance_viewer_mode": "simple",
-        "radiance_viewer_workspace": "review",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
         "radiance_grade": {
           "version": 2,
           "exposure": 0,
@@ -2109,31 +2109,58 @@
       }
     },
     {
-      "id": 6,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
         0,
-        560
+        30
       ],
       "size": [
-        380,
-        340
+        580,
+        120
       ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "Multipass Estimate",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "Multipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres)."
+        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
       "widgets_values_named": {
-        "text": "Multipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres)."
+        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 7,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        650
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## Multipass Relight Workflow for Radiance:\n\nMultipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves on the first run (about 4.9 GB): nothing to install.\n\n**MoGe-2** (geometry: depth, position, normals)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors)\n**Marigold IID** (materials and lighting, folders under `models/radiance/marigold`)\n- [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## Multipass Relight Workflow for Radiance:\n\nMultipass Estimate predicts render passes from a plate with trained models: MoGe-2 for metric depth, position and normals (plus AO and curvature computed from them), Marigold IID for albedo, roughness, metallic and diffuse/specular lighting.\n\nFirst run downloads about 4.9 GB (switch off download_missing_models to stop it). Turn off geometry, materials or lighting to skip a model.\n\nWrite EXR Passes saves every pass as layers of one multilayer EXR. Relight lights the estimated albedo with a point light placed in camera space (metres).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe models download themselves on the first run (about 4.9 GB): nothing to install.\n\n**MoGe-2** (geometry: depth, position, normals)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors)\n**Marigold IID** (materials and lighting, folders under `models/radiance/marigold`)\n- [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2210,16 +2237,117 @@
       "IMAGE"
     ]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load Plate",
+      "bounding": [
+        610,
+        0,
+        370,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Multipass Estimate",
+      "bounding": [
+        1010,
+        0,
+        420,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Write EXR Passes",
+      "bounding": [
+        1860,
+        1890,
+        460,
+        470
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Relight",
+      "bounding": [
+        1460,
+        0,
+        370,
+        860
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        1860,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.3862,
       "offset": [
-        2871.5555555555557,
-        1286
+        129.5,
+        310.7
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1445,
+          84
+        ],
+        "linkIds": [
+          2
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1445,
+          1875
+        ],
+        "linkIds": [
+          2
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1845,
+          1875
+        ],
+        "linkIds": [
+          2
+        ],
+        "parentId": 2
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 2,
+        "parentId": 3
+      }
+    ]
   },
   "version": 0.4
 }
