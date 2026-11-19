@@ -1451,7 +1451,7 @@
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        2690,
+        2290,
         70
       ],
       "size": [
@@ -1734,7 +1734,7 @@
       "type": "RadianceWrite",
       "pos": [
         2290,
-        70
+        1960
       ],
       "size": [
         310,
@@ -2339,9 +2339,9 @@
       "title": "Write Graded Image (TIFF)",
       "bounding": [
         2260,
-        0,
+        1890,
         370,
-        740
+        600
       ],
       "color": "#3f789e",
       "flags": {}
@@ -2350,7 +2350,7 @@
       "id": 6,
       "title": "Viewer",
       "bounding": [
-        2660,
+        2260,
         0,
         2720,
         1860
@@ -2362,12 +2362,41 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3467,
+      "scale": 0.3668,
       "offset": [
-        144.2,
-        576.9
+        136.3,
+        327.2
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2245,
+          84
+        ],
+        "linkIds": [
+          5
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          2245,
+          1875
+        ],
+        "linkIds": [
+          5
+        ],
+        "parentId": 1
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 5,
+        "parentId": 2
+      }
+    ]
   },
   "version": 0.4
 }

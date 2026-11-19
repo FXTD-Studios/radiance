@@ -1266,7 +1266,7 @@
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        2240,
+        1840,
         70
       ],
       "size": [
@@ -1549,7 +1549,7 @@
       "type": "RadianceWrite",
       "pos": [
         1840,
-        70
+        1960
       ],
       "size": [
         310,
@@ -2158,9 +2158,9 @@
       "title": "Write HDR (EXR)",
       "bounding": [
         1810,
-        0,
+        1890,
         370,
-        890
+        600
       ],
       "color": "#b58b2a",
       "flags": {}
@@ -2169,7 +2169,7 @@
       "id": 5,
       "title": "Viewer",
       "bounding": [
-        2210,
+        1810,
         0,
         2720,
         1860
@@ -2181,12 +2181,41 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3777,
+      "scale": 0.3668,
       "offset": [
-        132.4,
-        529.5
+        136.3,
+        327.2
       ]
-    }
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1795,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1795,
+          1875
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 2
+      }
+    ]
   },
   "version": 0.4
 }
