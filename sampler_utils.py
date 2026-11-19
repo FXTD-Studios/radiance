@@ -716,8 +716,8 @@ def parse_model_meta(model_meta: str) -> Tuple[str, str, List[str]]:
 
 
 # ALBABIT-FIX: Qwen-Image's step-distilled LoRAs: lightx2v's "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16",
-# Wuli's "Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16".
-LIGHTNING_LORA = re.compile(r"(?:lightning|turbo)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?")
+# Wuli's "Wuli-Qwen-Image-2512-Turbo-LoRA-2steps-V1.0-bf16"; Wan 2.2's "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise".
+LIGHTNING_LORA = re.compile(r"(?:lightning|turbo|lightx2v)(?:[-_]lora)?[-_]?(\d+)[-_]?steps?")
 
 
 #: FLUX 3 Image Klein step-distilled (flow map): its ComfyUI templates and BFL's
@@ -774,11 +774,13 @@ def refine_distillation_from_meta(detected_type: str, unet_file: str, loras=()) 
     # its file name; the official Qwen-Image templates run it at cfg 1,
     # whatever the checkpoint (Edit 2511's 40 steps, cfg 4 included). MiniMax H3's
     # Turbo LoRAs (lightx2v) too, at the cfg 1 its 20 steps already run at.
-    if detected_type in ("qwen_image", "minimax"):
+    if detected_type in ("qwen_image", "minimax", "wan"):
         for lora in loras:
             match = LIGHTNING_LORA.search(re.split(r"[\\/]", lora)[-1].lower())
             if match:
-                return {"cfg": 1.0, "steps": int(match.group(1))}
+                distilled = {"cfg": 1.0, "steps": int(match.group(1))}
+                # Wan 2.2's lightx2v templates run euler, not Wan 2.1's uni_pc.
+                return {**distilled, "sampler": "euler"} if detected_type == "wan" else distilled
     if not unet_file:
         return None
     # ALBABIT-FIX: the file's own name, not its folder: a "klein-base/" folder made
