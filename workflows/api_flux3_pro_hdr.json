@@ -1476,7 +1476,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/flux3_pro",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "flux3_pro_sdr",
         1,
@@ -1501,7 +1501,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/flux3_pro",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "flux3_pro_sdr",
         "version": 1,

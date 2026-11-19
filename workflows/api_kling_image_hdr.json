@@ -1470,7 +1470,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/kling_image",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "kling_image_sdr",
         1,
@@ -1495,7 +1495,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/kling_image",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "kling_image_sdr",
         "version": 1,

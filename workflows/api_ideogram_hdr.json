@@ -1440,7 +1440,7 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_api/ideogram",
+        "radiance_api",
         "IMG │ PNG (8-bit)",
         "ideogram_sdr",
         1,
@@ -1465,7 +1465,7 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_api/ideogram",
+        "output_path": "radiance_api",
         "format": "IMG │ PNG (8-bit)",
         "filename": "ideogram_sdr",
         "version": 1,
