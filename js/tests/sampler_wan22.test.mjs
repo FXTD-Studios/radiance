@@ -10,9 +10,18 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
     .replace(/^export /gm, '');
 const source = strip('radiance_widget_utils.js') + strip('radiance_sampler.js');
 
-function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true } = {}) {
-    const loader = { comfyClass: 'RadianceUnifiedLoader', mode: 0,
-                     widgets: [{ name: 'preset', value: preset }, { name: 'unet_name', value: unetName }] };
+// Loader 1, an optional LoraLoaderModelOnly 3 on its model, then the Sampler 9.
+function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner = true, lora = null } = {}) {
+    const nodes = {}, links = {};
+    const graph = { links, getNodeById: id => nodes[id] };
+    const loader = nodes[1] = { id: 1, comfyClass: 'RadianceUnifiedLoader', mode: 0, graph, inputs: [],
+                                widgets: [{ name: 'preset', value: preset }, { name: 'unet_name', value: unetName }] };
+    if (lora) {
+        nodes[3] = { id: 3, comfyClass: 'LoraLoaderModelOnly', mode: 0, graph, inputs: [{ name: 'model', link: 30 }],
+                     widgets: [{ name: 'lora_name', value: lora }, { name: 'strength_model', value: 1 }] };
+        links[30] = { origin_id: 1, origin_slot: 0, target_id: 3 };
+    }
+    links[1] = { origin_id: lora ? 3 : 1, origin_slot: 0, target_id: 9 };
     const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} }, loader });
     vm.runInContext(source + `
         _findModelMetaSourceNode = () => loader;
@@ -21,6 +30,7 @@ function sampler(unetName, { preset = 'Wan 2.2', samplerPreset = 'Auto', refiner
     `, context);
     const w = (name, value, extra = {}) => ({ name, value, ...extra });
     const node = {
+        id: 9, graph,
         inputs: [{ name: 'model', link: 1 }, { name: 'refiner_model', link: refiner ? 2 : null }],
         widgets: [
             w('preset', samplerPreset),
@@ -51,4 +61,9 @@ test("refiner_model shows as model_low_noise under Wan 2.2, under any Sampler pr
 test('Wan 2.1 keeps uni_pc at cfg 6, and the start step stays without a refiner', () => {
     assert.deepEqual(sampler('wan2.1_t2v_14B_fp16.safetensors', { preset: 'Wan 2.1' }).values, [20, 6.0, 'uni_pc', 'simple', 20]);
     assert.deepEqual(sampler(HIGH, { refiner: false }).values, [20, 3.5, 'euler', 'simple', 20]);
+});
+
+test("a lightx2v LoRA on the high-noise expert runs its 4 steps at cfg 1, handing over at step 2", () => {
+    assert.deepEqual(sampler(HIGH, { lora: 'wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors' }).values,
+                     [4, 1.0, 'euler', 'simple', 2]);
 });
