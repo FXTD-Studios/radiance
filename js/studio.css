@@ -247,3 +247,7 @@ button.st-tr[aria-pressed="true"] { background: rgba(10,132,255,.07); }
 .st-setup-head { display: flex; gap: 14px; align-items: center; min-width: 0; }
 .st-setup-head > .st-thumb { width: 132px; flex-shrink: 0; border-radius: 8px; }
 .st-setup-head .st-row-between { min-width: 0; flex-wrap: wrap; }
+/* Shots: the review note box (Ask for changes sends it with the retake) */
+.st-rail .st-note + .st-note { margin-top: 6px; }
+.st-note-input { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--raised); color: var(--text); font: 13px/1.45 Inter, system-ui, sans-serif; resize: vertical; min-height: 64px; }
+.st-note-input:focus { outline: 2px solid var(--link); outline-offset: 1px; border-color: transparent; }

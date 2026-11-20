@@ -573,10 +573,14 @@ function shotRail(r) {
         <div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
           <div class="st-version"><span class="st-mono" style="width:52px">${h(v.version)}</span><span class="st-dim" style="flex:1;font-size:12px">${h(i === 0 ? "Latest · " : "")}${h(v.updated)}</span>
           <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>
-        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(o.name)}">${img(thumbUrl(o.path), o.name, shortName(o.name))}</div>`).join("")}</div></div>` : ""}
-        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}</div>
-        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Retake">Ask for changes</button></div>
+        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(M.outputLabel(o))}">${img(thumbUrl(o.path), o.name, shortName(o.name))}${o.frames ? `<span class="st-badge br st-mono">${h(M.plural(o.frames, "frame"))}</span>` : ""}</div>`).join("")}</div></div>` : ""}
+        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}
+          <label class="st-visually-hidden" for="stNoteText">Note for ${h(r.shot)}</label>
+          <textarea id="stNoteText" class="st-note-input" rows="3" placeholder="What needs to change? A retake sends this note with it."></textarea>
+          <div class="st-actions" style="margin-top:6px"><button type="button" class="st-btn st-sm" data-act="add-note" data-shot="${h(r.shot)}">Add note</button></div></div>
+        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="retake" data-shot="${h(r.shot)}">Ask for changes</button></div>
         <div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Review">Send to review</button><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="WIP">Back to in progress</button></div>
+        ${r.status.key === "Approved" ? `<div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Final">Mark final</button></div>` : ""}
       </div></aside>`;
 }
 
@@ -675,6 +679,24 @@ async function setShotStatus(shot, status) {
         await loadDashboard();
         render();
     } catch (e) { toast(`Could not change the status: ${e.message}`, true); }
+}
+
+/** Add the typed note to a shot; with `retake`, the note is required and the shot goes to Retake. */
+async function addNote(shot, retake) {
+    const box = $("stNoteText");
+    const text = (box?.value || "").trim();
+    if (!text) {
+        if (retake) { toast("Write what needs to change first; the note goes with the retake.", true); box?.focus(); }
+        return;
+    }
+    try {
+        await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/notes`,
+            { shot, text, author: store.get("radiance_artist") || "" });
+        if (retake) await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/shots/${encodeURIComponent(shot)}/status`, { status: "Retake" });
+        toast(retake ? `${shot}: retake, with your note` : `${shot}: note added`);
+        await loadDashboard();
+        render();
+    } catch (e) { toast(`Could not save the note: ${e.message}`, true); }
 }
 
 async function exportPackage() {
@@ -786,8 +808,10 @@ async function onClick(e) {
         case "new-bin": await newBin(id); break;
         case "pick-shot": S.shot = shot; render(); break;
         case "status": await setShotStatus(shot, status); break;
+        case "add-note": await addNote(shot, false); break;
+        case "retake": await addNote(shot, true); break;
         case "save-version":
-            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId })) toast("Saving the canvas…");
+            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId, shot: S.shot || "" })) toast("Saving the canvas…");
             break;
         case "export": await exportPackage(); break;
         case "new": await openWorkflow("official/Local/start.rad"); break;
