@@ -8,6 +8,7 @@
 
 import { escapeHtml as h } from "./radiance_dom_utils.js";
 import * as M from "./studio_model.mjs";
+import { displayCheck, probeDisplay } from "./radiance_welcome_logic.js";
 
 const ICON = {
     home: "M3 11 12 4l9 7v9h-6v-6H9v6H3z",
@@ -127,10 +128,11 @@ async function loadGizmos() {
     } catch (e) { S.errors.gizmos = e.message; }
     S.loaded.gizmos = true;
 }
-async function loadSetup() {
+let displayProbe = null;
+async function loadSetup(refresh = false) {
     S.scanning = true;
     try {
-        S.setup = await postJSON("/radiance/setup/scan");
+        S.setup = await postJSON("/radiance/setup/scan", { refresh });
         S.downloads = S.setup.downloads || [];
         S.errors.setup = "";
     } catch (e) { S.errors.setup = e.message; }
@@ -421,6 +423,23 @@ function gizmoRail(g) {
 
 // ── models (setup check) ─────────────────────────────────────────────────────
 
+// First-start checks: the server's four, plus the display, which only the browser can see.
+function checksCard(sc) {
+    if (!displayProbe) displayProbe = probeDisplay(window);
+    const list = [...(sc.checks || []), displayCheck(displayProbe)];
+    const label = { ok: "OK", warn: "Check", bad: "Fix needed" };
+    const tone = { ok: "ok", warn: "warn", bad: "bad" };
+    const fix = (c) => !c.fix ? ""
+        : c.fix.action ? `<button type="button" class="st-btn st-sm" data-act="setup-fix" data-id="${h(c.fix.action)}">${h(c.fix.label)}</button>`
+            : c.fix.url ? `<a class="st-link" href="${h(c.fix.url)}" target="_blank" rel="noopener">${h(c.fix.label)}</a>` : "";
+    const issues = list.filter((c) => c.status !== "ok").length;
+    return `<div class="st-card st-checks"><div class="st-row-between" style="margin-bottom:8px"><div class="st-sec">First start</div>
+        <span class="st-dim st-small">${issues ? h(M.plural(issues, "thing")) + " to look at" : "Everything checks out"}</span></div>
+      ${list.map((c) => `<div class="st-check" data-check="${h(c.id)}"><span class="st-dot ${tone[c.status] || "info"}"></span>
+        <div class="st-grow"><div class="st-check-title">${h(c.title)} <span class="st-pill ${tone[c.status] || "info"}">${h(label[c.status] || c.status)}</span></div>
+        <div class="st-dim st-small">${h(c.detail)}</div></div>${fix(c)}</div>`).join("")}</div>`;
+}
+
 function modelsView() {
     if (!S.loaded.setup) return `<div class="st-page"><div class="st-h1"><h1>Models</h1></div>${loading()}</div>`;
     if (S.errors.setup) return `<div class="st-page">${failed("the setup check", S.errors.setup)}</div>`;
@@ -477,6 +496,7 @@ function modelsView() {
         <div class="st-kpis-col"><div class="st-card st-kpi"><span>Local workflows</span><span>${sc.summary.workflows}</span></div><div class="st-card st-kpi"><span>Ready to run</span><span style="color:var(--ok)">${sc.summary.ready}</span></div>
           <div class="st-card st-kpi"><span>Need downloads</span><span style="color:var(--info)">${sc.summary.workflows - sc.summary.ready}</span></div></div>
       </div>
+      ${checksCard(sc)}
       <div class="st-dim st-small">Files go where ComfyUI looks for them (models/diffusion_models, text_encoders, vae, loras…); Radiance's own models go in models/radiance. Each file is checked against its SHA-256 before it is installed. 🔒 models need their licence accepted on Hugging Face and a token (HF_TOKEN, or <span class="st-mono">hf auth login</span>), then a restart.</div>
       <div class="st-setup">${rows.map(card).join("")}</div>
     </div>`;
@@ -573,10 +593,14 @@ function shotRail(r) {
         <div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
           <div class="st-version"><span class="st-mono" style="width:52px">${h(v.version)}</span><span class="st-dim" style="flex:1;font-size:12px">${h(i === 0 ? "Latest · " : "")}${h(v.updated)}</span>
           <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>
-        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(o.name)}">${img(thumbUrl(o.path), o.name, shortName(o.name))}</div>`).join("")}</div></div>` : ""}
-        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}</div>
-        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Retake">Ask for changes</button></div>
+        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(M.outputLabel(o))}">${img(thumbUrl(o.path), o.name, shortName(o.name))}${o.frames ? `<span class="st-badge br st-mono">${h(M.plural(o.frames, "frame"))}</span>` : ""}</div>`).join("")}</div></div>` : ""}
+        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}
+          <label class="st-visually-hidden" for="stNoteText">Note for ${h(r.shot)}</label>
+          <textarea id="stNoteText" class="st-note-input" rows="3" placeholder="What needs to change? A retake sends this note with it."></textarea>
+          <div class="st-actions" style="margin-top:6px"><button type="button" class="st-btn st-sm" data-act="add-note" data-shot="${h(r.shot)}">Add note</button></div></div>
+        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="retake" data-shot="${h(r.shot)}">Ask for changes</button></div>
         <div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Review">Send to review</button><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="WIP">Back to in progress</button></div>
+        ${r.status.key === "Approved" ? `<div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Final">Mark final</button></div>` : ""}
       </div></aside>`;
 }
 
@@ -675,6 +699,24 @@ async function setShotStatus(shot, status) {
         await loadDashboard();
         render();
     } catch (e) { toast(`Could not change the status: ${e.message}`, true); }
+}
+
+/** Add the typed note to a shot; with `retake`, the note is required and the shot goes to Retake. */
+async function addNote(shot, retake) {
+    const box = $("stNoteText");
+    const text = (box?.value || "").trim();
+    if (!text) {
+        if (retake) { toast("Write what needs to change first; the note goes with the retake.", true); box?.focus(); }
+        return;
+    }
+    try {
+        await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/notes`,
+            { shot, text, author: store.get("radiance_artist") || "" });
+        if (retake) await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/shots/${encodeURIComponent(shot)}/status`, { status: "Retake" });
+        toast(retake ? `${shot}: retake, with your note` : `${shot}: note added`);
+        await loadDashboard();
+        render();
+    } catch (e) { toast(`Could not save the note: ${e.message}`, true); }
 }
 
 async function exportPackage() {
@@ -786,8 +828,10 @@ async function onClick(e) {
         case "new-bin": await newBin(id); break;
         case "pick-shot": S.shot = shot; render(); break;
         case "status": await setShotStatus(shot, status); break;
+        case "add-note": await addNote(shot, false); break;
+        case "retake": await addNote(shot, true); break;
         case "save-version":
-            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId })) toast("Saving the canvas…");
+            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId, shot: S.shot || "" })) toast("Saving the canvas…");
             break;
         case "export": await exportPackage(); break;
         case "new": await openWorkflow("official/Local/t2i_i2i_hdr.rad"); break;
@@ -810,7 +854,14 @@ async function onClick(e) {
             catch (err) { toast(`Delete failed: ${err.message}`, true); }
             break;
         case "import-gizmo": $("stGizmoFile").click(); break;
-        case "rescan": render(); await loadSetup(); render(); break;
+        case "rescan": displayProbe = null; render(); await loadSetup(true); render(); break;
+        case "setup-fix":
+            try {
+                const res = await postJSON("/radiance/setup/fix", { action: id });
+                S.setup.checks = (S.setup.checks || []).map((c) => (c.id === res.check.id ? res.check : c));
+                render();
+            } catch (err) { toast(err.message, true); }
+            break;
         case "dl-workflow": await startDownloads({ workflow: id }); break;
         case "dl-ids": await startDownloads({ ids: [id] }); break;
         case "cancel-dl":

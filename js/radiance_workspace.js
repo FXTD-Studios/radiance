@@ -59,15 +59,22 @@ window.addEventListener("message", async (event) => {
             const projectId = event.data.projectId || "general";
             const graphData = app.graph.serialize();
 
-            // Sync with the active canvas widgets if a RadianceWorkspace node is present
-            const wsNode = app.graph._nodes.find(n => n.type === "RadianceWorkspace");
+            // The Project Manager node on the canvas names the save, as its own run
+            // would: <filename>_<artist>_v<version>. It is RadianceProjectManager;
+            // RadianceWorkspace is the older name of the same node. Looking for the
+            // old name only, the save ignored the node and became
+            // dashboard_<time>.rad, which the Shots page never showed.
+            const wsNode = (app.graph._nodes || []).find(n => n.type === "RadianceProjectManager" || n.type === "RadianceWorkspace");
             let filename = undefined;
             let artist = undefined;
             if (wsNode) {
-                const filenameWidget = wsNode.widgets.find(w => w.name === "filename");
-                const artistWidget = wsNode.widgets.find(w => w.name === "artist");
-                if (filenameWidget?.value) filename = filenameWidget.value;
-                if (artistWidget?.value) artist = artistWidget.value;
+                const val = (name) => wsNode.widgets?.find(w => w.name === name)?.value;
+                artist = String(val("artist") || "").trim() || undefined;
+                const stem = String(val("filename") || "").trim();
+                if (stem) {
+                    const v = Math.max(1, parseInt(val("version"), 10) || 1);
+                    filename = `${stem}_${artist || "unknown"}_v${String(v).padStart(4, "0")}`;
+                }
             }
 
             const bodyPayload = {
@@ -76,6 +83,8 @@ window.addEventListener("message", async (event) => {
                 author: artist || localStorage.getItem("radiance_artist") || "Radiance Artist",
             };
             if (filename) bodyPayload.filename = filename;
+            // With no node, the page's selected shot names the next version (SH040_v003).
+            else if (event.data.shot) bodyPayload.shot = String(event.data.shot);
 
             const response = api.fetchApi(`/radiance/projects/${encodeURIComponent(projectId)}/save-version`, {
                 method: "POST",

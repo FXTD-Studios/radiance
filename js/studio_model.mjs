@@ -184,6 +184,19 @@ const versionNumber = (v) => {
  * One row per shot from a project's version list: its newest version, its
  * status and every version it has, newest first.
  */
+/** A shot code as a whole token: SH040 is in "SH040_comp" and "comp.SH040", not in "SH0400". */
+export function hasToken(text, token) {
+    if (!token) return false;
+    const t = String(token).toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^A-Z0-9])${t}([^A-Z0-9]|$)`).test(String(text || "").toUpperCase());
+}
+
+/** An output's name with its frame range when it is a sequence. */
+export function outputLabel(o) {
+    const name = String(o?.name || "");
+    return o?.frames && Array.isArray(o.range) ? `${name} · ${o.frames} frames · ${o.range[0]}-${o.range[1]}` : name;
+}
+
 export function shotRows(versions, outputs = [], notes = []) {
     const byShot = new Map();
     for (const v of Array.isArray(versions) ? versions : []) {
@@ -207,8 +220,8 @@ export function shotRows(versions, outputs = [], notes = []) {
             filename: String(latest.filename || ""),
             updated: String(latest.updated || ""),
             versions: sorted.map((v) => ({ version: String(v.version || ""), filename: String(v.filename || ""), updated: String(v.updated || ""), note: String(v.status || "") })),
-            outputs: (Array.isArray(outputs) ? outputs : []).filter((o) => String(o?.name || "").toUpperCase().includes(up)),
-            notes: (Array.isArray(notes) ? notes : []).map(String).filter((n) => n.toUpperCase().includes(up)),
+            outputs: (Array.isArray(outputs) ? outputs : []).filter((o) => hasToken(o?.name, up) || hasToken(o?.path, up)),
+            notes: (Array.isArray(notes) ? notes : []).map(String).filter((n) => hasToken(n, up)),
         });
     }
     return rows.sort((a, b) => a.shot.localeCompare(b.shot, "en", { numeric: true }));
