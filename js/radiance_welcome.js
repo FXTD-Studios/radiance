@@ -196,7 +196,7 @@ function softButton(label, onClick) {
 // ── Actions on the tour's pages ─────────────────────────────────────────────
 async function loadStarter() {
     try {
-        const r = await fetch(api.apiURL("/workflow_templates/radiance/start.json"));
+        const r = await fetch(api.apiURL("/workflow_templates/radiance/t2i_i2i_hdr.json"));
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await app.loadGraphData(await r.json(), true, true, "Radiance Starter");
         return true;
@@ -335,7 +335,7 @@ const PAGES = {
             return items([
                 { mark: "HDR", title: "RUDRA ACES 2: SDR to HDR with nothing to set up", text: "Any 8-bit image or video becomes a scene-linear ACES 2.0 master. The model downloads on first run (3 MB)." },
                 { mark: "VW", title: "A new Viewer: Review, Color and Inspect", text: "Picture first, a Project colour sheet, scopes in nits and stills to compare against." },
-                { mark: "42", title: "42 workflows, 25 of them API", text: "Nano Banana, Seedance, Veo, Kling and more, each lifted to HDR with RUDRA." },
+                { mark: "40", title: "40 workflows, 25 of them API", text: "Nano Banana, Seedance, Veo, Kling and more, each lifted to HDR with RUDRA." },
                 { mark: "F3", title: "FLUX 3 Klein and Prompt tabs", text: "A new image model, and one Prompt node that holds several prompts." },
             ]);
         },

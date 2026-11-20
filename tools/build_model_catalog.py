@@ -43,12 +43,12 @@ MODEL_EXT = re.compile(r"\.(safetensors|ckpt|pth|pt|gguf|bin|sft)$", re.I)
 LINK = re.compile(r"\[([^\]]+)\]\((https://huggingface\.co/[^)\s]+)\)([^\[\n]*)")
 KNOWN_FOLDERS = ("diffusion_models", "text_encoders", "vae", "loras", "latent_upscale_models",
                  "upscale_models", "checkpoints", "clip", "clip_vision", "unet", "controlnet",
-                 "geometry_estimation", "audio_encoders", "model_patches")
+                 "geometry_estimation", "audio_encoders", "model_patches", "frame_interpolation")
 
 # Files a workflow loads that its widgets do not name: the loader picks them
 # itself (Wan 2.2's low-noise expert is paired with the high-noise one).
 IMPLIED = {
-    "wan22_hdr_shot_plates": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
+    "wan_hdr": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
 }
 
 # Radiance's own models, fetched and verified by their own downloaders.
@@ -153,7 +153,9 @@ def _links(text: str) -> dict:
             role = ("alternative" if "alternative" in t else "optional" if "optional" in t
                     else "used" if "(used" in t else "")
             folder = _folder_from_url(url) or (prefix.group(1) if prefix and prefix.group(1) in KNOWN_FOLDERS else "")
-            out.setdefault(fname, {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder})
+            # ALBABIT-FIX: a file listed twice keeps the link marked (used), the one the workflow loads.
+            if fname not in out or (role == "used" and out[fname]["role"] != "used"):
+                out[fname] = {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder}
     return out
 
 

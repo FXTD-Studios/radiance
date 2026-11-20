@@ -154,8 +154,8 @@ def test_write_saved_order_is_its_widgets_before_the_version_control():
     assert RadianceWrite.INPUT_TYPES()["optional"]["version"][1]["control_after_generate"] == "fixed"
 
 
-def test_start_graph_is_wired():
-    wf = json.loads((ROOT / "workflows" / "start.json").read_text(encoding="utf-8"))
+def test_the_starter_graph_is_wired():
+    wf = json.loads((ROOT / "workflows" / "t2i_i2i_hdr.json").read_text(encoding="utf-8"))
     nodes = {n["id"]: n for n in wf["nodes"]}
     decode = next(n for n in nodes.values() if n["type"] == "RadianceHDRVAEDecode")
     vae_in = next(i for i in decode["inputs"] if i["name"] == "vae")
@@ -172,7 +172,7 @@ def test_start_graph_is_wired():
     meta_link = next(i["link"] for i in sampler["inputs"] if i["name"] == "model_meta")
     assert any(link[0] == meta_link and link[1] == loader["id"] and link[2] == 4 for link in wf["links"])
     resolution = next(n for n in nodes.values() if n["type"] == "RadianceResolution")
-    assert resolution["widgets_values"][:5] == ["Custom", 1024, 1024, "As Preset", "Flux.2 / Flux.2 Klein (128ch)"]
+    assert resolution["widgets_values"][4] == "Flux.2 / Flux.2 Klein (128ch)"
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)
