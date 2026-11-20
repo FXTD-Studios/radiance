@@ -189,6 +189,13 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **First-start checks** on the Models page and the tour's Set up page, each
+  with a status and, where it can, a fix: the OCIO config and its ACES 2.0
+  SDR/HDR views; ffmpeg's H.265 10-bit and ProRes encoders; Write's default
+  folder (`~/radiance_output`), with free space and a Make the folder button;
+  Hugging Face reachability, whether a token is set (never the token) and
+  which gated licences still need accepting; the display (HDR, P3) and WebGL 2
+  with float targets. POST `/radiance/setup/fix` makes the server-side fixes.
 - **Gizmos page** in the Radiance page: every saved gizmo with its inputs,
   outputs, knobs and the nodes inside, whether it is in the node menu yet,
   and Add to canvas, Export, Import and Delete (to a trash folder).
