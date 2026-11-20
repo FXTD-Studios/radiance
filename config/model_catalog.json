@@ -304,6 +304,14 @@
       "url": "https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
       "gated": false
     },
+    "frame_interpolation/film_net_fp16.safetensors": {
+      "file": "film_net_fp16.safetensors",
+      "folder": "frame_interpolation",
+      "repo": "Comfy-Org/frame_interpolation",
+      "path": "frame_interpolation/film_net_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/film_net_fp16.safetensors",
+      "gated": false
+    },
     "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors": {
       "file": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
       "folder": "latent_upscale_models",
@@ -866,6 +874,7 @@
         "diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
         "diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
         "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
+        "frame_interpolation/film_net_fp16.safetensors",
         "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
         "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
         "loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
