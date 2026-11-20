@@ -491,10 +491,10 @@
     "vae/flux2-vae.safetensors": {
       "file": "flux2-vae.safetensors",
       "folder": "vae",
-      "repo": "black-forest-labs/flux-3-image-klein-comfy",
-      "path": "vae/flux2-vae.safetensors",
-      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors",
-      "gated": true
+      "repo": "Comfy-Org/Flux-2-Dev",
+      "path": "split_files/vae/flux2-vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Flux-2-Dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+      "gated": false
     },
     "vae/ltx-2.5-audio-vae-bf16.safetensors": {
       "file": "ltx-2.5-audio-vae-bf16.safetensors",

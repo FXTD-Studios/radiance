@@ -268,3 +268,11 @@ def test_fetch_reports_progress_and_can_be_cancelled(tmp_path, monkeypatch):
     with pytest.raises(mf.ModelFetchError, match="cancelled"):
         mf.fetch("https://example.invalid/m", str(dest2), sha256=digest, size=len(payload), should_cancel=lambda: True)
     assert not dest2.exists()
+
+
+def test_a_file_listed_twice_keeps_the_link_the_workflow_uses():
+    text = ("- vae: [flux2-vae](https://huggingface.co/a/gated/resolve/main/vae/flux2-vae.safetensors) 🔒\n"
+            "- vae: [flux2-vae](https://huggingface.co/b/open/resolve/main/split_files/vae/flux2-vae.safetensors) (used)\n")
+    link = _tool()._links(text)["flux2-vae.safetensors"]
+    assert link["url"].startswith("https://huggingface.co/b/open/") and not link["gated"]
+
