@@ -215,12 +215,14 @@ function _applyBasePromptState(node) {
 // ALBABIT-FIX: Qwen-Image Edit's native encoder takes 3 images. Autogrow adds a
 // slot only below comfyDynamic.autogrow max; past a lowered max, empty slots go
 // and a connected one stays for the run to report.
-// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code). MiniMax H3 reads
+// FLUX 3 Image Klein reads up to 10 reference images (BFL's reference code). MiniMax H3 and Wan read
 // first_frame and last_frame: on images, disconnecting image_1 moved image_2's link onto it.
-const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 0 };
+const REFERENCE_LIMITS = { qwen_image: 3, flux3: 10, minimax: 0, wan: 0, wan_ti2v: 0 };
 const FRAME_INPUTS = ["first_frame", "last_frame"];
+// The Wan 2.2 5B starts from a first frame only.
+const FRAME_FAMILIES = { first_frame: ["minimax", "wan", "wan_ti2v"], last_frame: ["minimax", "wan"] };
 
-// ALBABIT-FIX: video_latent serves MiniMax H3's frames (or an unknown family's), the latent
+// ALBABIT-FIX: video_latent serves MiniMax H3's and Wan's frames (or an unknown family's), the latent
 // output every family's images. Each comes with an image and goes with it unless linked;
 // a returning one is appended, so no other slot moves.
 function _applyImageSockets(node, source = modelMetaSourceNode(node)) {
@@ -228,16 +230,16 @@ function _applyImageSockets(node, source = modelMetaSourceNode(node)) {
     let changed = false;
     for (const name of FRAME_INPUTS) {
         const frame = node.inputs?.find(i => i.name === name);
-        if (family === "minimax" && !frame) {
+        if (FRAME_FAMILIES[name].includes(family) && !frame) {
             node.addInput(name, "IMAGE", node._radImageSlots?.[name]);
             changed = true;
-        } else if (family !== "minimax" && frame && frame.link == null) {
+        } else if (!FRAME_FAMILIES[name].includes(family) && frame && frame.link == null) {
             node.removeInput(node.inputs.indexOf(frame));
             changed = true;
         }
     }
-    // A frame counts under MiniMax H3 (or an unknown family) only: another family leaves it out.
-    const framesRead = [null, "minimax"].includes(family);
+    // A frame counts under MiniMax H3 and Wan (or an unknown family) only: another family leaves it out.
+    const framesRead = family === null || FRAME_FAMILIES.first_frame.includes(family);
     const images = node.inputs?.filter(i => (i.name.startsWith("images.") || (framesRead && FRAME_INPUTS.includes(i.name)))
         && isInputLive(node, i)) ?? [];
     const wantInput = images.length > 0 && framesRead;
