@@ -572,7 +572,8 @@ class RadianceUnifiedLoader:
 
         # ALBABIT-FIX: ensure model = high_noise expert, model_low_noise = low_noise expert,
         # regardless of which file the user picked in the unet_name widget.
-        if model_low_noise is not None and "low_noise" in unet_name.lower():
+        base = os.path.basename(unet_name).lower()
+        if model_low_noise is not None and "high_noise" not in base and "low_noise" in base:
             model, model_low_noise = model_low_noise, model
 
         # ════════════════════════════════════════════════════════════════
