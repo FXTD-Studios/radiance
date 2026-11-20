@@ -1182,8 +1182,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            17,
-            18
+            17
           ]
         },
         {
@@ -5165,7 +5164,8 @@
           "type": "IMAGE",
           "links": [
             34,
-            35
+            35,
+            18
           ]
         }
       ],
@@ -5254,10 +5254,10 @@
         "Node name for S&R": "ComfyMathExpression"
       },
       "widgets_values": [
-        "a*b"
+        "a*max(b,1)"
       ],
       "widgets_values_named": {
-        "expression": "a*b"
+        "expression": "a*max(b,1)"
       }
     },
     {
@@ -5279,10 +5279,10 @@
       "title": "Note: Frame Interpolation",
       "properties": {},
       "widgets_values": [
-        "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, for the same duration. The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
+        "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, over the same span from the first frame to the last (the clip ends one 32 fps frame sooner). The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps; below 2, nothing changes).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
       ],
       "widgets_values_named": {
-        "text": "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, for the same duration. The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
+        "text": "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, over the same span from the first frame to the last (the clip ends one 32 fps frame sooner). The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps; below 2, nothing changes).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
       },
       "color": "#222",
       "bgcolor": "#000"
@@ -5323,7 +5323,7 @@
     ],
     [
       18,
-      14,
+      39,
       0,
       16,
       0,
@@ -5914,6 +5914,38 @@
         "linkIds": [
           37
         ]
+      },
+      {
+        "id": 10,
+        "pos": [
+          3419,
+          354
+        ],
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 11,
+        "pos": [
+          3419,
+          1884
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 10
+      },
+      {
+        "id": 12,
+        "pos": [
+          4635,
+          1884
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 11
       }
     ],
     "linkExtensions": [
@@ -5940,6 +5972,10 @@
       {
         "id": 39,
         "parentId": 7
+      },
+      {
+        "id": 18,
+        "parentId": 12
       }
     ]
   },
