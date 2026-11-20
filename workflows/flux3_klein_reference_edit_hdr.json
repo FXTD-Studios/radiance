@@ -1,8 +1,8 @@
 {
   "id": "3ca41ed2-4c6c-4906-bacf-70ee70f59396",
   "revision": 0,
-  "last_node_id": 19,
-  "last_link_id": 22,
+  "last_node_id": 21,
+  "last_link_id": 24,
   "nodes": [
     {
       "id": 1,
@@ -2767,9 +2767,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            16,
-            17,
-            19
+            23
           ]
         },
         {
@@ -2806,7 +2804,9 @@
           "localized_name": "reconstructed_mask",
           "name": "reconstructed_mask",
           "type": "MASK",
-          "links": null
+          "links": [
+            24
+          ]
         }
       ],
       "properties": {
@@ -2869,7 +2869,7 @@
       "id": 9,
       "type": "RadianceWrite",
       "pos": [
-        4680,
+        5080,
         1960
       ],
       "size": [
@@ -3178,7 +3178,7 @@
       "id": 10,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        4270,
+        4670,
         1960
       ],
       "size": [
@@ -3318,7 +3318,7 @@
       "id": 11,
       "type": "RadianceWrite",
       "pos": [
-        4270,
+        4670,
         2322
       ],
       "size": [
@@ -3627,7 +3627,7 @@
       "id": 12,
       "type": "RadianceViewer",
       "pos": [
-        4270,
+        4670,
         70
       ],
       "size": [
@@ -4014,6 +4014,345 @@
       "flags": {},
       "order": 0,
       "mode": 0
+    },
+    {
+      "id": 20,
+      "type": "RadianceSDRToHDRAIFill",
+      "pos": [
+        4270,
+        70
+      ],
+      "size": [
+        310,
+        870
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 23
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 24
+        },
+        {
+          "localized_name": "image_encoding",
+          "name": "image_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "image_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_highlight"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "brightness_offset",
+          "name": "brightness_offset",
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness_offset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_shadows",
+          "name": "fill_shadows",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "fill_shadows"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_shadow",
+          "name": "prompt_shadow",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_shadow"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_context_code",
+          "name": "highlight_context_code",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "highlight_context_code"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_gain_stops",
+          "name": "max_gain_stops",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "max_gain_stops"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shape_gain",
+          "name": "shape_gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shape_gain"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_brightness_estimator",
+          "name": "use_brightness_estimator",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "use_brightness_estimator"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance",
+          "name": "guidance",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "window",
+          "name": "window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlap",
+          "name": "overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_area",
+          "name": "max_area",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_area"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "base_model",
+          "name": "base_model",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "base_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_package",
+          "name": "fill_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "fill_package"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "allow_download",
+          "name": "allow_download",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "allow_download"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "keep_loaded",
+          "name": "keep_loaded",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "keep_loaded"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            16,
+            17,
+            19
+          ]
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAIFill"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "",
+        0,
+        false,
+        "",
+        250,
+        3,
+        1,
+        true,
+        30,
+        0,
+        "fixed",
+        1,
+        "",
+        33,
+        8,
+        399360,
+        "",
+        "",
+        true,
+        false,
+        1,
+        "frame",
+        "none"
+      ],
+      "widgets_values_named": {
+        "image_encoding": "Linear (Rec.709)",
+        "prompt_highlight": "",
+        "brightness_offset": 0,
+        "fill_shadows": false,
+        "prompt_shadow": "",
+        "highlight_context_code": 250,
+        "max_gain_stops": 3,
+        "shape_gain": 1,
+        "use_brightness_estimator": true,
+        "steps": 30,
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "guidance": 1,
+        "negative_prompt": "",
+        "window": 33,
+        "overlap": 8,
+        "max_area": 399360,
+        "base_model": "",
+        "fill_package": "",
+        "allow_download": true,
+        "keep_loaded": false,
+        "prompt_strength": 1,
+        "focus": "frame",
+        "fallback": "none"
+      }
+    },
+    {
+      "id": 21,
+      "type": "MarkdownNote",
+      "pos": [
+        4270,
+        1000
+      ],
+      "size": [
+        310,
+        430
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: AI Fill",
+      "properties": {},
+      "widgets_values": [
+        "**AI Fill** (optional: select the group, then Ctrl+B):\n- Draws the inside of fully clipped highlights (sun, lamps, a white sky) that \"SDR → HDR Universal\" leaves flat, and sets their brightness (up to 3 stops above the master).\n- Plausible, not recovered. The SDR view does not change: only the HDR master gains detail. With nothing clipped, it changes nothing.\n- First run: downloads about 8 GB into models/radiance (RUDRA AI fill v3 and Wan2.1-VACE-1.3B). Needs about 16 GB of VRAM.\n- \"prompt_highlight\": what to draw (e.g. \"soft clouds in a bright blue sky\"). Empty uses RUDRA's own prompt; a custom one loads an 11 GB text encoder once."
+      ],
+      "widgets_values_named": {
+        "text": "**AI Fill** (optional: select the group, then Ctrl+B):\n- Draws the inside of fully clipped highlights (sun, lamps, a white sky) that \"SDR → HDR Universal\" leaves flat, and sets their brightness (up to 3 stops above the master).\n- Plausible, not recovered. The SDR view does not change: only the HDR master gains detail. With nothing clipped, it changes nothing.\n- First run: downloads about 8 GB into models/radiance (RUDRA AI fill v3 and Wan2.1-VACE-1.3B). Needs about 16 GB of VRAM.\n- \"prompt_highlight\": what to draw (e.g. \"soft clouds in a bright blue sky\"). Empty uses RUDRA's own prompt; a custom one loads an 11 GB text encoder once."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
     }
   ],
   "links": [
@@ -4099,7 +4438,7 @@
     ],
     [
       16,
-      8,
+      20,
       0,
       9,
       0,
@@ -4107,7 +4446,7 @@
     ],
     [
       17,
-      8,
+      20,
       0,
       10,
       0,
@@ -4123,7 +4462,7 @@
     ],
     [
       19,
-      8,
+      20,
       0,
       12,
       0,
@@ -4192,6 +4531,22 @@
       15,
       0,
       "STRING"
+    ],
+    [
+      23,
+      8,
+      0,
+      20,
+      0,
+      "IMAGE"
+    ],
+    [
+      24,
+      8,
+      6,
+      20,
+      1,
+      "MASK"
     ]
   ],
   "groups": [
@@ -4295,7 +4650,7 @@
       "id": 9,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        4650,
+        5050,
         1890,
         370,
         960
@@ -4307,7 +4662,7 @@
       "id": 10,
       "title": "Write Image (SDR)",
       "bounding": [
-        4240,
+        4640,
         1890,
         380,
         960
@@ -4319,12 +4674,24 @@
       "id": 11,
       "title": "Viewer",
       "bounding": [
-        4240,
+        4640,
         0,
         2720,
         1860
       ],
       "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 12,
+      "title": "AI Fill - (Optional)",
+      "bounding": [
+        4240,
+        0,
+        370,
+        1460
+      ],
+      "color": "#a1309b",
       "flags": {}
     }
   ],
@@ -4341,7 +4708,7 @@
       {
         "id": 1,
         "pos": [
-          4225,
+          4625,
           84
         ],
         "linkIds": [
@@ -4352,7 +4719,7 @@
       {
         "id": 2,
         "pos": [
-          4225,
+          4625,
           1875
         ],
         "linkIds": [
@@ -4364,7 +4731,7 @@
       {
         "id": 3,
         "pos": [
-          4635,
+          5035,
           1875
         ],
         "linkIds": [
