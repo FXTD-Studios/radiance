@@ -276,6 +276,25 @@ def _find_wan_moe_companion(unet_name):
     return None
 
 
+# ALBABIT-FIX: WAN 2.2's LoRAs come in pairs like its experts (lightx2v's high_noise and
+# low_noise files): each goes on its own expert, its companion found by name. A LoRA
+# without a companion on disk stays on the expert its name says (high-noise by default).
+def _wan_moe_lora_stacks(lora_stack):
+    high, low, pairs = [], [], set()
+    for name, model_str, clip_str in lora_stack or []:
+        companion = _find_wan_moe_companion(name)
+        is_low = "low_noise" in name.lower()
+        if not companion or not folder_paths.get_full_path("loras", companion):
+            (low if is_low else high).append((name, model_str, 0 if is_low else clip_str))
+            continue
+        pair = (companion, name) if is_low else (name, companion)
+        if pair not in pairs:
+            pairs.add(pair)
+            high.append((pair[0], model_str, clip_str))
+            low.append((pair[1], model_str, 0))
+    return high, low
+
+
 class RadianceUnifiedLoader:
     """
     Universal diffusion model loader v3.3 — Streamlined and Optimized.
@@ -393,7 +412,9 @@ class RadianceUnifiedLoader:
                 ),
                 # ── LoRA (external stack input) ──
                 "lora_stack":      ("LORA_STACK", {"default": None,
-                    "tooltip": "Accept a LORA_STACK from a LoRA Stack node."}),
+                    "tooltip": "Accept a LORA_STACK from a LoRA Stack node.\n"
+                               "• WAN 2.2: a high_noise LoRA goes on model, its low_noise file "
+                               "(found by name, as the UNET's) on model_low_noise."}),
                 # ── Options ──
                 "check_vram":  (["On", "Off"], {"default": "On",
                     "tooltip": "Estimate VRAM before load and warn if tight."}),
@@ -578,9 +599,16 @@ class RadianceUnifiedLoader:
         # 7. APPLY LoRA STACK
         #    Priority: upstream lora_stack input stack
         # ════════════════════════════════════════════════════════════════
+        high_stack, low_stack = (_wan_moe_lora_stacks(lora_stack) if model_low_noise is not None
+                                 else (lora_stack, []))
         model, clip, applied_loras, out_lora_stack = apply_lora_stack(
-            model, clip, lora_stack, lora_on_error, divider, info_lines
+            model, clip, high_stack, lora_on_error, divider, info_lines
         )
+        if low_stack:
+            low_lines = []
+            model_low_noise = apply_lora_stack(
+                model_low_noise, None, low_stack, lora_on_error, divider, low_lines)[0]
+            info_lines += [f"{line} (low noise)" for line in low_lines]
 
         if model_shift > 0:
             # ALBABIT-FIX: ModelSamplingAuraFlow sets the time scale to 1, right only for models
