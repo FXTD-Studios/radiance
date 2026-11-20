@@ -179,7 +179,7 @@ if(e.data&&e.data.type==='radiance_save_project_version'){e.source.postMessage({
 
     graph = json.dumps({"nodes": [{"id": 1, "type": "RadianceViewer"}], "links": []})
     for name, cover in (("SH010_grade_v003", "colour_grade.png"), ("SH010_grade_v004", "colour_grade.png"),
-                        ("SH020_fill_v003", "sdr_to_hdr_ai_fill.png"), ("SH030_sky_v002", "sdr_to_hdr_analytic.png")):
+                        ("SH020_fill_v003", "sdr_remaster_ai_fill.png"), ("SH030_sky_v002", "sdr_to_hdr_analytic.png")):
         assert post("/radiance/workflows/save", {"filename": f"HDR_Test/{name}.rad", "content": graph,
                                                  "message": "Saved", "author": "Ahmed", "stats": {"node_count": 1},
                                                  "preview_image": _cover(cover)})["success"]

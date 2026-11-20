@@ -54,8 +54,8 @@ def test_the_catalog_knows_what_each_workflow_loads():
     assert w["sdr_to_hdr_analytic"]["required"] == []                       # no model at all
     assert set(w["multipass_relight"]["required"]) == {"radiance/moge2", "radiance/marigold_appearance",
                                                       "radiance/marigold_lighting"}
-    assert {"radiance/rudra_genfill_v3", "radiance/wan_vace_base"} <= set(w["sdr_to_hdr_ai_fill"]["required"])
-    assert "radiance/wan_vace_text_encoder" in w["sdr_to_hdr_ai_fill"]["optional"]
+    assert {"radiance/rudra_genfill_v3", "radiance/wan_vace_base"} <= set(w["sdr_remaster_ai_fill"]["required"])
+    assert "radiance/wan_vace_text_encoder" in w["sdr_remaster_ai_fill"]["optional"]
     # The Starter decodes Direct HDR (RUDRA inside) and estimates depth.
     assert {"radiance/RUDRA_ACES_2", "radiance/depth_anything_v2_large",
             "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["start"]["required"])
@@ -109,7 +109,7 @@ def test_scan_creates_the_radiance_folder_and_says_what_is_missing(models):
 
 def test_the_ai_fill_says_it_needs_a_16_gb_gpu(models):
     rows = {w["id"]: w for w in sc.scan()["workflows"]}
-    assert "16 GB" in rows["sdr_to_hdr_ai_fill"]["gpu_note"]
+    assert "16 GB" in rows["sdr_remaster_ai_fill"]["gpu_note"]
     assert rows["sdr_to_hdr"]["gpu_note"] == ""
 
 
@@ -215,9 +215,9 @@ def test_downloads_off_means_no_queue(models, monkeypatch):
 def test_missing_for_a_workflow_lists_only_what_is_not_installed(models):
     models.packs.add("radiance/RUDRA_ACES_2")
     assert sc.missing_for("sdr_to_hdr") == []
-    assert "radiance/rudra_genfill_v3" in sc.missing_for("sdr_to_hdr_ai_fill")
-    assert "radiance/wan_vace_text_encoder" not in sc.missing_for("sdr_to_hdr_ai_fill")
-    assert "radiance/wan_vace_text_encoder" in sc.missing_for("sdr_to_hdr_ai_fill", include_optional=True)
+    assert "radiance/rudra_genfill_v3" in sc.missing_for("sdr_remaster_ai_fill")
+    assert "radiance/wan_vace_text_encoder" not in sc.missing_for("sdr_remaster_ai_fill")
+    assert "radiance/wan_vace_text_encoder" in sc.missing_for("sdr_remaster_ai_fill", include_optional=True)
 
 
 def test_hub_metadata_reads_the_lfs_digest_and_the_commit(monkeypatch):

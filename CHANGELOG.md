@@ -216,7 +216,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   mattes, brackets, sidecar; no model). **HDR delivery** now peak-fits the HDR10
   output to 1000 nits and writes HDR10+ / Dolby Vision metadata, carried into
   the H.265 file. **SDR remaster** gets suggested AI fill prompts, Shot Hold
-  and a flicker report. 45 workflows, each with its Library card.
+  and a flicker report. 42 workflows, each with its Library card.
 - **SDR → HDR Analytic (RUDRA)**, RUDRA's model-free route, ported from the
   RUDRA desktop app (Apache 2.0, commit 74f03b6): the inverse of the curve that
   made the SDR (BT.1886, RUDRA's default; BT.1886 shadows; ACES; Hable; AgX;
@@ -526,6 +526,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 - SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
   above).
+- Four workflows that others already cover: Flux.3 Klein → HDR and Flux.3
+  Klein · Reference Edit → HDR (T2I · Edit · I2I → HDR runs both), Flux.3
+  Klein · Plate + Render Passes (Multipass Relight) and SDR → HDR + AI Fill
+  (SDR Footage Remaster). 42 workflows ship: 17 local, 25 API. A graph saved
+  from one of them still opens; no node was removed.
 - Read Mask and its mask editor (see above). 164 nodes are registered.
 
 ### Changed
