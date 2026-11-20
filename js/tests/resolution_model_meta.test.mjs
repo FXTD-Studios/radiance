@@ -118,3 +118,16 @@ test('a frame_rate set by hand stays, marked ✎, and other families leave it al
     assert.equal(other.frameRateW.value, 25);
 });
 
+test('a frame_rate set by hand survives a Loader with no fixed rate', () => {
+    const { node, loader, frameRateW } = withFrameRate('Wan 2.2');
+    context.syncFps(node);
+    frameRateW.value = 30;
+    context.syncFps(node);
+    loader.widgets[0].value = 'Qwen-Image';
+    context.syncFps(node);
+    loader.widgets[0].value = 'Wan 2.2';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 30);
+    assert.equal(frameRateW.label, 'frame_rate ✎');
+});
+

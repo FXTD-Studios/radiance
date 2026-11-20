@@ -272,6 +272,8 @@ const FRAME_RATE_BY_FAMILY = { wan: 16, wan_ti2v: 24, hunyuan_video: 24, hunyuan
 function syncFrameRateFromLoader(node) {
     const frameRateW = node.widgets?.find(w => w.name === "frame_rate");
     const linked = FRAME_RATE_BY_FAMILY[loaderModelType(modelMetaSourceNode(node))];
+    // A model with no fixed rate keeps a rate set by hand for when a mapped one comes back.
+    if (linked === undefined) return _setLabelMarker(frameRateW, false, "");
     const synced = syncAutoValue(node, frameRateW, linked);
     if (synced) frameRateW.callback?.call(frameRateW, frameRateW.value);
     const marker = linked === undefined ? "" : parseFloat(frameRateW?.value) === linked ? " 🧲" : " ✎";
