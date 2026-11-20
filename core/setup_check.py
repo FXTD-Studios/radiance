@@ -265,7 +265,8 @@ def model_status(mid: str) -> Dict[str, Any]:
             "page": f"https://huggingface.co/{repo}" if repo else m["url"], "pinned": bool(m.get("sha256"))}
 
 
-def scan(create_radiance_dir: bool = False) -> Dict[str, Any]:
+def scan(create_radiance_dir: bool = False, refresh: bool = False) -> Dict[str, Any]:
+    from radiance.core import first_start
     from radiance.core.consent import downloads_allowed
     from radiance.core.model_fetch import hf_token
     cat = load_catalog()
@@ -301,6 +302,7 @@ def scan(create_radiance_dir: bool = False) -> Dict[str, Any]:
         "workflows": workflows,
         "core": [status.get("radiance/RUDRA_ACES_2") or model_status("radiance/RUDRA_ACES_2")],
         "summary": {"workflows": len(workflows), "ready": sum(1 for w in workflows if w["ready"])},
+        "checks": first_start.checks(refresh),
     }
 
 

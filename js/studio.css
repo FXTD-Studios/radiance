@@ -251,3 +251,10 @@ button.st-tr[aria-pressed="true"] { background: rgba(10,132,255,.07); }
 .st-rail .st-note + .st-note { margin-top: 6px; }
 .st-note-input { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--raised); color: var(--text); font: 13px/1.45 Inter, system-ui, sans-serif; resize: vertical; min-height: 64px; }
 .st-note-input:focus { outline: 2px solid var(--link); outline-offset: 1px; border-color: transparent; }
+
+/* First-start checks (Models page) */
+.st-checks { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; padding: 16px; }
+.st-check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.st-check:first-of-type { border-top: 0; }
+.st-check-title { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.st-check .st-btn, .st-check .st-link { flex-shrink: 0; margin-top: 2px; }

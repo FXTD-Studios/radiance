@@ -8,6 +8,7 @@
 
 import { escapeHtml as h } from "./radiance_dom_utils.js";
 import * as M from "./studio_model.mjs";
+import { displayCheck, probeDisplay } from "./radiance_welcome_logic.js";
 
 const ICON = {
     home: "M3 11 12 4l9 7v9h-6v-6H9v6H3z",
@@ -127,10 +128,11 @@ async function loadGizmos() {
     } catch (e) { S.errors.gizmos = e.message; }
     S.loaded.gizmos = true;
 }
-async function loadSetup() {
+let displayProbe = null;
+async function loadSetup(refresh = false) {
     S.scanning = true;
     try {
-        S.setup = await postJSON("/radiance/setup/scan");
+        S.setup = await postJSON("/radiance/setup/scan", { refresh });
         S.downloads = S.setup.downloads || [];
         S.errors.setup = "";
     } catch (e) { S.errors.setup = e.message; }
@@ -421,6 +423,23 @@ function gizmoRail(g) {
 
 // ── models (setup check) ─────────────────────────────────────────────────────
 
+// First-start checks: the server's four, plus the display, which only the browser can see.
+function checksCard(sc) {
+    if (!displayProbe) displayProbe = probeDisplay(window);
+    const list = [...(sc.checks || []), displayCheck(displayProbe)];
+    const label = { ok: "OK", warn: "Check", bad: "Fix needed" };
+    const tone = { ok: "ok", warn: "warn", bad: "bad" };
+    const fix = (c) => !c.fix ? ""
+        : c.fix.action ? `<button type="button" class="st-btn st-sm" data-act="setup-fix" data-id="${h(c.fix.action)}">${h(c.fix.label)}</button>`
+            : c.fix.url ? `<a class="st-link" href="${h(c.fix.url)}" target="_blank" rel="noopener">${h(c.fix.label)}</a>` : "";
+    const issues = list.filter((c) => c.status !== "ok").length;
+    return `<div class="st-card st-checks"><div class="st-row-between" style="margin-bottom:8px"><div class="st-sec">First start</div>
+        <span class="st-dim st-small">${issues ? h(M.plural(issues, "thing")) + " to look at" : "Everything checks out"}</span></div>
+      ${list.map((c) => `<div class="st-check" data-check="${h(c.id)}"><span class="st-dot ${tone[c.status] || "info"}"></span>
+        <div class="st-grow"><div class="st-check-title">${h(c.title)} <span class="st-pill ${tone[c.status] || "info"}">${h(label[c.status] || c.status)}</span></div>
+        <div class="st-dim st-small">${h(c.detail)}</div></div>${fix(c)}</div>`).join("")}</div>`;
+}
+
 function modelsView() {
     if (!S.loaded.setup) return `<div class="st-page"><div class="st-h1"><h1>Models</h1></div>${loading()}</div>`;
     if (S.errors.setup) return `<div class="st-page">${failed("the setup check", S.errors.setup)}</div>`;
@@ -477,6 +496,7 @@ function modelsView() {
         <div class="st-kpis-col"><div class="st-card st-kpi"><span>Local workflows</span><span>${sc.summary.workflows}</span></div><div class="st-card st-kpi"><span>Ready to run</span><span style="color:var(--ok)">${sc.summary.ready}</span></div>
           <div class="st-card st-kpi"><span>Need downloads</span><span style="color:var(--info)">${sc.summary.workflows - sc.summary.ready}</span></div></div>
       </div>
+      ${checksCard(sc)}
       <div class="st-dim st-small">Files go where ComfyUI looks for them (models/diffusion_models, text_encoders, vae, loras…); Radiance's own models go in models/radiance. Each file is checked against its SHA-256 before it is installed. 🔒 models need their licence accepted on Hugging Face and a token (HF_TOKEN, or <span class="st-mono">hf auth login</span>), then a restart.</div>
       <div class="st-setup">${rows.map(card).join("")}</div>
     </div>`;
@@ -834,7 +854,14 @@ async function onClick(e) {
             catch (err) { toast(`Delete failed: ${err.message}`, true); }
             break;
         case "import-gizmo": $("stGizmoFile").click(); break;
-        case "rescan": render(); await loadSetup(); render(); break;
+        case "rescan": displayProbe = null; render(); await loadSetup(true); render(); break;
+        case "setup-fix":
+            try {
+                const res = await postJSON("/radiance/setup/fix", { action: id });
+                S.setup.checks = (S.setup.checks || []).map((c) => (c.id === res.check.id ? res.check : c));
+                render();
+            } catch (err) { toast(err.message, true); }
+            break;
         case "dl-workflow": await startDownloads({ workflow: id }); break;
         case "dl-ids": await startDownloads({ ids: [id] }); break;
         case "cancel-dl":

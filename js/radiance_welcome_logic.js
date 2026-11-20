@@ -115,3 +115,36 @@ export function setupSummary(scan) {
         downloadsOff: scan ? !scan.downloads_allowed : false,
     };
 }
+
+/**
+ * What this browser and screen can show, for the first-start checks (4.0).
+ * probeDisplay(window) reads it; displayCheck(probe) turns it into a check
+ * shaped like the server's: { id, title, status: ok|warn|bad, detail, fix }.
+ */
+export function probeDisplay(win) {
+    const mq = (q) => { try { return !!win.matchMedia?.(q).matches; } catch { return false; } };
+    let webgl = 0, floatTargets = false, renderer = '';
+    try {
+        const c = win.document.createElement('canvas');
+        let gl = c.getContext('webgl2');
+        if (gl) { webgl = 2; floatTargets = !!gl.getExtension('EXT_color_buffer_float'); }
+        else if ((gl = c.getContext('webgl'))) webgl = 1;
+        if (gl) {
+            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+            renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+        }
+    } catch { /* no WebGL */ }
+    return { hdr: mq('(dynamic-range: high)'), p3: mq('(color-gamut: p3)'), webgl, floatTargets, renderer };
+}
+
+export function displayCheck(p) {
+    const title = 'Display and viewer (WebGL)';
+    const check = (status, detail) => ({ id: 'display', title, status, detail, fix: null });
+    if (!p || !p.webgl) return check('bad', 'This browser has no WebGL, so the Viewer and the scopes cannot draw. Turn on hardware acceleration in the browser settings and reload.');
+    if (p.webgl < 2) return check('warn', 'This browser has WebGL 1 only: the Viewer works, slower and without float scopes. Use a current Chrome, Edge or Firefox.');
+    if (!p.floatTargets) return check('warn', 'WebGL 2 without float render targets: scopes fall back to 8-bit. Update the GPU driver or turn on hardware acceleration.');
+    const screen = p.hdr ? 'HDR display' : p.p3 ? 'SDR display, wide gamut (P3)' : 'SDR display (Rec.709)';
+    const hdrNote = p.hdr ? ': HDR previews show above 100 nits' : ': HDR is shown tone-mapped; masters are unaffected';
+    return check('ok', `WebGL 2 with float targets · ${screen}${hdrNote}`);
+}

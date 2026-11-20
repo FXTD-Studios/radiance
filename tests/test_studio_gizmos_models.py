@@ -47,6 +47,8 @@ def library(studio, real_web, tmp_path, monkeypatch):
     models = tmp_path / "models"
     models.mkdir()
     monkeypatch.setattr(sc, "models_dir", lambda: models)
+    from radiance.core import first_start
+    monkeypatch.setattr(first_start, "default_output", lambda: tmp_path / "radiance_output")
     monkeypatch.setattr(sc, "_folder_dirs", lambda folder: [models / folder])
     packs = set()
     monkeypatch.setattr(sc, "pack_installed", lambda mid: mid in packs)
@@ -138,8 +140,21 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
         assert "Runs every local workflow" in txt
         row = f.locator(".st-setup-row", has_text="SDR → HDR").filter(has_not_text="Analytic").filter(has_not_text="AI Fill").first
         assert "1 to download" in row.inner_text()
+        # First-start checks: the server's four and the browser's display check, each with a status.
+        checks = f.locator(".st-checks .st-check")
+        assert checks.count() == 5
+        assert [checks.nth(i).get_attribute("data-check") for i in range(5)] == ["ocio", "ffmpeg", "output", "hub", "display"]
+        assert "Hugging Face access" in f.locator('.st-check[data-check="hub"]').inner_text()
+        out_fix = f.locator('.st-check[data-check="output"] [data-act="setup-fix"]')
+        if out_fix.count():
+            out_fix.click()
+            f.locator('.st-check[data-check="output"] .st-pill.ok, .st-check[data-check="output"] .st-pill.warn').wait_for()
+            assert not f.locator('.st-check[data-check="output"] [data-act="setup-fix"]').count()
+            assert (tmp_path / "radiance_output").is_dir()
         page.wait_for_timeout(300)
         _shot(page, "models")
+        f.locator(".st-checks").scroll_into_view_if_needed()
+        _shot(page, "models_checks")
 
         # Download what SDR → HDR needs: RUDRA ACES 2, into models/radiance.
         row.locator('[data-act="dl-workflow"]').click()
