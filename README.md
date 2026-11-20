@@ -116,10 +116,10 @@ Open [SDR to HDR, analytic](workflows/sdr_to_hdr_analytic.json).
 
 ### Generate one
 
-1. Drag the [starter workflow](workflows/start.json) onto the canvas.
+1. Drag the [starter workflow](workflows/t2i_i2i_hdr.json) onto the canvas.
 2. Pick the model files in the **Loader** ([which files?](docs/MODELS.md#flux2-klein-starter-workflow)).
 3. Type your prompt and press **Run**.
-4. Review it in the **Viewer**; add **Write** to save.
+4. Review it in the **Viewer**; its **Write** nodes save an SDR PNG and an HDR EXR master.
 
 For another model, pick its preset in the Loader. The Sampler sets its steps and CFG for you.
 
