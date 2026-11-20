@@ -131,3 +131,26 @@ test('a frame_rate set by hand survives a Loader with no fixed rate', () => {
     assert.equal(frameRateW.label, 'frame_rate ✎');
 });
 
+// MiniMax H3 forces 24 (the model_type callback): no user edit, the Loader's rate comes back after it.
+test('after MiniMax H3, by the Loader or by model_type, a Wan Loader puts its 16 back', () => {
+    const { node, loader, modelTypeW, frameRateW } = withFrameRate('Wan 2.2');
+    context.syncFps(node);
+    loader.widgets[0].value = 'MiniMax H3';
+    modelTypeW.value = 'MiniMax H3 (24ch)';
+    context._forceMiniMaxFrameRate(modelTypeW, frameRateW);
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 24);
+    loader.widgets[0].value = 'Wan 2.2';
+    modelTypeW.value = 'WAN (16ch)';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 16);
+    assert.equal(frameRateW.label, 'frame_rate 🧲');
+    modelTypeW.value = 'MiniMax H3 (24ch)';
+    context._forceMiniMaxFrameRate(modelTypeW, frameRateW);
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 24);
+    modelTypeW.value = 'WAN (16ch)';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 16);
+});
+
