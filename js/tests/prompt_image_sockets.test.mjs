@@ -79,6 +79,13 @@ test('under Wan and its 5B, a first frame brings video_latent and the latent out
     }
 });
 
+test('under the Wan 2.2 5B, only first_frame comes', () => {
+    const node = prompt({ loader: { preset: 'Custom', model_type: 'wan_ti2v' }, image: false });
+    context.applySockets(node);
+    assert.ok(node.inputs.some(i => i.name === 'first_frame'));
+    assert.ok(!node.inputs.some(i => i.name === 'last_frame'));
+});
+
 test('another family drops the free frame sockets and keeps a linked one', () => {
     const node = prompt({ loader: { preset: 'Flux.2' }, image: false, input: 'gone', output: 'gone' });
     node.inputs.push({ name: 'first_frame', type: 'IMAGE', link: null }, { name: 'last_frame', type: 'IMAGE', link: 51 });

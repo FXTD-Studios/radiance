@@ -2072,7 +2072,7 @@ def _wan_frames(positive, negative, vae, references, video_latent, arch):
                          f"to {model_type}, with enable_video on.")
     common = {"vae": vae, "width": video.shape[-1] * scale, "height": video.shape[-2] * scale,
             "length": (video.shape[2] - 1) * 4 + 1, "batch_size": video.shape[0]}
-    first, last = references.get("image_1"), references.get("image_2")
+    first, last = (None if f is None else f[..., :3] for f in (references.get("image_1"), references.get("image_2")))
     if arch == "wan_ti2v":
         if last is not None:
             raise ValueError("Prompt: the Wan 2.2 5B starts from a first frame only. Disconnect last_frame.")
@@ -2306,7 +2306,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                              "• The Resolution's model_type is MiniMax H3 (24ch), WAN (16ch) or WAN TI2V (48ch) "
                              "(or its model_meta comes from the Loader), with enable_video on.\n"
                              "• Gives the frames the video's size.\n"
-                             "• Places last_frame on the last frame."),
+                             "• Places last_frame on the last frame.\n"
+                             "• Sample on the Prompt's latent output: the Wan 5B's holds its first frame."),
                 ),
                 io.Image.Input(
                     "first_frame", optional=True,
@@ -2341,7 +2342,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                                  tooltip=("Empty latent at image_1's size after the resize.\n"
                                           "• Sample on it to edit: any other size shifts the edit.\n"
                                           "• MiniMax H3: an empty latent of video_latent's size.\n"
-                                          "• None without reference images or frames.")),
+                                          "• Wan: the frames' latent (the 5B's holds its first frame).\n"
+                                          "• Without images or frames: video_latent as it came, None without it.")),
             ],
         )
 
@@ -2403,7 +2405,10 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
         # ALBABIT-FIX: MiniMax H3's and Wan's frame sockets; image_1 and image_2 of older graphs still work.
         frames = {name: image for name, image in (("image_1", first_frame), ("image_2", last_frame))
                   if image is not None}
-        if frames and resolved_arch not in ("minimax",) + _WAN_FRAME_ARCHS:
+        # ALBABIT-FIX: without model_meta a t5xxl-only encoder reads as "wan" (Chroma and PixArt too):
+        # Wan's frames need the Loader's model_meta to be sure.
+        reads_frames = resolved_arch == "minimax" or (resolved_arch in _WAN_FRAME_ARCHS and bool(model_meta))
+        if frames and not reads_frames:
             logger.warning("[Encoder] first_frame and last_frame are read by MiniMax H3 and Wan, and the text "
                            "encoder resolves to '%s': they are left out. Connect model_meta from the Loader, "
                            "or disconnect them.", resolved_arch)
@@ -2412,7 +2417,8 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 raise ValueError("Prompt: the frames come from first_frame and last_frame, or from image_1 "
                                  "and image_2, not both. Disconnect the images.")
             references = frames
-        if references and resolved_arch not in _REFERENCE_ARCHS:
+        if references and (resolved_arch not in _REFERENCE_ARCHS
+                           or (resolved_arch in _WAN_FRAME_ARCHS and not reads_frames)):
             raise ValueError(
                 f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit, Flux.2, "
                 f"Flux.3 Klein, MiniMax H3 and Wan only, and the text encoder resolves to '{resolved_arch}'. "
@@ -2603,7 +2609,9 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 negative_prompt,
                 resolved_arch,
                 int(real_count),
-                latent,
+                # ALBABIT-FIX: without frames, video_latent passes through, so a video workflow can
+                # always sample on the Prompt's latent (the Wan 5B's holds its first frame).
+                latent if latent is not None else video_latent,
             ),
         }
 
