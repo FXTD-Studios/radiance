@@ -268,3 +268,58 @@ def test_fetch_reports_progress_and_can_be_cancelled(tmp_path, monkeypatch):
     with pytest.raises(mf.ModelFetchError, match="cancelled"):
         mf.fetch("https://example.invalid/m", str(dest2), sha256=digest, size=len(payload), should_cancel=lambda: True)
     assert not dest2.exists()
+
+
+class _Hdrs(dict):
+    def get(self, k, d=None):
+        for key, v in self.items():
+            if key.lower() == k.lower():
+                return v
+        return d
+
+
+def _hub(responses):
+    """An opener answering HEAD requests in order: (code, headers)."""
+    import urllib.error
+    seen = []
+
+    class Opener:
+        def open(self, req, timeout):
+            seen.append(req.full_url)
+            code, headers = responses.pop(0)
+            if code in (301, 302, 303, 307, 308):
+                raise urllib.error.HTTPError(req.full_url, code, "redirect", _Hdrs(headers), None)
+            return type("R", (), {"headers": _Hdrs(headers), "code": code, "status": code})()
+    return Opener(), seen
+
+
+def test_a_relative_hub_redirect_is_followed_and_its_body_is_not_the_size(monkeypatch):
+    """The 20 Nov --pin run stored 106-144 byte 'sizes' for five Comfy-Org files:
+    the Hub answered 307 to /api/resolve-cache/... (relative, no file headers) and
+    Content-Length was the redirect's body."""
+    opener, seen = _hub([
+        (307, {"Location": "/api/resolve-cache/models/Comfy-Org/x/abc/vae.safetensors", "Content-Length": "144"}),
+        (302, {"Location": "https://cas-bridge.xethub.hf.co/blob", "X-Repo-Commit": "c" * 40,
+               "X-Linked-Etag": '"' + "e" * 64 + '"', "X-Linked-Size": "254000000", "Content-Length": "0"}),
+    ])
+    monkeypatch.setattr(sc.urllib.request, "build_opener", lambda *a: opener)
+    meta = sc.hub_metadata("https://huggingface.co/Comfy-Org/x/resolve/main/vae.safetensors")
+    assert meta == {"revision": "c" * 40, "sha256": "e" * 64, "size": 254000000}
+    assert seen[1] == "https://huggingface.co/api/resolve-cache/models/Comfy-Org/x/abc/vae.safetensors"
+
+
+def test_pin_leaves_a_file_unpinned_rather_than_store_a_redirect_body(monkeypatch):
+    tool = _tool()
+    opener, _ = _hub([(307, {"Location": "https://elsewhere.example/x", "Content-Length": "131"})])
+    monkeypatch.setattr(tool.urllib.request, "build_opener", lambda *a: opener)
+    cat = {"models": {"vae/x.safetensors": {"url": "https://huggingface.co/a/b/resolve/main/x.safetensors",
+                                            "size": 131}}}
+    assert tool.pin(cat) == 1
+    assert "size" not in cat["models"]["vae/x.safetensors"]
+    assert "sha256" not in cat["models"]["vae/x.safetensors"]
+
+
+def test_the_shipped_catalog_has_no_size_without_a_digest():
+    for mid, m in sc.load_catalog()["models"].items():
+        if m.get("size") and not sc.is_pack(mid):
+            assert m.get("sha256") and m.get("revision"), f"{mid}: a size with no pin"

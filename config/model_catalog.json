@@ -271,8 +271,7 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
-      "gated": false,
-      "size": 144
+      "gated": false
     },
     "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors": {
       "file": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
@@ -280,8 +279,7 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
-      "gated": false,
-      "size": 143
+      "gated": false
     },
     "diffusion_models/z_image_bf16.safetensors": {
       "file": "z_image_bf16.safetensors",
@@ -524,8 +522,7 @@
       "repo": "Comfy-Org/flux2-klein",
       "path": "split_files/text_encoders/qwen_3_4b.safetensors",
       "url": "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
-      "gated": false,
-      "size": 122
+      "gated": false
     },
     "text_encoders/qwen_3_8b.safetensors": {
       "file": "qwen_3_8b.safetensors",
@@ -555,8 +552,7 @@
       "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
       "path": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "gated": false,
-      "size": 131
+      "gated": false
     },
     "vae/LTX23_audio_vae_bf16.safetensors": {
       "file": "LTX23_audio_vae_bf16.safetensors",
@@ -673,8 +669,7 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/vae/wan_2.1_vae.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
-      "gated": false,
-      "size": 106
+      "gated": false
     }
   },
   "workflows": {

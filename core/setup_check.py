@@ -310,22 +310,45 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None
 
+def _hub_head(url: str, token: str = "", timeout: float = 30.0, opener=None):
+    """Headers of the Hub's answer for a resolve URL, following the Hub's own
+    redirects (a renamed or differently-cased repository answers 307 with a
+    relative Location and no file headers) until the answer names the file:
+    X-Linked-Etag / X-Linked-Size for an LFS file. Redirects to the CDN are not
+    followed; their headers are what is read. Raises urllib.error.HTTPError."""
+    import urllib.parse
+    headers = {"User-Agent": "radiance-comfyui"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    opener = opener or urllib.request.build_opener(_NoRedirect)
+    for _ in range(6):
+        req = urllib.request.Request(url, method="HEAD", headers=headers)
+        try:
+            resp = opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (301, 302, 303, 307, 308):
+                raise
+            resp = e
+        h = resp.headers
+        code = getattr(resp, "code", None) or getattr(resp, "status", 200)
+        loc = h.get("Location") or ""
+        if h.get("X-Linked-Etag") or code not in (301, 302, 303, 307, 308) or not loc:
+            return h
+        nxt = urllib.parse.urljoin(url, loc)
+        if urllib.parse.urlparse(nxt).netloc not in ("huggingface.co", "www.huggingface.co"):
+            return h                                           # off to the CDN: these headers are the file's
+        url = nxt
+    return h
+
 
 def hub_metadata(url: str, timeout: float = 30.0) -> Dict[str, Any]:
     """{revision, sha256, size} of a Hugging Face file, from the Hub's response
     headers (X-Repo-Commit, X-Linked-Etag = the LFS SHA-256, X-Linked-Size)."""
     from radiance.core.model_fetch import ModelFetchError, hf_token
-    headers = {"User-Agent": "radiance-comfyui"}
-    tok = hf_token()
-    if tok:
-        headers["Authorization"] = f"Bearer {tok}"
-    req = urllib.request.Request(url, method="HEAD", headers=headers)
     try:
-        resp = urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout)
+        h = _hub_head(url, hf_token() or "", timeout)
     except urllib.error.HTTPError as e:
-        if e.code in (301, 302, 303, 307, 308):
-            resp = e
-        elif e.code in (401, 403):
+        if e.code in (401, 403):
             m = _HF_RESOLVE.match(url)
             page = f"https://huggingface.co/{m.group(1)}" if m else url
             raise ModelFetchError(
@@ -335,11 +358,11 @@ def hub_metadata(url: str, timeout: float = 30.0) -> Dict[str, Any]:
             raise ModelFetchError(f"HTTP {e.code} from {url}") from e
     except (urllib.error.URLError, OSError) as e:
         raise ModelFetchError(f"Hugging Face could not be reached ({e}).") from e
-    h = resp.headers
     sha = (h.get("X-Linked-Etag") or h.get("ETag") or "").strip().strip('"').removeprefix("W/").strip('"')
     if not re.fullmatch(r"[0-9a-f]{64}", sha):
         raise ModelFetchError(f"the Hub did not give a SHA-256 for {url}; it was not downloaded.")
-    size = h.get("X-Linked-Size") or h.get("Content-Length")
+    # Only the file's own size: Content-Length here is a redirect's body (about 140 bytes).
+    size = h.get("X-Linked-Size")
     return {"revision": h.get("X-Repo-Commit") or "", "sha256": sha, "size": int(size) if size else None}
 
 
@@ -459,6 +482,7 @@ class DownloadQueue:
         from radiance.core import model_fetch
         entry = dict(load_catalog()["models"][job.id])
         if not entry.get("sha256"):
+            entry.pop("size", None)           # a size with no digest was not read from the file
             entry.update({k: v for k, v in self._meta(entry["url"]).items() if v})
         if entry.get("size"):
             job.total = int(entry["size"])
