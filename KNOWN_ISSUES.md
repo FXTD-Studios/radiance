@@ -251,6 +251,19 @@ node downloads").
 - **SeedVR2** needs the ComfyUI-SeedVR2_VideoUpscaler node pack, which fetches
   its own weights; without it Tier 3 uses the SD x4 upscaler.
 
+## Package and user data (4.0 release audit, 20 Nov 2026)
+
+- **The package is about 72 MB.** 58 MB is the workflow library; five video
+  cards (LTX 2.3, LTX 2.5 and their 3-stage versions, MiniMax H3) each carry
+  two 1920x1080 RGBA example PNGs, about 7 MB a card. *Planned fix (4.1):*
+  ship them as JPEG or fetch them when the card is first opened.
+- **The library and gizmos moved to `ComfyUI/user/radiance/` in 4.0.** The
+  first start copies them from the package folder and leaves the originals
+  there; delete `custom_nodes/radiance/workflows/<your projects>` and
+  `custom_nodes/radiance/gizmos/*.gizmo` once the copies are confirmed. The
+  library keeps a synced copy of the shipped cards (about 58 MB) in
+  `user/radiance/workflows/official`.
+
 ## Minor
 
 - **ACES 2.0 Output Transform (Legacy) is hidden, not removed.** It still
