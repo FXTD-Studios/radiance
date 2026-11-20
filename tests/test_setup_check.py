@@ -56,11 +56,11 @@ def test_the_catalog_knows_what_each_workflow_loads():
                                                       "radiance/marigold_lighting"}
     assert {"radiance/rudra_genfill_v3", "radiance/wan_vace_base"} <= set(w["sdr_remaster_ai_fill"]["required"])
     assert "radiance/wan_vace_text_encoder" in w["sdr_remaster_ai_fill"]["optional"]
-    # The Starter decodes Direct HDR (RUDRA inside) and estimates depth.
-    assert {"radiance/RUDRA_ACES_2", "radiance/depth_anything_v2_large",
-            "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["start"]["required"])
+    # The Starter builds its HDR master with RUDRA ACES 2; its depth map is optional.
+    assert {"radiance/RUDRA_ACES_2", "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["t2i_i2i_hdr"]["required"])
+    assert "radiance/depth_anything_v2_large" in w["t2i_i2i_hdr"]["optional"]
     # Wan 2.2's loader pairs the low-noise expert itself.
-    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan22_hdr_shot_plates"]["required"]
+    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan_hdr"]["required"]
     # A bypassed node's model is optional, an alternative is not required.
     assert "loras/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
     assert "diffusion_models/minimax_h3_fl2va_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
@@ -102,9 +102,9 @@ def test_scan_creates_the_radiance_folder_and_says_what_is_missing(models):
     result = sc.scan()
     rows = {w["id"]: w for w in result["workflows"]}
     assert rows["sdr_to_hdr"]["ready"] is True
-    assert "vae/flux2-vae.safetensors" not in rows["start"]["missing"]
+    assert "vae/flux2-vae.safetensors" not in rows["t2i_i2i_hdr"]["missing"]
     assert result["models"]["vae/flux2-vae.safetensors"]["installed"] is True
-    assert "vae/flux2-vae.safetensors" in rows["start"]["required"]
+    assert "vae/flux2-vae.safetensors" in rows["t2i_i2i_hdr"]["required"]
 
 
 def test_the_ai_fill_says_it_needs_a_16_gb_gpu(models):
@@ -269,6 +269,13 @@ def test_fetch_reports_progress_and_can_be_cancelled(tmp_path, monkeypatch):
     with pytest.raises(mf.ModelFetchError, match="cancelled"):
         mf.fetch("https://example.invalid/m", str(dest2), sha256=digest, size=len(payload), should_cancel=lambda: True)
     assert not dest2.exists()
+
+
+def test_a_file_listed_twice_keeps_the_link_the_workflow_uses():
+    text = ("- vae: [flux2-vae](https://huggingface.co/a/gated/resolve/main/vae/flux2-vae.safetensors) 🔒\n"
+            "- vae: [flux2-vae](https://huggingface.co/b/open/resolve/main/split_files/vae/flux2-vae.safetensors) (used)\n")
+    link = _tool()._links(text)["flux2-vae.safetensors"]
+    assert link["url"].startswith("https://huggingface.co/b/open/") and not link["gated"]
 
 
 class _Hdrs(dict):

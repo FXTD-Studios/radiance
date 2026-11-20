@@ -116,10 +116,10 @@ Open [SDR to HDR, analytic](workflows/sdr_to_hdr_analytic.json).
 
 ### Generate one
 
-1. Drag the [starter workflow](workflows/start.json) onto the canvas.
+1. Drag the [starter workflow](workflows/t2i_i2i_hdr.json) onto the canvas.
 2. Pick the model files in the **Loader** ([which files?](docs/MODELS.md#flux2-klein-starter-workflow)).
 3. Type your prompt and press **Run**.
-4. Review it in the **Viewer**; add **Write** to save.
+4. Review it in the **Viewer**; its **Write** nodes save an SDR PNG and an HDR EXR master.
 
 For another model, pick its preset in the Loader. The Sampler sets its steps and CFG for you.
 
@@ -132,11 +132,11 @@ For another model, pick its preset in the Loader. The Sampler sets its steps and
 Drag a file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
 <table>
-<tr><td width="33%" valign="top"><a href="workflows/start.json"><img src="docs/images/cards/start.png" width="300" alt="Starter workflow card"></a><br><b><a href="workflows/start.json">Starter</a></b><br>Generate an image and review it</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
+<tr><td width="33%" valign="top"><a href="workflows/t2i_i2i_hdr.json"><img src="docs/images/cards/t2i_i2i_hdr.png" width="300" alt="Text to image, edit, image to image workflow card"></a><br><b><a href="workflows/t2i_i2i_hdr.json">Text to image, edit, image to image</a></b><br>Generate or edit an image, into an SDR PNG and an HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master, optional AI fill</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
 <tr><td width="33%" valign="top"><a href="workflows/hdr_delivery.json"><img src="docs/images/cards/hdr_delivery.png" width="300" alt="HDR delivery workflow card"></a><br><b><a href="workflows/hdr_delivery.json">HDR delivery</a></b><br>EXR, HDR10 with HDR10+, and SDR from one master</td><td width="33%" valign="top"><a href="workflows/sdr_remaster_ai_fill.json"><img src="docs/images/cards/sdr_remaster_ai_fill.png" width="300" alt="SDR remaster with AI fill workflow card"></a><br><b><a href="workflows/sdr_remaster_ai_fill.json">SDR remaster with AI fill</a></b><br>SDR footage to an HDR remaster (16 GB GPU)</td><td width="33%" valign="top"><a href="workflows/colour_grade.json"><img src="docs/images/cards/colour_grade.png" width="300" alt="Colour grading workflow card"></a><br><b><a href="workflows/colour_grade.json">Colour grading</a></b><br>Grade an image and save it</td></tr>
 </table>
 
-**[See all 42 workflows →](docs/WORKFLOWS.md)** 17 run on your own GPU; 25 generate with a ComfyUI API node (Nano Banana, Seedance, Veo, Kling…) and lift the result to HDR.
+**[See all 40 workflows →](docs/WORKFLOWS.md)** 15 run on your own GPU; 25 generate with a ComfyUI API node (Nano Banana, Seedance, Veo, Kling…) and lift the result to HDR.
 
 ## Using the Viewer
 

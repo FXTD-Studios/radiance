@@ -23,11 +23,11 @@ test("workflow cards: official first, Starter leads, groups from kicker and path
         wf("mine/SH010_grade_v001.rad", ""),
         wf("official/API/api_veo3_hdr.rad", "API · Video"),
         wf("official/Local/hdr_delivery.rad", "Delivery"),
-        wf("official/Local/start.rad", "Start here"),
+        wf("official/Local/t2i_i2i_hdr.rad", "Generate · Image"),
         wf("official/Local/sdr_to_hdr.rad", "HDR"),
         wf("official/Local/ltx25_hdr.rad", "Generate · Video"),
     ]);
-    assert.equal(cards[0].filename, "official/Local/start.rad");
+    assert.equal(cards[0].filename, "official/Local/t2i_i2i_hdr.rad");
     assert.equal(cards[1].filename, "official/Local/sdr_to_hdr.rad");
     assert.equal(cards.at(-1).filename, "mine/SH010_grade_v001.rad");
     const by = Object.fromEntries(cards.map((c) => [c.filename, c.groups]));

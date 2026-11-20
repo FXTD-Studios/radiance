@@ -1,14 +1,14 @@
 {
-  "id": "32978e3e-44a0-4e05-9fce-ac9fc98410c2",
+  "id": "25295b86-a823-4ed7-81e1-1ee1df18d54e",
   "revision": 0,
-  "last_node_id": 29,
-  "last_link_id": 41,
+  "last_node_id": 41,
+  "last_link_id": 53,
   "nodes": [
     {
       "id": 11,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        3070,
+        3470,
         70
       ],
       "size": [
@@ -16,7 +16,7 @@
         830
       ],
       "flags": {},
-      "order": 6,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
@@ -304,10 +304,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            14,
-            15,
-            16,
-            20
+            42
           ]
         },
         {
@@ -344,7 +341,9 @@
           "localized_name": "reconstructed_mask",
           "name": "reconstructed_mask",
           "type": "MASK",
-          "links": null
+          "links": [
+            43
+          ]
         }
       ],
       "properties": {
@@ -415,15 +414,15 @@
       "id": 12,
       "type": "RadianceWrite",
       "pos": [
-        4680,
+        5480,
         1960
       ],
       "size": [
         310,
-        506
+        530
       ],
       "flags": {},
-      "order": 7,
+      "order": 22,
       "mode": 0,
       "inputs": [
         {
@@ -690,13 +689,13 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/wan22_plates",
+        "radiance_examples/wan",
         "SEQ │ EXR (16-bit half)",
-        "sh020_plate",
+        "wan_hdr",
         1,
         "fixed",
         "Linear (pass-through)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -717,13 +716,13 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/wan22_plates",
+        "output_path": "radiance_examples/wan",
         "format": "SEQ │ EXR (16-bit half)",
-        "filename": "sh020_plate",
+        "filename": "wan_hdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -748,7 +747,7 @@
       "id": 13,
       "type": "RadianceWrite",
       "pos": [
-        4280,
+        5080,
         1960
       ],
       "size": [
@@ -756,8 +755,8 @@
         530
       ],
       "flags": {},
-      "order": 8,
-      "mode": 0,
+      "order": 23,
+      "mode": 4,
       "inputs": [
         {
           "localized_name": "image",
@@ -1023,13 +1022,13 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/wan22_plates",
+        "radiance_examples/wan",
         "VID │ MP4 (H.265 10-bit)",
-        "sh020_hdr10",
+        "wan_hdr10",
         1,
         "fixed",
         "PQ (HDR10 / ST.2084)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -1050,13 +1049,13 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/wan22_plates",
+        "output_path": "radiance_examples/wan",
         "format": "VID │ MP4 (H.265 10-bit)",
-        "filename": "sh020_hdr10",
+        "filename": "wan_hdr10",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "PQ (HDR10 / ST.2084)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -1081,7 +1080,7 @@
       "id": 14,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        3470,
+        4270,
         1960
       ],
       "size": [
@@ -1089,8 +1088,8 @@
         250
       ],
       "flags": {},
-      "order": 9,
-      "mode": 0,
+      "order": 24,
+      "mode": 4,
       "inputs": [
         {
           "localized_name": "image",
@@ -1183,8 +1182,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            17,
-            18
+            17
           ]
         },
         {
@@ -1222,16 +1220,16 @@
       "id": 15,
       "type": "RadianceWrite",
       "pos": [
-        3470,
-        2322
+        4270,
+        2320
       ],
       "size": [
         320,
         506
       ],
       "flags": {},
-      "order": 11,
-      "mode": 0,
+      "order": 26,
+      "mode": 4,
       "inputs": [
         {
           "localized_name": "image",
@@ -1497,13 +1495,13 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/wan22_plates",
+        "radiance_examples/wan",
         "VID │ MP4 (H.264)",
-        "sh020_sdr",
+        "wan_sdr",
         1,
         "fixed",
         "Linear (pass-through)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -1524,13 +1522,13 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/wan22_plates",
+        "output_path": "radiance_examples/wan",
         "format": "VID │ MP4 (H.264)",
-        "filename": "sh020_sdr",
+        "filename": "wan_sdr",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -1555,7 +1553,7 @@
       "id": 16,
       "type": "RadianceContactSheet",
       "pos": [
-        3880,
+        4680,
         1960
       ],
       "size": [
@@ -1563,8 +1561,8 @@
         170
       ],
       "flags": {},
-      "order": 12,
-      "mode": 0,
+      "order": 27,
+      "mode": 4,
       "inputs": [
         {
           "localized_name": "images",
@@ -1653,7 +1651,7 @@
       "id": 17,
       "type": "RadianceWrite",
       "pos": [
-        3880,
+        4680,
         2230
       ],
       "size": [
@@ -1661,8 +1659,8 @@
         410
       ],
       "flags": {},
-      "order": 13,
-      "mode": 0,
+      "order": 28,
+      "mode": 4,
       "inputs": [
         {
           "localized_name": "image",
@@ -1928,9 +1926,9 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/wan22_plates",
+        "radiance_examples/wan",
         "IMG │ PNG (8-bit)",
-        "sh020_contact",
+        "wan_contact",
         1,
         "fixed",
         "Linear (pass-through)",
@@ -1955,9 +1953,9 @@
         ""
       ],
       "widgets_values_named": {
-        "output_path": "radiance_examples/wan22_plates",
+        "output_path": "radiance_examples/wan",
         "format": "IMG │ PNG (8-bit)",
-        "filename": "sh020_contact",
+        "filename": "wan_contact",
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
@@ -1986,7 +1984,7 @@
       "id": 18,
       "type": "RadianceViewer",
       "pos": [
-        3470,
+        4270,
         70
       ],
       "size": [
@@ -1994,7 +1992,7 @@
         1760
       ],
       "flags": {},
-      "order": 10,
+      "order": 25,
       "mode": 0,
       "inputs": [
         {
@@ -2200,14 +2198,14 @@
         false,
         "Auto",
         "Half (16-bit)",
-        24,
+        16,
         ""
       ],
       "widgets_values_named": {
         "exposure_bracketing": false,
         "input_space": "Auto",
         "float_precision": "Half (16-bit)",
-        "fps": 24,
+        "fps": 16,
         "viewer": ""
       }
     },
@@ -2223,7 +2221,7 @@
         290
       ],
       "flags": {},
-      "order": 1,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -2231,7 +2229,7 @@
           "name": "lora_stack",
           "shape": 7,
           "type": "LORA_STACK",
-          "link": null
+          "link": 48
         },
         {
           "localized_name": "preset",
@@ -2452,7 +2450,8 @@
           "type": "VAE",
           "links": [
             25,
-            26
+            26,
+            46
           ]
         },
         {
@@ -2558,7 +2557,7 @@
         526
       ],
       "flags": {},
-      "order": 3,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -2729,7 +2728,7 @@
           "name": "latent",
           "type": "LATENT",
           "links": [
-            32
+            47
           ]
         },
         {
@@ -2761,10 +2760,7 @@
           "name": "frame_rate",
           "type": "FLOAT",
           "links": [
-            37,
-            38,
-            39,
-            40
+            52
           ]
         },
         {
@@ -2813,7 +2809,7 @@
         "Manual (Frames)",
         5,
         81,
-        24
+        16
       ],
       "widgets_values_named": {
         "preset": "Custom",
@@ -2831,7 +2827,7 @@
         "frame_computation": "Manual (Frames)",
         "duration_seconds": 5,
         "video_frames": 81,
-        "frame_rate": 24
+        "frame_rate": 16
       }
     },
     {
@@ -2846,7 +2842,7 @@
         1320
       ],
       "flags": {},
-      "order": 2,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -2867,14 +2863,7 @@
           "name": "vae",
           "shape": 7,
           "type": "VAE",
-          "link": null
-        },
-        {
-          "localized_name": "image_1",
-          "name": "images.image_1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
+          "link": 46
         },
         {
           "localized_name": "upsampler_clip",
@@ -2882,6 +2871,27 @@
           "shape": 7,
           "type": "CLIP",
           "link": null
+        },
+        {
+          "localized_name": "video_latent",
+          "name": "video_latent",
+          "shape": 7,
+          "type": "LATENT",
+          "link": 47
+        },
+        {
+          "localized_name": "first_frame",
+          "name": "first_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 44
+        },
+        {
+          "localized_name": "last_frame",
+          "name": "last_frame",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 45
         },
         {
           "localized_name": "text_to_video",
@@ -3106,51 +3116,59 @@
           "name": "token_count",
           "type": "INT",
           "links": null
+        },
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            32
+          ]
         }
       ],
       "properties": {
         "Node name for S&R": "RadianceCinematicPromptEncoder",
-        "radExtraHeight": 728
+        "radExtraHeight": 708
       },
       "widgets_values": [
         true,
-        "Golden hour city street after rain, low sun flaring between buildings, wet asphalt with bright specular reflections, neon signs, cinematic, shallow depth of field, smooth dolly forward",
-        "",
+        "a beautiful young woman with auburn hair in a braided updo, all of her hair pinned up, light freckles across her nose, cheeks slightly reddened by the cold, blue-grey eyes, wearing a white knitted wool sweater, on a cold winter night, looking directly into the lens. Her skin shows fine pores and soft peach fuzz. She is riding a carousel at a night fair. Behind her, the fairground lamps are so far out of focus that they become huge, round bokeh discs in red, orange, yellow, pink and violet, filling the whole background. A few tiny snowflakes float in the air in front of her and sparkle in the colored light of the lamps. The scene tone is warm and dreamlike.",
+        "From the very first frame, the ride carries her and the camera steadily around together, so she stays still in the frame while the whole blurred background behind her keeps sliding past from the right edge of the frame to the left edge, without stopping until the end of the shot. She sways gently with the motion of the ride, and the cold air of the ride lifts a few loose strands of hair around her face. The colored light of the passing lamps washes over her face in colored waves, tinting it red. A puff of breath vapor leaves her mouth and catches the colored light. She slowly breaks into a small, gentle smile and holds it, still looking into the lens, while the background keeps sliding past behind her from right to left.",
         "None (Custom)",
-        "None",
-        "None",
-        "None",
-        "None",
+        "Close-Up (CU)",
+        "ARRI Alexa 35",
+        "85mm Portrait Prime",
+        "f/1.2 (Dreamy Bokeh)",
         "None",
         "None",
         "None",
         "Off",
-        "blurry, low quality, watermark, text, jpeg artifacts, flicker, overexposed flat highlights",
+        "ugly, low resolution, compression artifacts, robotic, robot",
         "Auto",
         1024,
         false,
-        0,
+        156432082635889,
         "randomize",
         ""
       ],
       "widgets_values_named": {
         "text_to_video": true,
-        "base_prompt": "Golden hour city street after rain, low sun flaring between buildings, wet asphalt with bright specular reflections, neon signs, cinematic, shallow depth of field, smooth dolly forward",
-        "action": "",
+        "base_prompt": "a beautiful young woman with auburn hair in a braided updo, all of her hair pinned up, light freckles across her nose, cheeks slightly reddened by the cold, blue-grey eyes, wearing a white knitted wool sweater, on a cold winter night, looking directly into the lens. Her skin shows fine pores and soft peach fuzz. She is riding a carousel at a night fair. Behind her, the fairground lamps are so far out of focus that they become huge, round bokeh discs in red, orange, yellow, pink and violet, filling the whole background. A few tiny snowflakes float in the air in front of her and sparkle in the colored light of the lamps. The scene tone is warm and dreamlike.",
+        "action": "From the very first frame, the ride carries her and the camera steadily around together, so she stays still in the frame while the whole blurred background behind her keeps sliding past from the right edge of the frame to the left edge, without stopping until the end of the shot. She sways gently with the motion of the ride, and the cold air of the ride lifts a few loose strands of hair around her face. The colored light of the passing lamps washes over her face in colored waves, tinting it red. A puff of breath vapor leaves her mouth and catches the colored light. She slowly breaks into a small, gentle smile and holds it, still looking into the lens, while the background keeps sliding past behind her from right to left.",
         "style_preset": "None (Custom)",
-        "framing": "None",
-        "camera_type": "None",
-        "lens_focal": "None",
-        "aperture_dof": "None",
+        "framing": "Close-Up (CU)",
+        "camera_type": "ARRI Alexa 35",
+        "lens_focal": "85mm Portrait Prime",
+        "aperture_dof": "f/1.2 (Dreamy Bokeh)",
         "lighting": "None",
         "style_aesthetic": "None",
         "color_grading": "None",
         "negative_strength": "Off",
-        "negative_prompt": "blurry, low quality, watermark, text, jpeg artifacts, flicker, overexposed flat highlights",
+        "negative_prompt": "ugly, low resolution, compression artifacts, robotic, robot",
         "negative_mode": "Auto",
         "resolution": 1024,
         "upsample_prompt": false,
-        "upsampler_seed": 0,
+        "upsampler_seed": 156432082635889,
         "control_after_generate": "randomize",
         "layout": ""
       }
@@ -3164,10 +3182,10 @@
       ],
       "size": [
         340,
-        1262
+        950
       ],
       "flags": {},
-      "order": 4,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
@@ -3195,6 +3213,7 @@
           "link": 32
         },
         {
+          "label": "model_low_noise",
           "localized_name": "refiner_model",
           "name": "refiner_model",
           "shape": 7,
@@ -3729,13 +3748,10 @@
       ],
       "properties": {
         "Node name for S&R": "RadianceSamplerPro",
-        "radiance_auto_values": {
-          "cfg": 6,
-          "sampler": "uni_pc"
-        }
+        "radiance_auto_values": {}
       },
       "widgets_values": [
-        "Custom",
+        "Auto",
         20,
         0,
         0,
@@ -3755,7 +3771,7 @@
         1,
         0,
         "Static",
-        1,
+        4,
         "fixed",
         0,
         "wan",
@@ -3786,10 +3802,10 @@
         4,
         null,
         null,
-        "Manual / Custom Mode. All widgets are unlocked."
+        "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
       ],
       "widgets_values_named": {
-        "preset": "Custom",
+        "preset": "Auto",
         "steps": 20,
         "start_step": 0,
         "end_step": 0,
@@ -3809,7 +3825,7 @@
         "flux_shift": 1,
         "flux_guidance": 0,
         "flux_guidance_profile": "Static",
-        "seed": 1,
+        "seed": 4,
         "control_after_generate": "fixed",
         "pag_scale": 0,
         "model_type": "wan",
@@ -3840,7 +3856,7 @@
         "temporal_overlap": 4,
         "› Export Preset": null,
         "› Import Preset": null,
-        "preset_info": "Manual / Custom Mode. All widgets are unlocked."
+        "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
       }
     },
     {
@@ -3855,7 +3871,7 @@
         382
       ],
       "flags": {},
-      "order": 5,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -4070,8 +4086,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            34,
-            35
+            49
           ]
         },
         {
@@ -4126,6 +4141,7 @@
       }
     },
     {
+      "id": 26,
       "type": "MarkdownNote",
       "pos": [
         1070,
@@ -4135,24 +4151,24 @@
         340,
         150
       ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Note: High and Low Noise",
       "properties": {},
       "widgets_values": [
-        "**High and Low Noise**:\n- Pick the high_noise file in the Loader: it finds the low_noise one next to it.\n- The Sampler runs the high-noise model, then the low-noise one from \"refiner_start_step\" (10 of 20 steps)."
+        "**High and Low Noise**:\n- Pick the high_noise file in the Loader (t2v for text, i2v for an image): it finds the low_noise one next to it.\n- The Sampler runs the high-noise model, then the low-noise one from \"refiner_start_step\" (10 of 20 steps)."
       ],
       "widgets_values_named": {
-        "text": "**High and Low Noise**:\n- Pick the high_noise file in the Loader: it finds the low_noise one next to it.\n- The Sampler runs the high-noise model, then the low-noise one from \"refiner_start_step\" (10 of 20 steps)."
+        "text": "**High and Low Noise**:\n- Pick the high_noise file in the Loader (t2v for text, i2v for an image): it finds the low_noise one next to it.\n- The Sampler runs the high-noise model, then the low-noise one from \"refiner_start_step\" (10 of 20 steps)."
       },
       "color": "#222",
-      "bgcolor": "#000",
-      "id": 26,
-      "flags": {},
-      "order": 0,
-      "mode": 0
+      "bgcolor": "#000"
     },
     {
+      "id": 27,
       "type": "PreviewAny",
       "pos": [
         1500,
@@ -4160,8 +4176,11 @@
       ],
       "size": [
         680,
-        250
+        380
       ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
       "inputs": [
         {
           "localized_name": "source",
@@ -4182,13 +4201,10 @@
         "Node name for S&R": "PreviewAny"
       },
       "widgets_values": [],
-      "widgets_values_named": {},
-      "id": 27,
-      "flags": {},
-      "order": 0,
-      "mode": 0
+      "widgets_values_named": {}
     },
     {
+      "id": 28,
       "type": "MarkdownNote",
       "pos": [
         0,
@@ -4198,6 +4214,9 @@
         580,
         120
       ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Color Legend",
@@ -4209,13 +4228,10 @@
         "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       },
       "color": "#222",
-      "bgcolor": "#000",
-      "id": 28,
-      "flags": {},
-      "order": 0,
-      "mode": 0
+      "bgcolor": "#000"
     },
     {
+      "id": 29,
       "type": "MarkdownNote",
       "pos": [
         0,
@@ -4223,30 +4239,1059 @@
       ],
       "size": [
         580,
-        1520
+        1650
       ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Model Links",
       "properties": {},
       "widgets_values": [
-        "## WAN 2.2 → HDR shot plates Workflow for Radiance:\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (text to video, fp8)\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Frame interpolation** (optional, \"Frame Interpolation\" group)\n- frame_interpolation: [film_net_fp16](https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/film_net_fp16.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       ],
       "widgets_values_named": {
-        "text": "## WAN 2.2 → HDR shot plates Workflow for Radiance:\n\nHigh/low-noise WAN 2.2 14B, 1280x704, 81 frames.\nSDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n\nOutputs: EXR 16-bit half sequence (comp/grade plate), HDR10 MP4 (H.265 10-bit PQ) for review, SDR MP4 via ACES 2.0, and a contact sheet PNG.\nViewer: HDR plate vs the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (text to video, fp8)\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "text": "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Frame interpolation** (optional, \"Frame Interpolation\" group)\n- frame_interpolation: [film_net_fp16](https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/film_net_fp16.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       },
       "color": "#222",
-      "bgcolor": "#000",
-      "id": 29,
+      "bgcolor": "#000"
+    },
+    {
+      "id": 30,
+      "type": "RadianceSDRToHDRAIFill",
+      "pos": [
+        3870,
+        70
+      ],
+      "size": [
+        310,
+        870
+      ],
       "flags": {},
-      "order": 0,
-      "mode": 0
+      "order": 21,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 42
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": 43
+        },
+        {
+          "localized_name": "image_encoding",
+          "name": "image_encoding",
+          "type": "COMBO",
+          "widget": {
+            "name": "image_encoding"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_highlight"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "brightness_offset",
+          "name": "brightness_offset",
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness_offset"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_shadows",
+          "name": "fill_shadows",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "fill_shadows"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_shadow",
+          "name": "prompt_shadow",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt_shadow"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "highlight_context_code",
+          "name": "highlight_context_code",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "highlight_context_code"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_gain_stops",
+          "name": "max_gain_stops",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "max_gain_stops"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "shape_gain",
+          "name": "shape_gain",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shape_gain"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "use_brightness_estimator",
+          "name": "use_brightness_estimator",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "use_brightness_estimator"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance",
+          "name": "guidance",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "window",
+          "name": "window",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "window"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "overlap",
+          "name": "overlap",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "max_area",
+          "name": "max_area",
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "max_area"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "base_model",
+          "name": "base_model",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "base_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fill_package",
+          "name": "fill_package",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "fill_package"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "allow_download",
+          "name": "allow_download",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "allow_download"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "keep_loaded",
+          "name": "keep_loaded",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "keep_loaded"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "prompt_strength",
+          "name": "prompt_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "prompt_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "focus",
+          "name": "focus",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "focus"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "fallback",
+          "name": "fallback",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "fallback"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            14,
+            15,
+            16,
+            20
+          ]
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": []
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAIFill"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "",
+        0,
+        false,
+        "",
+        250,
+        3,
+        1,
+        true,
+        30,
+        0,
+        "fixed",
+        1,
+        "",
+        33,
+        8,
+        399360,
+        "",
+        "",
+        true,
+        false,
+        1,
+        "frame",
+        "none"
+      ],
+      "widgets_values_named": {
+        "image_encoding": "Linear (Rec.709)",
+        "prompt_highlight": "",
+        "brightness_offset": 0,
+        "fill_shadows": false,
+        "prompt_shadow": "",
+        "highlight_context_code": 250,
+        "max_gain_stops": 3,
+        "shape_gain": 1,
+        "use_brightness_estimator": true,
+        "steps": 30,
+        "seed": 0,
+        "control_after_generate": "fixed",
+        "guidance": 1,
+        "negative_prompt": "",
+        "window": 33,
+        "overlap": 8,
+        "max_area": 399360,
+        "base_model": "",
+        "fill_package": "",
+        "allow_download": true,
+        "keep_loaded": false,
+        "prompt_strength": 1,
+        "focus": "frame",
+        "fallback": "none"
+      }
+    },
+    {
+      "id": 31,
+      "type": "MarkdownNote",
+      "pos": [
+        3870,
+        1000
+      ],
+      "size": [
+        310,
+        340
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: AI Fill",
+      "properties": {},
+      "widgets_values": [
+        "**AI Fill** (optional: select the group, then Ctrl+B):\n- Draws the inside of fully clipped highlights (sun, lamps, a white sky) that \"SDR → HDR Universal\" leaves flat, and sets their brightness (up to 3 stops above the master).\n- Plausible, not recovered. The SDR view does not change: only the HDR master gains detail. With nothing clipped, it changes nothing.\n- First run: downloads about 8 GB into models/radiance (RUDRA AI fill v3 and Wan2.1-VACE-1.3B). Needs about 16 GB of VRAM.\n- \"prompt_highlight\": what to draw (e.g. \"soft clouds in a bright blue sky\"). Empty uses RUDRA's own prompt; a custom one loads an 11 GB text encoder once.\n- Video: the frames go through in overlapping 33-frame windows, so a long shot takes a while."
+      ],
+      "widgets_values_named": {
+        "text": "**AI Fill** (optional: select the group, then Ctrl+B):\n- Draws the inside of fully clipped highlights (sun, lamps, a white sky) that \"SDR → HDR Universal\" leaves flat, and sets their brightness (up to 3 stops above the master).\n- Plausible, not recovered. The SDR view does not change: only the HDR master gains detail. With nothing clipped, it changes nothing.\n- First run: downloads about 8 GB into models/radiance (RUDRA AI fill v3 and Wan2.1-VACE-1.3B). Needs about 16 GB of VRAM.\n- \"prompt_highlight\": what to draw (e.g. \"soft clouds in a bright blue sky\"). Empty uses RUDRA's own prompt; a custom one loads an 11 GB text encoder once.\n- Video: the frames go through in overlapping 33-frame windows, so a long shot takes a while."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 32,
+      "type": "LoadImage",
+      "pos": [
+        1070,
+        900
+      ],
+      "size": [
+        340,
+        400
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "COMBO",
+          "widget": {
+            "name": "image"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "choose file to upload",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            44
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "example.png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 33,
+      "type": "LoadImage",
+      "pos": [
+        1070,
+        1430
+      ],
+      "size": [
+        340,
+        400
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "COMBO",
+          "widget": {
+            "name": "image"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "choose file to upload",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            45
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "example.png",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 34,
+      "type": "RadianceLoraStack",
+      "pos": [
+        1070,
+        -540
+      ],
+      "size": [
+        340,
+        430
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "lora_stack",
+          "name": "lora_stack",
+          "shape": 7,
+          "type": "LORA_STACK",
+          "link": null
+        },
+        {
+          "localized_name": "lora_1",
+          "name": "lora_1",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_1"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_1_model",
+          "name": "lora_1_model",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_1_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_1_clip",
+          "name": "lora_1_clip",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_1_clip"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_2",
+          "name": "lora_2",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_2"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_2_model",
+          "name": "lora_2_model",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_2_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_2_clip",
+          "name": "lora_2_clip",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_2_clip"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_3",
+          "name": "lora_3",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_3"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_3_model",
+          "name": "lora_3_model",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_3_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_3_clip",
+          "name": "lora_3_clip",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_3_clip"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_4",
+          "name": "lora_4",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_4"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_4_model",
+          "name": "lora_4_model",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_4_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_4_clip",
+          "name": "lora_4_clip",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_4_clip"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_5",
+          "name": "lora_5",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "lora_5"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_5_model",
+          "name": "lora_5_model",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_5_model"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "lora_5_clip",
+          "name": "lora_5_clip",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "lora_5_clip"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "lora_stack",
+          "name": "lora_stack",
+          "type": "LORA_STACK",
+          "links": [
+            48
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceLoraStack"
+      },
+      "widgets_values": [
+        "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+        1,
+        1,
+        "None",
+        1,
+        1,
+        "None",
+        1,
+        1,
+        "None",
+        1,
+        1,
+        "None",
+        1,
+        1
+      ],
+      "widgets_values_named": {
+        "lora_1": "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+        "lora_1_model": 1,
+        "lora_1_clip": 1,
+        "lora_2": "None",
+        "lora_2_model": 1,
+        "lora_2_clip": 1,
+        "lora_3": "None",
+        "lora_3_model": 1,
+        "lora_3_clip": 1,
+        "lora_4": "None",
+        "lora_4_model": 1,
+        "lora_4_clip": 1,
+        "lora_5": "None",
+        "lora_5_model": 1,
+        "lora_5_clip": 1
+      }
+    },
+    {
+      "id": 35,
+      "type": "MarkdownNote",
+      "pos": [
+        1070,
+        -770
+      ],
+      "size": [
+        340,
+        130
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Turbo LoRA",
+      "properties": {},
+      "widgets_values": [
+        "**Turbo LoRA** (optional: select the group, then Ctrl+B):\n- lightx2v's 4-step LoRA: pick its high_noise file, the \"Loader\" puts its low_noise file on the low-noise expert.\n- The \"Sampler\", in \"Auto\", sees it and runs 4 steps at CFG 1.\n- Image to video: pick the i2v pair."
+      ],
+      "widgets_values_named": {
+        "text": "**Turbo LoRA** (optional: select the group, then Ctrl+B):\n- lightx2v's 4-step LoRA: pick its high_noise file, the \"Loader\" puts its low_noise file on the low-noise expert.\n- The \"Sampler\", in \"Auto\", sees it and runs 4 steps at CFG 1.\n- Image to video: pick the i2v pair."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 36,
+      "type": "MarkdownNote",
+      "pos": [
+        640,
+        740
+      ],
+      "size": [
+        340,
+        290
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: First and Last Frame",
+      "properties": {},
+      "widgets_values": [
+        "**First and Last Frame** (optional: select a group, then Ctrl+B):\n- Both off: Text to Video. \"First Frame\" on: Image to Video. Both on: the shot goes from one image to the other. \"Last Frame\" alone: the shot ends on it.\n- Wan 2.2 14B: load its i2v files in the \"Loader\". The 5B reads the first frame only.\n- The \"Resolution\" follows the Loader: WAN (16ch) at 16 fps for Wan 2.2 14B and Wan 2.1, WAN TI2V (48ch) at 24 fps for the 5B."
+      ],
+      "widgets_values_named": {
+        "text": "**First and Last Frame** (optional: select a group, then Ctrl+B):\n- Both off: Text to Video. \"First Frame\" on: Image to Video. Both on: the shot goes from one image to the other. \"Last Frame\" alone: the shot ends on it.\n- Wan 2.2 14B: load its i2v files in the \"Loader\". The 5B reads the first frame only.\n- The \"Resolution\" follows the Loader: WAN (16ch) at 16 fps for Wan 2.2 14B and Wan 2.1, WAN TI2V (48ch) at 24 fps for the 5B."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 37,
+      "type": "FrameInterpolationModelLoader",
+      "pos": [
+        3070,
+        70
+      ],
+      "size": [
+        310,
+        60
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "model_name",
+          "name": "model_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "INTERP_MODEL",
+          "name": "INTERP_MODEL",
+          "type": "INTERP_MODEL",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FrameInterpolationModelLoader"
+      },
+      "widgets_values": [
+        "film_net_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "film_net_fp16.safetensors"
+      }
+    },
+    {
+      "id": 38,
+      "type": "PrimitiveInt",
+      "pos": [
+        3070,
+        190
+      ],
+      "size": [
+        310,
+        90
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "value",
+          "name": "value",
+          "type": "INT",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "INT",
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            51,
+            53
+          ]
+        }
+      ],
+      "title": "Multiplier",
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        2,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "value": 2,
+        "control_after_generate": "fixed"
+      }
+    },
+    {
+      "id": 39,
+      "type": "FrameInterpolate",
+      "pos": [
+        3070,
+        340
+      ],
+      "size": [
+        310,
+        80
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "interp_model",
+          "name": "interp_model",
+          "type": "INTERP_MODEL",
+          "link": 50
+        },
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 49
+        },
+        {
+          "localized_name": "multiplier",
+          "name": "multiplier",
+          "type": "INT",
+          "widget": {
+            "name": "multiplier"
+          },
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            34,
+            35,
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FrameInterpolate"
+      },
+      "widgets_values": [
+        2
+      ],
+      "widgets_values_named": {
+        "multiplier": 2
+      }
+    },
+    {
+      "id": 40,
+      "type": "ComfyMathExpression",
+      "pos": [
+        3070,
+        480
+      ],
+      "size": [
+        310,
+        150
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 52
+        },
+        {
+          "localized_name": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 53
+        },
+        {
+          "localized_name": "c",
+          "name": "values.c",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        },
+        {
+          "localized_name": "expression",
+          "name": "expression",
+          "type": "STRING",
+          "widget": {
+            "name": "expression"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "FLOAT",
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            37,
+            38,
+            39,
+            40
+          ]
+        },
+        {
+          "localized_name": "INT",
+          "name": "INT",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "localized_name": "BOOL",
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "title": "Frame Rate x Multiplier",
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "a*max(b,1)"
+      ],
+      "widgets_values_named": {
+        "expression": "a*max(b,1)"
+      }
+    },
+    {
+      "id": 41,
+      "type": "MarkdownNote",
+      "pos": [
+        3070,
+        690
+      ],
+      "size": [
+        310,
+        300
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Frame Interpolation",
+      "properties": {},
+      "widgets_values": [
+        "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, over the same span from the first frame to the last (the clip ends one 32 fps frame sooner). The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps; below 2, nothing changes).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
+      ],
+      "widgets_values_named": {
+        "text": "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, over the same span from the first frame to the last (the clip ends one 32 fps frame sooner). The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps; below 2, nothing changes).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
     }
   ],
   "links": [
     [
       14,
-      11,
+      30,
       0,
       12,
       0,
@@ -4254,7 +5299,7 @@
     ],
     [
       15,
-      11,
+      30,
       0,
       13,
       0,
@@ -4262,7 +5307,7 @@
     ],
     [
       16,
-      11,
+      30,
       0,
       14,
       0,
@@ -4278,7 +5323,7 @@
     ],
     [
       18,
-      14,
+      39,
       0,
       16,
       0,
@@ -4294,7 +5339,7 @@
     ],
     [
       20,
-      11,
+      30,
       0,
       18,
       0,
@@ -4366,8 +5411,8 @@
     ],
     [
       32,
-      22,
-      0,
+      23,
+      6,
       24,
       3,
       "LATENT"
@@ -4382,7 +5427,7 @@
     ],
     [
       34,
-      25,
+      39,
       0,
       11,
       0,
@@ -4390,11 +5435,123 @@
     ],
     [
       35,
-      25,
+      39,
       0,
       18,
       1,
       "IMAGE"
+    ],
+    [
+      36,
+      22,
+      9,
+      25,
+      3,
+      "BOUNDING_BOX"
+    ],
+    [
+      37,
+      40,
+      0,
+      12,
+      8,
+      "FLOAT"
+    ],
+    [
+      38,
+      40,
+      0,
+      13,
+      8,
+      "FLOAT"
+    ],
+    [
+      39,
+      40,
+      0,
+      15,
+      8,
+      "FLOAT"
+    ],
+    [
+      40,
+      40,
+      0,
+      18,
+      8,
+      "FLOAT"
+    ],
+    [
+      41,
+      23,
+      2,
+      27,
+      0,
+      "STRING"
+    ],
+    [
+      42,
+      11,
+      0,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      43,
+      11,
+      6,
+      30,
+      1,
+      "MASK"
+    ],
+    [
+      48,
+      34,
+      0,
+      21,
+      0,
+      "LORA_STACK"
+    ],
+    [
+      49,
+      25,
+      0,
+      39,
+      1,
+      "IMAGE"
+    ],
+    [
+      50,
+      37,
+      0,
+      39,
+      0,
+      "INTERP_MODEL"
+    ],
+    [
+      51,
+      38,
+      0,
+      39,
+      2,
+      "INT"
+    ],
+    [
+      52,
+      22,
+      5,
+      40,
+      0,
+      "FLOAT"
+    ],
+    [
+      53,
+      38,
+      0,
+      40,
+      1,
+      "INT"
     ],
     [
       24,
@@ -4413,52 +5570,36 @@
       "STRING"
     ],
     [
-      36,
-      22,
-      9,
-      25,
-      3,
-      "BOUNDING_BOX"
-    ],
-    [
-      37,
-      22,
-      5,
-      12,
-      8,
-      "FLOAT"
-    ],
-    [
-      38,
-      22,
-      5,
-      13,
-      8,
-      "FLOAT"
-    ],
-    [
-      39,
-      22,
-      5,
-      15,
-      8,
-      "FLOAT"
-    ],
-    [
-      40,
-      22,
-      5,
-      18,
-      8,
-      "FLOAT"
-    ],
-    [
-      41,
+      46,
+      21,
+      2,
       23,
       2,
-      27,
+      "VAE"
+    ],
+    [
+      47,
+      22,
       0,
-      "STRING"
+      23,
+      4,
+      "LATENT"
+    ],
+    [
+      44,
+      32,
+      0,
+      23,
+      5,
+      "IMAGE"
+    ],
+    [
+      45,
+      33,
+      0,
+      23,
+      6,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -4469,7 +5610,7 @@
         610,
         0,
         400,
-        1730
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -4481,7 +5622,7 @@
         1040,
         0,
         400,
-        1730
+        800
       ],
       "color": "#3f789e",
       "flags": {}
@@ -4493,7 +5634,7 @@
         1470,
         0,
         740,
-        1730
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -4505,7 +5646,7 @@
         2240,
         0,
         400,
-        1730
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -4517,7 +5658,7 @@
         2670,
         0,
         340,
-        1730
+        1860
       ],
       "color": "#3f789e",
       "flags": {}
@@ -4526,19 +5667,19 @@
       "id": 6,
       "title": "HDR Conversion",
       "bounding": [
-        3040,
+        3440,
         0,
         370,
-        1730
+        1860
       ],
       "color": "#b58b2a",
       "flags": {}
     },
     {
       "id": 7,
-      "title": "Write HDR Plate (EXR)",
+      "title": "Write HDR Master (EXR)",
       "bounding": [
-        4650,
+        5450,
         1890,
         370,
         1070
@@ -4550,7 +5691,7 @@
       "id": 8,
       "title": "Write Video (PQ HDR)",
       "bounding": [
-        4250,
+        5050,
         1890,
         370,
         1070
@@ -4562,7 +5703,7 @@
       "id": 9,
       "title": "Write Video (SDR)",
       "bounding": [
-        3440,
+        4240,
         1890,
         380,
         1070
@@ -4574,7 +5715,7 @@
       "id": 10,
       "title": "Contact Sheet",
       "bounding": [
-        3850,
+        4650,
         1890,
         370,
         1070
@@ -4586,29 +5727,89 @@
       "id": 11,
       "title": "Viewer",
       "bounding": [
-        3440,
+        4240,
         0,
         2720,
         1860
       ],
       "color": "#b58b2a",
       "flags": {}
+    },
+    {
+      "id": 12,
+      "title": "AI Fill - (Optional)",
+      "bounding": [
+        3840,
+        0,
+        370,
+        1860
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 13,
+      "title": "First Frame - (Optional)",
+      "bounding": [
+        1040,
+        830,
+        400,
+        500
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 14,
+      "title": "Last Frame - (Optional)",
+      "bounding": [
+        1040,
+        1360,
+        400,
+        500
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 15,
+      "title": "Turbo LoRA - (Optional)",
+      "bounding": [
+        1040,
+        -610,
+        400,
+        580
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 16,
+      "title": "Frame Interpolation - (Optional)",
+      "bounding": [
+        3040,
+        0,
+        370,
+        1860
+      ],
+      "color": "#a1309b",
+      "flags": {}
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3035,
+      "scale": 0.30350000000000105,
       "offset": [
-        164.7,
-        395.4
+        418.4924241836987,
+        1859.697328092375
       ]
     },
     "reroutes": [
       {
         "id": 1,
         "pos": [
-          3428,
+          4228,
           84
         ],
         "linkIds": [
@@ -4619,45 +5820,45 @@
       },
       {
         "id": 2,
+        "parentId": 1,
         "pos": [
-          3428,
+          4228,
           1872
         ],
         "linkIds": [
           14,
           15,
           16
-        ],
-        "parentId": 1
+        ]
       },
       {
         "id": 3,
+        "parentId": 2,
         "pos": [
-          4238,
+          5038,
           1872
         ],
         "linkIds": [
           14,
           15
-        ],
-        "parentId": 2
+        ]
       },
       {
         "id": 4,
+        "parentId": 3,
         "pos": [
-          4638,
+          5438,
           1872
         ],
         "linkIds": [
           14
-        ],
-        "parentId": 3
+        ]
       },
       {
         "id": 5,
         "pos": [
-          1022,
-          204
+          3425,
+          514
         ],
         "linkIds": [
           37,
@@ -4667,52 +5868,84 @@
       },
       {
         "id": 6,
+        "parentId": 5,
         "pos": [
-          1022,
+          3425,
           1878
         ],
         "linkIds": [
           37,
           38,
           39
-        ],
-        "parentId": 5
+        ]
       },
       {
         "id": 7,
+        "parentId": 6,
         "pos": [
-          3422,
+          4222,
           1878
         ],
         "linkIds": [
           37,
           38,
           39
-        ],
-        "parentId": 6
+        ]
       },
       {
         "id": 8,
+        "parentId": 7,
         "pos": [
-          4232,
+          5032,
           1878
         ],
         "linkIds": [
           37,
           38
-        ],
-        "parentId": 7
+        ]
       },
       {
         "id": 9,
+        "parentId": 8,
         "pos": [
-          4632,
+          5432,
           1878
         ],
         "linkIds": [
           37
+        ]
+      },
+      {
+        "id": 10,
+        "pos": [
+          3419,
+          354
         ],
-        "parentId": 8
+        "linkIds": [
+          18
+        ]
+      },
+      {
+        "id": 11,
+        "pos": [
+          3419,
+          1884
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 10
+      },
+      {
+        "id": 12,
+        "pos": [
+          4635,
+          1884
+        ],
+        "linkIds": [
+          18
+        ],
+        "parentId": 11
       }
     ],
     "linkExtensions": [
@@ -4739,6 +5972,10 @@
       {
         "id": 39,
         "parentId": 7
+      },
+      {
+        "id": 18,
+        "parentId": 12
       }
     ]
   },

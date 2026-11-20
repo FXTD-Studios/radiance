@@ -256,9 +256,9 @@ function homeView() {
         ? todo.map((t) => `<div class="st-todo-item"><span class="st-dot ${t.tone}"></span><div class="st-todo-text"><span>${h(t.title)}</span><span title="${h(t.text)}">${h(t.text)}</span></div>
             <button type="button" class="st-btn st-sm" data-go="${t.go.screen}" data-shot="${h(t.go.shot || "")}">${h(t.action)}</button></div>`).join("")
         : `<div class="st-todo-item"><span class="st-dot ok"></span><div class="st-todo-text"><span>Nothing is waiting</span><span>No shots in review, no failed renders</span></div></div>`;
-    const starts = ["official/Local/sdr_to_hdr.rad", "official/Local/sdr_to_hdr_analytic.rad", "official/Local/start.rad"]
+    const starts = ["official/Local/sdr_to_hdr.rad", "official/Local/sdr_to_hdr_analytic.rad", "official/Local/t2i_i2i_hdr.rad"]
         .map((f) => S.workflows.find((w) => w.filename.replace(/\\/g, "/") === f)).filter(Boolean);
-    const startText = { sdr_to_hdr: ["From a photo or video", "SDR to HDR with RUDRA ACES 2"], sdr_to_hdr_analytic: ["Without a model", "The analytic route, any GPU"], start: ["Generate one", "The Starter workflow"] };
+    const startText = { sdr_to_hdr: ["From a photo or video", "SDR to HDR with RUDRA ACES 2"], sdr_to_hdr_analytic: ["Without a model", "The analytic route, any GPU"], t2i_i2i_hdr: ["Generate one", "Text to image, edit or image to image"] };
     const startsHtml = starts.map((w) => {
         const [t, s] = startText[w.filename.split("/").pop().replace(".rad", "")] || [w.title, w.kicker];
         return `<button type="button" class="st-tile st-start" data-act="show-wf" data-file="${h(w.filename)}"><span class="st-thumb">${img(coverUrl(w.filename), "", "")}</span>
@@ -834,7 +834,7 @@ async function onClick(e) {
             if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId, shot: S.shot || "" })) toast("Saving the canvas…");
             break;
         case "export": await exportPackage(); break;
-        case "new": await openWorkflow("official/Local/start.rad"); break;
+        case "new": await openWorkflow("official/Local/t2i_i2i_hdr.rad"); break;
         case "pick-gizmo": S.gizmo = id; render(); break;
         case "add-gizmo": {
             const g = S.gizmos.find((x) => x.id === id);
@@ -883,7 +883,7 @@ function wire() {
         if (el?.tagName === "IMG" && el.dataset.ph != null) el.replaceWith(Object.assign(document.createElement("span"), { className: "st-ph", textContent: el.dataset.ph }));
     }, true);
     $("stImport").onclick = () => $("stImportFile").click();
-    $("stNew").onclick = () => openWorkflow("official/Local/start.rad");
+    $("stNew").onclick = () => openWorkflow("official/Local/t2i_i2i_hdr.rad");
     $("stImportFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); };
     $("stGizmoFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importGizmo(f); };
     $("stUploadFile").onchange = (e) => { const fs = e.target.files; if (fs?.length) uploadAssets(fs).finally(() => { e.target.value = ""; }); };

@@ -75,7 +75,7 @@ export function workflowGroups(wf) {
     if (!isOfficial(wf?.filename)) groups.add("mine");
     if (/(^|[\\/])api[\\/]/.test(path) || /^api\b/.test(kicker)) groups.add("api");
     if (/video|ltx|wan|plates|remaster/.test(kicker + " " + path)) groups.add("video");
-    if (/generate|t2i|flux|ltx|wan22/.test(kicker + " " + path) || groups.has("api")) groups.add("generate");
+    if (/generate|t2i|flux|ltx|wan/.test(kicker + " " + path) || groups.has("api")) groups.add("generate");
     if (/deliver/.test(kicker + " " + path)) groups.add("deliver");
     if (/hdr|remaster|sdr/.test(kicker) || /sdr_to_hdr|remaster/.test(path)) groups.add("hdr");
     return [...groups];
@@ -83,8 +83,8 @@ export function workflowGroups(wf) {
 
 /** One card per workflow, official ones first in the order a newcomer needs them. */
 export function workflowCards(list) {
-    const order = ["start", "sdr_to_hdr", "sdr_to_hdr_analytic", "sdr_remaster_ai_fill", "hdr_delivery",
-        "colour_grade", "shot_look_match", "t2i_i2i_hdr"];
+    const order = ["t2i_i2i_hdr", "sdr_to_hdr", "sdr_to_hdr_analytic", "sdr_remaster_ai_fill", "hdr_delivery",
+        "colour_grade", "shot_look_match"];
     const rank = (wf) => {
         const i = order.indexOf(baseName(wf.filename));
         if (!isOfficial(wf.filename)) return 1000;
