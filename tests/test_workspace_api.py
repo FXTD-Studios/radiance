@@ -1214,7 +1214,7 @@ def test_dashboard_payload_shape_and_active_project(populated):
     payload = body(resp)
 
     assert payload["source"] == "Live API"
-    assert payload["user"] == {"name": "Ahmed", "role": "Artist"}
+    assert payload["user"] == {"name": "", "role": "Artist"}   # no hard-coded artist name
     assert payload["activeProjectId"] in {"show-a", "show-b"}
     assert len(payload["projects"]) == 2
     assert payload["continueWorking"]["filename"].endswith(".rad")
@@ -1252,7 +1252,6 @@ def test_project_versions_endpoint(populated):
     assert {v["shot"] for v in versions} == {"SH010", "SH020"}
     assert {v["version"] for v in versions} == {"v001", "v002"}
     assert all(v["status"] == "WIP" for v in versions)
-    assert len(versions) <= 12
 
 
 def test_project_versions_include_backups(ws):
@@ -1284,7 +1283,7 @@ def test_project_notes_reads_both_json_shapes(populated):
     notes_path.write_text(json.dumps(["fix the sky", "regrade"]))
     resp = run(populated.m.list_project_notes(Req(match_info={"project_id": "show-a"})))
     assert resp.status == 200
-    assert body(resp)["notes"] == ["fix the sky", "regrade"]
+    assert body(resp)["notes"] == ["regrade", "fix the sky"]   # newest first
 
     notes_path.write_text(json.dumps({"notes": ["wrapped"]}))
     assert body(run(populated.m.list_project_notes(
@@ -2517,3 +2516,71 @@ def test_node_run_and_save_version_embed_input_files(populated):
         _, meta, assets = populated.m._unpack_rad_v3(written.read_bytes())
         assert assets == {"ref.png": PNG_1PX}, written.name
         assert meta["inputs"] == {"ref.png": "ref.png"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Project Manager review (20 Nov 2026): PM1-PM4, PM8
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_every_shot_stays_on_the_shots_page(ws):
+    """PM3: the list was the project's 12 newest entries, so older shots vanished."""
+    for n in range(1, 41):
+        ws.save(f"SHOW/sh{n:03d}0_v001.rad")
+    versions = body(run(ws.m.list_project_versions(Req(match_info={"project_id": "show"}))))["versions"]
+    assert len({v["shot"] for v in versions}) == 40
+
+
+def test_the_node_version_reads_as_the_file_does():
+    """PM8: the Project Manager node stores 2; its file says v0002."""
+    assert ws_mod._version_label(2, "SH040_comp_ada_v0002") == "v0002"
+    assert ws_mod._version_label("3", "x") == "v0003"
+    assert ws_mod._version_label(None, "SH040_v007") == "v007"
+    assert ws_mod._version_label("v012", "x") == "v012"
+
+
+def test_save_canvas_names_the_next_version_of_the_selected_shot(populated):
+    """PM1: with no Project Manager node, the save was dashboard_<time>.rad and
+    never showed on the Shots page."""
+    payload = body(run(populated.m.save_project_version(Req(
+        match_info={"project_id": "show-a"}, json_body={"content": "{}", "shot": "SH010"}))))
+    assert payload["filename"] == "SHOW A/SH010_v003.rad"           # sh010-v001, -v002 exist
+    payload = body(run(populated.m.save_project_version(Req(
+        match_info={"project_id": "show-a"}, json_body={"content": "{}", "shot": "SH050"}))))
+    assert payload["filename"] == "SHOW A/SH050_v001.rad"
+    payload = body(run(populated.m.save_project_version(Req(
+        match_info={"project_id": "show-a"}, json_body={"content": "{}", "shot": "../evil"}))))
+    assert payload["filename"].startswith("SHOW A/dashboard_")      # not a shot name: the old default
+
+
+def test_a_retake_note_is_saved_and_read_back(populated):
+    """PM2: nothing wrote notes, so Ask for changes carried no reason."""
+    resp = run(populated.m.add_project_note(Req(match_info={"project_id": "show-a"},
+               json_body={"shot": "SH010", "text": "edge of the sky flickers at 1012", "author": "Sup"})))
+    assert resp.status == 200, body(resp)
+    run(populated.m.add_project_note(Req(match_info={"project_id": "show-a"},
+        json_body={"shot": "SH020", "text": "grain too strong"})))
+    notes = body(run(populated.m.list_project_notes(Req(match_info={"project_id": "show-a"}))))["notes"]
+    assert notes[0].startswith("SH020") and notes[0].endswith("grain too strong")   # newest first
+    assert notes[1].startswith("SH010 · Sup · ") and "flickers at 1012" in notes[1]
+    assert run(populated.m.add_project_note(Req(match_info={"project_id": "show-a"},
+               json_body={"shot": "SH010", "text": "  "}))).status == 400
+    assert run(populated.m.add_project_note(Req(match_info={"project_id": "nope"},
+               json_body={"text": "x"}))).status == 404
+
+
+def test_outputs_group_sequences_and_match_whole_shot_codes(populated):
+    """PM4: a sequence was 20 loose frames, and SH010 matched SH0100."""
+    seq = populated.out / "SH010" / "comp"
+    seq.mkdir(parents=True)
+    for f in range(1001, 1101):
+        (seq / f"SH010_comp_v002.{f}.exr").write_bytes(b"x" * 10)
+    (populated.out / "SH0100_comp.exr").write_bytes(b"x")            # another shot
+    (populated.out / "sh020_preview.mov").write_bytes(b"x")
+    outputs = body(run(populated.m.list_project_outputs(Req(match_info={"project_id": "show-a"}))))["outputs"]
+    names = {o["name"]: o for o in outputs}
+    assert "SH0100_comp.exr" not in names
+    seq_item = names["SH010_comp_v002.####.exr"]
+    assert seq_item["frames"] == 100 and seq_item["range"] == [1001, 1100]
+    assert seq_item["type"] == "EXR SEQ" and seq_item["path"].endswith(".1001.exr")
+    assert seq_item["size"] == "1000 B"
+    assert "sh020_preview.mov" in names

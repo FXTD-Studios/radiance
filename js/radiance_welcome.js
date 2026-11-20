@@ -6,7 +6,7 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { RADIANCE_VERSION } from "./radiance_version.js";
-import { LINKS, TOUR_PAGES, notesFor, setupSummary, startupView, stepPage } from "./radiance_welcome_logic.js";
+import { LINKS, TOUR_PAGES, displayCheck, notesFor, probeDisplay, setupSummary, startupView, stepPage } from "./radiance_welcome_logic.js";
 
 const BASE = import.meta.url.replace(/\/[^/]+$/, "");
 const SHOW_ID = "Radiance.Welcome.ShowAtStartup";
@@ -121,6 +121,7 @@ const CSS = `
 .rw-hw-row span:first-child{color:#8e8e93}.rw-hw-row span:last-child{color:#e8e8ea;overflow-wrap:anywhere}
 .rw-state{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5;color:#bcbcc1}
 .rw-state i{flex:0 0 8px;height:8px;margin-top:6px;border-radius:50%;background:#48484a}
+.rw-fix{background:none;border:0;padding:0;font:inherit;color:#409cff;cursor:pointer;text-decoration:none}.rw-fix:hover{text-decoration:underline}.rw-fix:focus-visible{outline:2px solid #409cff;outline-offset:2px}
 .rw-state i.ok{background:#30d158}.rw-state i.warn{background:#ffd60a}.rw-state i.bad{background:#ff453a}.rw-state i.info{background:#409cff}
 .rw-bar{height:6px;border-radius:3px;background:#2c2c2e;overflow:hidden;margin-top:6px}.rw-bar>div{height:100%;background:#0a84ff;width:0;transition:width .3s}
 .rw-cover{position:relative;width:316px;height:158px;box-sizing:border-box;border-radius:10px;border:1px solid #2f2f32;overflow:hidden;
@@ -223,7 +224,7 @@ const setup = {
     async scan(force) {
         if (this.busy || (this.scanResult && !force)) { this.paint(); return; }
         this.busy = true; this.error = ""; this.paint();
-        try { this.scanResult = await this.post("/radiance/setup/scan"); }
+        try { this.scanResult = await this.post("/radiance/setup/scan", { refresh: !!force }); }
         catch (e) { this.error = e.message; }
         this.busy = false;
         const j = (this.scanResult?.downloads || []).find((x) => x.id === "radiance/RUDRA_ACES_2");
@@ -236,6 +237,13 @@ const setup = {
             this.job = (res.downloads || []).find((x) => x.id === "radiance/RUDRA_ACES_2") || { status: "queued" };
             this.paint(); this.poll();
         } catch (e) { this.error = e.message; this.paint(); }
+    },
+    async fix(action) {
+        try {
+            const res = await this.post("/radiance/setup/fix", { action });
+            this.scanResult.checks = (this.scanResult.checks || []).map((c) => (c.id === res.check.id ? res.check : c));
+        } catch (e) { this.error = e.message; }
+        this.paint();
     },
     poll() {
         clearTimeout(this.timer);
@@ -291,6 +299,21 @@ const setup = {
         body.appendChild(state(this.scanResult.summary.ready === this.scanResult.summary.workflows ? "ok" : "info",
             `${sum.ready}. The Models page lists what the others need and downloads it, each file checked before it is installed.`));
         if (sum.downloadsOff) body.appendChild(state("warn", "Downloads are switched off on this machine (RADIANCE_ALLOW_DOWNLOADS=0 or an offline setting)."));
+        // First-start checks: colour, video, output, Hugging Face, and this screen.
+        const checks = [...(this.scanResult.checks || []), displayCheck(probeDisplay(window))];
+        for (const c of checks) {
+            const d = state(c.status, `${c.title}: ${c.detail}`);
+            d.dataset.check = c.id;
+            if (c.fix?.action) {
+                const b = el("button", "rw-fix", c.fix.label); b.type = "button";
+                b.addEventListener("click", () => this.fix(c.fix.action));
+                d.lastChild.append(" ", b);
+            } else if (c.fix?.url) {
+                const a = el("a", "rw-fix", c.fix.label); a.href = c.fix.url; a.target = "_blank"; a.rel = "noopener";
+                d.lastChild.append(" ", a);
+            }
+            body.appendChild(d);
+        }
     },
 };
 

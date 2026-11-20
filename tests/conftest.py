@@ -813,3 +813,22 @@ def caplog(caplog):
         yield caplog
     finally:
         logger.removeHandler(caplog.handler)
+
+
+@pytest.fixture(autouse=True)
+def _no_hub_from_the_first_start_checks(monkeypatch):
+    """The setup scan runs the first-start checks; none of them may reach the
+    Hub from a test. The Hub answers as unreachable unless a test says otherwise."""
+    try:
+        from radiance.core import first_start
+    except Exception:  # noqa: BLE001
+        yield
+        return
+    import urllib.error
+
+    def offline(url, token="", timeout=0):
+        raise urllib.error.URLError("tests are offline")
+    monkeypatch.setattr(first_start, "HEAD", offline)
+    first_start._hub_cache.update(at=0.0, result=None)
+    yield
+    first_start._hub_cache.update(at=0.0, result=None)
