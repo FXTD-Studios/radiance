@@ -219,7 +219,7 @@ class TestWanFrames:
         ((name, kwargs),) = natives
         assert name == "WanImageToVideo"
         assert (kwargs["width"], kwargs["height"], kwargs["length"], kwargs["batch_size"]) == (1280, 704, 81, 1)
-        assert kwargs["start_image"] is first and kwargs["vae"] == "vae"
+        assert torch.equal(kwargs["start_image"], first) and kwargs["vae"] == "vae"
         assert pos[0][1]["by"] == neg[0][1]["by"] == "WanImageToVideo"
         assert latent == {"samples": "i2v"}
 
@@ -228,8 +228,8 @@ class TestWanFrames:
         self._run("wan", (1, 16, 21, 88, 160), first_frame=first, last_frame=last)
         self._run("wan", (1, 16, 21, 88, 160), last_frame=last)
         assert [name for name, _ in natives] == ["WanFirstLastFrameToVideo"] * 2
-        assert (natives[0][1]["start_image"], natives[0][1]["end_image"]) == (first, last)
-        assert (natives[1][1]["start_image"], natives[1][1]["end_image"]) == (None, last)
+        assert torch.equal(natives[0][1]["start_image"], first) and torch.equal(natives[0][1]["end_image"], last)
+        assert natives[1][1]["start_image"] is None and torch.equal(natives[1][1]["end_image"], last)
 
     def test_the_5b_puts_its_first_frame_in_the_latent(self, natives):
         first = torch.zeros(1, 32, 32, 3)
@@ -237,7 +237,7 @@ class TestWanFrames:
         ((name, kwargs),) = natives
         assert name == "Wan22ImageToVideoLatent"
         assert (kwargs["width"], kwargs["height"], kwargs["length"]) == (1280, 704, 121)
-        assert kwargs["start_image"] is first and latent == {"samples": "ti2v"}
+        assert torch.equal(kwargs["start_image"], first) and latent == {"samples": "ti2v"}
 
     def test_the_5b_refuses_a_last_frame(self, natives):
         with pytest.raises(ValueError, match="first frame only"):
@@ -249,6 +249,20 @@ class TestWanFrames:
             self._run("wan_ti2v", (1, 16, 21, 88, 160), first_frame=torch.zeros(1, 32, 32, 3))
         assert not natives
 
-    def test_without_a_frame_wan_encodes_the_text_alone(self, natives):
+    def test_without_a_frame_wan_encodes_the_text_alone_and_passes_video_latent_through(self, natives):
         *_rest, latent = self._run("wan", (1, 16, 21, 88, 160))
-        assert not natives and latent is None
+        assert not natives and latent["samples"].shape == (1, 16, 21, 88, 160)
+
+    def test_without_model_meta_a_t5_encoder_leaves_the_frames_out(self, natives, monkeypatch):
+        # Chroma and PixArt read as "wan" from their tokenizer alone: frames need the Loader's word.
+        warnings = []
+        monkeypatch.setattr(prompt.logger, "warning", lambda message, *args: warnings.append(message % args))
+        prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="A cat", vae="vae", first_frame=torch.zeros(1, 32, 32, 3))
+        assert not natives
+        assert any("first_frame and last_frame are read by MiniMax H3 and Wan" in w for w in warnings)
+
+    def test_an_rgba_frame_reaches_the_native_node_as_rgb(self, natives):
+        self._run("wan", (1, 16, 21, 88, 160), first_frame=torch.zeros(1, 32, 32, 4), last_frame=torch.ones(1, 32, 32, 4))
+        assert natives[0][1]["start_image"].shape[-1] == natives[0][1]["end_image"].shape[-1] == 3
+
