@@ -2,7 +2,7 @@
   "id": "2bdfcee5-e649-44f7-9d9e-0b4baff1888b",
   "revision": 0,
   "last_node_id": 13,
-  "last_link_id": 11,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
@@ -527,6 +527,26 @@
           "name": "info",
           "type": "STRING",
           "links": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            12
+          ],
+          "slot_index": 3,
+          "label": null
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            13
+          ],
+          "slot_index": 4,
+          "label": null
         }
       ],
       "properties": {
@@ -1217,7 +1237,7 @@
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
-          "link": null
+          "link": 13
         },
         {
           "localized_name": "mask",
@@ -1282,7 +1302,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 12
         },
         {
           "localized_name": "quality",
@@ -2085,6 +2105,22 @@
       10,
       0,
       "IMAGE"
+    ],
+    [
+      12,
+      2,
+      3,
+      8,
+      8,
+      "FLOAT"
+    ],
+    [
+      13,
+      2,
+      4,
+      8,
+      1,
+      "AUDIO"
     ]
   ],
   "groups": [
