@@ -279,10 +279,13 @@ function syncFrameRateFromLoader(node) {
     if (linked === undefined || _isMiniMaxH3(modelTypeW?.value)) return _setLabelMarker(frameRateW, false, "");
     if (frameRateW._radForced) {
         frameRateW._radForced = false;
-        frameRateW._radAutoValue = frameRateW.value;
+        if (parseFloat(frameRateW.value) === 24) frameRateW._radAutoValue = frameRateW.value;
     }
     const synced = syncAutoValue(node, frameRateW, linked);
-    if (synced) frameRateW.callback?.call(frameRateW, frameRateW.value);
+    if (synced) {
+        frameRateW.callback?.call(frameRateW, frameRateW.value);
+        _syncDurationSecondsStep(modelTypeW, node.widgets?.find(w => w.name === "duration_seconds"), frameRateW);
+    }
     const marker = linked === undefined ? "" : parseFloat(frameRateW?.value) === linked ? " 🧲" : " ✎";
     return _setLabelMarker(frameRateW, !!marker, marker) || synced;
 }

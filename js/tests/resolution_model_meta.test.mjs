@@ -154,3 +154,28 @@ test('after MiniMax H3, by the Loader or by model_type, a Wan Loader puts its 16
     assert.equal(frameRateW.value, 16);
 });
 
+test('a rate set by hand after MiniMax H3 stays, and the duration step follows the restored rate', () => {
+    const { node, loader, modelTypeW, frameRateW } = withFrameRate('Wan 2.2');
+    const durSecW = { name: 'duration_seconds', value: 5, options: {} };
+    node.widgets.push(durSecW);
+    context.syncFps(node);
+    loader.widgets[0].value = 'MiniMax H3';
+    modelTypeW.value = 'MiniMax H3 (24ch)';
+    context._forceMiniMaxFrameRate(modelTypeW, frameRateW);
+    context.syncFps(node);
+    loader.widgets[0].value = 'Qwen-Image';
+    modelTypeW.value = 'Qwen-Image / Krea 2 (16ch)';
+    context.syncFps(node);
+    frameRateW.value = 30;
+    loader.widgets[0].value = 'Wan 2.2';
+    modelTypeW.value = 'WAN (16ch)';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 30);
+    assert.equal(frameRateW.label, 'frame_rate ✎');
+    frameRateW.value = 24;
+    frameRateW._radForced = true;
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 16);
+    assert.equal(durSecW.options.round, 4 / 16);
+});
+
