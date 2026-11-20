@@ -60,7 +60,7 @@ def test_the_catalog_knows_what_each_workflow_loads():
     assert {"radiance/RUDRA_ACES_2", "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["t2i_i2i_hdr"]["required"])
     assert "radiance/depth_anything_v2_large" in w["t2i_i2i_hdr"]["optional"]
     # Wan 2.2's loader pairs the low-noise expert itself.
-    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan22_hdr_shot_plates"]["required"]
+    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan_hdr"]["required"]
     # A bypassed node's model is optional, an alternative is not required.
     assert "loras/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
     assert "diffusion_models/minimax_h3_fl2va_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
