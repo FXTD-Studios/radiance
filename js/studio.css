@@ -258,3 +258,13 @@ button.st-tr[aria-pressed="true"] { background: rgba(10,132,255,.07); }
 .st-check:first-of-type { border-top: 0; }
 .st-check-title { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .st-check .st-btn, .st-check .st-link { flex-shrink: 0; margin-top: 2px; }
+
+/* Gizmo tiles: delete straight from the library (4.0) */
+.st-tile-wrap { position: relative; display: flex; flex-direction: column; }
+.st-tile-wrap > .st-tile { flex: 1; }
+.st-tile-del { position: absolute; bottom: 14px; right: 14px; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(28,28,30,.86); border: 1px solid var(--line2); color: var(--text2); opacity: 0; transition: opacity .12s, color .12s, border-color .12s; }
+.st-tile-wrap:hover .st-tile-del, .st-tile-wrap:focus-within .st-tile-del { opacity: 1; }
+.st-tile-del:hover, .st-tile-del:focus-visible { color: var(--bad); border-color: var(--bad); }
+.st-tile-del:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: none) { .st-tile-del { opacity: 1; } }

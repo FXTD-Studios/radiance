@@ -18,6 +18,7 @@ const ICON = {
     renders: "M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6",
     upload: "M12 15V3M7 8l5-5 5 5M4 15v5h16v-5",
     gizmos: "M12 3 4 7.5v9L12 21l8-4.5v-9zM4 7.5 12 12l8-4.5M12 12v9",
+    trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
     models: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
 };
 const NAV = [["home", "Home"], ["workflows", "Workflows"], ["gizmos", "Gizmos"], ["assets", "Assets"], ["shots", "Shots"], ["renders", "Renders"], ["models", "Models"]];
@@ -387,10 +388,13 @@ function gizmosView() {
     if (sel) S.gizmo = sel.id;
     const restart = S.gizmos.filter((g) => g.status.key === "restart").length;
     const grid = shown.length
-        ? `<div class="st-grid">${shown.map((g) => `<button type="button" class="st-tile" data-act="pick-gizmo" data-id="${h(g.id)}" aria-pressed="${sel && g.id === sel.id}">
+        // The trash button deletes from the library straight from the grid (4.0);
+        // the Delete key does the same on a focused tile.
+        ? `<div class="st-grid">${shown.map((g) => `<div class="st-tile-wrap"><button type="button" class="st-tile" data-act="pick-gizmo" data-id="${h(g.id)}" aria-pressed="${sel && g.id === sel.id}" aria-keyshortcuts="Delete">
             <span class="st-thumb">${gizmoCover(g)}</span>
             <span class="st-tile-text"><span class="st-kicker">Gizmo</span><span class="st-tile-title" title="${h(g.title)}">${h(g.title)}</span>
-            <span class="st-tile-sub"><span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></span></span></button>`).join("")}</div>`
+            <span class="st-tile-sub"><span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></span></span></button>
+            <button type="button" class="st-tile-del" data-act="delete-gizmo" data-id="${h(g.id)}" title="Delete ${h(g.title)} from the library" aria-label="Delete ${h(g.title)} from the library">${svg(ICON.trash, 16)}</button></div>`).join("")}</div>`
         : S.query ? empty("Nothing matches your search", "Try another word, or clear the search.")
             : `<div class="st-empty"><b>No gizmos yet</b>Select some nodes on the canvas, right-click and choose ◎ Create Radiance Gizmo… It is saved here, and in the node menu after a restart.<br><br><button type="button" class="st-btn st-sm" data-act="import-gizmo">Import a .gizmo file</button></div>`;
     return `<div class="st-page">
@@ -419,6 +423,19 @@ function gizmoRail(g) {
         <div class="st-actions"><button type="button" class="st-btn st-danger" data-act="delete-gizmo" data-id="${h(g.id)}">Delete</button></div>
         <div class="st-path st-mono">${h(g.file)}</div>
       </div></aside>`;
+}
+
+async function deleteGizmo(id) {
+    const g = S.gizmos.find((x) => x.id === id);
+    const name = g?.title || id;
+    if (!confirm(`Delete the gizmo "${name}" from the library?\n\nIt is moved to the gizmos/.trash folder, so it can be brought back by hand. Its node stays in the menu until ComfyUI restarts.`)) return;
+    try {
+        await postJSON("/radiance/gizmos/delete", { name: id });
+        toast(`${name} deleted`);
+        if (S.gizmo === id) S.gizmo = null;
+        await loadGizmos();
+        render();
+    } catch (err) { toast(`Delete failed: ${err.message}`, true); }
 }
 
 // ── models (setup check) ─────────────────────────────────────────────────────
@@ -848,11 +865,7 @@ async function onClick(e) {
             a.click();
             break;
         }
-        case "delete-gizmo":
-            if (!confirm(`Delete the gizmo ${id}? It is moved to the gizmos/.trash folder; its node stays until ComfyUI restarts.`)) break;
-            try { await postJSON("/radiance/gizmos/delete", { name: id }); toast("Gizmo deleted"); S.gizmo = null; await loadGizmos(); render(); }
-            catch (err) { toast(`Delete failed: ${err.message}`, true); }
-            break;
+        case "delete-gizmo": await deleteGizmo(id); break;
         case "import-gizmo": $("stGizmoFile").click(); break;
         case "rescan": displayProbe = null; render(); await loadSetup(true); render(); break;
         case "setup-fix":
@@ -909,6 +922,13 @@ function wire() {
     });
     document.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("stSearch").focus(); $("stSearch").select(); return; }
+        // Delete (or Backspace on a Mac) on a focused gizmo tile removes it from the library.
+        const tile = document.activeElement?.closest?.('.st-tile[data-act="pick-gizmo"]');
+        if (tile && (e.key === "Delete" || (e.key === "Backspace" && e.metaKey))) {
+            e.preventDefault();
+            deleteGizmo(tile.dataset.id);
+            return;
+        }
         if (e.key === "Escape") {
             if (document.activeElement === $("stSearch") && $("stSearch").value) { $("stSearch").value = ""; S.query = ""; render(); return; }
             closeStudio();

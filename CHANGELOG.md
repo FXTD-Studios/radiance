@@ -189,6 +189,9 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **Delete a gizmo straight from the library**: a trash button on each tile of
+  the Gizmos page (shown on hover or focus), and the Delete key on a focused
+  tile. As before, the file moves to gizmos/.trash after a confirmation.
 - **First-start checks** on the Models page and the tour's Set up page, each
   with a status and, where it can, a fix: the OCIO config and its ACES 2.0
   SDR/HDR views; ffmpeg's H.265 10-bit and ProRes encoders; Write's default
