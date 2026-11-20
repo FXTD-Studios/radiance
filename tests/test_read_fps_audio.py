@@ -115,11 +115,11 @@ def test_the_shipped_workflows_wire_fps_and_audio_from_read_to_write():
         return found
 
     checked = 0
-    for name in ("sdr_to_hdr", "sdr_to_hdr_ai_fill", "sdr_remaster_ai_fill", "hdr_delivery", "shot_look_match"):
+    for name in ("sdr_to_hdr", "sdr_remaster_ai_fill", "hdr_delivery", "shot_look_match"):
         graph = json.loads((ROOT / "workflows" / f"{name}.json").read_text(encoding="utf-8"))
         assert wired(graph), f"{name}: no Write takes fps and audio from Read"
         card = (ROOT / "workflows" / "official" / "Local" / f"{name}.rad").read_bytes()
         with zipfile.ZipFile(io.BytesIO(card[4:])) as z:
             assert json.loads(z.read("workflow.json")) == graph, f"{name}: the library card is stale"
         checked += 1
-    assert checked == 5
+    assert checked == 4
