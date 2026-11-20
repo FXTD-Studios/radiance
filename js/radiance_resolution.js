@@ -164,6 +164,7 @@ function _forceMiniMaxFrameRate(modelTypeW, frameRateW) {
     if (frameRateW && _isMiniMaxH3(modelTypeW?.value) && parseFloat(frameRateW.value) !== 24) {
         frameRateW.value = 24;
         if (frameRateW.inputEl) frameRateW.inputEl.value = 24;
+        frameRateW._radForced = true;
     }
 }
 
@@ -271,9 +272,15 @@ function syncModelTypeFromLoader(node) {
 const FRAME_RATE_BY_FAMILY = { wan: 16, wan_ti2v: 24, hunyuan_video: 24, hunyuan_video_15: 24, kandinsky5: 24 };
 function syncFrameRateFromLoader(node) {
     const frameRateW = node.widgets?.find(w => w.name === "frame_rate");
+    const modelTypeW = node.widgets?.find(w => w.name === "model_type");
     const linked = FRAME_RATE_BY_FAMILY[loaderModelType(modelMetaSourceNode(node))];
-    // A model with no fixed rate keeps a rate set by hand for when a mapped one comes back.
-    if (linked === undefined) return _setLabelMarker(frameRateW, false, "");
+    // A model with no fixed rate keeps a rate set by hand for when a mapped one comes back;
+    // MiniMax H3's forced 24 is no edit of the user's: the Loader's rate comes back after it.
+    if (linked === undefined || _isMiniMaxH3(modelTypeW?.value)) return _setLabelMarker(frameRateW, false, "");
+    if (frameRateW._radForced) {
+        frameRateW._radForced = false;
+        frameRateW._radAutoValue = frameRateW.value;
+    }
     const synced = syncAutoValue(node, frameRateW, linked);
     if (synced) frameRateW.callback?.call(frameRateW, frameRateW.value);
     const marker = linked === undefined ? "" : parseFloat(frameRateW?.value) === linked ? " 🧲" : " ✎";
