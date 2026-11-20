@@ -806,6 +806,12 @@ are the results.
 
 ### Fixed
 
+- **Read's file list showed images only.** An MP4, MOV or MXF in ComfyUI's
+  input folder never appeared, and the upload button took PNG, JPG and WebP
+  only, because the list was marked as an image upload. The list now holds
+  every image and video in the input folder; **Upload image or video…** and
+  dropping a file on the node take both. Stills get a preview on the node
+  too (EXR, DPX, HDR and TIFF tone-mapped for the preview only).
 - **QC failed every HDR master.** Values above 1.0 were reported as clipped
   and out of gamut, so an ACEScg or PQ master always got "QC FAILED". QC has a
   `signal` input (Auto, Display 0-1, Scene-linear / HDR): scene-linear reports
