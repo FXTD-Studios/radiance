@@ -40,6 +40,7 @@ def test_the_upload_button_takes_images_and_video():
     assert "onDragDrop" in js                      # dropping a file on the node uploads it
 
 
+@pytest.mark.real_torch
 def test_a_linear_exr_gets_a_tone_mapped_preview(tmp_path):
     OpenEXR = pytest.importorskip("OpenEXR")
     rgb = np.zeros((32, 48, 3), np.float32)
