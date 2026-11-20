@@ -43,7 +43,7 @@ MODEL_EXT = re.compile(r"\.(safetensors|ckpt|pth|pt|gguf|bin|sft)$", re.I)
 LINK = re.compile(r"\[([^\]]+)\]\((https://huggingface\.co/[^)\s]+)\)([^\[\n]*)")
 KNOWN_FOLDERS = ("diffusion_models", "text_encoders", "vae", "loras", "latent_upscale_models",
                  "upscale_models", "checkpoints", "clip", "clip_vision", "unet", "controlnet",
-                 "geometry_estimation", "audio_encoders", "model_patches")
+                 "geometry_estimation", "audio_encoders", "model_patches", "frame_interpolation")
 
 # Files a workflow loads that its widgets do not name: the loader picks them
 # itself (Wan 2.2's low-noise expert is paired with the high-noise one).

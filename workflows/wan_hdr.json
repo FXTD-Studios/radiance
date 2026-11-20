@@ -1,14 +1,14 @@
 {
   "id": "25295b86-a823-4ed7-81e1-1ee1df18d54e",
   "revision": 0,
-  "last_node_id": 36,
-  "last_link_id": 48,
+  "last_node_id": 41,
+  "last_link_id": 53,
   "nodes": [
     {
       "id": 11,
       "type": "RadianceSDRToHDRUniversal",
       "pos": [
-        3070,
+        3470,
         70
       ],
       "size": [
@@ -16,7 +16,7 @@
         830
       ],
       "flags": {},
-      "order": 15,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
@@ -414,7 +414,7 @@
       "id": 12,
       "type": "RadianceWrite",
       "pos": [
-        5080,
+        5480,
         1960
       ],
       "size": [
@@ -422,7 +422,7 @@
         530
       ],
       "flags": {},
-      "order": 17,
+      "order": 22,
       "mode": 0,
       "inputs": [
         {
@@ -747,7 +747,7 @@
       "id": 13,
       "type": "RadianceWrite",
       "pos": [
-        4680,
+        5080,
         1960
       ],
       "size": [
@@ -755,7 +755,7 @@
         530
       ],
       "flags": {},
-      "order": 18,
+      "order": 23,
       "mode": 4,
       "inputs": [
         {
@@ -1080,7 +1080,7 @@
       "id": 14,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        3870,
+        4270,
         1960
       ],
       "size": [
@@ -1088,7 +1088,7 @@
         250
       ],
       "flags": {},
-      "order": 19,
+      "order": 24,
       "mode": 4,
       "inputs": [
         {
@@ -1221,7 +1221,7 @@
       "id": 15,
       "type": "RadianceWrite",
       "pos": [
-        3870,
+        4270,
         2320
       ],
       "size": [
@@ -1229,7 +1229,7 @@
         506
       ],
       "flags": {},
-      "order": 21,
+      "order": 26,
       "mode": 4,
       "inputs": [
         {
@@ -1554,7 +1554,7 @@
       "id": 16,
       "type": "RadianceContactSheet",
       "pos": [
-        4280,
+        4680,
         1960
       ],
       "size": [
@@ -1562,7 +1562,7 @@
         170
       ],
       "flags": {},
-      "order": 22,
+      "order": 27,
       "mode": 4,
       "inputs": [
         {
@@ -1652,7 +1652,7 @@
       "id": 17,
       "type": "RadianceWrite",
       "pos": [
-        4280,
+        4680,
         2230
       ],
       "size": [
@@ -1660,7 +1660,7 @@
         410
       ],
       "flags": {},
-      "order": 23,
+      "order": 28,
       "mode": 4,
       "inputs": [
         {
@@ -1985,7 +1985,7 @@
       "id": 18,
       "type": "RadianceViewer",
       "pos": [
-        3870,
+        4270,
         70
       ],
       "size": [
@@ -1993,7 +1993,7 @@
         1760
       ],
       "flags": {},
-      "order": 20,
+      "order": 25,
       "mode": 0,
       "inputs": [
         {
@@ -2222,7 +2222,7 @@
         290
       ],
       "flags": {},
-      "order": 9,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -2558,7 +2558,7 @@
         526
       ],
       "flags": {},
-      "order": 10,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -2761,10 +2761,7 @@
           "name": "frame_rate",
           "type": "FLOAT",
           "links": [
-            37,
-            38,
-            39,
-            40
+            52
           ]
         },
         {
@@ -2846,7 +2843,7 @@
         1320
       ],
       "flags": {},
-      "order": 11,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -3186,10 +3183,10 @@
       ],
       "size": [
         340,
-        1262
+        950
       ],
       "flags": {},
-      "order": 13,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
@@ -3806,7 +3803,7 @@
         4,
         null,
         null,
-        "Manual / Custom Mode. All widgets are unlocked."
+        "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
       ],
       "widgets_values_named": {
         "preset": "Auto",
@@ -3860,7 +3857,7 @@
         "temporal_overlap": 4,
         "› Export Preset": null,
         "› Import Preset": null,
-        "preset_info": "Manual / Custom Mode. All widgets are unlocked."
+        "preset_info": "Auto mode. Only the parameters that actually apply to the loaded model are shown, auto-filled from the Loader (🧲). Select 'Custom' to unlock every widget."
       }
     },
     {
@@ -3875,7 +3872,7 @@
         382
       ],
       "flags": {},
-      "order": 14,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -4090,8 +4087,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            34,
-            35
+            49
           ]
         },
         {
@@ -4184,7 +4180,7 @@
         380
       ],
       "flags": {},
-      "order": 12,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
@@ -4254,10 +4250,10 @@
       "title": "Model Links",
       "properties": {},
       "widgets_values": [
-        "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Frame interpolation** (optional, \"Frame Interpolation\" group)\n- frame_interpolation: [film_net_fp16](https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/film_net_fp16.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       ],
       "widgets_values_named": {
-        "text": "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "text": "## Wan → HDR Workflow for Radiance:\n\nText or image to video with Wan 2.2 (14B or 5B) or Wan 2.1, into an EXR master.\n- **Image to video**: turn on \"First Frame\" (and \"Last Frame\"), and load Wan 2.2 14B's i2v files.\n- **Turbo**: turn on \"Turbo LoRA\": 4 steps instead of 20.\n- **HDR**: SDR to HDR Universal is set to Expand, the math path (Video Frames, adaptive knee, temporal smoothing): fast and steady over the shot. Set mode to Hybrid to have RUDRA ACES 2 rebuild every frame instead (slower; frames are reconstructed one by one). Without RUDRA (not installed, downloads off) Hybrid keeps the math path: the node's report output says which one ran.\n- **Outputs**: EXR 16-bit half sequence (master), HDR10 MP4 (H.265 10-bit PQ) and SDR MP4 via ACES 2.0 for review, and a contact sheet PNG. The MP4s and the contact sheet are bypassed: select their group, then Ctrl+B.\n- **Viewer**: the HDR master against the SDR decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nPick the files in the Loader: the Sampler, in \"Auto\", follows them. The files go in `ComfyUI/models/diffusion_models`, `loras`, `text_encoders` and `vae`.\n\n**Wan 2.2 14B** (16 fps, \"Resolution\" on WAN (16ch))\n- diffusion_models: [wan2.2_t2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors) (used, text to video), [wan2.2_t2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors) (used), [wan2.2_i2v_high_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors) (image to video), [wan2.2_i2v_low_noise_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors)\n- loras: [wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors) (\"Turbo LoRA\"), [wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors), [wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors) (image to video), [wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors)\n- text_encoders: [umt5_xxl_fp8_e4m3fn_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors) (used)\n- vae: [wan_2.1_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors) (used)\n\n**Wan 2.2 5B** (text or image to video, 24 fps, \"Resolution\" on WAN TI2V (48ch), 1280x704 or more)\n- diffusion_models: [wan2.2_ti2v_5B_fp16](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors)\n- vae: [wan2.2_vae](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors)\n\n**Frame interpolation** (optional, \"Frame Interpolation\" group)\n- frame_interpolation: [film_net_fp16](https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/film_net_fp16.safetensors)\n\n**Wan 2.1** (text to video, 16 fps)\n- diffusion_models: [wan2.1_t2v_1.3B_fp16](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors), [wan2.1_t2v_14B_fp8_scaled](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   ├── wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\n│   │   └── wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── umt5_xxl_fp8_e4m3fn_scaled.safetensors\n│   └── 📂 vae/\n│       └── wan_2.1_vae.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       },
       "color": "#222",
       "bgcolor": "#000"
@@ -4266,7 +4262,7 @@
       "id": 30,
       "type": "RadianceSDRToHDRAIFill",
       "pos": [
-        3470,
+        3870,
         70
       ],
       "size": [
@@ -4274,7 +4270,7 @@
         870
       ],
       "flags": {},
-      "order": 16,
+      "order": 21,
       "mode": 4,
       "inputs": [
         {
@@ -4609,7 +4605,7 @@
       "id": 31,
       "type": "MarkdownNote",
       "pos": [
-        3470,
+        3870,
         1000
       ],
       "size": [
@@ -5009,7 +5005,7 @@
       "type": "MarkdownNote",
       "pos": [
         640,
-        736
+        740
       ],
       "size": [
         340,
@@ -5027,6 +5023,266 @@
       ],
       "widgets_values_named": {
         "text": "**First and Last Frame** (optional: select a group, then Ctrl+B):\n- Both off: Text to Video. \"First Frame\" on: Image to Video. Both on: the shot goes from one image to the other. \"Last Frame\" alone: the shot ends on it.\n- Wan 2.2 14B: load its i2v files in the \"Loader\". The 5B reads the first frame only.\n- The \"Resolution\" follows the Loader: WAN (16ch) at 16 fps for Wan 2.2 14B and Wan 2.1, WAN TI2V (48ch) at 24 fps for the 5B."
+      },
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 37,
+      "type": "FrameInterpolationModelLoader",
+      "pos": [
+        3070,
+        70
+      ],
+      "size": [
+        310,
+        60
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "model_name",
+          "name": "model_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "INTERP_MODEL",
+          "name": "INTERP_MODEL",
+          "type": "INTERP_MODEL",
+          "links": [
+            50
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FrameInterpolationModelLoader"
+      },
+      "widgets_values": [
+        "film_net_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "film_net_fp16.safetensors"
+      }
+    },
+    {
+      "id": 38,
+      "type": "PrimitiveInt",
+      "pos": [
+        3070,
+        190
+      ],
+      "size": [
+        310,
+        90
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "value",
+          "name": "value",
+          "type": "INT",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "INT",
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            51,
+            53
+          ]
+        }
+      ],
+      "title": "Multiplier",
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        2,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "value": 2,
+        "control_after_generate": "fixed"
+      }
+    },
+    {
+      "id": 39,
+      "type": "FrameInterpolate",
+      "pos": [
+        3070,
+        340
+      ],
+      "size": [
+        310,
+        80
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "interp_model",
+          "name": "interp_model",
+          "type": "INTERP_MODEL",
+          "link": 50
+        },
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 49
+        },
+        {
+          "localized_name": "multiplier",
+          "name": "multiplier",
+          "type": "INT",
+          "widget": {
+            "name": "multiplier"
+          },
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            34,
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FrameInterpolate"
+      },
+      "widgets_values": [
+        2
+      ],
+      "widgets_values_named": {
+        "multiplier": 2
+      }
+    },
+    {
+      "id": 40,
+      "type": "ComfyMathExpression",
+      "pos": [
+        3070,
+        480
+      ],
+      "size": [
+        310,
+        150
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 52
+        },
+        {
+          "localized_name": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 53
+        },
+        {
+          "localized_name": "c",
+          "name": "values.c",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        },
+        {
+          "localized_name": "expression",
+          "name": "expression",
+          "type": "STRING",
+          "widget": {
+            "name": "expression"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "FLOAT",
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            37,
+            38,
+            39,
+            40
+          ]
+        },
+        {
+          "localized_name": "INT",
+          "name": "INT",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "localized_name": "BOOL",
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "title": "Frame Rate x Multiplier",
+      "properties": {
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "a*b"
+      ],
+      "widgets_values_named": {
+        "expression": "a*b"
+      }
+    },
+    {
+      "id": 41,
+      "type": "MarkdownNote",
+      "pos": [
+        3070,
+        690
+      ],
+      "size": [
+        310,
+        300
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [],
+      "title": "Note: Frame Interpolation",
+      "properties": {},
+      "widgets_values": [
+        "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, for the same duration. The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
+      ],
+      "widgets_values_named": {
+        "text": "**Frame Interpolation** (optional: select the group, then Ctrl+B):\n- FILM draws the frames in between: x2 turns 16 fps into 32 fps, smoother, for the same duration. The Writes and the Viewer follow the new rate.\n- \"Multiplier\" sets it for both (x3: 48 fps).\n- Before the HDR conversion: the model is trained on SDR images.\n- Needs film_net_fp16 in models/frame_interpolation (Model Links)."
       },
       "color": "#222",
       "bgcolor": "#000"
@@ -5171,7 +5427,7 @@
     ],
     [
       34,
-      25,
+      39,
       0,
       11,
       0,
@@ -5179,7 +5435,7 @@
     ],
     [
       35,
-      25,
+      39,
       0,
       18,
       1,
@@ -5195,32 +5451,32 @@
     ],
     [
       37,
-      22,
-      5,
+      40,
+      0,
       12,
       8,
       "FLOAT"
     ],
     [
       38,
-      22,
-      5,
+      40,
+      0,
       13,
       8,
       "FLOAT"
     ],
     [
       39,
-      22,
-      5,
+      40,
+      0,
       15,
       8,
       "FLOAT"
     ],
     [
       40,
-      22,
-      5,
+      40,
+      0,
       18,
       8,
       "FLOAT"
@@ -5256,6 +5512,46 @@
       21,
       0,
       "LORA_STACK"
+    ],
+    [
+      49,
+      25,
+      0,
+      39,
+      1,
+      "IMAGE"
+    ],
+    [
+      50,
+      37,
+      0,
+      39,
+      0,
+      "INTERP_MODEL"
+    ],
+    [
+      51,
+      38,
+      0,
+      39,
+      2,
+      "INT"
+    ],
+    [
+      52,
+      22,
+      5,
+      40,
+      0,
+      "FLOAT"
+    ],
+    [
+      53,
+      38,
+      0,
+      40,
+      1,
+      "INT"
     ],
     [
       24,
@@ -5371,7 +5667,7 @@
       "id": 6,
       "title": "HDR Conversion",
       "bounding": [
-        3040,
+        3440,
         0,
         370,
         1860
@@ -5383,7 +5679,7 @@
       "id": 7,
       "title": "Write HDR Master (EXR)",
       "bounding": [
-        5050,
+        5450,
         1890,
         370,
         1070
@@ -5395,7 +5691,7 @@
       "id": 8,
       "title": "Write Video (PQ HDR)",
       "bounding": [
-        4650,
+        5050,
         1890,
         370,
         1070
@@ -5407,7 +5703,7 @@
       "id": 9,
       "title": "Write Video (SDR)",
       "bounding": [
-        3840,
+        4240,
         1890,
         380,
         1070
@@ -5419,7 +5715,7 @@
       "id": 10,
       "title": "Contact Sheet",
       "bounding": [
-        4250,
+        4650,
         1890,
         370,
         1070
@@ -5431,7 +5727,7 @@
       "id": 11,
       "title": "Viewer",
       "bounding": [
-        3840,
+        4240,
         0,
         2720,
         1860
@@ -5443,7 +5739,7 @@
       "id": 12,
       "title": "AI Fill - (Optional)",
       "bounding": [
-        3440,
+        3840,
         0,
         370,
         1860
@@ -5486,22 +5782,34 @@
       ],
       "color": "#a1309b",
       "flags": {}
+    },
+    {
+      "id": 16,
+      "title": "Frame Interpolation - (Optional)",
+      "bounding": [
+        3040,
+        0,
+        370,
+        1860
+      ],
+      "color": "#a1309b",
+      "flags": {}
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.3035,
+      "scale": 0.30350000000000105,
       "offset": [
-        164.7,
-        395.4
+        418.4924241836987,
+        1859.697328092375
       ]
     },
     "reroutes": [
       {
         "id": 1,
         "pos": [
-          3828,
+          4228,
           84
         ],
         "linkIds": [
@@ -5514,7 +5822,7 @@
         "id": 2,
         "parentId": 1,
         "pos": [
-          3828,
+          4228,
           1872
         ],
         "linkIds": [
@@ -5527,7 +5835,7 @@
         "id": 3,
         "parentId": 2,
         "pos": [
-          4638,
+          5038,
           1872
         ],
         "linkIds": [
@@ -5539,7 +5847,7 @@
         "id": 4,
         "parentId": 3,
         "pos": [
-          5038,
+          5438,
           1872
         ],
         "linkIds": [
@@ -5549,8 +5857,8 @@
       {
         "id": 5,
         "pos": [
-          1022,
-          204
+          3425,
+          514
         ],
         "linkIds": [
           37,
@@ -5562,7 +5870,7 @@
         "id": 6,
         "parentId": 5,
         "pos": [
-          1022,
+          3425,
           1878
         ],
         "linkIds": [
@@ -5575,7 +5883,7 @@
         "id": 7,
         "parentId": 6,
         "pos": [
-          3822,
+          4222,
           1878
         ],
         "linkIds": [
@@ -5588,7 +5896,7 @@
         "id": 8,
         "parentId": 7,
         "pos": [
-          4632,
+          5032,
           1878
         ],
         "linkIds": [
@@ -5600,7 +5908,7 @@
         "id": 9,
         "parentId": 8,
         "pos": [
-          5032,
+          5432,
           1878
         ],
         "linkIds": [
