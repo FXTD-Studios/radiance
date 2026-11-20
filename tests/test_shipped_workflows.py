@@ -133,7 +133,7 @@ def test_every_radiance_widget_value_fits_its_input(path):
             named = dict(zip(order, values))
         pairs = ([(name, typ, named[name]) for name, typ, _ in expected if name in named] if named is not None
                  else [(name, typ, value) for (name, typ, _), value in zip(expected, values)])
-        uploads = {name for name, _, opts in expected if opts.get("image_upload")}
+        uploads = {name for name, _, opts in expected if opts.get("image_upload") or opts.get("radiance_upload")}
         for name, typ, value in pairs:
             # The _js_* placeholders exist to absorb old JS button values (None).
             # An upload combo lists the user's input folder: any file name is theirs to pick.

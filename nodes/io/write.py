@@ -29,6 +29,7 @@ Supported WRITE
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -282,16 +283,19 @@ class RadianceRead:
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
+            # 4.0: no "image_upload". With it ComfyUI's node UI listed and
+            # uploaded images only, so an MP4 or MOV in the input folder never
+            # showed. The list is every image and video in the input folder;
+            # the Upload button (js/radiance_io.js) takes both kinds.
             "browse": (_get_input_files(), {
-                "image_upload": True,
+                "radiance_upload": True,
                 "tooltip": (
-                    "Browse or upload a file from disk.\n"
-                    "• Click the upload icon (📎) to open a native file picker.\n"
-                    "• Supports images (PNG, JPG, TIFF, EXR, DPX, HDR, WebP) "
-                    "and video (MP4, MOV, MXF, AVI, WebM, MKV).\n"
-                    "• Uploaded files are copied to ComfyUI's input"
-                    "• Leave blank and fill in 'path' below for absolute / "
-                    "network / sequence paths."
+                    "An image or video in ComfyUI's input folder.\n"
+                    "• Upload… (below) or drop a file on the node to add one.\n"
+                    "• Images: PNG, JPG, TIFF, EXR, DPX, HDR, WebP. "
+                    "Video: MP4, MOV, MXF, AVI, WebM, MKV and more.\n"
+                    "• Leave blank and fill in 'path' below for absolute, "
+                    "network or sequence paths."
                 ),
             }),
             }, "optional": {
@@ -1528,6 +1532,29 @@ def _is_inside_allowed_read_root(path: str) -> bool:
     return False
 
 
+def _still_poster_png(path: str, longest: int = 1024) -> Optional[bytes]:
+    """A PNG preview of a still the browser cannot show (EXR, DPX, HDR, TIFF),
+    read by Read's own reader. Linear float is tone-mapped (Reinhard, then a
+    2.2 gamma) for the preview only; the node reads the file untouched."""
+    try:
+        import io as _io
+        from PIL import Image
+        image, _ = _read_image(path)
+        x = image[0, ..., :3].float().cpu().numpy()
+        ext = os.path.splitext(path)[1].lower()
+        if ext in _EXR_EXT or ext in (".hdr", ".pic") or float(np.nanmax(x)) > 1.0:
+            x = np.clip(np.nan_to_num(x), 0.0, None)
+            x = np.power(x / (1.0 + x), 1.0 / 2.2)
+        img = Image.fromarray((np.clip(x, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+        img.thumbnail((longest, longest))
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as exc:  # noqa: BLE001 - a preview, best effort
+        log.debug("[Radiance/Read] still poster failed for %s: %s", path, exc)
+        return None
+
+
 def register_read_routes():
     """Endpoints the Read node's widgets call: EXR layers, and media info."""
     try:
@@ -1587,6 +1614,8 @@ def register_read_routes():
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=200)
 
+    _WEB_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                       ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}
     _MIME = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
              ".mkv": "video/x-matroska", ".webm": "video/webm", ".avi": "video/x-msvideo"}
 
@@ -1615,8 +1644,17 @@ def register_read_routes():
         path, error = _resolve_query_path(request)
         if error is not None:
             return error
-        if os.path.splitext(path)[1].lower() not in _VID_EXT:
-            return web.json_response({"error": "not a video"}, status=400)
+        ext = os.path.splitext(path)[1].lower()
+        if ext in _WEB_IMAGE_MIME:              # the browser shows these as they are
+            return web.FileResponse(path, headers={"Content-Type": _WEB_IMAGE_MIME[ext]})
+        if ext in _BROWSEABLE_EXT and ext not in _VID_EXT:
+            # EXR, DPX, HDR, TIFF: a tone-mapped PNG of the first frame (4.0).
+            png = await asyncio.get_running_loop().run_in_executor(None, _still_poster_png, path)
+            if not png:
+                return web.json_response({"error": "cannot decode the image"}, status=415)
+            return web.Response(body=png, content_type="image/png")
+        if ext not in _VID_EXT:
+            return web.json_response({"error": "not an image or a video"}, status=400)
         try:
             import hashlib
             import tempfile
