@@ -174,6 +174,7 @@ test('a rate set by hand after MiniMax H3 stays, and the duration step follows t
     assert.equal(frameRateW.label, 'frame_rate ✎');
     frameRateW.value = 24;
     frameRateW._radForced = true;
+    durSecW.options.round = 4 / 24;   // the step MiniMax H3's 24 fps left
     context.syncFps(node);
     assert.equal(frameRateW.value, 16);
     assert.equal(durSecW.options.round, 4 / 16);
