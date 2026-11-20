@@ -2213,7 +2213,6 @@
           "name": "reconstructed_mask",
           "type": "MASK",
           "links": [
-            19,
             35
           ]
         }
@@ -4468,7 +4467,9 @@
           "localized_name": "reconstructed_mask",
           "name": "reconstructed_mask",
           "type": "MASK",
-          "links": []
+          "links": [
+            19
+          ]
         },
         {
           "localized_name": "report",
@@ -4708,8 +4709,8 @@
     ],
     [
       19,
-      6,
-      6,
+      20,
+      2,
       9,
       6,
       "MASK"
