@@ -91,9 +91,9 @@
     "diffusion_models/flux-2-klein-4b.safetensors": {
       "file": "flux-2-klein-4b.safetensors",
       "folder": "diffusion_models",
-      "repo": "Comfy-Org/Flux-2-Klein-4B",
+      "repo": "Comfy-Org/flux2-klein",
       "path": "split_files/diffusion_models/flux-2-klein-4b.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors",
       "gated": false
     },
     "diffusion_models/flux-2-klein-9b.safetensors": {
@@ -107,9 +107,9 @@
     "diffusion_models/flux-2-klein-base-4b.safetensors": {
       "file": "flux-2-klein-base-4b.safetensors",
       "folder": "diffusion_models",
-      "repo": "Comfy-Org/Flux-2-Klein-4B",
+      "repo": "Comfy-Org/flux2-klein",
       "path": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
       "gated": false
     },
     "diffusion_models/flux-2-klein-base-9b.safetensors": {
@@ -780,7 +780,11 @@
       "required": [
         "radiance/RUDRA_ACES_2"
       ],
-      "optional": []
+      "optional": [
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
+      ]
     },
     "sdr_to_hdr_ai_fill": {
       "title": "SDR → HDR + AI Fill",
@@ -817,9 +821,9 @@
     "t2i_i2i_hdr": {
       "title": "T2I · Edit · I2I → HDR",
       "required": [
-        "diffusion_models/qwen_image_2.1_bf16.safetensors",
-        "text_encoders/qwen3vl_8b_bf16.safetensors",
-        "vae/qwen_image_2.1_vae_bf16.safetensors",
+        "diffusion_models/flux-2-klein-4b-fp8.safetensors",
+        "text_encoders/qwen_3_4b.safetensors",
+        "vae/flux2-vae.safetensors",
         "radiance/RUDRA_ACES_2"
       ],
       "optional": [
@@ -833,6 +837,7 @@
         "diffusion_models/flux2_dev_fp8mixed.safetensors",
         "diffusion_models/flux3-image-klein-base-bf16.safetensors",
         "diffusion_models/flux3-image-klein-bf16.safetensors",
+        "diffusion_models/qwen_image_2.1_bf16.safetensors",
         "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
         "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
         "diffusion_models/z_image_bf16.safetensors",
@@ -842,12 +847,12 @@
         "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
         "text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
         "text_encoders/qwen3vl_4b_bf16.safetensors",
+        "text_encoders/qwen3vl_8b_bf16.safetensors",
         "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
-        "text_encoders/qwen_3_4b.safetensors",
         "text_encoders/qwen_3_8b.safetensors",
         "text_encoders/t5xxl_fp16.safetensors",
         "vae/ae.safetensors",
-        "vae/flux2-vae.safetensors",
+        "vae/qwen_image_2.1_vae_bf16.safetensors",
         "vae/qwen_image_vae.safetensors",
         "radiance/depth_anything_v2_large",
         "radiance/rudra_genfill_v3",

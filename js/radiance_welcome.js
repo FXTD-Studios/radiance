@@ -195,7 +195,7 @@ function softButton(label, onClick) {
 // ── Actions on the tour's pages ─────────────────────────────────────────────
 async function loadStarter() {
     try {
-        const r = await fetch(api.apiURL("/workflow_templates/radiance/start.json"));
+        const r = await fetch(api.apiURL("/workflow_templates/radiance/t2i_i2i_hdr.json"));
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         await app.loadGraphData(await r.json(), true, true, "Radiance Starter");
         return true;

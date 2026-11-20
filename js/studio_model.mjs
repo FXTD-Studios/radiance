@@ -83,8 +83,8 @@ export function workflowGroups(wf) {
 
 /** One card per workflow, official ones first in the order a newcomer needs them. */
 export function workflowCards(list) {
-    const order = ["start", "sdr_to_hdr", "sdr_to_hdr_analytic", "sdr_to_hdr_ai_fill", "hdr_delivery",
-        "sdr_remaster_ai_fill", "colour_grade", "shot_look_match", "flux3_klein_hdr"];
+    const order = ["t2i_i2i_hdr", "sdr_to_hdr", "sdr_to_hdr_analytic", "hdr_delivery",
+        "sdr_remaster_ai_fill", "colour_grade", "shot_look_match"];
     const rank = (wf) => {
         const i = order.indexOf(baseName(wf.filename));
         if (!isOfficial(wf.filename)) return 1000;
