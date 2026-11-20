@@ -696,7 +696,7 @@
         1,
         "fixed",
         "Linear (pass-through)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -723,7 +723,7 @@
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -1029,7 +1029,7 @@
         1,
         "fixed",
         "PQ (HDR10 / ST.2084)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -1056,7 +1056,7 @@
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "PQ (HDR10 / ST.2084)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -1503,7 +1503,7 @@
         1,
         "fixed",
         "Linear (pass-through)",
-        24,
+        16,
         18,
         "ZIP",
         1001,
@@ -1530,7 +1530,7 @@
         "version": 1,
         "control_after_generate": "fixed",
         "color_space": "Linear (pass-through)",
-        "fps": 24,
+        "fps": 16,
         "quality": 18,
         "exr_compression": "ZIP",
         "start_frame": 1001,
@@ -2200,14 +2200,14 @@
         false,
         "Auto",
         "Half (16-bit)",
-        24,
+        16,
         ""
       ],
       "widgets_values_named": {
         "exposure_bracketing": false,
         "input_space": "Auto",
         "float_precision": "Half (16-bit)",
-        "fps": 24,
+        "fps": 16,
         "viewer": ""
       }
     },
@@ -2813,7 +2813,7 @@
         "Manual (Frames)",
         5,
         81,
-        24
+        16
       ],
       "widgets_values_named": {
         "preset": "Custom",
@@ -2831,7 +2831,7 @@
         "frame_computation": "Manual (Frames)",
         "duration_seconds": 5,
         "video_frames": 81,
-        "frame_rate": 24
+        "frame_rate": 16
       }
     },
     {
