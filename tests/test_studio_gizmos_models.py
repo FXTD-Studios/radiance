@@ -127,9 +127,29 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
         assert (library.gizmos / "glow.gizmo").is_file()
         f.locator(".st-grid .st-tile", has_text="Glow").click()
         f.locator('.st-rail [data-act="delete-gizmo"]').click()
-        f.locator("#stToast", has_text="Gizmo deleted").wait_for()
+        f.locator("#stToast", has_text="Glow deleted").wait_for()
         assert not (library.gizmos / "glow.gizmo").exists()
         assert list((library.gizmos / ".trash").glob("glow.*.gizmo"))
+
+        # Delete straight from the library grid: the tile's trash button (4.0) ...
+        for name, title in (("halo", "Halo"), ("haze", "Haze")):
+            (library.gizmos / f"{name}.gizmo").write_text(json.dumps(_gizmo(name, title)))
+        f.locator('[data-act="reload"]').first.click()
+        tile = f.locator(".st-tile-wrap", has_text="Halo")
+        tile.wait_for()
+        tile.hover()
+        _shot(page, "gizmos_tile_delete")
+        tile.locator('.st-tile-del[data-act="delete-gizmo"]').click()
+        f.locator("#stToast", has_text="Halo deleted").wait_for()
+        assert not (library.gizmos / "halo.gizmo").exists()
+        assert list((library.gizmos / ".trash").glob("halo.*.gizmo"))
+        assert f.locator(".st-tile-wrap", has_text="Halo").count() == 0
+        # ... and the Delete key on a focused tile.
+        f.locator(".st-grid .st-tile", has_text="Haze").focus()
+        page.keyboard.press("Delete")
+        f.locator("#stToast", has_text="Haze deleted").wait_for()
+        assert not (library.gizmos / "haze.gizmo").exists()
+        assert f.locator(".st-grid .st-tile").count() == 2
 
         # Models: this computer, Radiance's folder made, what each workflow needs.
         f.locator('#stNav [data-go="models"]').click()
