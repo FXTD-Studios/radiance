@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
+from pathlib import Path
 import torch
 
 from radiance.delivery.handler import (
@@ -232,16 +233,42 @@ def test_an_empty_grade_writes_an_identity_cdl(tmp_path):
 
 
 @pytest.mark.parametrize("colour,expected", [
-    ("ACEScg (AP1)", "ACEScg_to_ACES"),
-    ("sRGB (Standard)", "sRGB_100nits"),
-    ("ACEScct", "ACEScct_to_ACES"),
+    ("ACEScg (AP1)", "CSC.Academy.ACEScg_to_ACES.a2.v1"),
+    ("ACEScct", "CSC.Academy.ACEScct_to_ACES.a2.v1"),
 ])
-def test_the_output_transform_follows_the_colour_space(tmp_path, colour, expected):
+def test_the_input_transform_follows_the_colour_space(tmp_path, colour, expected):
     out = tmp_path / colour.replace(" ", "_").replace("(", "").replace(")", "")
     out.mkdir()
-    assert expected in _amf(out, {}, colour).read_text(encoding="utf-8")
+    text = _amf(out, {}, colour).read_text(encoding="utf-8")
+    assert f"<aces:transformId>urn:ampas:aces:transformId:v2.0:{expected}</aces:transformId>" in text
+    # one output transform, the ACES 2.0 view, whatever the master's container
+    assert "Output.Academy.Rec709-D65_100nit_in_Rec709-D65_BT1886.a2.v1" in text
 
 
-def test_an_unknown_colour_space_falls_back_rather_than_writing_nothing(tmp_path):
-    amf = _amf(tmp_path, {}, "Some Show LUT")
-    assert "Rec709_100nits" in amf.read_text(encoding="utf-8")
+def test_an_ap0_master_has_no_input_transform(tmp_path):
+    text = _amf(tmp_path, {}, "ACES2065-1 (AP0)").read_text(encoding="utf-8")
+    assert "inputTransform" not in text and "lookTransform" in text
+
+
+@pytest.mark.parametrize("colour", ["sRGB (Standard)", "Linear (sRGB)", "ARRI LogC3",
+                                    "DaVinci Intermediate", "PQ (HDR10 / ST.2084)", "Some Show LUT"])
+def test_a_master_that_is_not_aces_gets_no_amf(tmp_path, colour):
+    """The old writer filled the output-transform slot with an IDT or a CSC for these
+    (LogC3, DaVinci Intermediate) or a Rec.709 ODT for anything unknown: an AMF that
+    names the wrong pipeline is worse than none."""
+    with pytest.raises(ValueError, match="not ACEScg"):
+        _amf(tmp_path, {}, colour)
+    assert not list(tmp_path.glob("*.amf"))
+
+
+def test_the_deliver_amf_is_valid_against_the_academy_schema(tmp_path):
+    etree = pytest.importorskip("lxml.etree")
+    data = Path(__file__).parent / "data" / "aces_amf"
+    schema = etree.XMLSchema(etree.parse(str(data / "acesMetadataFile.xsd")))
+    for colour in ("ACEScg (AP1)", "ACES2065-1 (AP0)", "ACEScct"):
+        out = tmp_path / colour.split()[0]
+        out.mkdir()
+        grade = {"gain": [1.25, 1.0, 0.75], "offset": [0.01, 0.0, -0.02], "gamma": [0.9, 1.0, 1.1],
+                 "saturation": 1.4}
+        doc = etree.parse(str(_amf(out, grade, colour)))
+        assert schema.validate(doc), (colour, schema.error_log)

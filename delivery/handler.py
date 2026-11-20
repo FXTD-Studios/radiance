@@ -8,8 +8,7 @@ import traceback
 import logging
 import torch
 import numpy as np
-import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime
 try:
     from aiohttp import web
     from server import PromptServer
@@ -318,78 +317,42 @@ def release_version(directory: str, filename_base: str, version_str: str) -> Non
         _VERSIONS_CLAIMED.discard(_version_key(directory, filename_base, int(version_str[1:])))
 
 
+#: Deliver's ACES colour spaces -> (is ACEScg, an input transform other than ACEScg's).
+#: Only these masters are ACES; an AMF for anything else would describe a pipeline the
+#: file is not in.
+_AMF_SPACES = {
+    "ACEScg (AP1)": (True, None),
+    "ACES2065-1 (AP0)": (False, None),
+    "ACEScct": (False, ("ACEScct to ACES2065-1 (the master is ACEScct)", "ACEScct_to_ACES")),
+}
+
+
 def _export_aces_clip_xml(media_path: str, grading: dict, color_space: str, version_str: str) -> None:
-    """Write an ACES Metadata File (.amf) alongside the exported media."""
-    if color_space in ('PQ (HDR10 / ST.2084)', 'HLG (Hybrid Log-Gamma)'):
-        # The map below has no output transform for these, and the fallback is
-        # the Rec.709 100-nit ODT: an AMF naming that for an HDR master would
-        # tell the next application to view it as SDR. Refuse instead.
-        raise ValueError(f"no ACES output transform is mapped for {color_space}; "
-                         "the AMF would name an SDR transform")
-    # FIX-006: map the Viewer grade to SOP properly (power = 1/gamma,
-    # offset scaled by gain, exposure folded into slope).
+    """Write an ACES Metadata File (.amf, v2.0) beside an ACES master.
+
+    The document validates against the Academy's AMF v2.0 schema
+    (radiance/io/aces_amf.py): the master's input transform, the Viewer grade as an
+    applied ASC CDL look in ACEScg, and the ACES 2.0 SDR Rec.709 view. A master in a
+    colour space that is not ACES is refused with a ValueError; Deliver turns that
+    into a warning and writes the other sidecars."""
+    if color_space not in _AMF_SPACES:
+        raise ValueError(f"an AMF describes an ACES master; {color_space!r} is not ACEScg, "
+                         "ACES2065-1 or ACEScct, so no AMF is written")
     from radiance.color.grading import grading_to_cdl
-    _cdl = grading_to_cdl(grading)
-    slope, offset, power, sat = _cdl["slope"], _cdl["offset"], _cdl["power"], _cdl["saturation"]
-
-    # Map output color_space to ACES ODT URN
-    _ODT_MAP = {
-        'ACEScg (AP1)':          'urn:ampas:aces:transformId:v2.0:ACEScsc.Academy.ACEScg_to_ACES.a2.v1',
-        'ACES2065-1 (AP0)':      'urn:ampas:aces:transformId:v2.0:ACEScsc.Academy.Identity.a2.v1',
-        'ACEScct':               'urn:ampas:aces:transformId:v2.0:ACEScsc.Academy.ACEScct_to_ACES.a2.v1',
-        'Linear (sRGB)':         'urn:ampas:aces:transformId:v2.0:ODT.Academy.Rec709_100nits_dim.a1.0.3',
-        'sRGB (Standard)':       'urn:ampas:aces:transformId:v2.0:ODT.Academy.sRGB_100nits_dim.a1.0.3',
-        'ARRI LogC3':            'urn:ampas:aces:transformId:v2.0:IDT.ARRI.Alexa-v3-LogC-EI800.a1.v2',
-        'DaVinci Intermediate':  'urn:ampas:aces:transformId:v2.0:IDT.BlackmagicDesign.DaVinci_Intermediate.a1.v1',
-    }
-    odt_urn = _ODT_MAP.get(color_space, 'urn:ampas:aces:transformId:v2.0:ODT.Academy.Rec709_100nits_dim.a1.0.3')
-    idt_urn = 'urn:ampas:aces:transformId:v2.0:IDT.Academy.Rec709_100nits.a1.0.3'  # default: Rec.709
-
-    # Build XML tree
-    ns = 'urn:ampas:aces:schema:v1.0'
-    ET.register_namespace('', ns)
-    ET.register_namespace('xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-
-    root = ET.Element(f'{{{ns}}}aces_metadata_file')
-    root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-    root.set('version', '1.0')
-
-    # Header
-    hdr = ET.SubElement(root, f'{{{ns}}}amf_info')
-    ET.SubElement(hdr, f'{{{ns}}}description').text = f'Radiance v{_RADIANCE_VERSION} — ACES grade export ({version_str})'
-    ET.SubElement(hdr, f'{{{ns}}}uuid').text = f'urn:uuid:{os.urandom(16).hex()}'
-    ET.SubElement(hdr, f'{{{ns}}}date_time').text = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-    # Pipeline
-    pipeline = ET.SubElement(root, f'{{{ns}}}pipeline')
-    pipeline.set('name', f'Radiance_{version_str}')
-
-    # IDT
-    idt_node = ET.SubElement(pipeline, f'{{{ns}}}input_transform')
-    ET.SubElement(idt_node, f'{{{ns}}}transform_id').text = idt_urn
-
-    # Look Transform (CDL)
-    look = ET.SubElement(pipeline, f'{{{ns}}}look_transform')
-    look.set('applied', 'true')
-    ET.SubElement(look, f'{{{ns}}}description').text = 'ASC CDL via FXTD Radiance'
-
-    cdl_node = ET.SubElement(look, f'{{{ns}}}cdl_transform')
-    sop = ET.SubElement(cdl_node, f'{{{ns}}}SOPNode')
-    ET.SubElement(sop, f'{{{ns}}}Slope').text  = ' '.join(f'{v:.6f}' for v in slope)
-    ET.SubElement(sop, f'{{{ns}}}Offset').text = ' '.join(f'{v:.6f}' for v in offset)
-    ET.SubElement(sop, f'{{{ns}}}Power').text  = ' '.join(f'{v:.6f}' for v in power)
-    sat_node = ET.SubElement(cdl_node, f'{{{ns}}}SatNode')
-    ET.SubElement(sat_node, f'{{{ns}}}Saturation').text = f'{sat:.6f}'
-
-    # ODT
-    odt_node = ET.SubElement(pipeline, f'{{{ns}}}output_transform')
-    ET.SubElement(odt_node, f'{{{ns}}}transform_id').text = odt_urn
-
-    # Write
-    tree = ET.ElementTree(root)
-    ET.indent(tree, space='  ')
+    from radiance.io.aces_amf import ACESCCT_TO_ACES_ID, AmfRequest, aces_amf_xml
+    acescg, inp = _AMF_SPACES[color_space]
+    if inp is not None:
+        inp = (inp[0], ACESCCT_TO_ACES_ID)
+    cdl = grading_to_cdl(grading or {})
+    name = os.path.basename(media_path)
+    req = AmfRequest(
+        description=f"Radiance v{_RADIANCE_VERSION} ACES master ({version_str})",
+        acescg=acescg, input_transform=inp, clip_name=os.path.splitext(name)[0], file=name,
+        look_cdl={k: cdl[k] for k in ("slope", "offset", "power", "saturation")},
+        look_applied=True, look_description=f"Radiance grade {version_str} (ASC CDL, baked into the master)")
     amf_path = os.path.splitext(media_path)[0] + '.amf'
-    tree.write(amf_path, encoding='utf-8', xml_declaration=True)
+    with open(amf_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(aces_amf_xml(req))
     logger.info(f'[Radiance] ACES Metadata File written: {amf_path}')
 
 

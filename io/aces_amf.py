@@ -20,6 +20,8 @@ from typing import Iterable, Optional, Tuple
 
 AMF_NAMESPACE = "urn:ampas:aces:amf:v2.0"
 ACESCG_TO_ACES_ID = "urn:ampas:aces:transformId:v2.0:CSC.Academy.ACEScg_to_ACES.a2.v1"
+ACES_TO_ACESCG_ID = "urn:ampas:aces:transformId:v2.0:CSC.Academy.ACES_to_ACEScg.a2.v1"
+ACESCCT_TO_ACES_ID = "urn:ampas:aces:transformId:v2.0:CSC.Academy.ACEScct_to_ACES.a2.v1"
 REC709_BT1886_OUTPUT_ID = (
     "urn:ampas:aces:transformId:v2.0:Output.Academy.Rec709-D65_100nit_in_Rec709-D65_BT1886.a2.v1")
 
@@ -41,6 +43,15 @@ class AmfRequest:
     file: Optional[str] = None
     #: RUDRA writes "...: the view RUDRA's appearance constraint holds the master to".
     output_description: str = "ACES 2.0 SDR 100 nits Rec.709 BT.1886: the reference view of the master"
+    #: An input transform other than ACEScg's (an ACEScct master): (description, CSC transform id).
+    #: Takes the place of the ACEScg one when set.
+    input_transform: Optional[Tuple[str, str]] = None
+    #: An ASC CDL look in ACEScg, {"slope", "offset", "power", "saturation"}; written as a
+    #: lookTransform between the input and output transforms. None writes no look.
+    look_cdl: Optional[dict] = None
+    #: True when the grade is already in the master's pixels (Deliver bakes it).
+    look_applied: bool = True
+    look_description: str = "ASC CDL grade, in ACEScg"
 
 
 def _esc(s: str) -> str:
@@ -102,17 +113,59 @@ def aces_amf_xml(r: AmfRequest) -> str:
           "                <aces:minorVersion>0</aces:minorVersion>\n"
           "                <aces:patchVersion>0</aces:patchVersion>\n"
           "            </aces:systemVersion>\n        </aces:pipelineInfo>\n")
-    if r.acescg:
+    if r.input_transform:
+        desc, tid = r.input_transform
+        x += ('        <aces:inputTransform applied="false">\n'
+              f"            <aces:description>{_esc_text(desc)}</aces:description>\n"
+              f"            <aces:transformId>{_esc(tid)}</aces:transformId>\n"
+              "        </aces:inputTransform>\n")
+    elif r.acescg:
         x += ('        <aces:inputTransform applied="false">\n'
               "            <aces:description>ACEScg to ACES2065-1 (the master is ACEScg)</aces:description>\n"
               f"            <aces:transformId>{ACESCG_TO_ACES_ID}</aces:transformId>\n"
               "        </aces:inputTransform>\n")
+    if r.look_cdl is not None:
+        x += _look_cdl_xml(r.look_cdl, r.look_applied, r.look_description)
     x += ('        <aces:outputTransform applied="false">\n'
           f"            <aces:description>{_esc_text(r.output_description)}</aces:description>\n"
           f"            <aces:transformId>{REC709_BT1886_OUTPUT_ID}</aces:transformId>\n"
           "        </aces:outputTransform>\n")
     x += "    </aces:pipeline>\n</aces:acesMetadataFile>\n"
     return x
+
+
+def _triple(v, floor=None) -> str:
+    vals = list(v) if isinstance(v, (list, tuple)) else [v, v, v]
+    vals = [float(a) for a in vals[:3]]
+    if floor is not None:
+        vals = [max(floor, a) for a in vals]
+    return " ".join(f"{a:.6f}" for a in vals)
+
+
+def _look_cdl_xml(cdl: dict, applied: bool, description: str) -> str:
+    """A lookTransform carrying an ASC CDL in ACEScg (the schema's cdlWorkingSpace:
+    ACES2065-1 to ACEScg and back). Slope, power and saturation are clamped at 0, as
+    the CDL schema requires."""
+    ind = "            "
+    return (f'        <aces:lookTransform applied="{"true" if applied else "false"}">\n'
+            f"{ind}<aces:description>{_esc_text(description)}</aces:description>\n"
+            f"{ind}<aces:cdlWorkingSpace>\n"
+            f"{ind}    <aces:toCdlWorkingSpace>\n"
+            f"{ind}        <aces:transformId>{ACES_TO_ACESCG_ID}</aces:transformId>\n"
+            f"{ind}    </aces:toCdlWorkingSpace>\n"
+            f"{ind}    <aces:fromCdlWorkingSpace>\n"
+            f"{ind}        <aces:transformId>{ACESCG_TO_ACES_ID}</aces:transformId>\n"
+            f"{ind}    </aces:fromCdlWorkingSpace>\n"
+            f"{ind}</aces:cdlWorkingSpace>\n"
+            f"{ind}<cdl:SOPNode>\n"
+            f"{ind}    <cdl:Slope>{_triple(cdl.get('slope', 1.0), 0.0)}</cdl:Slope>\n"
+            f"{ind}    <cdl:Offset>{_triple(cdl.get('offset', 0.0))}</cdl:Offset>\n"
+            f"{ind}    <cdl:Power>{_triple(cdl.get('power', 1.0), 0.0)}</cdl:Power>\n"
+            f"{ind}</cdl:SOPNode>\n"
+            f"{ind}<cdl:SatNode>\n"
+            f"{ind}    <cdl:Saturation>{max(0.0, float(cdl.get('saturation', 1.0))):.6f}</cdl:Saturation>\n"
+            f"{ind}</cdl:SatNode>\n"
+            "        </aces:lookTransform>\n")
 
 
 _TRAILING_DIGITS = re.compile(r"^(.*?)(\d+)$")
