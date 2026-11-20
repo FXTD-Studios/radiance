@@ -35,3 +35,15 @@ def test_a_lora_without_a_companion_stays_on_the_expert_its_name_says(on_disk):
     on_disk.discard(HIGH)
     on_disk.add(LOW)
     assert loader._wan_moe_lora_stacks([(LOW, 1.0, 1.0)]) == ([], [(LOW, 1.0, 0)])
+
+
+def test_a_disabled_entry_does_not_hide_its_active_companion(on_disk):
+    assert loader._wan_moe_lora_stacks([(HIGH, 0, 0), (LOW, 1.0, 1.0)]) == ([(HIGH, 1.0, 1.0)], [(LOW, 1.0, 0)])
+
+
+def test_the_noise_tag_is_read_in_the_file_name_not_its_folder(monkeypatch):
+    high, low = "low_noise/style_high_noise.safetensors", "low_noise/style_low_noise.safetensors"
+    monkeypatch.setattr(loader.folder_paths, "get_full_path", lambda folder, name: f"/loras/{name}")
+    assert loader._find_wan_moe_companion(high) == low
+    assert loader._wan_moe_lora_stacks([(high, 1.0, 1.0)]) == ([(high, 1.0, 1.0)], [(low, 1.0, 0)])
+
