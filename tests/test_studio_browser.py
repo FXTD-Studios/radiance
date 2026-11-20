@@ -230,7 +230,7 @@ def test_studio_screens_against_the_real_routes(studio):
         total = f.locator(".st-grid .st-tile").count()
         official = len(list((REPO / "workflows" / "official").rglob("*.rad")))
         assert total == official + 4
-        assert f.locator(".st-grid .st-tile").first.inner_text().find("Starter") >= 0
+        assert "T2I" in f.locator(".st-grid .st-tile").first.inner_text()      # the starter (PR #107)
         f.locator('.st-chip[data-id="api"]').click()
         assert f.locator(".st-grid .st-tile").count() == len(list((REPO / "workflows" / "official" / "API").glob("*.rad")))
         f.locator('.st-chip[data-id="all"]').click()

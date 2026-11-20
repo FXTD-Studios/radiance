@@ -158,14 +158,16 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
 
         # Download what SDR → HDR needs: RUDRA ACES 2, into models/radiance.
         row.locator('[data-act="dl-workflow"]').click()
-        f.locator(".st-setup-row.is-ready", has_text="SDR → HDR").first.wait_for(timeout=10000)
+        f.locator(".st-setup-row.is-ready", has_text="SDR → HDR").filter(has_not_text="Analytic") \
+            .filter(has_not_text="Remaster").first.wait_for(timeout=10000)
         assert "radiance/RUDRA_ACES_2" in library.packs
         assert (library.models / "radiance" / "RUDRA_ACES_2").is_dir()
 
         # A workflow file goes into the folder ComfyUI reads, pinned from the Hub.
-        start = f.locator(".st-setup-row", has_text="Starter")
+        # T2I is the starter since 20 Nov (PR #107): FLUX.2 Klein 4B.
+        start = f.locator(".st-setup-row", has_text="T2I")
         start.locator('[data-act="dl-workflow"]').click()
-        f.locator(".st-setup-row.is-ready", has_text="Starter").wait_for(timeout=15000)
+        f.locator(".st-setup-row.is-ready", has_text="T2I").wait_for(timeout=15000)
         for rel in ("diffusion_models/flux-2-klein-4b-fp8.safetensors", "text_encoders/qwen_3_4b.safetensors",
                     "vae/flux2-vae.safetensors"):
             assert (library.models / rel).is_file(), rel
