@@ -14,7 +14,7 @@ const strip = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'ut
 
 const context = vm.createContext({ app: { registerExtension() {} }, console: { log() {} } });
 vm.runInContext(strip('radiance_widget_utils.js') + strip('radiance_resolution.js')
-    + 'globalThis.sync = syncModelTypeFromLoader;', context);
+    + 'globalThis.sync = syncModelTypeFromLoader; globalThis.syncFps = syncFrameRateFromLoader;', context);
 
 // A Resolution whose model_meta comes from a Loader with 'preset'.
 function resolution(preset, { unet = '', modelType = 'Manual' } = {}) {
@@ -81,3 +81,40 @@ test('no Loader, or one still auto-detecting, leaves model_type alone and unmark
     context.sync(unlinked.node);
     assert.equal(unlinked.modelTypeW.value, 'Manual');
 });
+
+// frame_rate follows a Wan Loader: 16 fps for Wan 2.2 14B and Wan 2.1, 24 for the 5B.
+function withFrameRate(preset, value = 24) {
+    const r = resolution(preset);
+    const frameRateW = { name: 'frame_rate', value, callback() {} };
+    r.node.widgets.push(frameRateW);
+    return { ...r, frameRateW };
+}
+
+test('frame_rate follows a Wan Loader, 16 fps or 24 for the 5B, marked 🧲', () => {
+    const { node, loader, frameRateW } = withFrameRate('Wan 2.2');
+    assert.equal(context.syncFps(node), true);
+    assert.equal(frameRateW.value, 16);
+    assert.equal(frameRateW.label, 'frame_rate 🧲');
+    loader.widgets[0].value = 'Wan 2.2 TI2V';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 24);
+    loader.widgets[0].value = 'Wan 2.1';
+    context.syncFps(node);
+    loader.widgets[0].value = 'Custom';
+    loader.widgets[2].value = 'hunyuan_video';
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 24);
+});
+
+test('a frame_rate set by hand stays, marked ✎, and other families leave it alone', () => {
+    const { node, frameRateW } = withFrameRate('Wan 2.1');
+    context.syncFps(node);
+    frameRateW.value = 30;
+    context.syncFps(node);
+    assert.equal(frameRateW.value, 30);
+    assert.equal(frameRateW.label, 'frame_rate ✎');
+    const other = withFrameRate('Qwen-Image', 25);
+    assert.equal(context.syncFps(other.node), false);
+    assert.equal(other.frameRateW.value, 25);
+});
+
