@@ -75,7 +75,7 @@ export function workflowGroups(wf) {
     if (!isOfficial(wf?.filename)) groups.add("mine");
     if (/(^|[\\/])api[\\/]/.test(path) || /^api\b/.test(kicker)) groups.add("api");
     if (/video|ltx|wan|plates|remaster/.test(kicker + " " + path)) groups.add("video");
-    if (/generate|t2i|flux|ltx|wan22/.test(kicker + " " + path) || groups.has("api")) groups.add("generate");
+    if (/generate|t2i|flux|ltx|wan/.test(kicker + " " + path) || groups.has("api")) groups.add("generate");
     if (/deliver/.test(kicker + " " + path)) groups.add("deliver");
     if (/hdr|remaster|sdr/.test(kicker) || /sdr_to_hdr|remaster/.test(path)) groups.add("hdr");
     return [...groups];

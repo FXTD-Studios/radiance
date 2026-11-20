@@ -48,7 +48,7 @@ KNOWN_FOLDERS = ("diffusion_models", "text_encoders", "vae", "loras", "latent_up
 # Files a workflow loads that its widgets do not name: the loader picks them
 # itself (Wan 2.2's low-noise expert is paired with the high-noise one).
 IMPLIED = {
-    "wan22_hdr_shot_plates": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
+    "wan_hdr": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
 }
 
 # Radiance's own models, fetched and verified by their own downloaders.
