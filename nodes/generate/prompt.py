@@ -1920,9 +1920,9 @@ def _zero_conditioning(cond):
 
 # ALBABIT-FIX: the architectures whose reference images the Prompt passes on
 # (qwen_image is Qwen-Image Edit, flux2 Flux.2 Dev, flux2-klein the Klein models,
-# minimax MiniMax H3's first and last frames, wan and wan_ti2v Wan's).
+# minimax MiniMax H3's first and last frames). Wan takes its frames from first_frame and last_frame only.
 _WAN_FRAME_ARCHS = ("wan", "wan_ti2v")
-_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3", "minimax") + _WAN_FRAME_ARCHS
+_REFERENCE_ARCHS = ("qwen_image21", "qwen_image", "flux2", "flux2-klein", "flux3", "minimax")
 
 # The architectures that read reference images as VAE latents only.
 _LATENT_REFERENCE_ARCHS = ("flux2", "flux2-klein", "flux3")
@@ -2417,12 +2417,12 @@ class RadianceCinematicPromptEncoder(io.ComfyNode):
                 raise ValueError("Prompt: the frames come from first_frame and last_frame, or from image_1 "
                                  "and image_2, not both. Disconnect the images.")
             references = frames
-        if references and (resolved_arch not in _REFERENCE_ARCHS
-                           or (resolved_arch in _WAN_FRAME_ARCHS and not reads_frames)):
+        reference_archs = _REFERENCE_ARCHS + (_WAN_FRAME_ARCHS if frames and reads_frames else ())
+        if references and resolved_arch not in reference_archs:
             raise ValueError(
                 f"Prompt: reference images are read by Qwen-Image 2.1, Qwen-Image Edit, Flux.2, "
-                f"Flux.3 Klein, MiniMax H3 and Wan only, and the text encoder resolves to '{resolved_arch}'. "
-                f"Connect model_meta from the Loader, or disconnect the images.")
+                f"Flux.3 Klein and MiniMax H3 only (Wan takes first_frame and last_frame), and the text encoder "
+                f"resolves to '{resolved_arch}'. Connect model_meta from the Loader, or disconnect the images.")
         # qwen_image is also plain Qwen-Image, which has no image input. The
         # weights do not tell the two apart, so the file name is the only hint;
         # a warning, not an error, so a renamed Edit checkpoint still runs.
