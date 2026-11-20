@@ -10,13 +10,21 @@ import urllib.error
 import pytest
 
 from radiance.core import first_start as fs
+
+
+def _real_ocio():
+    ocio = pytest.importorskip("PyOpenColorIO")
+    if getattr(ocio, "__radiance_test_stub__", False) or not hasattr(ocio.Config, "CreateFromBuiltinConfig") \
+            or type(ocio.Config).__name__ == "MagicMock":
+        pytest.skip("needs the real OpenColorIO (the light CI lane stubs it)")
+    return ocio
 from radiance.core import ffmpeg as ff
 
 
 # ── OCIO ─────────────────────────────────────────────────────────────────────
 
 def test_the_built_in_aces_config_passes(monkeypatch):
-    pytest.importorskip("PyOpenColorIO")
+    _real_ocio()
     from radiance.color import ocio_setup
     env = {}
     ocio_setup.STATE["configured"] = False
@@ -26,7 +34,7 @@ def test_the_built_in_aces_config_passes(monkeypatch):
 
 
 def test_a_config_without_aces_2_views_is_a_warning_with_a_fix(monkeypatch, tmp_path):
-    ocio = pytest.importorskip("PyOpenColorIO")
+    ocio = _real_ocio()
     cfg = ocio.Config.CreateRaw()
     path = tmp_path / "plain.ocio"
     path.write_text(cfg.serialize())
