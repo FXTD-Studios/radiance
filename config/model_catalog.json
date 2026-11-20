@@ -567,73 +567,6 @@
       "required": [],
       "optional": []
     },
-    "flux3_klein_hdr": {
-      "title": "Flux.3 Klein → HDR",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base",
-        "radiance/wan_vace_text_encoder"
-      ]
-    },
-    "flux3_klein_hdr_delivery": {
-      "title": "Flux.3 Klein · Prompt to Deliverables",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base",
-        "radiance/wan_vace_text_encoder"
-      ]
-    },
-    "flux3_klein_plate_passes": {
-      "title": "Flux.3 Klein · Plate + Render Passes",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2",
-        "radiance/marigold_appearance",
-        "radiance/marigold_lighting",
-        "radiance/moge2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base",
-        "radiance/wan_vace_text_encoder"
-      ]
-    },
-    "flux3_klein_reference_edit_hdr": {
-      "title": "Flux.3 Klein · Reference Edit → HDR",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base",
-        "radiance/wan_vace_text_encoder"
-      ]
-    },
     "hdr_delivery": {
       "title": "HDR Delivery",
       "required": [],
@@ -786,17 +719,6 @@
         "radiance/wan_vace_text_encoder"
       ]
     },
-    "sdr_to_hdr_ai_fill": {
-      "title": "SDR → HDR + AI Fill",
-      "required": [
-        "radiance/RUDRA_ACES_2",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base"
-      ],
-      "optional": [
-        "radiance/wan_vace_text_encoder"
-      ]
-    },
     "sdr_to_hdr_analytic": {
       "title": "SDR → HDR Analytic",
       "required": [],
@@ -805,17 +727,6 @@
     "shot_look_match": {
       "title": "Shot Look Match",
       "required": [],
-      "optional": []
-    },
-    "start": {
-      "title": "Starter",
-      "required": [
-        "diffusion_models/flux-2-klein-4b-fp8.safetensors",
-        "text_encoders/qwen_3_4b.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2",
-        "radiance/depth_anything_v2_large"
-      ],
       "optional": []
     },
     "t2i_i2i_hdr": {
