@@ -104,6 +104,10 @@ def resolve_output_path(path: str) -> str:
     path = strip_path_quotes(path)
     if not path:
         return _comfy_dir("output")
+    # 4.0: "~/radiance_output" is the Write default, so a saved workflow names
+    # each user's own home folder rather than the author's.
+    if path == "~" or path.startswith(("~/", "~\\")):
+        path = os.path.expanduser(path)
     if os.path.isabs(path):
         return os.path.normpath(path)
     return safe_join(_comfy_dir("output"), path)

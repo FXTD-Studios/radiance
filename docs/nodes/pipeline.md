@@ -23,7 +23,7 @@ Detect beat, onset, or transient events in audio for video cut points.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `audio_filepath` | string | `/path/to/audio.wav` |  | Absolute path to audio file (WAV, MP3, FLAC, AAC, etc.) |
+| `audio_filepath` | string |  |  | Absolute path to audio file (WAV, MP3, FLAC, AAC, etc.) |
 | `fps` | float | 24 | 1 to 240, step 0.001 | Frame rate of the target video sequence |
 | `method` | choice | `beats` | `beats`, `onsets`, `transients` | Honoured by the librosa backend. scipy always finds energy onsets and ffmpeg always finds silence ends; the report says so. |
 | `sensitivity` | float | 0.5 | 0 to 1, step 0.01 | 0 = only strong peaks, 1 = detect all micro-variations |
@@ -51,7 +51,7 @@ Transcribe speech from an audio or video file using Whisper.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `audio_filepath` | string | `/path/to/audio.wav` |  | Absolute path to audio/video file |
+| `audio_filepath` | string |  |  | Absolute path to audio/video file |
 | `backend` | choice | `Auto` | `Auto`, `local_whisper`, `openai_api`, `whisper_cli` | Auto: local openai-whisper if installed, else the OpenAI API if a key resolves, else the whisper CLI on PATH. Failures are written to transcribe_report, not raised. |
 | `model_size` | choice | `base` | `tiny`, `base`, `small`, `medium`, `large`, `large-v2`, `large-v3` | Whisper model for local_whisper and whisper_cli (larger is slower and more accurate). openai_api always uses whisper-1. |
 | `language` | choice | `auto` | `auto`, `en`, `ar`, `zh`, `fr`, `de`, `es`, `ja`, `ko`, `pt`, and 6 more | Spoken language code passed to Whisper. auto lets Whisper detect it. |

@@ -254,10 +254,11 @@ def test_qc_fail_on_errors_stops_the_graph(monkeypatch):
     spec.loader.exec_module(real)
     monkeypatch.setattr(qc, "defects", real)
     img = torch.full((1, 32, 32, 3), 1.5)            # every pixel above white: fails the clip check
-    report = qc.RadianceQC().run("Analyze", img, fail_on_errors=False)
+    # 4.0: a display deliverable says so; Auto would read 1.5 as scene-linear.
+    report = qc.RadianceQC().run("Analyze", img, fail_on_errors=False, signal="Display (0-1)")
     assert "FAIL" in str(report[3]).upper() and "ERROR" not in str(report[3]).upper()
     with pytest.raises(RuntimeError, match="fail_on_errors"):
-        qc.RadianceQC().run("Analyze", img, fail_on_errors=True)
+        qc.RadianceQC().run("Analyze", img, fail_on_errors=True, signal="Display (0-1)")
 
 
 def test_synthesis_guidance_nits_use_203():

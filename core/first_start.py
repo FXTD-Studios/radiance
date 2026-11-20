@@ -5,7 +5,8 @@ Each check answers one question a new user would otherwise ask on day one:
     ocio     Is there an OCIO config, and does it have the ACES 2.0 SDR and
              HDR views the viewer and the HDR nodes use?
     ffmpeg   Can Write make 10-bit H.265 and ProRes?
-    output   Does Write's default folder (~/radiance_output) exist and take files?
+    output   Does a new Write node's default folder (~/radiance_output) exist and
+             take files? (The shipped workflows write under ComfyUI's output.)
     hub      Is huggingface.co reachable, is a token set (yes/no only), and
              which licences for gated models still need accepting?
 
@@ -159,7 +160,8 @@ def check_output(path: Optional[Path] = None) -> Dict[str, Any]:
         return _check("output", title, WARN, f"{p} · only {free / 1024 ** 3:.1f} GB free; EXR sequences fill "
                                              f"a disk quickly.")
     space = f" · {free / 1024 ** 3:.0f} GB free" if free is not None else ""
-    return _check("output", title, OK, f"{p}{space}. Renders stay outside ComfyUI's output folder.")
+    return _check("output", title, OK, f"{p}{space}. New Write nodes save here; the shipped workflows "
+                                        f"save under ComfyUI's output folder (radiance_examples, radiance_api).")
 
 
 # ── Hugging Face ─────────────────────────────────────────────────────────────
