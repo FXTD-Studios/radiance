@@ -577,7 +577,10 @@
       ],
       "optional": [
         "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
+        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
       ]
     },
     "flux3_klein_hdr_delivery": {
@@ -590,7 +593,10 @@
       ],
       "optional": [
         "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
+        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
       ]
     },
     "flux3_klein_plate_passes": {
@@ -606,7 +612,10 @@
       ],
       "optional": [
         "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
+        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
       ]
     },
     "flux3_klein_reference_edit_hdr": {
@@ -619,7 +628,10 @@
       ],
       "optional": [
         "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
+        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
       ]
     },
     "hdr_delivery": {
@@ -852,7 +864,11 @@
         "vae/wan_2.1_vae.safetensors",
         "radiance/RUDRA_ACES_2"
       ],
-      "optional": []
+      "optional": [
+        "radiance/rudra_genfill_v3",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
+      ]
     }
   }
 }
