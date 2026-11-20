@@ -2,7 +2,7 @@
   "id": "68be048a-a3b0-46d0-b006-34b8850ee5fe",
   "revision": 0,
   "last_node_id": 9,
-  "last_link_id": 7,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
@@ -406,6 +406,40 @@
           "pos": null,
           "slot_index": null,
           "links": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "fps",
+          "locked": null,
+          "name": "fps",
+          "nameLocked": null,
+          "removable": null,
+          "type": "FLOAT",
+          "pos": null,
+          "slot_index": 3,
+          "links": [
+            8
+          ]
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio",
+          "locked": null,
+          "name": "audio",
+          "nameLocked": null,
+          "removable": null,
+          "type": "AUDIO",
+          "pos": null,
+          "slot_index": 4,
+          "links": [
+            9
+          ]
         }
       ],
       "properties": {
@@ -1878,7 +1912,7 @@
           "shape": 7,
           "type": "AUDIO",
           "pos": null,
-          "link": null
+          "link": 9
         },
         {
           "color_off": null,
@@ -1993,7 +2027,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 8
         },
         {
           "color_off": null,
@@ -2425,6 +2459,22 @@
       4,
       0,
       "IMAGE"
+    ],
+    [
+      8,
+      1,
+      3,
+      4,
+      8,
+      "FLOAT"
+    ],
+    [
+      9,
+      1,
+      4,
+      4,
+      1,
+      "AUDIO"
     ]
   ],
   "groups": [

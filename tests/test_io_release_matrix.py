@@ -44,7 +44,7 @@ def _write(w, tmp, fmt, cs="Linear (pass-through)", mask=None, **kw):
 
 
 def _read(w, path, cs="Auto / Linear (pass-through)", **kw):
-    img, mask, info = w.RadianceRead().read(path=path, media_type="Image", color_space=cs, **kw)
+    img, mask, info, *_ = w.RadianceRead().read(path=path, media_type="Image", color_space=cs, **kw)
     return img[0].numpy(), (mask[0].numpy() if mask is not None else None), info
 
 
@@ -142,7 +142,7 @@ def test_working_space_round_trip(nodes, tmp_path, working):
     nodes.RadianceWrite().write(img, out, "IMG │ EXR (32-bit float)", color_space="ARRI LogC4",
                                 working_space=working, overwrite=True)
     path = glob.glob(str(tmp_path / "*.exr"))[0]
-    got, _, info = nodes.RadianceRead().read(path=path, media_type="Image", color_space="ARRI LogC4",
+    got, _, info, *_ = nodes.RadianceRead().read(path=path, media_type="Image", color_space="ARRI LogC4",
                                              working_space=working)
     region = (slice(16, None), slice(None))
     assert float(np.abs(got[0].numpy()[region] - src[0].numpy()[region]).max()) < 2e-3
@@ -187,7 +187,7 @@ def test_ocio_colorspace_free_text_both_ways(nodes, tmp_path):
     nodes.RadianceWrite().write(src, str(tmp_path / "o"), "IMG │ EXR (32-bit float)",
                                 ocio_colorspace="lin_ap0", overwrite=True)   # an alias
     path = glob.glob(str(tmp_path / "*.exr"))[0]
-    got, _, info = nodes.RadianceRead().read(path=path, media_type="Image",
+    got, _, info, *_ = nodes.RadianceRead().read(path=path, media_type="Image",
                                              ocio_colorspace="ACES2065-1")
     assert float(np.abs(got[0].numpy()[16:] - src[0].numpy()[16:]).max()) < 1e-4
     assert "OCIO [studio-config" in " ".join(json_loads(info)["colour_transform"])
@@ -263,7 +263,7 @@ def test_video_tags_matrix_and_round_trip(nodes, tmp_path, fmt, tol):
     info = V.probe(path)
     assert info.color_primaries == "bt709" and info.color_transfer == "bt709", (info.color_primaries, info.color_transfer)
     assert info.color_space == "bt709", info.color_space
-    img, mask, meta = nodes.RadianceRead().read(path=path, media_type="Video", start_frame=0)
+    img, mask, meta, *_ = nodes.RadianceRead().read(path=path, media_type="Video", start_frame=0)
     got = img[0].numpy()
     want = frames[0].numpy()
     # Saturated primaries are where a BT.601/709 matrix mix-up shows (hue shift).
@@ -284,7 +284,7 @@ def test_hdr10_pq_video_is_tagged_hdr10(nodes, tmp_path):
     path = glob.glob(str(tmp_path / "*.mp4"))[0]
     info = V.probe(path)
     assert (info.color_primaries, info.color_transfer, info.color_space) == ("bt2020", "smpte2084", "bt2020nc")
-    img, _, meta = nodes.RadianceRead().read(path=path, media_type="Video", start_frame=0)
+    img, _, meta, *_ = nodes.RadianceRead().read(path=path, media_type="Video", start_frame=0)
     # Auto follows the smpte2084 tag back to linear: 18% grey * 4 = 0.72
     assert abs(float(img[0, 0:8].mean()) - 0.72) < 0.03
 
@@ -298,13 +298,13 @@ def test_sequence_frame_range_step_and_missing(nodes, tmp_path):
     files = sorted(glob.glob(str(out / "*.exr")))
     assert len(files) == 10 and files[0].endswith("_1001.exr") and files[-1].endswith("_1010.exr")
     os.rename(files[4], files[4] + ".bak")           # frame 1005 missing
-    img, _, info = nodes.RadianceRead().read(path=files[0], start_frame=1002, end_frame=1008,
+    img, _, info, *_ = nodes.RadianceRead().read(path=files[0], start_frame=1002, end_frame=1008,
                                              frame_step=2, missing_frames="Black")
     # 1002, 1004, 1006(black? no: 1006 exists), 1008
     assert img.shape[0] == 4
     levels = [round(float(img[k, 0:8].mean()) / 0.18 * 10) for k in range(4)]
     assert levels == [2, 4, 6, 8], levels
-    img, _, _ = nodes.RadianceRead().read(path=files[0], start_frame=1004, end_frame=1006,
+    img, _, _, *_ = nodes.RadianceRead().read(path=files[0], start_frame=1004, end_frame=1006,
                                           missing_frames="Black")
     assert img.shape[0] == 3 and float(img[1].abs().max()) == 0.0
     with pytest.raises(RuntimeError):
@@ -373,17 +373,17 @@ def test_read_premultiplied_raw_layer_on_error_proxy(nodes, tmp_path):
     OpenEXR.File({"compression": OpenEXR.ZIP_COMPRESSION, "type": OpenEXR.scanlineimage},
                  {"R": rgb, "G": rgb, "B": rgb, "A": np.full((8, 8), 0.5, np.float32),
                   "depth.Z": np.full((8, 8), 7.0, np.float32)}).write(p)
-    img, _, _ = nodes.RadianceRead().read(path=p, premultiplied=True)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, premultiplied=True)
     assert abs(float(img.mean()) - 1.0) < 1e-6
-    img, _, _ = nodes.RadianceRead().read(path=p, premultiplied=False)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, premultiplied=False)
     assert abs(float(img.mean()) - 0.5) < 1e-6
-    img, _, info = nodes.RadianceRead().read(path=p, layer="depth")
+    img, _, info, *_ = nodes.RadianceRead().read(path=p, layer="depth")
     assert abs(float(img.mean()) - 7.0) < 1e-6, info
-    img, _, _ = nodes.RadianceRead().read(path=p, color_space="sRGB", raw=True)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, color_space="sRGB", raw=True)
     assert abs(float(img.mean()) - 0.5) < 1e-6          # raw: no decode
-    img, _, _ = nodes.RadianceRead().read(path=p, proxy_scale=0.5)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, proxy_scale=0.5)
     assert img.shape[1:3] == (4, 4)
-    img, _, info = nodes.RadianceRead().read(path=str(tmp_path / "missing.exr"), on_error="Black frame")
+    img, _, info, *_ = nodes.RadianceRead().read(path=str(tmp_path / "missing.exr"), on_error="Black frame")
     assert float(img.abs().max()) == 0.0 and '"kind": "error"' in info
     with pytest.raises(RuntimeError):
         nodes.RadianceRead().read(path=str(tmp_path / "missing.exr"), on_error="Error")
@@ -393,9 +393,9 @@ def test_max_video_frames_and_step(nodes, tmp_path):
     frames, _ = _video_src(12)
     nodes.RadianceWrite().write(frames, str(tmp_path / "v"), "VID │ MOV (ProRes 422 HQ)", fps=24.0, overwrite=True)
     p = glob.glob(str(tmp_path / "*.mov"))[0]
-    img, _, _ = nodes.RadianceRead().read(path=p, start_frame=0, max_video_frames=5)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, start_frame=0, max_video_frames=5)
     assert img.shape[0] == 5
-    img, _, _ = nodes.RadianceRead().read(path=p, start_frame=2, end_frame=10, frame_step=4)
+    img, _, _, *_ = nodes.RadianceRead().read(path=p, start_frame=2, end_frame=10, frame_step=4)
     assert img.shape[0] == 3        # 2, 6, 10
 
 

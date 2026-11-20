@@ -27,20 +27,21 @@ def comfy_tree(tmp_path):
     return pkg
 
 
-def test_diffusers_minimum_is_the_one_wan_vace_needs():
+def test_install_and_requirements_agree_on_the_floors():
+    """Wan VACE needs diffusers 0.35; 0.38.0 and OCIO 2.5.1 are the release's security floors."""
     inst = _load(ROOT / "install.py")
     req = {mod: minimum for mod, _, minimum, _ in inst.REQUIRED}
-    assert req["diffusers"] == "0.35.0" and req["PyOpenColorIO"] == "2.5.0"
+    assert req["diffusers"] == "0.38.0" and req["PyOpenColorIO"] == "2.5.1"
     for f in ["requirements.txt", "requirements_windows.txt", "requirements_linux.txt",
               "requirements_mac_silicon.txt", "pyproject.toml"]:
-        assert "diffusers>=0.35.0" in (ROOT / f).read_text(), f
+        assert "diffusers>=0.38.0" in (ROOT / f).read_text(), f
 
 
 def test_an_old_library_is_upgraded(monkeypatch):
     inst = _load(ROOT / "install.py")
     monkeypatch.setattr(inst.importlib.util, "find_spec", lambda name: object())
     monkeypatch.setattr(inst, "_too_old", lambda dist, minimum: dist == "diffusers")
-    assert inst._missing() == ["diffusers>=0.35.0"]
+    assert inst._missing() == ["diffusers>=0.38.0"]
     assert inst._version_tuple("0.34.0.dev0") < inst._version_tuple("0.35.0")
 
 

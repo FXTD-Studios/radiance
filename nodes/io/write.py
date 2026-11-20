@@ -261,10 +261,10 @@ class RadianceRead:
         "4444 alpha on the mask output, and honours the file's colour tags."
     )
     FUNCTION     = "read"
-    # `info` is appended last on purpose: ComfyUI links outputs by index, so
-    # every workflow saved against the two-output version keeps working.
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
-    RETURN_NAMES = ("image", "mask", "info")
+    # Outputs are only ever appended: ComfyUI links outputs by index, so every
+    # workflow saved against an older version keeps working.
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "FLOAT", "AUDIO")
+    RETURN_NAMES = ("image", "mask", "info", "fps", "audio")
     OUTPUT_TOOLTIPS = (
         "Frames as a batch. Scene-linear once color_space has decoded them.",
         "Alpha. For a ProRes 4444, an RGBA EXR or an RGBA sequence this is the "
@@ -272,6 +272,11 @@ class RadianceRead:
         "JSON describing what was actually read: resolution, frame count and "
         "range, bit depth, codec, EXR layers and windows, colour tags, "
         "timecode. Nuke's metadata tab, as a wire you can plug in.",
+        "Frame rate the frames play at: the clip's or the sequence header's "
+        "rate, divided by frame_step; 24 for a still or a sequence with no "
+        "rate. Wire it to Write's fps so a 25 or 30 fps clip is not written at 24.",
+        "The clip's sound under the frames that were read (48 kHz stereo), "
+        "for Write's audio input. Empty for stills, sequences and silent clips.",
     )
 
     @classmethod
@@ -522,7 +527,8 @@ class RadianceRead:
             # ALBABIT-FIX: node and console progress for sequences.
             on_frame=_FrameProgress("Read"),
         )
-        return (image, mask, json.dumps(info, default=str))
+        from ...io.reader import playback_fps, read_clip_audio
+        return (image, mask, json.dumps(info, default=str), playback_fps(info), read_clip_audio(info))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1354,7 +1360,7 @@ class RadianceDigitalCinemaRead:
         else:
             read_start = start_frame
             read_end = (start_frame + frame_limit - 1) if frame_limit > 0 else 0
-        img, mask, read_info = reader.read(
+        img, mask, read_info, *_ = reader.read(
             path=source_path,
             media_type=media_type,
             color_space=cs_in,

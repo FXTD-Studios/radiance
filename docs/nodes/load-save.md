@@ -70,6 +70,8 @@ Read an image, EXR, video or numbered sequence into the pipeline. Video decodes 
 | `image` | IMAGE | Frames as a batch. Scene-linear once color_space has decoded them. |
 | `mask` | MASK | Alpha. For a ProRes 4444, an RGBA EXR or an RGBA sequence this is the file's own matte; otherwise zeros. |
 | `info` | STRING | JSON describing what was actually read: resolution, frame count and range, bit depth, codec, EXR layers and windows, colour tags, timecode. Nuke's metadata tab, as a wire you can plug in. |
+| `fps` | FLOAT | Frame rate the frames play at: the clip's or the sequence header's rate, divided by frame_step; 24 for a still or a sequence with no rate. Wire it to Write's fps so a 25 or 30 fps clip is not written at 24. |
+| `audio` | AUDIO | The clip's sound under the frames that were read (48 kHz stereo), for Write's audio input. Empty for stills, sequences and silent clips. |
 
 ## Write
 

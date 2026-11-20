@@ -196,7 +196,7 @@ def test_the_read_node_returns_every_frame(clip, codec, frames):
     """The count the graph actually receives, not just the one core.video saw."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(browse="", path=str(clip(codec, frames)))
+    image, mask, _info, *_ = RadianceRead().read(browse="", path=str(clip(codec, frames)))
     assert image.shape[0] == frames, (
         f"RadianceRead handed the graph {image.shape[0]} frames of a "
         f"{frames}-frame {codec} clip")

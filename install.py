@@ -23,8 +23,8 @@ from pathlib import Path
 REQUIRED = [
     # (import name, distribution, minimum version, pip requirement)
     ("OpenEXR", "OpenEXR", "3.2.0", "OpenEXR>=3.2.0,<4.0.0"),
-    ("PyOpenColorIO", "opencolorio", "2.5.0", "opencolorio>=2.5.0,<3.0.0"),
-    ("diffusers", "diffusers", "0.35.0", "diffusers>=0.35.0"),
+    ("PyOpenColorIO", "opencolorio", "2.5.1", "opencolorio>=2.5.1,<3.0.0"),
+    ("diffusers", "diffusers", "0.38.0", "diffusers>=0.38.0"),
     ("accelerate", "accelerate", "0.26.0", "accelerate>=0.26.0"),
 ]
 

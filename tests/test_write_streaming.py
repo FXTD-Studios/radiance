@@ -387,7 +387,7 @@ def test_read_decodes_a_sequence_in_order_and_advances_its_bar(tmp_path, monkeyp
         (np.full((8, 8, 3), v, np.float32) for v in values), str(tmp_path / "plate"),
         "SEQ │ EXR (32-bit float)", 24.0, 18, "ZIP", 1001, 4, "", True, frame_count=12)
     bars = _record_bars(monkeypatch, io_nodes)
-    image, _mask, _info = io_nodes.RadianceRead().read(path=str(Path(saved) / "plate_####.exr"))
+    image, _mask, _info, *_ = io_nodes.RadianceRead().read(path=str(Path(saved) / "plate_####.exr"))
     assert [(b.total, b.value) for b in bars] == [(12, 12)]
     assert [round(float(f.mean()), 4) for f in image] == values
 

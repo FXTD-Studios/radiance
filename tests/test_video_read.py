@@ -372,7 +372,7 @@ def test_every_offered_colour_space_can_actually_be_decoded():
 def test_read_node_puts_prores_4444_alpha_on_the_mask_output(prores4444, source):
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(browse="", path=str(prores4444))
+    image, mask, _info, *_ = RadianceRead().read(browse="", path=str(prores4444))
     assert image.shape == (FRAMES, HEIGHT, WIDTH, 3)
     assert mask.shape == (FRAMES, HEIGHT, WIDTH)
     assert np.abs(mask.numpy() - source[..., 3]).max() < 2.0 / 1023.0
@@ -384,14 +384,14 @@ def test_read_node_puts_prores_4444_alpha_on_the_mask_output(prores4444, source)
 def test_read_node_leaves_the_mask_empty_when_there_is_no_alpha(prores422):
     from radiance.nodes.io.write import RadianceRead
 
-    _image, mask, _info = RadianceRead().read(browse="", path=str(prores422))
+    _image, mask, _info, *_ = RadianceRead().read(browse="", path=str(prores422))
     assert float(mask.abs().max()) == 0.0
 
 
 def test_read_node_honours_a_frame_range(prores4444):
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(
+    image, mask, _info, *_ = RadianceRead().read(
         browse="", path=str(prores4444), start_frame=2, end_frame=5)
     assert image.shape[0] == 4
     assert mask.shape[0] == 4
@@ -402,7 +402,7 @@ def test_the_sequence_default_start_frame_does_not_swallow_a_clip(prores4444):
     clip that is 8 frames long, that means decoding nothing at all."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, _info = RadianceRead().read(
+    image, _mask, _info, *_ = RadianceRead().read(
         browse="", path=str(prores4444), start_frame=1001)
     assert image.shape[0] == FRAMES
 
@@ -430,7 +430,7 @@ def test_a_blank_path_still_returns_a_frame_rather_than_erroring():
     """A node just dropped on the canvas is not a failure."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(browse="", path="")
+    image, mask, _info, *_ = RadianceRead().read(browse="", path="")
     assert image.shape[0] == 1 and mask is not None
 
 
