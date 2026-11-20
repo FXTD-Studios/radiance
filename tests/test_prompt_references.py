@@ -266,3 +266,8 @@ class TestWanFrames:
         self._run("wan", (1, 16, 21, 88, 160), first_frame=torch.zeros(1, 32, 32, 4), last_frame=torch.ones(1, 32, 32, 4))
         assert natives[0][1]["start_image"].shape[-1] == natives[0][1]["end_image"].shape[-1] == 3
 
+    def test_wan_refuses_reference_images_its_frames_come_from_the_frame_sockets(self, natives):
+        with pytest.raises(ValueError, match="Wan takes first_frame and last_frame"):
+            self._run("wan", (1, 16, 21, 88, 160), images={"image_1": torch.zeros(1, 32, 32, 3)})
+        assert not natives
+
