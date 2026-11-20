@@ -5488,7 +5488,8 @@ class RadianceViewer {
         const { wrap: wBurnFrame, cb: dvBurnFrame } = createCheck('◎ Burn Frame#', 'dvBurnFrame', false);
         const { wrap: wBurnLUT, cb: dvBurnLUT } = createCheck('◎ Burn LUT', 'dvBurnLUT', false);
         const { wrap: wExportCDL, cb: dvExportCDL } = createCheck('◎ Export .CDL', 'dvExportCDL', false);
-        const { wrap: wExportAMF, cb: dvExportAMF } = createCheck('◎ Export .AMF  (ACES Clip XML)', 'dvExportAMF', false);
+        const { wrap: wExportAMF, cb: dvExportAMF } = createCheck('◎ Export .AMF  (ACES masters)', 'dvExportAMF', false);
+        wExportAMF.title = 'ACES Metadata File v2.0 beside an ACEScg, ACES2065-1 or ACEScct master: its input transform, the grade as a CDL look and the ACES 2.0 view. Other colour spaces get no AMF.';
         const { wrap: wBakeGrade, cb: dvBakeGrade } = createCheck('◎ Bake Grade → EXR', 'dvBakeGrade', false);
         dvBakeGrade.dataset.dv = 'bake';
         const { wrap: wRevealTarget, cb: dvRevealTarget } = createCheck('◎ Launch Folder', 'dvRevealTarget', true);
