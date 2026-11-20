@@ -46,7 +46,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   older one instead of running it. Masters change slightly in partially
   clipped highlights, where the lock holds the recorded channels to the
   source.
-- **37 nodes are deprecated.** They are hidden from the node menu (121 nodes
+- **37 nodes are deprecated.** They are hidden from the node menu (120 nodes
   show; 43 are hidden in all, counting older aliases), and a saved graph
   that uses one still opens and runs; each one's
   description says what to use instead. They are the manual SDR → HDR chain
@@ -545,6 +545,17 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Changed
 
+- **Write's default folder is `~/radiance_output`**, expanded on each machine.
+  It used to be the absolute home path of whoever added the node, saved into
+  the workflow, so a shared workflow wrote to a folder named after the
+  author. A leading `~` now works in any output path.
+- **Path defaults are empty, with an example as a placeholder**: OCIO Context
+  (empty loads the active config; it was `C:/ACES/config.ocio`), CDL Import,
+  Audio Cut and Audio Transcribe.
+- **RUDRA AI fill v4 re-render is hidden from the node menu** (ComfyUI dev mode
+  shows it) until its LoRA is published; saved graphs still open it. 120 nodes
+  show in the menu.
+- **Environment variables are documented** in docs/ENVIRONMENT.md.
 - **One colour palette** across the Radiance page, Viewer, Gizmo editor,
   Project Manager and dialogs: neutral greys, one blue for state, and green,
   yellow and red only for status. Channel colours, scopes, false colour,
@@ -795,6 +806,13 @@ are the results.
 
 ### Fixed
 
+- **QC failed every HDR master.** Values above 1.0 were reported as clipped
+  and out of gamut, so an ACEScg or PQ master always got "QC FAILED". QC has a
+  `signal` input (Auto, Display 0-1, Scene-linear / HDR): scene-linear reports
+  the peak in stops above 18% grey and warns on negative values. The QC
+  analysis now runs in the test suite; it was replaced by mocks before.
+- **MOV and MP4 had no start timecode.** They now carry the first frame's
+  timecode (frame 1001 at 24 fps = 00:00:41:17), as the EXR frames do.
 - **Read → Write wrote clips at 24 fps without sound.** Read now outputs the
   clip's rate and audio; the shipped clip workflows pass both to Write.
 - **Deliver's AMF** put input and colour-space-conversion transforms in the

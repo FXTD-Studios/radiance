@@ -69,6 +69,10 @@ class RadianceSDRToHDRAIFillRerender:
     """RUDRA AI fill v4: a bright region of an HDR master drawn again by Wan VACE + the v4 LoRA."""
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
+    # 4.0: hidden from the node menu (ComfyUI shows DEV_ONLY nodes only in dev
+    # mode) until the v4 LoRA is published; a saved graph still opens and runs.
+    EXPERIMENTAL = True
+    DEV_ONLY = True
     DESCRIPTION = (
         "RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master "
         "again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the "

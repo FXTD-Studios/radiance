@@ -13,6 +13,7 @@ import os
 import sys
 import types
 import importlib
+import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -593,13 +594,13 @@ def pytest_collection_modifyitems(config, items):
 
 # ── radiance.image subpackage (used by nodes_qc via `from .image import defects`) ─
 _image_pkg = _mark_stub(types.ModuleType("radiance.image"))
-_defects_stub = _mark_stub(types.ModuleType("radiance.image.defects"))
-_defects_stub.analyze_levels         = MagicMock(return_value={"crushed": 0.0, "clipped": 0.0})
-_defects_stub.check_gamut            = MagicMock(return_value={"out_of_gamut_pct": 0.0})
-_defects_stub.detect_banding         = MagicMock(return_value={"risk_pct": 0.0, "detected": False})
-_defects_stub.analyze_noise          = MagicMock(return_value={"level": 0.0})
-_defects_stub.detect_compression_artifacts = MagicMock(return_value={"detected": False})
-_defects_stub.analyze_focus          = MagicMock(return_value={"sharpness": 1.0})
+# The real QC analysis (it needs only torch). Until 4.0 this was a stub of
+# MagicMocks whose keys did not match the real ones, so the QC node's analysis
+# never ran in a test, and it failed every HDR image unnoticed.
+_defects_spec = importlib.util.spec_from_file_location(
+    "radiance.image.defects", Path(__file__).resolve().parent.parent / "image" / "defects.py")
+_defects_stub = importlib.util.module_from_spec(_defects_spec)
+_defects_spec.loader.exec_module(_defects_stub)
 _image_pkg.defects = _defects_stub
 # Keep the package importable as a real package. Without a __path__ this stub
 # shadowed the whole subpackage, so `import radiance.image.upscale` failed even

@@ -1132,8 +1132,13 @@ def _save_video_ffmpeg(
     frame_count: Optional[int] = None,
     light_levels: Optional[Tuple[int, int]] = None,
     audio_codec: str = "Auto",
+    start_frame: Optional[int] = None,
 ) -> str:
     """Encode frames to video via ffmpeg, streaming them into its stdin.
+
+    4.0: with `start_frame`, the MOV/MP4 carries a start timecode (a tmcd
+    track) for that frame at the nominal rate, the same timecode the EXR
+    sequence of the shot carries, so a conform in Resolve or Avid lines up.
 
     PQ and HLG refuse an 8-bit format, and PQ HEVC carries HDR10 static
     metadata: the mastering display and `light_levels` (MaxCLL, MaxFALL from
@@ -1265,6 +1270,8 @@ def _save_video_ffmpeg(
             # "-shortest" stop it with the picture. Bare "-shortest" cut the
             # picture to a short track.
             cmd += ["-af", "apad", "-shortest"]
+    if start_frame is not None and start_frame >= 0:
+        cmd += ["-timecode", _video_timecode(int(start_frame), fps)]
     cmd += ["-c:v", codec, "-pix_fmt", dst_pix_fmt] + extra + [str(part_path)]
 
     try:
@@ -1442,6 +1449,17 @@ def _write_audio_temp_wav(audio: Any) -> Optional[str]:
             b"data" + struct.pack("<I", len(raw)) + raw
         )
     return path
+
+
+def _video_timecode(frame: int, fps: float) -> str:
+    """`frame` as a non-drop SMPTE timecode string at the nominal rate, for
+    ffmpeg's -timecode: frame 1001 at 24 fps (or 23.976) is 00:00:41:17,
+    as in the EXR header."""
+    rate = max(1, round(fps))
+    hours, rest = divmod(frame, 3600 * rate)
+    minutes, rest = divmod(rest, 60 * rate)
+    seconds, frames = divmod(rest, rate)
+    return f"{hours % 24:02d}:{minutes:02d}:{seconds:02d}:{frames:02d}"
 
 
 def _exr_timecode(frame: int, fps: float) -> Dict[str, Any]:
@@ -2066,6 +2084,7 @@ def _dispatch_write(
             frame_count=n,
             light_levels=light_levels,
             audio_codec=audio_codec,
+            start_frame=start_frame,
         )
         _record(receipt, out, None, f"ffmpeg {_fmt_stem(format)}")
         if receipt is not None:

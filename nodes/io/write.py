@@ -700,7 +700,7 @@ class RadianceWrite:
                 ),
             }),
             "output_path": ("STRING", {
-                "default": str(Path.home() / "radiance_output"),
+                "default": "~/radiance_output",
                 "multiline": False,
                 "placeholder": "/output/render  or  //nas/share/render  or  Z:/renders/shot",
                 "tooltip": (
@@ -1424,7 +1424,7 @@ class RadianceDigitalCinemaWrite:
                 # It used to default to "", so dropping the node and queueing
                 # crashed inside pathlib instead of writing anything.
                 "output_path": ("STRING", {
-                    "default": str(Path.home() / "radiance_output"),
+                    "default": "~/radiance_output",
                     "placeholder": "/output/render  or  Z:/renders/shot",
                     "tooltip": ("Output path, as in the Write node. With filename empty it is the full stem "
                                 "(single images and video get the extension appended; sequences use it as a folder)."),
