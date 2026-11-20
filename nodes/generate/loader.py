@@ -267,10 +267,11 @@ OFFLOAD_MODES = ["none", "cpu_offload", "sequential"]
 
 def _find_wan_moe_companion(unet_name):
     # ALBABIT-FIX: WAN 2.2 uses two expert UNETs (high_noise + low_noise).
-    # Derive the companion filename by swapping the noise tag.
+    # Derive the companion filename by swapping the noise tag of the file name, not of its folders.
     name_lower = unet_name.lower()
+    start = len(unet_name) - len(os.path.basename(unet_name))
     for tag, companion_tag in (("high_noise", "low_noise"), ("low_noise", "high_noise")):
-        idx = name_lower.find(tag)
+        idx = name_lower.find(tag, start)
         if idx != -1:
             return unet_name[:idx] + companion_tag + unet_name[idx + len(tag):]
     return None
@@ -282,8 +283,11 @@ def _find_wan_moe_companion(unet_name):
 def _wan_moe_lora_stacks(lora_stack):
     high, low, pairs = [], [], set()
     for name, model_str, clip_str in lora_stack or []:
+        if model_str == 0 and clip_str == 0:
+            continue
         companion = _find_wan_moe_companion(name)
-        is_low = "low_noise" in name.lower()
+        base = os.path.basename(name).lower()
+        is_low = "high_noise" not in base and "low_noise" in base
         if not companion or not folder_paths.get_full_path("loras", companion):
             (low if is_low else high).append((name, model_str, 0 if is_low else clip_str))
             continue
@@ -606,9 +610,11 @@ class RadianceUnifiedLoader:
         )
         if low_stack:
             low_lines = []
-            model_low_noise = apply_lora_stack(
-                model_low_noise, None, low_stack, lora_on_error, divider, low_lines)[0]
+            model_low_noise, _, low_applied, _ = apply_lora_stack(
+                model_low_noise, None, low_stack, lora_on_error, divider, low_lines)
             info_lines += [f"{line} (low noise)" for line in low_lines]
+            applied_loras += low_applied
+            out_lora_stack = [(e["name"], e["model_str"], e["clip_str"]) for e in applied_loras] or None
 
         if model_shift > 0:
             # ALBABIT-FIX: ModelSamplingAuraFlow sets the time scale to 1, right only for models
