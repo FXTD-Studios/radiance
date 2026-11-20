@@ -171,3 +171,15 @@ test("hardware rows and the GPU tier read like a spec sheet", () => {
     assert.equal(M.gpuTier({ gpus: [{ vram: 25_756_696_576 }] }).tone, "ok");
     assert.equal(M.formatMemory(25_756_696_576), "24 GB");
 });
+
+test("a shot code matches as a whole token, and a sequence says its frames", () => {
+    assert.equal(M.hasToken("SH040_comp_v002.####.exr", "SH040"), true);
+    assert.equal(M.hasToken("comp.sh040.mov", "SH040"), true);
+    assert.equal(M.hasToken("SH0400_comp.exr", "SH040"), false);
+    assert.equal(M.hasToken("", "SH040"), false);
+    assert.equal(M.outputLabel({ name: "SH040_comp.####.exr", frames: 100, range: [1001, 1100] }), "SH040_comp.####.exr · 100 frames · 1001-1100");
+    const rows = M.shotRows([{ shot: "SH040", version: "v0002", filename: "P/SH040_comp_ada_v0002.rad" }],
+        [{ name: "SH040_comp.####.exr", frames: 10 }, { name: "SH0400_x.exr" }], ["SH040 · Sup — fix the edge", "SH0400 · x — no"]);
+    assert.equal(rows[0].outputs.length, 1);
+    assert.deepEqual(rows[0].notes, ["SH040 · Sup — fix the edge"]);
+});
