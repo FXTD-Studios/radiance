@@ -68,6 +68,24 @@ test('under MiniMax H3, a first or last frame alone brings video_latent and the 
     }
 });
 
+test('under Wan and its 5B, a first frame brings video_latent and the latent output too', () => {
+    for (const model_type of ['wan', 'wan_ti2v']) {
+        const node = prompt({ loader: { preset: 'Custom', model_type }, image: false, input: 'gone', output: 'gone' });
+        context.applySockets(node);
+        node.inputs.find(i => i.name === 'first_frame').link = 51;
+        context.applySockets(node);
+        assert.equal(node.inputs.at(-1).name, 'video_latent');
+        assert.deepEqual(names(node.outputs), ['positive', 'latent']);
+    }
+});
+
+test('under the Wan 2.2 5B, only first_frame comes', () => {
+    const node = prompt({ loader: { preset: 'Custom', model_type: 'wan_ti2v' }, image: false });
+    context.applySockets(node);
+    assert.ok(node.inputs.some(i => i.name === 'first_frame'));
+    assert.ok(!node.inputs.some(i => i.name === 'last_frame'));
+});
+
 test('another family drops the free frame sockets and keeps a linked one', () => {
     const node = prompt({ loader: { preset: 'Flux.2' }, image: false, input: 'gone', output: 'gone' });
     node.inputs.push({ name: 'first_frame', type: 'IMAGE', link: null }, { name: 'last_frame', type: 'IMAGE', link: 51 });

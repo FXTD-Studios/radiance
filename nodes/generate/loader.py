@@ -267,13 +267,36 @@ OFFLOAD_MODES = ["none", "cpu_offload", "sequential"]
 
 def _find_wan_moe_companion(unet_name):
     # ALBABIT-FIX: WAN 2.2 uses two expert UNETs (high_noise + low_noise).
-    # Derive the companion filename by swapping the noise tag.
+    # Derive the companion filename by swapping the noise tag of the file name, not of its folders.
     name_lower = unet_name.lower()
+    start = len(unet_name) - len(os.path.basename(unet_name))
     for tag, companion_tag in (("high_noise", "low_noise"), ("low_noise", "high_noise")):
-        idx = name_lower.find(tag)
+        idx = name_lower.find(tag, start)
         if idx != -1:
             return unet_name[:idx] + companion_tag + unet_name[idx + len(tag):]
     return None
+
+
+# ALBABIT-FIX: WAN 2.2's LoRAs come in pairs like its experts (lightx2v's high_noise and
+# low_noise files): each goes on its own expert, its companion found by name. A LoRA
+# without a companion on disk stays on the expert its name says (high-noise by default).
+def _wan_moe_lora_stacks(lora_stack):
+    high, low, pairs = [], [], set()
+    for name, model_str, clip_str in lora_stack or []:
+        if model_str == 0 and clip_str == 0:
+            continue
+        companion = _find_wan_moe_companion(name)
+        base = os.path.basename(name).lower()
+        is_low = "high_noise" not in base and "low_noise" in base
+        if not companion or not folder_paths.get_full_path("loras", companion):
+            (low if is_low else high).append((name, model_str, 0 if is_low else clip_str))
+            continue
+        pair = (companion, name) if is_low else (name, companion)
+        if pair not in pairs:
+            pairs.add(pair)
+            high.append((pair[0], model_str, clip_str))
+            low.append((pair[1], model_str, 0))
+    return high, low
 
 
 class RadianceUnifiedLoader:
@@ -393,7 +416,9 @@ class RadianceUnifiedLoader:
                 ),
                 # ── LoRA (external stack input) ──
                 "lora_stack":      ("LORA_STACK", {"default": None,
-                    "tooltip": "Accept a LORA_STACK from a LoRA Stack node."}),
+                    "tooltip": "Accept a LORA_STACK from a LoRA Stack node.\n"
+                               "• WAN 2.2: a high_noise LoRA goes on model, its low_noise file "
+                               "(found by name, as the UNET's) on model_low_noise."}),
                 # ── Options ──
                 "check_vram":  (["On", "Off"], {"default": "On",
                     "tooltip": "Estimate VRAM before load and warn if tight."}),
@@ -547,7 +572,8 @@ class RadianceUnifiedLoader:
 
         # ALBABIT-FIX: ensure model = high_noise expert, model_low_noise = low_noise expert,
         # regardless of which file the user picked in the unet_name widget.
-        if model_low_noise is not None and "low_noise" in unet_name.lower():
+        base = os.path.basename(unet_name).lower()
+        if model_low_noise is not None and "high_noise" not in base and "low_noise" in base:
             model, model_low_noise = model_low_noise, model
 
         # ════════════════════════════════════════════════════════════════
@@ -578,9 +604,18 @@ class RadianceUnifiedLoader:
         # 7. APPLY LoRA STACK
         #    Priority: upstream lora_stack input stack
         # ════════════════════════════════════════════════════════════════
+        high_stack, low_stack = (_wan_moe_lora_stacks(lora_stack) if model_low_noise is not None
+                                 else (lora_stack, []))
         model, clip, applied_loras, out_lora_stack = apply_lora_stack(
-            model, clip, lora_stack, lora_on_error, divider, info_lines
+            model, clip, high_stack, lora_on_error, divider, info_lines
         )
+        if low_stack:
+            low_lines = []
+            model_low_noise, _, low_applied, _ = apply_lora_stack(
+                model_low_noise, None, low_stack, lora_on_error, divider, low_lines)
+            info_lines += [f"{line} (low noise)" for line in low_lines]
+            applied_loras += low_applied
+            out_lora_stack = [(e["name"], e["model_str"], e["clip_str"]) for e in applied_loras] or None
 
         if model_shift > 0:
             # ALBABIT-FIX: ModelSamplingAuraFlow sets the time scale to 1, right only for models
