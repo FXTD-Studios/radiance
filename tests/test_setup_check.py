@@ -140,14 +140,15 @@ def test_a_file_is_pinned_from_the_hub_then_fetched_into_its_folder(models):
         return dest
 
     q = sc.DownloadQueue(fetcher=fetch, metadata=meta)
-    mid = "text_encoders/qwen_3_4b.safetensors"
+    mid = "vae/ltx-2.5-video-vae-bf16.safetensors"                   # in a gated repo: not pinned
+    assert not sc.load_catalog()["models"][mid].get("sha256")
     assert q.enqueue([mid]) == [mid]
     job = _wait(q, mid)
     assert job["status"] == "done", job
     url, dest, sha, size = calls["fetch"]
-    assert url == ("https://huggingface.co/Comfy-Org/flux2-klein/resolve/" + "a" * 40 +
-                   "/split_files/text_encoders/qwen_3_4b.safetensors")
-    assert Path(dest) == models.root / "text_encoders" / "qwen_3_4b.safetensors"
+    assert url == ("https://huggingface.co/Lightricks/LTX-2.5/resolve/" + "a" * 40 +
+                   "/vae/ltx-2.5-video-vae-bf16.safetensors")
+    assert Path(dest) == models.root / "vae" / "ltx-2.5-video-vae-bf16.safetensors"
     assert (sha, size) == ("b" * 64, 11)
     assert job["done"] == job["total"] == 11
     assert q.enqueue([mid]) == []                                     # installed: nothing to do
@@ -323,3 +324,23 @@ def test_the_shipped_catalog_has_no_size_without_a_digest():
     for mid, m in sc.load_catalog()["models"].items():
         if m.get("size") and not sc.is_pack(mid):
             assert m.get("sha256") and m.get("revision"), f"{mid}: a size with no pin"
+
+
+def test_a_pinned_file_downloads_from_its_pinned_commit_without_asking_the_hub(models):
+    calls = {}
+
+    def fetch(url, dest, *, sha256, size, label, progress, should_cancel):
+        calls["fetch"] = (url, sha256, size)
+        Path(dest).write_bytes(b"x")
+        return dest
+
+    def meta(url):
+        raise AssertionError("a pinned file must not ask the Hub again")
+
+    q = sc.DownloadQueue(fetcher=fetch, metadata=meta)
+    mid = "text_encoders/qwen_3_4b.safetensors"
+    pin = sc.load_catalog()["models"][mid]
+    q.enqueue([mid])
+    assert _wait(q, mid)["status"] == "done"
+    url, sha, size = calls["fetch"]
+    assert f"/resolve/{pin['revision']}/" in url and (sha, size) == (pin["sha256"], pin["size"])
