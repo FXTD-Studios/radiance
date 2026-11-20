@@ -153,7 +153,9 @@ def _links(text: str) -> dict:
             role = ("alternative" if "alternative" in t else "optional" if "optional" in t
                     else "used" if "(used" in t else "")
             folder = _folder_from_url(url) or (prefix.group(1) if prefix and prefix.group(1) in KNOWN_FOLDERS else "")
-            out.setdefault(fname, {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder})
+            # ALBABIT-FIX: a file listed twice keeps the link marked (used), the one the workflow loads.
+            if fname not in out or (role == "used" and out[fname]["role"] != "used"):
+                out[fname] = {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder}
     return out
 
 
