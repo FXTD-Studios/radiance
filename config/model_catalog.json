@@ -70,7 +70,10 @@
       "repo": "Lightricks/LTX-2.3",
       "path": "ltx-2.3-22b-dev.safetensors",
       "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-dev.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "c1521179de480464f366a98a9d9b2acc4cc097b9",
+      "sha256": "7ab7225325bc403448ea84b6db2269811a880e5118cd2ee2b6282a93d585016f",
+      "size": 46149344974
     },
     "checkpoints/ltx-2.3-22b-distilled-1.1.safetensors": {
       "file": "ltx-2.3-22b-distilled-1.1.safetensors",
@@ -78,7 +81,10 @@
       "repo": "Lightricks/LTX-2.3",
       "path": "ltx-2.3-22b-distilled-1.1.safetensors",
       "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-1.1.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "c1521179de480464f366a98a9d9b2acc4cc097b9",
+      "sha256": "b33b7fe4bbfe084f484be4aaf90b0f1d95dca20d403ac4c0e037eb8c4f0af7cc",
+      "size": 46149345334
     },
     "diffusion_models/flux-2-klein-4b-fp8.safetensors": {
       "file": "flux-2-klein-4b-fp8.safetensors",
@@ -86,7 +92,10 @@
       "repo": "black-forest-labs/FLUX.2-klein-4b-fp8",
       "path": "flux-2-klein-4b-fp8.safetensors",
       "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "5b4408e59397a4a37ccb46afe426d8ed86379441",
+      "sha256": "97ed34fe0567e436200f2faee3939b88f2b5d99f8af2a4dc16532c4245c0ccb6",
+      "size": 4070624520
     },
     "diffusion_models/flux-2-klein-4b.safetensors": {
       "file": "flux-2-klein-4b.safetensors",
@@ -94,7 +103,10 @@
       "repo": "Comfy-Org/Flux-2-Klein-4B",
       "path": "split_files/diffusion_models/flux-2-klein-4b.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/diffusion_models/flux-2-klein-4b.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "5b3abca5c0dc1ecd4eaf3340868d09063fc1c965",
+      "sha256": "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343",
+      "size": 7751105712
     },
     "diffusion_models/flux-2-klein-9b.safetensors": {
       "file": "flux-2-klein-9b.safetensors",
@@ -110,7 +122,10 @@
       "repo": "Comfy-Org/Flux-2-Klein-4B",
       "path": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "5b3abca5c0dc1ecd4eaf3340868d09063fc1c965",
+      "sha256": "9c5fed22b76baea749d88fc2abe3ad53245e7b21a0d353a762665eea00043b92",
+      "size": 7751105712
     },
     "diffusion_models/flux-2-klein-base-9b.safetensors": {
       "file": "flux-2-klein-base-9b.safetensors",
@@ -150,7 +165,10 @@
       "repo": "Comfy-Org/Flux-2-Dev",
       "path": "split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Flux-2-Dev/resolve/main/split_files/diffusion_models/flux2_dev_fp8mixed.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "9630c1b4b6e690497ae0c19bb6b1b35d4ebedcb7",
+      "sha256": "863a82e4ff950a42a6b0e80bea824828f129eb1a8fbbdbd9e8cb29859127b486",
+      "size": 35455599592
     },
     "diffusion_models/flux3-image-klein-base-bf16.safetensors": {
       "file": "flux3-image-klein-base-bf16.safetensors",
@@ -198,7 +216,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "diffusion_models/minimax_h3_fl2va_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "907d4add438438ec1544f5240c3b38532ed934fe6be75677a6bbda2a6fdd6182",
+      "size": 66280487368
     },
     "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors": {
       "file": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
@@ -206,7 +227,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a",
+      "size": 20970379616
     },
     "diffusion_models/qwen_image_2.1_bf16.safetensors": {
       "file": "qwen_image_2.1_bf16.safetensors",
@@ -214,7 +238,10 @@
       "repo": "Comfy-Org/Qwen-Image-2.1",
       "path": "diffusion_models/qwen_image_2.1_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "aacf31a6d48e707f352ecba714cee0680da3479b",
+      "sha256": "89f4158d066cc33906a199fca85634f766892dd78f49b6698dabf187ac86c4bc",
+      "size": 14230280616
     },
     "diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors": {
       "file": "qwen_image_2512_fp8_e4m3fn.safetensors",
@@ -222,7 +249,10 @@
       "repo": "Comfy-Org/Qwen-Image",
       "path": "split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image/resolve/main/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "1f12b17be14c89b026c51a91d67c32f84bb047bc",
+      "sha256": "5dc80554d5d83390046a2f4a94ece06afb7700bf7b0aaf8bde9769793875876b",
+      "size": 20430679144
     },
     "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors": {
       "file": "qwen_image_edit_2511_fp8mixed.safetensors",
@@ -230,7 +260,10 @@
       "repo": "Comfy-Org/Qwen-Image-Edit",
       "path": "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "f68ace85e60b4a02a323e394253731947657b7d2",
+      "sha256": "c9fdc158e46d3b61ef75f21ae866ca2fe808bf4a53643120d1c1e87c19280a4e",
+      "size": 20533762817
     },
     "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors": {
       "file": "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
@@ -238,7 +271,8 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
-      "gated": false
+      "gated": false,
+      "size": 144
     },
     "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors": {
       "file": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
@@ -246,7 +280,8 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
-      "gated": false
+      "gated": false,
+      "size": 143
     },
     "diffusion_models/z_image_bf16.safetensors": {
       "file": "z_image_bf16.safetensors",
@@ -254,7 +289,10 @@
       "repo": "Comfy-Org/Z-Image",
       "path": "split_files/diffusion_models/z_image_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Z-Image/resolve/main/split_files/diffusion_models/z_image_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "94d47a468ec820d29a5dc09d4642539d76d49542",
+      "sha256": "996a67d3ff666946b1c25cbc16d1b1918b6cc0ac166309e23fe3b3d830263dee",
+      "size": 12309866400
     },
     "diffusion_models/z_image_turbo_bf16.safetensors": {
       "file": "z_image_turbo_bf16.safetensors",
@@ -262,7 +300,10 @@
       "repo": "Comfy-Org/Z-Image-Turbo",
       "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Z-Image-Turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+      "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+      "size": 12309866400
     },
     "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors": {
       "file": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
@@ -270,7 +311,10 @@
       "repo": "Lightricks/LTX-2.3",
       "path": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
       "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "c1521179de480464f366a98a9d9b2acc4cc097b9",
+      "sha256": "5f416311fa8172b65af67530758964708d29a317b830d689a51143b7f91913ed",
+      "size": 995743560
     },
     "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": {
       "file": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
@@ -286,7 +330,10 @@
       "repo": "Kijai/LTX2.3_comfy",
       "path": "loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors",
       "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6d980fde0d330f2fed6ff8dfdfddb06d88a004e5",
+      "sha256": "204b491f76da5c7ef0998dee636b4db695a00d28729ebccfda8dfdc3c37df63c",
+      "size": 616948520
     },
     "loras/ltx-2-19b-ic-lora-detailer.safetensors": {
       "file": "ltx-2-19b-ic-lora-detailer.safetensors",
@@ -294,7 +341,10 @@
       "repo": "Lightricks/LTX-2-19b-IC-LoRA-Detailer",
       "path": "ltx-2-19b-ic-lora-detailer.safetensors",
       "url": "https://huggingface.co/Lightricks/LTX-2-19b-IC-LoRA-Detailer/resolve/main/ltx-2-19b-ic-lora-detailer.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "e3f34fabb02688687955c15afb3e5335cae4d9f0",
+      "sha256": "05efdae9e472e06d168e122f5ebb890e7ef348cc047cf9876da6504c36d7d0e2",
+      "size": 2617401920
     },
     "loras/ltx-2.3-22b-distilled-lora-384-1.1.safetensors": {
       "file": "ltx-2.3-22b-distilled-lora-384-1.1.safetensors",
@@ -302,7 +352,10 @@
       "repo": "Lightricks/LTX-2.3",
       "path": "ltx-2.3-22b-distilled-lora-384-1.1.safetensors",
       "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384-1.1.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "c1521179de480464f366a98a9d9b2acc4cc097b9",
+      "sha256": "f5d4953f3386197a4b4f5abdb17616ff256171e8075c111d6e7d2dfa6e823b3a",
+      "size": 7605507256
     },
     "loras/ltx-2.5-22b-distilled-lora-450-bf16.safetensors": {
       "file": "ltx-2.5-22b-distilled-lora-450-bf16.safetensors",
@@ -318,7 +371,10 @@
       "repo": "lightx2v/Minimax-h3-Turbo",
       "path": "minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
       "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "c2bf13b837e33bd851b370285fc7db99482d2ab2",
+      "sha256": "fb4c00361c94bad47f878d5e096c6cab2f45063b0968bd5756dcb7da6936f53e",
+      "size": 1956193000
     },
     "text_encoders/clip_l.safetensors": {
       "file": "clip_l.safetensors",
@@ -326,7 +382,10 @@
       "repo": "comfyanonymous/flux_text_encoders",
       "path": "clip_l.safetensors",
       "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+      "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+      "size": 246144152
     },
     "text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors": {
       "file": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
@@ -350,7 +409,10 @@
       "repo": "Comfy-Org/ltx-2",
       "path": "split_files/text_encoders/gemma_3_12B_it.safetensors",
       "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "ccde4ba417d7900669fd56dd292a883cee11ff37",
+      "sha256": "56eaa964a0d9325d2dc9ecaf7759bfaf0fac78ae36c789bed6e03e275a3729ec",
+      "size": 24379468890
     },
     "text_encoders/gemma_3_12B_it_fp4_mixed.safetensors": {
       "file": "gemma_3_12B_it_fp4_mixed.safetensors",
@@ -358,7 +420,10 @@
       "repo": "Comfy-Org/ltx-2",
       "path": "split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
       "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "ccde4ba417d7900669fd56dd292a883cee11ff37",
+      "sha256": "aaca463d11e6d8d2a4bdb0d6299214c15ef78a3f73e0ef8113d5a9d0219b3f6d",
+      "size": 9447702218
     },
     "text_encoders/ltx-2.3_text_projection_bf16.safetensors": {
       "file": "ltx-2.3_text_projection_bf16.safetensors",
@@ -366,7 +431,10 @@
       "repo": "Kijai/LTX2.3_comfy",
       "path": "text_encoders/ltx-2.3_text_projection_bf16.safetensors",
       "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6d980fde0d330f2fed6ff8dfdfddb06d88a004e5",
+      "sha256": "911d59bb4cb7708179c9a0045ea0fe41212ecfb77aed3a02702b7c0a8274911f",
+      "size": 2312149072
     },
     "text_encoders/mistral_3_small_flux2_fp8.safetensors": {
       "file": "mistral_3_small_flux2_fp8.safetensors",
@@ -374,7 +442,10 @@
       "repo": "Comfy-Org/Flux-2-Dev",
       "path": "split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Flux-2-Dev/resolve/main/split_files/text_encoders/mistral_3_small_flux2_fp8.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "9630c1b4b6e690497ae0c19bb6b1b35d4ebedcb7",
+      "sha256": "e3467b7d912a234fb929cdf215dc08efdb011810b44bc21081c4234cc75b370e",
+      "size": 18034640095
     },
     "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors": {
       "file": "qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors",
@@ -390,7 +461,10 @@
       "repo": "Comfy-Org/Qwen-Image-2.1",
       "path": "text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "aacf31a6d48e707f352ecba714cee0680da3479b",
+      "sha256": "9182abae56fe05459840a86d22abd21f972061c92fce032630af680c8c5178d3",
+      "size": 9471072252
     },
     "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors": {
       "file": "qwen3vl_32b_minimax_h3_bf16.safetensors",
@@ -398,7 +472,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "600d567f6a9629c8574e8e7041b199bdd9c59a986afa7906910a81919610607d",
+      "size": 51506295256
     },
     "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": {
       "file": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
@@ -406,7 +483,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6",
+      "size": 15687142551
     },
     "text_encoders/qwen3vl_4b_bf16.safetensors": {
       "file": "qwen3vl_4b_bf16.safetensors",
@@ -422,7 +502,10 @@
       "repo": "Comfy-Org/Qwen-Image-2.1",
       "path": "text_encoders/qwen3vl_8b_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "aacf31a6d48e707f352ecba714cee0680da3479b",
+      "sha256": "68bdc82bc1b66851162ae656225e7e2068166b603db19bd5d5a3b90eb12669a9",
+      "size": 17534334616
     },
     "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors": {
       "file": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
@@ -430,7 +513,10 @@
       "repo": "Comfy-Org/Qwen-Image",
       "path": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "1f12b17be14c89b026c51a91d67c32f84bb047bc",
+      "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+      "size": 9384670680
     },
     "text_encoders/qwen_3_4b.safetensors": {
       "file": "qwen_3_4b.safetensors",
@@ -438,7 +524,8 @@
       "repo": "Comfy-Org/flux2-klein",
       "path": "split_files/text_encoders/qwen_3_4b.safetensors",
       "url": "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
-      "gated": false
+      "gated": false,
+      "size": 122
     },
     "text_encoders/qwen_3_8b.safetensors": {
       "file": "qwen_3_8b.safetensors",
@@ -446,7 +533,10 @@
       "repo": "Comfy-Org/Flux-2-Klein-9B",
       "path": "split_files/text_encoders/qwen_3_8b.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Flux-2-Klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "1138ce884c8e977cdacacbe779784fec4426bb3f",
+      "sha256": "f0ff9239d56269ca1d05e5f86da6a79fac111af464955681f11c7ab0ec5ef6c1",
+      "size": 16381517176
     },
     "text_encoders/t5xxl_fp16.safetensors": {
       "file": "t5xxl_fp16.safetensors",
@@ -454,7 +544,10 @@
       "repo": "comfyanonymous/flux_text_encoders",
       "path": "t5xxl_fp16.safetensors",
       "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+      "sha256": "6e480b09fae049a72d2a8c5fbccb8d3e92febeb233bbe9dfe7256958a9167635",
+      "size": 9787841024
     },
     "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors": {
       "file": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
@@ -462,7 +555,8 @@
       "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
       "path": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "gated": false
+      "gated": false,
+      "size": 131
     },
     "vae/LTX23_audio_vae_bf16.safetensors": {
       "file": "LTX23_audio_vae_bf16.safetensors",
@@ -470,7 +564,10 @@
       "repo": "Kijai/LTX2.3_comfy",
       "path": "vae/LTX23_audio_vae_bf16.safetensors",
       "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_audio_vae_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6d980fde0d330f2fed6ff8dfdfddb06d88a004e5",
+      "sha256": "5bc10fa4adecf99dda132d916e23048cbd56797702c5fa50eb5d2079048a38c3",
+      "size": 364855188
     },
     "vae/LTX23_video_vae_bf16.safetensors": {
       "file": "LTX23_video_vae_bf16.safetensors",
@@ -478,7 +575,10 @@
       "repo": "Kijai/LTX2.3_comfy",
       "path": "vae/LTX23_video_vae_bf16.safetensors",
       "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/vae/LTX23_video_vae_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "6d980fde0d330f2fed6ff8dfdfddb06d88a004e5",
+      "sha256": "01ea62d09bc139f95c5dee7b5c062ad6a3e6cd8be910a1983ac02e7eb5b8ee3b",
+      "size": 1452258578
     },
     "vae/ae.safetensors": {
       "file": "ae.safetensors",
@@ -518,7 +618,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "vae/minimax_h3_audio_vae_fp32.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48",
+      "size": 605254808
     },
     "vae/minimax_h3_video_vae_fp16.safetensors": {
       "file": "minimax_h3_video_vae_fp16.safetensors",
@@ -526,7 +629,10 @@
       "repo": "Comfy-Org/MiniMax-H3",
       "path": "vae/minimax_h3_video_vae_fp16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "4b53a35191437de05370da548e59aeabe2a5a09a",
+      "sha256": "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522",
+      "size": 5207808496
     },
     "vae/qwen_image_2.1_vae_bf16.safetensors": {
       "file": "qwen_image_2.1_vae_bf16.safetensors",
@@ -534,7 +640,10 @@
       "repo": "Comfy-Org/Qwen-Image-2.1",
       "path": "vae/qwen_image_2.1_vae_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "aacf31a6d48e707f352ecba714cee0680da3479b",
+      "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
+      "size": 675509688
     },
     "vae/qwen_image_vae.safetensors": {
       "file": "qwen_image_vae.safetensors",
@@ -542,7 +651,10 @@
       "repo": "Comfy-Org/Qwen-Image",
       "path": "split_files/vae/qwen_image_vae.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image/resolve/main/split_files/vae/qwen_image_vae.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "1f12b17be14c89b026c51a91d67c32f84bb047bc",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "size": 253806246
     },
     "vae/vae-ft-mse-840000-ema-pruned.safetensors": {
       "file": "vae-ft-mse-840000-ema-pruned.safetensors",
@@ -550,7 +662,10 @@
       "repo": "stabilityai/sd-vae-ft-mse-original",
       "path": "vae-ft-mse-840000-ema-pruned.safetensors",
       "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors",
-      "gated": false
+      "gated": false,
+      "revision": "629b3ad3030ce36e15e70c5db7d91df0d60c627f",
+      "sha256": "735e4c3a447a3255760d7f86845f09f937809baa529c17370d83e4c3758f3c75",
+      "size": 334641190
     },
     "vae/wan_2.1_vae.safetensors": {
       "file": "wan_2.1_vae.safetensors",
@@ -558,7 +673,8 @@
       "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
       "path": "split_files/vae/wan_2.1_vae.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
-      "gated": false
+      "gated": false,
+      "size": 106
     }
   },
   "workflows": {
@@ -567,50 +683,8 @@
       "required": [],
       "optional": []
     },
-    "flux3_klein_hdr": {
-      "title": "Flux.3 Klein → HDR",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
-      ]
-    },
     "flux3_klein_hdr_delivery": {
       "title": "Flux.3 Klein · Prompt to Deliverables",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
-      ]
-    },
-    "flux3_klein_plate_passes": {
-      "title": "Flux.3 Klein · Plate + Render Passes",
-      "required": [
-        "diffusion_models/flux3-image-klein-base-bf16.safetensors",
-        "text_encoders/qwen3vl_4b_bf16.safetensors",
-        "vae/flux2-vae.safetensors",
-        "radiance/RUDRA_ACES_2",
-        "radiance/marigold_appearance",
-        "radiance/marigold_lighting",
-        "radiance/moge2"
-      ],
-      "optional": [
-        "diffusion_models/flux3-image-klein-bf16.safetensors",
-        "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors"
-      ]
-    },
-    "flux3_klein_reference_edit_hdr": {
-      "title": "Flux.3 Klein · Reference Edit → HDR",
       "required": [
         "diffusion_models/flux3-image-klein-base-bf16.safetensors",
         "text_encoders/qwen3vl_4b_bf16.safetensors",
@@ -769,17 +843,6 @@
         "radiance/RUDRA_ACES_2"
       ],
       "optional": []
-    },
-    "sdr_to_hdr_ai_fill": {
-      "title": "SDR → HDR + AI Fill",
-      "required": [
-        "radiance/RUDRA_ACES_2",
-        "radiance/rudra_genfill_v3",
-        "radiance/wan_vace_base"
-      ],
-      "optional": [
-        "radiance/wan_vace_text_encoder"
-      ]
     },
     "sdr_to_hdr_analytic": {
       "title": "SDR → HDR Analytic",
