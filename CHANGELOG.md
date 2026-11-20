@@ -15,6 +15,24 @@ bridge needs signed requests, and three controls that did nothing now work. Ever
 else is fixes. Read the upgrade notes before moving a production setup.
 
 ### Upgrade notes
+- **Your library and gizmos move to `ComfyUI/user/radiance/`.** A Registry or
+  Manager update replaces the package folder, and the workflow library
+  (projects, versions, bins, thumbnails) and saved gizmos used to live inside
+  it. The first start of 4.0 copies them to `user/radiance/workflows` and
+  `user/radiance/gizmos`; the originals stay where they were until you delete
+  them. The shipped library cards are kept in step in
+  `user/radiance/workflows/official`. `RADIANCE_USER_DATA_IN_PACKAGE=1` keeps
+  the old layout.
+- **Read has two new outputs, `fps` and `audio`,** appended after `info`, so
+  saved graphs keep their links. Wire them to Write: with fps on Auto, Write
+  used to write a 25 or 30 fps clip at 24 fps, without sound. The shipped
+  clip workflows are wired.
+- **Higher dependency floors**, past published security advisories:
+  Pillow 13.0.0, aiohttp 3.14.4, tqdm 4.66.3, opencv-python 4.8.1.78,
+  opencolorio 2.5.1, diffusers 0.38.0, transformers 4.53.0 (still 4.x).
+- **Deliver writes an AMF for ACES masters only** (ACEScg, ACES2065-1,
+  ACEScct). For another colour space it now writes none and says so; the old
+  sidecar named the wrong transforms.
 - **SDR → HDR Auto no longer uses the RUDRA 3.x models** (RUDRA 1.0.3's
   rule: their weights are non-commercial). Auto runs RUDRA ACES 2 (Apache
   2.0); if it cannot run, Universal falls back to deterministic expansion
@@ -28,8 +46,9 @@ else is fixes. Read the upgrade notes before moving a production setup.
   older one instead of running it. Masters change slightly in partially
   clipped highlights, where the lock holds the recorded channels to the
   source.
-- **37 nodes are deprecated.** They are hidden from the node menu (110 nodes
-  show), and a saved graph that uses one still opens and runs; each one's
+- **37 nodes are deprecated.** They are hidden from the node menu (121 nodes
+  show; 43 are hidden in all, counting older aliases), and a saved graph
+  that uses one still opens and runs; each one's
   description says what to use instead. They are the manual SDR → HDR chain
   from before RUDRA and the HDR LoRA chain (no HDR LoRA was published), the
   older all-in-one video family, wrappers that other nodes replaced (DPX Read
@@ -170,6 +189,16 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **Gizmos page** in the Radiance page: every saved gizmo with its inputs,
+  outputs, knobs and the nodes inside, whether it is in the node menu yet,
+  and Add to canvas, Export, Import and Delete (to a trash folder).
+- **Models page and a Set up step in the welcome tour.** They check the GPU,
+  memory, disk and PyTorch/CUDA, create `models/radiance`, download RUDRA
+  ACES 2, and list and download what each local workflow needs into the
+  folders ComfyUI reads, each file pinned to the Hub's commit and checked
+  against its SHA-256 (`config/model_catalog.json`,
+  `tools/build_model_catalog.py`).
+- **Read `fps` and `audio` outputs** (see the upgrade notes).
 - **One Radiance page** (`js/studio.html`): Home, Workflows, Assets,
   Shots and Renders in the Viewer V5 look. It replaces the Workflow Library,
   Project Manager and Assets dashboards and uses the same routes and the same
@@ -187,7 +216,7 @@ else is fixes. Read the upgrade notes before moving a production setup.
   mattes, brackets, sidecar; no model). **HDR delivery** now peak-fits the HDR10
   output to 1000 nits and writes HDR10+ / Dolby Vision metadata, carried into
   the H.265 file. **SDR remaster** gets suggested AI fill prompts, Shot Hold
-  and a flicker report. 45 workflows, each with its Library card.
+  and a flicker report. 40 workflows, each with its Library card.
 - **SDR → HDR Analytic (RUDRA)**, RUDRA's model-free route, ported from the
   RUDRA desktop app (Apache 2.0, commit 74f03b6): the inverse of the curve that
   made the SDR (BT.1886, RUDRA's default; BT.1886 shadows; ACES; Hable; AgX;
@@ -497,10 +526,32 @@ else is fixes. Read the upgrade notes before moving a production setup.
 
 - SAM Loader, SAM Mask Generator, HDR Latent Encoder, HDR Turbo Encoder (see
   above).
-- Read Mask and its mask editor (see above). The node count is 151.
+- Six workflows that others already cover: Flux.3 Klein → HDR and Flux.3
+  Klein · Reference Edit → HDR (T2I · Edit · I2I → HDR runs both), Flux.3
+  Klein · Plate + Render Passes (Multipass Relight), Flux.3 Klein · Prompt to
+  Deliverables (T2I, then HDR Delivery), SDR → HDR + AI Fill (SDR → HDR has
+  the optional AI Fill) and the Starter (T2I is the starter, on FLUX.2 Klein
+  4B). WAN 2.2 · HDR Shot Plates becomes Wan → HDR. 40 workflows ship: 15
+  local, 25 API. A graph saved
+  from one of them still opens; no node was removed.
+- Read Mask and its mask editor (see above). 164 nodes are registered.
 
 ### Changed
 
+- **One colour palette** across the Radiance page, Viewer, Gizmo editor,
+  Project Manager and dialogs: neutral greys, one blue for state, and green,
+  yellow and red only for status. Channel colours, scopes, false colour,
+  zebra and clipping are unchanged. GPU and memory sizes read in binary GB (a
+  24 GB card shows 24 GB).
+- **Sampler: Auto matches ComfyUI's native templates** (#97, Albabit). With
+  "simple", FLUX.2 and FLUX.2 Klein take the shift from the image's token
+  count as Flux2Scheduler does; FLUX.1 Kontext Dev runs at guidance 2.5;
+  HunyuanVideo 1.0 runs FluxGuidance 6 without a second CFG; a refiner keeps
+  `flux_shift` and `sigmas_override`.
+- **RUDRA's lock runs on ComfyUI's GPU** (the one chosen with
+  `--cuda-device`), never on MPS, and finishes on the CPU when the GPU is out
+  of memory.
+- **DSINE's torch.hub code is pinned** to one commit of hugoycj/DSINE-hub.
 - **Sampler hides settings that do nothing on the run:** `restart_count`
   without a connected `restart_schedule`, `noise_alpha_start` / `_end` with
   Gaussian noise and `noise_alpha_end` at start_step 0 (they followed
@@ -737,6 +788,12 @@ are the results.
 
 ### Fixed
 
+- **Read → Write wrote clips at 24 fps without sound.** Read now outputs the
+  clip's rate and audio; the shipped clip workflows pass both to Write.
+- **Deliver's AMF** put input and colour-space-conversion transforms in the
+  output-transform slot and always named a Rec.709 input. It is now built
+  with `io/aces_amf.py`, valid against the ACES AMF v2.0 schema, with the
+  grade as an applied CDL look.
 - **Prompt "Run all tabs" while another run is being queued** waits for it.
   The frontend queued the tab's run behind the other one and built it later,
   from the tab shown by then, so one tab ran twice and the others not at all.
@@ -856,8 +913,11 @@ are the results.
 
 - Sequential offload still switches ComfyUI to LOW_VRAM for the rest of the
   session (P2-4); nothing Radiance can hook is scoped to one prompt.
-- The multipass model registry (Depth Anything V2, DSINE) downloads from
-  `main` without a pinned hash; it is consent-gated and logs the digest.
+- The multipass model weights (Depth Anything V2, DSINE) download from
+  `main` without a pinned hash; they are consent-gated and log the digest.
+  DSINE's torch.hub code is pinned.
+- The package is about 72 MB; 58 MB of it is the workflow library, mostly
+  the example images inside five video workflow cards.
 - GPU timings and DCC round trips need hardware and were not run for this
   beta. The Nuke 17 and Resolve checks added in this release (missing paths,
   frame counts) are tested against stand-ins, not the real applications.

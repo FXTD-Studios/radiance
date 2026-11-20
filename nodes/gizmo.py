@@ -9,6 +9,7 @@ import os
 import shutil
 import json
 import time
+from pathlib import Path
 import logging
 import traceback
 import torch
@@ -47,7 +48,11 @@ def _route(method: str, path: str):
 # Ensure local gizmos folder exists
 # ALBABIT-FIX: the package's gizmos/ folder, not one beside this file. Moving the
 # module into nodes/ had sent saved gizmos to a stray nodes/gizmos/.
-GIZMOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gizmos")
+# 4.0: saved in ComfyUI's user directory (user/radiance/gizmos), out of reach of a
+# Registry update; the package's gizmos/ outside ComfyUI (core/user_data.py).
+from radiance.core.user_data import gizmos_dir as _gizmos_dir  # noqa: E402
+_PACKAGE_GIZMOS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gizmos")
+GIZMOS_DIR = str(_gizmos_dir(Path(_PACKAGE_GIZMOS)))
 os.makedirs(GIZMOS_DIR, exist_ok=True)
 
 
