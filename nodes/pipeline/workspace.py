@@ -217,7 +217,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ALBABIT-FIX: the package's workflows/ folder, not one beside this file. Moving
 # the module into nodes/pipeline/ had sent the library to a stray folder there,
 # hiding earlier saves and the shipped workflows/official/.
-WORKFLOW_DIR = str(Path(__file__).resolve().parents[2] / "workflows")
+# 4.0: the library lives in ComfyUI's user directory (user/radiance/workflows), so
+# a Registry update, which replaces the package folder, no longer takes the
+# user's saves with it. official/ there is a synced copy of the shipped cards.
+# Outside ComfyUI it stays in the package folder (core/user_data.py).
+_PACKAGE_WORKFLOWS = Path(__file__).resolve().parents[2] / "workflows"
+from radiance.core.user_data import library_dir as _library_dir  # noqa: E402
+WORKFLOW_DIR = str(_library_dir(_PACKAGE_WORKFLOWS))
 OFFICIAL_DIR = os.path.join(WORKFLOW_DIR, "official")
 os.makedirs(WORKFLOW_DIR, exist_ok=True)
 os.makedirs(OFFICIAL_DIR, exist_ok=True)
