@@ -165,7 +165,7 @@ class TestMiniMaxFrames:
             _FakeClip(), base_prompt="A cat", model_meta=json.dumps({"arch": "flux3"}), vae="vae",
             first_frame=torch.zeros(1, 32, 32, 3))
         assert not native
-        assert any("first_frame and last_frame are MiniMax H3's" in w and "'flux3'" in w for w in warnings)
+        assert any("first_frame and last_frame are read by MiniMax H3 and Wan" in w and "'flux3'" in w for w in warnings)
 
     def test_a_latent_that_is_no_minimax_video_is_refused(self, native):
         # The Resolution left on a still image gives [B, 4, H/8, W/8]: no time axis to read.
@@ -188,3 +188,67 @@ class TestMiniMaxFrames:
             prompt.RadianceCinematicPromptEncoder.execute(
                 _FakeClip(), base_prompt="She turns", model_meta=self.META, vae="vae",
                 images={"image_1": torch.zeros(1, 32, 32, 3)})
+
+
+class TestWanFrames:
+    """Wired as the official Wan templates: WanImageToVideo, WanFirstLastFrameToVideo with a last
+    frame, Wan22ImageToVideoLatent on the 5B, at the size and frame count of video_latent."""
+
+    @pytest.fixture
+    def natives(self, monkeypatch):
+        calls = []
+        for name in ("WanImageToVideo", "WanFirstLastFrameToVideo", "Wan22ImageToVideoLatent"):
+            def execute(cls, _name=name, **kwargs):
+                calls.append((_name, kwargs))
+                if _name == "Wan22ImageToVideoLatent":
+                    return io.NodeOutput({"samples": "ti2v"})
+                return io.NodeOutput([["pos", {"by": _name}]], [["neg", {"by": _name}]], {"samples": "i2v"})
+            monkeypatch.setattr(prompt.nodes_wan, name, type(name, (), {"execute": classmethod(execute)}),
+                                raising=False)
+        return calls
+
+    def _run(self, arch, latent_shape, **kwargs):
+        out = prompt.RadianceCinematicPromptEncoder.execute(
+            _FakeClip(), base_prompt="She turns to the camera", model_meta=json.dumps({"arch": arch}),
+            vae="vae", video_latent={"samples": torch.zeros(latent_shape)}, **kwargs)
+        return out["result"]
+
+    def test_a_first_frame_goes_to_wan_image_to_video_at_the_videos_size(self, natives):
+        first = torch.zeros(1, 32, 32, 3)
+        pos, neg, *_rest, latent = self._run("wan", (1, 16, 21, 88, 160), first_frame=first)
+        ((name, kwargs),) = natives
+        assert name == "WanImageToVideo"
+        assert (kwargs["width"], kwargs["height"], kwargs["length"], kwargs["batch_size"]) == (1280, 704, 81, 1)
+        assert kwargs["start_image"] is first and kwargs["vae"] == "vae"
+        assert pos[0][1]["by"] == neg[0][1]["by"] == "WanImageToVideo"
+        assert latent == {"samples": "i2v"}
+
+    def test_a_last_frame_goes_to_the_first_last_frame_node(self, natives):
+        first, last = torch.zeros(1, 32, 32, 3), torch.ones(1, 32, 32, 3)
+        self._run("wan", (1, 16, 21, 88, 160), first_frame=first, last_frame=last)
+        self._run("wan", (1, 16, 21, 88, 160), last_frame=last)
+        assert [name for name, _ in natives] == ["WanFirstLastFrameToVideo"] * 2
+        assert (natives[0][1]["start_image"], natives[0][1]["end_image"]) == (first, last)
+        assert (natives[1][1]["start_image"], natives[1][1]["end_image"]) == (None, last)
+
+    def test_the_5b_puts_its_first_frame_in_the_latent(self, natives):
+        first = torch.zeros(1, 32, 32, 3)
+        *_rest, latent = self._run("wan_ti2v", (1, 48, 31, 44, 80), first_frame=first)
+        ((name, kwargs),) = natives
+        assert name == "Wan22ImageToVideoLatent"
+        assert (kwargs["width"], kwargs["height"], kwargs["length"]) == (1280, 704, 121)
+        assert kwargs["start_image"] is first and latent == {"samples": "ti2v"}
+
+    def test_the_5b_refuses_a_last_frame(self, natives):
+        with pytest.raises(ValueError, match="first frame only"):
+            self._run("wan_ti2v", (1, 48, 31, 44, 80), last_frame=torch.ones(1, 32, 32, 3))
+        assert not natives
+
+    def test_a_latent_that_is_no_wan_video_is_refused(self, natives):
+        with pytest.raises(ValueError, match=r"WAN TI2V \(48ch\)"):
+            self._run("wan_ti2v", (1, 16, 21, 88, 160), first_frame=torch.zeros(1, 32, 32, 3))
+        assert not natives
+
+    def test_without_a_frame_wan_encodes_the_text_alone(self, natives):
+        *_rest, latent = self._run("wan", (1, 16, 21, 88, 160))
+        assert not natives and latent is None
