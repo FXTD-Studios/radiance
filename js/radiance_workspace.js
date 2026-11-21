@@ -54,6 +54,31 @@ window.addEventListener("message", async (event) => {
         showToast(`Added ${event.data.title || type} to the canvas`, "success");
     } else if (event.data && event.data.type === "radiance_close_dashboard") {
         window.closeRadianceDashboard?.();
+    } else if (event.data && event.data.type === "radiance_new_shot") {
+        // New shot (4.0): the Radiance page added the shot to the project; the
+        // artist starts it on an empty canvas. A new blank workflow tab, so the
+        // graph that was open is kept, unsaved changes included.
+        const shot = String(event.data.shot || "");
+        const project = String(event.data.project || "");
+        let opened = false;
+        try {
+            const run = app.extensionManager?.command?.execute;
+            if (typeof run === "function") {
+                await run.call(app.extensionManager.command, "Comfy.NewBlankWorkflow");
+                opened = true;
+            }
+        } catch (err) {
+            console.warn("[Radiance] New blank workflow failed:", err);
+        }
+        if (!opened) {
+            // Older frontends: clear this canvas, asking first when it has nodes.
+            const nodes = (app.graph?._nodes || []).length;
+            if (nodes && !confirm(`Start ${shot} on an empty canvas? The ${nodes} node(s) on the canvas are cleared; save them first if you need them.`)) return;
+            app.graph?.clear?.();
+            app.graph?.setDirtyCanvas?.(true, true);
+        }
+        window.closeRadianceDashboard?.();
+        showToast(`${shot} is ready in ${project}. Start from any template; Save canvas as a version saves ${shot}_v001.`, "success");
     } else if (event.data && event.data.type === "radiance_save_project_version") {
         try {
             const projectId = event.data.projectId || "general";

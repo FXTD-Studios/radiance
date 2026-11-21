@@ -958,10 +958,11 @@ def _build_project_index(workflows: list[dict]) -> dict[str, dict]:
 
 
 def _project_summary(project: dict) -> dict:
+    planned = {p["shot"] for p in _read_planned_shots(project)}
     return {
         "id": project["id"],
         "name": project["name"],
-        "shots": len(project["shots_set"]),
+        "shots": len((project["shots_set"] - {"GENERAL"}) | planned),
         "workflows": project["workflow_count"],
         "updated": _format_relative_time(project["mtime"]),
         "favorite": False,
@@ -1162,6 +1163,58 @@ def _outputs_for_project(project: dict) -> list[dict]:
     return outputs[:50]
 
 
+# ── Planned shots (4.0): a shot made with New shot, before its first version ──
+
+_SHOT_INPUT_RE = re.compile(r"(?:SH[-_ ]?)?(\d{1,5})", re.IGNORECASE)
+
+
+def _normalize_shot_name(raw: str) -> str | None:
+    """"SH040", "sh40", "sh-040" or "40" -> "SH040"; anything else -> None.
+
+    The Shots page reads a shot from a file name as SH plus 2 to 5 digits
+    (_shot_from_name), so a planned shot has the same form: its first version,
+    SH040_v001.rad, then lands on it."""
+    m = _SHOT_INPUT_RE.fullmatch(str(raw or "").strip())
+    if not m:
+        return None
+    digits = m.group(1)
+    if len(digits) < 3:
+        digits = digits.zfill(3)
+    return f"SH{digits}"
+
+
+def _planned_shots_path(project: dict) -> Path:
+    path = Path(os.path.normpath(_WORKFLOW_DIR_RESOLVED / str(project["name"]) / ".planned_shots.json"))
+    path.relative_to(_WORKFLOW_DIR_RESOLVED)          # ValueError for a name that escapes
+    return path
+
+
+def _read_planned_shots(project: dict) -> list:
+    try:
+        path = _planned_shots_path(project)
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [d for d in data if isinstance(d, dict) and _normalize_shot_name(d.get("shot")) == d.get("shot")]
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        logger.warning("[Radiance] planned shots of %s unreadable: %s", project.get("name"), exc)
+    return []
+
+
+def _project_shot_names(project: dict) -> set:
+    return ({s for s in project["shots_set"] if s != "GENERAL"}
+            | {p["shot"] for p in _read_planned_shots(project)})
+
+
+def _next_shot_name(taken) -> str:
+    """The next free shot in steps of ten: SH010, SH020, ... after the highest."""
+    nums = [int(s[2:]) for s in taken if re.fullmatch(r"SH\d{2,5}", s)]
+    n = (max(nums) // 10 + 1) * 10 if nums else 10
+    while f"SH{n:03d}" in taken:
+        n += 10
+    return f"SH{n:03d}"
+
+
 def _notes_path(project: dict) -> Path:
     path = Path(os.path.normpath(_WORKFLOW_DIR_RESOLVED / str(project["name"]) / ".review_notes.json"))
     path.relative_to(_WORKFLOW_DIR_RESOLVED)          # ValueError for a name that escapes
@@ -1235,6 +1288,7 @@ def _dashboard_payload() -> dict:
     latest_metadata = latest.get("metadata", {}) if latest else {}
 
     versions = _versions_for_project(active_project) if active_project else []
+    planned = _read_planned_shots(active_project) if active_project else []
     outputs = _outputs_for_project(active_project) if active_project else []
     notes = _notes_for_project(active_project) if active_project else []
 
@@ -1276,6 +1330,8 @@ def _dashboard_payload() -> dict:
         ],
         "source": "Live API",
         "activeProjectId": active_project["id"] if active_project else "",
+        "plannedShots": planned,
+        "nextShot": _next_shot_name(_project_shot_names(active_project)) if active_project else "SH010",
     }
 
 
@@ -1515,6 +1571,56 @@ async def list_project_outputs(request):
         return web.json_response({"outputs": _outputs_for_project(project)})
     except Exception as e:
         logger.exception("[Radiance] list_project_outputs failed")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@_route("get", "/radiance/projects/{project_id}/shots")
+async def list_project_shots(request):
+    """Planned shots (made with New shot, no version yet) and the next free name."""
+    try:
+        project, _ = _find_project(request.match_info.get("project_id", ""))
+        if project is None:
+            return web.json_response({"error": "Project not found"}, status=404)
+        return web.json_response({"shots": _read_planned_shots(project),
+                                  "next": _next_shot_name(_project_shot_names(project))})
+    except Exception as e:
+        logger.exception("[Radiance] list_project_shots failed")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@_route("post", "/radiance/projects/{project_id}/shots")
+async def create_project_shot(request):
+    """New shot: {shot, author}. The shot is added to the project before it has
+    a version, so the Shots page lists it (Not started) and the first "Save
+    canvas as a version" with it selected writes <project>/<SHOT>_v001.rad."""
+    try:
+        project, _ = _find_project(request.match_info.get("project_id", ""))
+        if project is None:
+            return web.json_response({"error": "Project not found"}, status=404)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        shot = _normalize_shot_name(data.get("shot"))
+        if shot is None:
+            return web.json_response({"error": "A shot name is SH and 2 to 5 digits, for example SH040."}, status=400)
+        taken = _project_shot_names(project)
+        if shot in taken:
+            return web.json_response({"error": f"{shot} is already in {project['name']}.",
+                                      "next": _next_shot_name(taken)}, status=409)
+        try:
+            path = _planned_shots_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        planned = _read_planned_shots(project)
+        planned.append({"shot": shot, "created": time.time(),
+                        "author": str(data.get("author") or "").strip()[:64]})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_text(path, json.dumps(planned, indent=2))
+        return web.json_response({"success": True, "shot": shot, "project": project["name"],
+                                  "shots": planned, "next": _next_shot_name(taken | {shot})})
+    except Exception as e:
+        logger.exception("[Radiance] create_project_shot failed")
         return web.json_response({"error": str(e)}, status=500)
 
 

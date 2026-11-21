@@ -36,7 +36,7 @@ const S = {
     wf: null, asset: null, shot: null,
     workflows: [], assets: [], bins: [],
     dashboard: null, projectId: store.get("radiance_studio_project") || "",
-    project: { versions: [], outputs: [], notes: [] },
+    project: { versions: [], outputs: [], notes: [], planned: [], next: "SH010" },
     renders: [], gpu: null,
     gizmos: [], gizmo: null, gizmoFolder: "",
     setup: null, downloads: [], scanning: false,
@@ -103,14 +103,18 @@ async function loadDashboard() {
 }
 async function loadProject() {
     const d = S.dashboard;
-    if (!S.projectId) { S.project = { versions: [], outputs: [], notes: [] }; return; }
+    if (!S.projectId) { S.project = { versions: [], outputs: [], notes: [], planned: [], next: "SH010" }; return; }
+    S.shot = S.shot || store.get(`radiance_studio_shot_${S.projectId}`) || null;
     if (S.projectId === d?.activeProjectId) {
-        S.project = { versions: d.versions || [], outputs: d.outputs || [], notes: d.notes || [] };
+        S.project = { versions: d.versions || [], outputs: d.outputs || [], notes: d.notes || [],
+                      planned: d.plannedShots || [], next: d.nextShot || "SH010" };
         return;
     }
     const base = `/radiance/projects/${encodeURIComponent(S.projectId)}`;
-    const [v, o, n] = await Promise.all([getJSON(`${base}/versions`), getJSON(`${base}/outputs`), getJSON(`${base}/notes`)]);
-    S.project = { versions: v.versions || [], outputs: o.outputs || [], notes: n.notes || [] };
+    const [v, o, n, sh] = await Promise.all([getJSON(`${base}/versions`), getJSON(`${base}/outputs`), getJSON(`${base}/notes`),
+        getJSON(`${base}/shots`).catch(() => ({}))]);
+    S.project = { versions: v.versions || [], outputs: o.outputs || [], notes: n.notes || [],
+                  planned: sh.shots || [], next: sh.next || "SH010" };
 }
 async function loadRenders() {
     try {
@@ -170,7 +174,77 @@ const shortName = (s) => String(s || "").replace(/\.[^.]+$/, "").slice(0, 2).toU
 
 // ── chrome ───────────────────────────────────────────────────────────────────
 
-function shotsList() { return M.shotRows(S.project.versions, S.project.outputs, S.project.notes); }
+function shotsList() { return M.shotRows(S.project.versions, S.project.outputs, S.project.notes, S.project.planned); }
+
+// ── New shot (4.0): ask for the name, add it to the project, clear the canvas ──
+function projectName() { return (S.dashboard?.projects || []).find((p) => p.id === S.projectId)?.name || ""; }
+
+function openNewShot() {
+    if (!S.projectId) { openWorkflow("official/Local/t2i_i2i_hdr.rad"); return; }
+    if ($("stNewShot")) return;
+    const taken = shotsList().map((r) => r.shot);
+    const suggested = M.nextShotName(taken);
+    const box = document.createElement("div");
+    box.className = "st-modal-back";
+    box.id = "stNewShot";
+    box.innerHTML = `<form class="st-modal" role="dialog" aria-modal="true" aria-labelledby="stNewShotTitle" novalidate>
+        <h2 id="stNewShotTitle">New shot</h2>
+        <p class="st-dim">Adds the shot to <b>${h(projectName())}</b> and opens an empty canvas, so you can start from any template.</p>
+        <label class="st-field"><span>Shot name</span>
+          <input id="stNewShotName" class="st-input st-mono" value="${h(suggested)}" autocomplete="off" spellcheck="false" aria-describedby="stNewShotHint stNewShotErr" maxlength="12"></label>
+        <div id="stNewShotHint" class="st-dim st-small">SH and 2 to 5 digits. 40 becomes SH040. Its first save is <span class="st-mono" id="stNewShotFile">${h(suggested)}_v001</span>.</div>
+        <div id="stNewShotErr" class="st-field-err" role="alert"></div>
+        <div class="st-modal-actions"><button type="button" class="st-link" data-shot-act="starter">Open the Starter instead</button><span class="st-grow"></span>
+          <button type="button" class="st-btn" data-shot-act="cancel">Cancel</button><button type="submit" class="st-btn st-primary">Create shot</button></div>
+      </form>`;
+    ($("studio") || document.body).appendChild(box);     // inside the page root: its fonts and colours
+    const input = $("stNewShotName");
+    const err = $("stNewShotErr");
+    const check = () => {
+        const name = M.normalizeShotName(input.value);
+        $("stNewShotFile").textContent = `${name || "SH…"}_v001`;
+        err.textContent = !input.value.trim() ? "" : !name ? "Use SH and 2 to 5 digits, for example SH040."
+            : taken.includes(name) ? `${name} is already in this project.` : "";
+        return name && !taken.includes(name) ? name : "";
+    };
+    const close = () => { box.remove(); $("stNew")?.focus(); };
+    input.addEventListener("input", check);
+    box.addEventListener("click", (e) => {
+        const act = e.target.closest("[data-shot-act]")?.dataset.shotAct || (e.target === box ? "cancel" : "");
+        if (act === "cancel") close();
+        if (act === "starter") { close(); openWorkflow("official/Local/t2i_i2i_hdr.rad"); }
+    });
+    box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } });
+    box.querySelector("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = check();
+        if (!name) { err.textContent = err.textContent || "Give the shot a name, for example SH040."; input.focus(); return; }
+        const submit = box.querySelector('button[type="submit"]');
+        submit.disabled = true;
+        try {
+            const res = await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/shots`,
+                { shot: name, author: store.get("radiance_artist") || "" });
+            S.shot = res.shot;
+            store.set(`radiance_studio_shot_${S.projectId}`, res.shot);
+            S.project.planned = res.shots || [...S.project.planned, { shot: res.shot, created: Date.now() / 1000 }];
+            S.project.next = res.next || S.project.next;
+            const p = (S.dashboard?.projects || []).find((x) => x.id === S.projectId);
+            if (p) p.shots = (p.shots || 0) + 1;
+            close();
+            S.screen = "shots";
+            render();
+            if (tellCanvas({ type: "radiance_new_shot", projectId: S.projectId, project: res.project, shot: res.shot })) {
+                toast(`${res.shot} added to ${res.project}`);
+            }
+        } catch (e2) {
+            err.textContent = e2.message;
+            submit.disabled = false;
+        }
+    });
+    check();
+    input.focus();
+    input.select();
+}
 
 function renderNav() {
     const shots = shotsList();
@@ -208,9 +282,18 @@ function renderMe() {
     $("stAvatar").textContent = M.initials(name || "Radiance");
 }
 
+function renderNewButton() {
+    const b = $("stNew");
+    if (!b) return;
+    const inProject = !!S.projectId;
+    b.lastChild.textContent = inProject ? "New shot" : "New";
+    b.title = inProject ? `Add a shot to ${projectName()} and start on an empty canvas` : "Open the Starter workflow on the canvas";
+}
+
 function render() {
     renderNav();
     renderProjects();
+    renderNewButton();
     const body = $("stBody");
     const fn = { home: homeView, workflows: workflowsView, gizmos: gizmosView, assets: assetsView, shots: shotsView, renders: rendersView, models: modelsView }[S.screen];
     body.innerHTML = fn();
@@ -591,10 +674,10 @@ function shotsView() {
               <span class="st-pill ${r.status.tone}">${h(r.status.label)}</span>
               <span class="st-dim" style="font-size:12px">${h(r.updated)}</span></button>`).join("")}</div>`
         : rows.length ? empty("No shots match", "Try another filter or clear the search.")
-            : empty("No shots in this project yet", "Save a workflow with a shot name (for example SH010_grade_v001) and it shows up here.");
+            : empty("No shots in this project yet", "Press New shot to add one, then save the canvas as its first version.");
     return `<div class="st-page">
       <div class="st-h1"><h1>Shots</h1><span class="st-dim">${h(projectName)}</span><span class="st-grow"></span>
-        ${S.projectId ? `<button type="button" class="st-btn st-sm" data-act="save-version">Save canvas as a version</button><button type="button" class="st-btn st-sm" data-act="export">Export package</button>` : ""}</div>
+        ${S.projectId ? `<button type="button" class="st-btn st-sm" data-act="save-version">Save canvas as a version</button><button type="button" class="st-btn st-sm" data-act="export">Export package</button><button type="button" class="st-btn st-sm st-primary" data-act="new-shot">New shot</button>` : ""}</div>
       <div class="st-kpis">${kpi("Shots", st.total, "var(--text)")}${kpi("In progress", st.wip, "var(--warn)")}${kpi("Waiting for review", st.review, "var(--info)")}${kpi("Approved", st.approved, "var(--ok)")}</div>
       ${chips(M.SHOT_FILTERS, S.shFilter, "sh")}
       ${table}
@@ -607,17 +690,19 @@ function shotRail(r) {
       <div class="st-thumb v16">${shotThumb(r)}</div>
       <div class="st-rail-body">
         <div class="st-row-between"><h2>${h(r.shot)}</h2><span class="st-pill ${r.status.tone}">${h(r.status.label)}</span></div>
-        <div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
+        ${r.planned ? `<div class="st-note">No version yet. Build the graph on the canvas, then <b>Save canvas as a version</b> with ${h(r.shot)} selected: it saves as <span class="st-mono">${h(r.shot)}_v001</span>.</div>
+          <div class="st-actions"><button type="button" class="st-btn st-primary" data-act="save-version">Save canvas as ${h(r.shot)}_v001</button></div>` : ""}
+        ${r.planned ? "" : `<div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
           <div class="st-version"><span class="st-mono" style="width:52px">${h(v.version)}</span><span class="st-dim" style="flex:1;font-size:12px">${h(i === 0 ? "Latest · " : "")}${h(v.updated)}</span>
-          <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>
+          <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>`}
         ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(M.outputLabel(o))}">${img(thumbUrl(o.path), o.name, shortName(o.name))}${o.frames ? `<span class="st-badge br st-mono">${h(M.plural(o.frames, "frame"))}</span>` : ""}</div>`).join("")}</div></div>` : ""}
         <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}
           <label class="st-visually-hidden" for="stNoteText">Note for ${h(r.shot)}</label>
           <textarea id="stNoteText" class="st-note-input" rows="3" placeholder="What needs to change? A retake sends this note with it."></textarea>
           <div class="st-actions" style="margin-top:6px"><button type="button" class="st-btn st-sm" data-act="add-note" data-shot="${h(r.shot)}">Add note</button></div></div>
-        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="retake" data-shot="${h(r.shot)}">Ask for changes</button></div>
+        ${r.planned ? "" : `<div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="retake" data-shot="${h(r.shot)}">Ask for changes</button></div>
         <div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Review">Send to review</button><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="WIP">Back to in progress</button></div>
-        ${r.status.key === "Approved" ? `<div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Final">Mark final</button></div>` : ""}
+        ${r.status.key === "Approved" ? `<div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Final">Mark final</button></div>` : ""}`}
       </div></aside>`;
 }
 
@@ -843,7 +928,8 @@ async function onClick(e) {
         case "open-asset": window.open(thumbUrl(path), "_blank", "noopener"); break;
         case "bin": await binToggle(t.dataset.bin, id); break;
         case "new-bin": await newBin(id); break;
-        case "pick-shot": S.shot = shot; render(); break;
+        case "pick-shot": S.shot = shot; store.set(`radiance_studio_shot_${S.projectId}`, shot); render(); break;
+        case "new-shot": openNewShot(); break;
         case "status": await setShotStatus(shot, status); break;
         case "add-note": await addNote(shot, false); break;
         case "retake": await addNote(shot, true); break;
@@ -896,7 +982,8 @@ function wire() {
         if (el?.tagName === "IMG" && el.dataset.ph != null) el.replaceWith(Object.assign(document.createElement("span"), { className: "st-ph", textContent: el.dataset.ph }));
     }, true);
     $("stImport").onclick = () => $("stImportFile").click();
-    $("stNew").onclick = () => openWorkflow("official/Local/t2i_i2i_hdr.rad");
+    // Inside a project, New makes a shot (4.0); with no project it opens the Starter.
+    $("stNew").onclick = () => openNewShot();
     $("stImportFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); };
     $("stGizmoFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importGizmo(f); };
     $("stUploadFile").onchange = (e) => { const fs = e.target.files; if (fs?.length) uploadAssets(fs).finally(() => { e.target.value = ""; }); };

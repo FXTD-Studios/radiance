@@ -2584,3 +2584,61 @@ def test_outputs_group_sequences_and_match_whole_shot_codes(populated):
     assert seq_item["type"] == "EXR SEQ" and seq_item["path"].endswith(".1001.exr")
     assert seq_item["size"] == "1000 B"
     assert "sh020_preview.mov" in names
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  New shot (4.0): a shot before its first version
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_shot_names_are_normalised_like_the_shots_page_reads_them(ws):
+    n = ws.m._normalize_shot_name
+    assert [n(x) for x in ("SH040", "sh40", "sh-040", "40", " 7 ", "SH01234")] == \
+        ["SH040", "SH040", "SH040", "SH040", "SH007", "SH01234"]
+    assert [n(x) for x in ("", "intro", "SH", "SH123456", "../SH010", "SH010_v001")] == [None] * 6
+    assert ws.m._next_shot_name(set()) == "SH010"
+    assert ws.m._next_shot_name({"SH010", "SH020"}) == "SH030"
+    assert ws.m._next_shot_name({"SH015"}) == "SH020"
+
+
+def test_new_shot_is_listed_before_its_first_version_and_the_first_save_lands_on_it(populated):
+    m = populated.m
+    resp = run(m.create_project_shot(Req(match_info={"project_id": "show-a"}, json_body={"shot": "40", "author": "ahmed"})))
+    assert resp.status == 200, body(resp)
+    data = body(resp)
+    assert data["shot"] == "SH040" and data["project"] == "SHOW A" and data["next"] == "SH050"
+    assert [s["shot"] for s in data["shots"]] == ["SH040"]
+    assert (populated.root / "SHOW A" / ".planned_shots.json").is_file()
+
+    listed = body(run(m.list_project_shots(Req(match_info={"project_id": "show-a"}))))
+    assert [s["shot"] for s in listed["shots"]] == ["SH040"] and listed["next"] == "SH050"
+    projects = {p["id"]: p for p in body(run(m.list_projects(Req())))["projects"]}
+    assert projects["show-a"]["shots"] == 3                     # SH010, SH020 and the new SH040
+
+    # The first "Save canvas as a version" with SH040 selected.
+    saved = body(run(m.save_project_version(Req(match_info={"project_id": "show-a"},
+                                                 json_body={"content": '{"nodes": []}', "shot": "SH040"}))))
+    assert saved["filename"] == "SHOW A/SH040_v001.rad"
+    assert body(run(m.list_projects(Req())))["projects"][0]["shots"] == 3   # not counted twice
+
+
+def test_a_taken_or_bad_shot_name_is_refused(populated):
+    m = populated.m
+    taken = run(m.create_project_shot(Req(match_info={"project_id": "show-a"}, json_body={"shot": "sh010"})))
+    assert taken.status == 409 and "already" in body(taken)["error"] and body(taken)["next"] == "SH030"
+    bad = run(m.create_project_shot(Req(match_info={"project_id": "show-a"}, json_body={"shot": "../x"})))
+    assert bad.status == 400
+    missing = run(m.create_project_shot(Req(match_info={"project_id": "nope"}, json_body={"shot": "SH010"})))
+    assert missing.status == 404
+    run(m.create_project_shot(Req(match_info={"project_id": "show-a"}, json_body={"shot": "SH050"})))
+    again = run(m.create_project_shot(Req(match_info={"project_id": "show-a"}, json_body={"shot": "50"})))
+    assert again.status == 409
+
+
+def test_the_dashboard_carries_the_active_project_s_planned_shots(populated):
+    m = populated.m
+    run(m.create_project_shot(Req(match_info={"project_id": "show-b"}, json_body={"shot": "SH090"})))
+    d = m._dashboard_payload()
+    planned = d["plannedShots"] if d["activeProjectId"] == "show-b" else \
+        body(run(m.list_project_shots(Req(match_info={"project_id": "show-b"}))))["shots"]
+    assert [s["shot"] for s in planned] == ["SH090"]
+    assert d["nextShot"].startswith("SH")

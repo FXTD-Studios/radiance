@@ -190,6 +190,14 @@ else is fixes. Read the upgrade notes before moving a production setup.
   Color; one saved in a 4.0 beta's Compare or QC workspace opens in Inspect.
 
 ### Added
+- **New shot in the Project Manager.** Inside a project, **New shot** (the
+  header button and the Shots page) asks for the shot name, with the next free
+  one filled in (SH010, SH020…; "40" becomes SH040, a taken or malformed name
+  is refused). The shot joins the project at once as *Not started*, and the
+  canvas opens a new empty workflow tab (the graph that was open is kept), so
+  the artist starts from any template. The shot stays selected: its first
+  **Save canvas as a version** writes `SH040_v001`. With no project, New opens
+  the Starter as before. Routes: GET/POST `/radiance/projects/{id}/shots`.
 - **Delete a gizmo straight from the library**: a trash button on each tile of
   the Gizmos page (shown on hover or focus), and the Delete key on a focused
   tile. As before, the file moves to gizmos/.trash after a confirmation.

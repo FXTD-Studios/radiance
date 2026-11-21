@@ -284,6 +284,41 @@ def test_studio_screens_against_the_real_routes(studio):
         page.wait_for_function("window.got.some(m => m.type === 'radiance_save_project_version' && m.projectId === 'hdr-test')")
         f.locator("#stToast", has_text="Saved the canvas").wait_for()
 
+        # New shot (4.0): the header button asks for a name, adds the shot to the
+        # project as Not started, and asks the canvas for an empty graph.
+        assert f.locator("#stNew").inner_text().strip() == "New shot"
+        f.locator("#stNew").click()
+        dlg = f.locator("#stNewShot [role=dialog]")
+        dlg.wait_for()
+        name = f.locator("#stNewShotName")
+        assert name.input_value() == "SH040"                     # the next free shot after SH030
+        name.fill("sh20")
+        assert "already in this project" in f.locator("#stNewShotErr").inner_text()
+        name.fill("intro")
+        assert "SH and 2 to 5 digits" in f.locator("#stNewShotErr").inner_text()
+        name.fill("45")
+        assert f.locator("#stNewShotFile").inner_text() == "SH045_v001"
+        _shot(page, "new_shot")
+        f.locator('#stNewShot button[type="submit"]').click()
+        page.wait_for_function("window.got.some(m => m.type === 'radiance_new_shot' && m.shot === 'SH045' && m.projectId === 'hdr-test')")
+        assert f.locator("#stNewShot").count() == 0
+        row = f.locator("button.st-tr", has_text="SH045")
+        row.locator(".st-pill", has_text="Not started").wait_for()
+        assert row.get_attribute("aria-pressed") == "true"
+        rail = f.locator(".st-rail").inner_text()
+        assert "SH045_v001" in rail and "Approve" not in rail and "VERSIONS" not in rail.upper().split("NOTES")[0]
+        planned = json.loads((studio.root / "HDR_Test" / ".planned_shots.json").read_text())
+        assert [p["shot"] for p in planned] == ["SH045"]
+        _shot(page, "shots_new_shot")
+        # Escape closes the dialog, not the Radiance page.
+        closes = page.evaluate("window.got.filter(m => m.type === 'radiance_close_dashboard').length")
+        f.locator('[data-act="new-shot"]').click()
+        dlg.wait_for()
+        page.keyboard.press("Escape")
+        assert f.locator("#stNewShot").count() == 0
+        page.wait_for_timeout(200)
+        assert page.evaluate("window.got.filter(m => m.type === 'radiance_close_dashboard').length") == closes
+
         # Renders: ComfyUI's history, the failure first.
         f.locator('#stNav [data-go="renders"]').click()
         f.locator(".st-render").nth(1).wait_for()
