@@ -522,11 +522,11 @@ def _door_tensors(n=2):
     return img, src
 
 
-def test_rerender_node_says_the_lora_is_not_published(monkeypatch):
+def test_rerender_node_says_why_the_lora_is_not_downloaded(monkeypatch):
     g = _g()
     monkeypatch.setattr(g, "resolve_v4_lora", lambda *a: None)
     img, src = _door_tensors(1)
-    with pytest.raises(FileNotFoundError, match="not published"):
+    with pytest.raises(FileNotFoundError, match="not downloaded.*v4.3"):
         _rerender_node().rerender(img, "Linear (Rec.709)", src, "")
 
 

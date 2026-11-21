@@ -20,8 +20,9 @@ again: a window, an open door, a sky parked just under white.
 
 Experimental and off unless wired: v4 has passed RUDRA's gates on one shot
 (09V) and the held-out set, and fails the structure gate on a second shot. It
-was tested on RUDRA's analytic route (the SDR read as BT.1886). The v4 LoRA is
-not published; it is never downloaded. What it draws is a plausible guess:
+was tested on RUDRA's analytic route (the SDR read as BT.1886). It ports the
+12 Nov research build; the LoRA published on 15 Nov (v4.3, RUDRA 1.2.4) needs
+settings this port lacks, so it is never downloaded. What it draws is a plausible guess:
 check every frame.
 """
 from __future__ import annotations
@@ -70,14 +71,15 @@ class RadianceSDRToHDRAIFillRerender:
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
     # 4.0: hidden from the node menu (ComfyUI shows DEV_ONLY nodes only in dev
-    # mode) until the v4 LoRA is published; a saved graph still opens and runs.
+    # mode): a port of the 12 Nov research build, behind the published AI fill
+    # v4.3 (RUDRA 1.2.4, 15 Nov). A saved graph still opens and runs.
     EXPERIMENTAL = True
     DEV_ONLY = True
     DESCRIPTION = (
         "RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master "
         "again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the "
-        "region the SDR's codes are not kept; outside it every pixel is the master's. Needs the v4 LoRA, "
-        "which is not published. Plausible, not recovered."
+        "region the SDR's codes are not kept; outside it every pixel is the master's. Needs the 12 Nov "
+        "research v4 LoRA (never downloaded). Plausible, not recovered."
     )
     FUNCTION = "rerender"
     RETURN_TYPES = ("IMAGE", "MASK", "MASK", "STRING")
@@ -115,7 +117,7 @@ class RadianceSDRToHDRAIFillRerender:
                 "lora": ("STRING", {"default": "",
                     "tooltip": "The v4 LoRA (rudra_genfill.safetensors of research_genfill_v4_20261109), or its "
                                "folder. Empty searches RADIANCE_RUDRA_GENFILL_V4, then "
-                               "models/radiance/rudra_genfill_v4/. Never downloaded: it is not published."}),
+                               "models/radiance/rudra_genfill_v4/. Never downloaded: the published v4.3 needs RUDRA 1.2.4's settings."}),
                 "base_model": ("STRING", {"default": "",
                     "tooltip": "Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, "
                                "models/radiance/ and models/diffusers/."}),
@@ -159,8 +161,10 @@ class RadianceSDRToHDRAIFillRerender:
         lora_path = G.resolve_v4_lora(lora)
         if lora_path is None:                    # a missing file, not a fault: FileNotFoundError
             raise FileNotFoundError(
-                "RUDRA AI fill v4 (region re-render) needs its LoRA, which is experimental and not published. "
-                "Put rudra_genfill.safetensors of research_genfill_v4_20261109 in "
+                "RUDRA AI fill v4 (region re-render, experimental) needs its LoRA, which is not downloaded: "
+                "this node ports the 12 Nov research build, and the LoRA published on 15 Nov (v4.3, "
+                "RUDRA 1.2.4) needs settings it does not have yet. Put rudra_genfill.safetensors of "
+                "research_genfill_v4_20261109 in "
                 f"ComfyUI/models/radiance/{G.V4_DIRNAME}/, set {G.V4_ENV}, or give its path in 'lora'. "
                 "For clipped pixels only, use SDR → HDR AI Fill (RUDRA v3).")
         G.check_runtime()

@@ -2,12 +2,13 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
-## [4.0.0] - Release candidate 1 (feature-frozen 16 Nov 2026, branch release/4.0)
+## [4.0.0] - 2026-11-21
 
-**Feature freeze.** 4.0 is feature-complete. Until 4.0.0 is released, the
-`release/4.0` branch takes bug fixes, documentation and test fixes only: no new
-nodes, inputs, workflows, models or UI. New work goes to 4.1. See "4.0 feature
-freeze" in CONTRIBUTING.md.
+**RUDRA models in this release** (fxtdstudios/rudra-models, checked against the
+Hub on 21 Nov 2026): RUDRA ACES 2 (2.0, lock `lock_dqs050g`) and AI fill v3
+are byte-identical to the published files, pinned to commits `ab8da1b` (ACES 2)
+and `78a0b21` (tag v1.0.0, AI fill v3), each file SHA-256 checked. AI fill v4
+is not included: see "SDR → HDR AI Fill v4 Re-render" below.
 
 A major release because saved graphs and studio scripts can see it: four
 hidden placeholder nodes and Read Mask are gone, delivered file names change, a remote DCC
@@ -421,9 +422,11 @@ else is fixes. Read the upgrade notes before moving a production setup.
   source wired into `source`; the finish is RUDRA's app's (source colour,
   3.3 x SDR white crossfaded in from code 240, dark detail at most 0.3 stops,
   smoothing 0.8, near-white sources only). Inside the region the SDR codes are
-  not kept; outside it every pixel is the master's. The v4 LoRA is not
-  published and is never downloaded: put it in `models/radiance/rudra_genfill_v4/`.
-  v4 has not passed every RUDRA gate (a second shot fails on structure).
+  not kept; outside it every pixel is the master's. This port matches the
+  12 Nov research build (LoRA `95d707eb…`). The LoRA published on 15 Nov
+  (AI fill v4.3, `406b1dc7…`, RUDRA 1.2.4) runs with settings this port does
+  not have yet (independent windows, calm 0.9), so the node is hidden for 4.0
+  and its LoRA is never downloaded; 4.1 brings it in line with v4.3.
 - **Zero setup for SDR → HDR.** `install.py` installs diffusers 0.35+ (an
   older one is upgraded; Wan VACE needs it) and fetches RUDRA ACES 2 into
   `models/radiance/RUDRA_ACES_2`, so the learned path works offline from the
@@ -556,8 +559,8 @@ else is fixes. Read the upgrade notes before moving a production setup.
   (empty loads the active config; it was `C:/ACES/config.ocio`), CDL Import,
   Audio Cut and Audio Transcribe.
 - **RUDRA AI fill v4 re-render is hidden from the node menu** (ComfyUI dev mode
-  shows it) until its LoRA is published; saved graphs still open it. 120 nodes
-  show in the menu.
+  shows it): it is a port of the 12 Nov research build, behind the published
+  v4.3 (RUDRA 1.2.4). Saved graphs still open it. 120 nodes show in the menu.
 - **Environment variables are documented** in docs/ENVIRONMENT.md.
 - **One colour palette** across the Radiance page, Viewer, Gizmo editor,
   Project Manager and dialogs: neutral greys, one blue for state, and green,

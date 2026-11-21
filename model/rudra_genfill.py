@@ -30,7 +30,8 @@ Brought up to RUDRA ``feat/genfill-v4-finish`` 72c4a62 (12 Nov 2026):
   from the SOURCE's codes, the model is conditioned on the route's reading of
   them, and the fill is finished (:func:`finish_rerender`) and blended plainly
   (:func:`plain_blend`): inside the mask the SDR codes are NOT kept, outside it
-  every pixel is the master's. Needs the v4 LoRA, which is not published.
+  every pixel is the master's. Needs the 12 Nov research v4 LoRA (the published v4.3
+  needs RUDRA 1.2.4's settings, which this port lacks).
 """
 from __future__ import annotations
 
@@ -1274,7 +1275,8 @@ V4_DIRNAME = "rudra_genfill_v4"
 
 
 def resolve_v4_lora(explicit: str = "") -> Optional[Path]:
-    """The v4 region re-render's LoRA, which is not published (no download): *explicit* (the file,
+    """The v4 region re-render's LoRA (never downloaded: the published v4.3 needs RUDRA 1.2.4's
+    settings, which this port lacks): *explicit* (the file,
     or a folder holding rudra_genfill.safetensors), RADIANCE_RUDRA_GENFILL_V4, then
     models/radiance/rudra_genfill_v4/rudra_genfill.safetensors or models/radiance/rudra_genfill_v4.safetensors."""
     from radiance.model.paths import radiance_model_dirs
