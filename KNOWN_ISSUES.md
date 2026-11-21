@@ -103,9 +103,11 @@ These parts of the release gate need checks that cannot run in CI:
   gates on one shot (09V) and the held-out set, and fails the structure gate
   on a second (a flat softbox) and on frame 1 of another; frame 1 is the
   weakest on every shot. It was gated on RUDRA's analytic route (`condition`
-  `bt1886`). Its LoRA is not published, so the node only runs with a copy put
-  in `models/radiance/rudra_genfill_v4/`, and the report says when the file is
-  not the gated one. Inside the region the SDR's codes change.
+  `bt1886`). The node is hidden in 4.0: it ports the 12 Nov research build,
+  while the LoRA published on 15 Nov (AI fill v4.3, RUDRA 1.2.4) needs newer
+  settings. It runs only with a LoRA put in `models/radiance/rudra_genfill_v4/`,
+  and the report says when the file is not the 12 Nov one. Inside the region
+  the SDR's codes change.
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 
