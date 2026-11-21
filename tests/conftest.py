@@ -13,6 +13,7 @@ import os
 import sys
 import types
 import importlib
+import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -313,6 +314,7 @@ if "comfy_api" not in sys.modules:
     _io.String = _v3_type("String", "STRING", _V3StringInput)
     _io.Combo = _v3_type("Combo", "COMBO", _V3ComboInput)
     _io.Int = _v3_type("Int", "INT", _V3IntInput)
+    _io.Boolean = _v3_type("Boolean", "BOOLEAN")
     _io.Conditioning = _v3_type("Conditioning", "CONDITIONING")
     _io.Vae = _v3_type("Vae", "VAE")
     _io.Image = _v3_type("Image", "IMAGE")
@@ -592,13 +594,13 @@ def pytest_collection_modifyitems(config, items):
 
 # ── radiance.image subpackage (used by nodes_qc via `from .image import defects`) ─
 _image_pkg = _mark_stub(types.ModuleType("radiance.image"))
-_defects_stub = _mark_stub(types.ModuleType("radiance.image.defects"))
-_defects_stub.analyze_levels         = MagicMock(return_value={"crushed": 0.0, "clipped": 0.0})
-_defects_stub.check_gamut            = MagicMock(return_value={"out_of_gamut_pct": 0.0})
-_defects_stub.detect_banding         = MagicMock(return_value={"risk_pct": 0.0, "detected": False})
-_defects_stub.analyze_noise          = MagicMock(return_value={"level": 0.0})
-_defects_stub.detect_compression_artifacts = MagicMock(return_value={"detected": False})
-_defects_stub.analyze_focus          = MagicMock(return_value={"sharpness": 1.0})
+# The real QC analysis (it needs only torch). Until 4.0 this was a stub of
+# MagicMocks whose keys did not match the real ones, so the QC node's analysis
+# never ran in a test, and it failed every HDR image unnoticed.
+_defects_spec = importlib.util.spec_from_file_location(
+    "radiance.image.defects", Path(__file__).resolve().parent.parent / "image" / "defects.py")
+_defects_stub = importlib.util.module_from_spec(_defects_spec)
+_defects_spec.loader.exec_module(_defects_stub)
 _image_pkg.defects = _defects_stub
 # Keep the package importable as a real package. Without a __path__ this stub
 # shadowed the whole subpackage, so `import radiance.image.upscale` failed even
@@ -686,6 +688,7 @@ def _make_comfy_stubs():
     # comfy.utils
     utils = types.ModuleType("comfy.utils")
     utils.ProgressBar = MagicMock()
+    utils.PROGRESS_BAR_ENABLED = True
     comfy.utils = utils
 
     # comfy.model_base
@@ -724,7 +727,7 @@ def _make_comfy_stubs():
     comfy_extras = types.ModuleType("comfy_extras")
     extras = {name: types.ModuleType(f"comfy_extras.{name}")
               for name in ("nodes_qwen", "nodes_edit_model", "nodes_flux", "nodes_post_processing",
-                           "nodes_sd3", "nodes_model_advanced")}
+                           "nodes_sd3", "nodes_model_advanced", "nodes_minimax_h3", "nodes_wan")}
     for name, module in extras.items():
         setattr(comfy_extras, name, module)
 
@@ -735,6 +738,17 @@ def _make_comfy_stubs():
     folder_paths.get_input_directory  = MagicMock(return_value="/tmp")
     folder_paths.get_output_directory = MagicMock(return_value="/tmp/comfy_output")
     folder_paths.filter_files_content_types = MagicMock(return_value=[])
+    folder_paths.get_temp_directory = MagicMock(return_value="/tmp/comfy_temp")
+
+    def _annotated_filepath(name):
+        # ALBABIT-FIX: as ComfyUI, " [output]" / " [input]" / " [temp]" names the folder, else None.
+        for tag, getter in (("[output]", "get_output_directory"), ("[input]", "get_input_directory"),
+                            ("[temp]", "get_temp_directory")):
+            if name.endswith(tag):
+                return name[:-len(tag) - 1], getattr(folder_paths, getter)()
+        return name, None
+
+    folder_paths.annotated_filepath = _annotated_filepath
     folder_paths.get_annotated_filepath = MagicMock(side_effect=lambda name: name)
     folder_paths.exists_annotated_filepath = MagicMock(return_value=True)
     folder_paths.models_dir = "/tmp/comfy_models"
@@ -800,3 +814,22 @@ def caplog(caplog):
         yield caplog
     finally:
         logger.removeHandler(caplog.handler)
+
+
+@pytest.fixture(autouse=True)
+def _no_hub_from_the_first_start_checks(monkeypatch):
+    """The setup scan runs the first-start checks; none of them may reach the
+    Hub from a test. The Hub answers as unreachable unless a test says otherwise."""
+    try:
+        from radiance.core import first_start
+    except Exception:  # noqa: BLE001
+        yield
+        return
+    import urllib.error
+
+    def offline(url, token="", timeout=0):
+        raise urllib.error.URLError("tests are offline")
+    monkeypatch.setattr(first_start, "HEAD", offline)
+    first_start._hub_cache.update(at=0.0, result=None)
+    yield
+    first_start._hub_cache.update(at=0.0, result=None)

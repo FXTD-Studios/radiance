@@ -1,0 +1,1152 @@
+{
+  "id": "6f1d2c4e-5a7b-4c3d-9e8f-0a1b2c3d4e5f",
+  "revision": 0,
+  "last_node_id": 8,
+  "last_link_id": 8,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "RadianceRudraLoadStill",
+      "pos": [
+        640,
+        70
+      ],
+      "size": [
+        310,
+        420
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image"
+          }
+        },
+        {
+          "localized_name": "path",
+          "name": "path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "path"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            5
+          ]
+        },
+        {
+          "localized_name": "alpha",
+          "name": "alpha",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "RUDRA_SOURCE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "note",
+          "name": "note",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraLoadStill"
+      },
+      "widgets_values": [
+        "example.png",
+        ""
+      ],
+      "title": "Load still (RUDRA)"
+    },
+    {
+      "id": 2,
+      "type": "RadianceRudraRegion",
+      "pos": [
+        1040,
+        70
+      ],
+      "size": [
+        310,
+        330
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "mode",
+          "name": "mode",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "mode"
+          }
+        },
+        {
+          "localized_name": "highlight_from",
+          "name": "highlight_from",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "highlight_from"
+          }
+        },
+        {
+          "localized_name": "highlight_softness",
+          "name": "highlight_softness",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "highlight_softness"
+          }
+        },
+        {
+          "localized_name": "highlight_strength",
+          "name": "highlight_strength",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "highlight_strength"
+          }
+        },
+        {
+          "localized_name": "shadow_below",
+          "name": "shadow_below",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "shadow_below"
+          }
+        },
+        {
+          "localized_name": "shadow_softness",
+          "name": "shadow_softness",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "shadow_softness"
+          }
+        },
+        {
+          "localized_name": "shadow_strength",
+          "name": "shadow_strength",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "shadow_strength"
+          }
+        },
+        {
+          "localized_name": "band_low",
+          "name": "band_low",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "band_low"
+          }
+        },
+        {
+          "localized_name": "band_high",
+          "name": "band_high",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "band_high"
+          }
+        },
+        {
+          "localized_name": "band_softness",
+          "name": "band_softness",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "band_softness"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "region",
+          "name": "region",
+          "type": "RUDRA_REGION",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraRegion"
+      },
+      "widgets_values": [
+        "Highlights + shadows",
+        0.75,
+        0.1,
+        1.0,
+        0.15,
+        0.1,
+        1.0,
+        0.5,
+        0.9,
+        0.05
+      ],
+      "title": "Region: highlights + shadows"
+    },
+    {
+      "id": 3,
+      "type": "RadianceSDRToHDRAnalytic",
+      "pos": [
+        1440,
+        70
+      ],
+      "size": [
+        340,
+        560
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "localized_name": "source_curve",
+          "name": "source_curve",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "source_curve"
+          }
+        },
+        {
+          "localized_name": "strength",
+          "name": "strength",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "strength"
+          }
+        },
+        {
+          "localized_name": "clip_fill",
+          "name": "clip_fill",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "clip_fill"
+          }
+        },
+        {
+          "localized_name": "highlight_detail",
+          "name": "highlight_detail",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "highlight_detail"
+          }
+        },
+        {
+          "localized_name": "exposure_ev",
+          "name": "exposure_ev",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "exposure_ev"
+          }
+        },
+        {
+          "localized_name": "output_encoding",
+          "name": "output_encoding",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "output_encoding"
+          }
+        },
+        {
+          "localized_name": "clip_peaks",
+          "name": "clip_peaks",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "clip_peaks"
+          }
+        },
+        {
+          "localized_name": "anchor",
+          "name": "anchor",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "anchor"
+          }
+        },
+        {
+          "localized_name": "anchor_knee",
+          "name": "anchor_knee",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "anchor_knee"
+          }
+        },
+        {
+          "localized_name": "keep_source_colour",
+          "name": "keep_source_colour",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "keep_source_colour"
+          }
+        },
+        {
+          "localized_name": "settle_grain",
+          "name": "settle_grain",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "settle_grain"
+          }
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "peak_nits"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        },
+        {
+          "localized_name": "region",
+          "name": "region",
+          "type": "RUDRA_REGION",
+          "link": 3,
+          "shape": 7
+        },
+        {
+          "localized_name": "calibration",
+          "name": "calibration",
+          "type": "RUDRA_CALIBRATION",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "mask",
+          "name": "mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "source_primaries",
+          "name": "source_primaries",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "source_primaries"
+          }
+        },
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "RUDRA_SOURCE",
+          "link": 2,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4,
+            7
+          ]
+        },
+        {
+          "localized_name": "filled_mask",
+          "name": "filled_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "estimated_mask",
+          "name": "estimated_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "mattes",
+          "name": "mattes",
+          "type": "RUDRA_MATTES",
+          "links": [
+            8
+          ]
+        },
+        {
+          "localized_name": "regions",
+          "name": "regions",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAnalytic"
+      },
+      "widgets_values": [
+        "BT.1886 (graded / broadcast video)",
+        1.0,
+        true,
+        1.0,
+        0.0,
+        "Linear (Rec.709)",
+        "",
+        true,
+        0.9,
+        true,
+        true,
+        1000.0,
+        203.0,
+        "Rec.709 / sRGB"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "RadianceViewer",
+      "pos": [
+        1870,
+        70
+      ],
+      "size": [
+        2660,
+        1760
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": 4
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "compare_image",
+          "locked": null,
+          "name": "compare_image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": 5
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "zdepth",
+          "locked": null,
+          "name": "zdepth",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "exposure_bracketing",
+          "locked": null,
+          "name": "exposure_bracketing",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "exposure_bracketing"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "input_space",
+          "locked": null,
+          "name": "input_space",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "input_space"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "float_precision",
+          "locked": null,
+          "name": "float_precision",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "float_precision"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "fps",
+          "locked": null,
+          "name": "fps",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "regions",
+          "name": "regions",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "type": "IMAGE",
+          "pos": null,
+          "slot_index": null,
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        },
+        "radiance_viewer_shell": "v5"
+      },
+      "widgets_values": [
+        false,
+        "Auto",
+        "Half (16-bit)",
+        0,
+        ""
+      ],
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      }
+    },
+    {
+      "id": 5,
+      "type": "RadianceRudraMasterWrite",
+      "pos": [
+        1870,
+        1960
+      ],
+      "size": [
+        340,
+        330
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 7
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "filename_prefix"
+          }
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "bit_depth",
+          "name": "bit_depth",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "bit_depth"
+          }
+        },
+        {
+          "localized_name": "write_mattes",
+          "name": "write_mattes",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_mattes"
+          }
+        },
+        {
+          "localized_name": "write_brackets",
+          "name": "write_brackets",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_brackets"
+          }
+        },
+        {
+          "localized_name": "mattes",
+          "name": "mattes",
+          "type": "RUDRA_MATTES",
+          "link": 8,
+          "shape": 7
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "source_path",
+          "name": "source_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "source_path"
+          }
+        },
+        {
+          "localized_name": "checkpoint_path",
+          "name": "checkpoint_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "checkpoint_path"
+          }
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_path"
+          }
+        },
+        {
+          "localized_name": "frame_index",
+          "name": "frame_index",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "frame_index"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "master_path",
+          "name": "master_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "sidecar",
+          "name": "sidecar",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraMasterWrite"
+      },
+      "widgets_values": [
+        "analytic_master",
+        "From the mattes",
+        "16-bit Half Float",
+        true,
+        true,
+        "",
+        "",
+        "",
+        1
+      ]
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Color Legend",
+      "properties": {},
+      "widgets_values": [
+        "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      ],
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#a1309b\">Purple</font>**: optional, toggle with Ctrl+B (bypass).\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 7,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        480
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      1,
+      2,
+      3,
+      18,
+      "RUDRA_SOURCE"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      14,
+      "RUDRA_REGION"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      4,
+      1,
+      "IMAGE"
+    ],
+    [
+      6,
+      3,
+      5,
+      4,
+      8,
+      "IMAGE"
+    ],
+    [
+      7,
+      3,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      3,
+      4,
+      5,
+      6,
+      "RUDRA_MATTES"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load SDR Still",
+      "bounding": [
+        610,
+        0,
+        370,
+        690
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Region (Optional)",
+      "bounding": [
+        1010,
+        0,
+        370,
+        690
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "HDR Conversion",
+      "bounding": [
+        1410,
+        0,
+        400,
+        690
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        1840,
+        1890,
+        400,
+        490
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        1840,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.3831,
+      "offset": [
+        130.5,
+        313.2
+      ]
+    },
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1828,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1828,
+          1872
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1822,
+          180
+        ],
+        "linkIds": [
+          8
+        ]
+      },
+      {
+        "id": 4,
+        "pos": [
+          1822,
+          1878
+        ],
+        "linkIds": [
+          8
+        ],
+        "parentId": 3
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 2
+      },
+      {
+        "id": 8,
+        "parentId": 4
+      }
+    ]
+  },
+  "version": 0.4
+}

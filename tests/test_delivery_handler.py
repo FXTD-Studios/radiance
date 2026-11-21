@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
+from pathlib import Path
 import torch
 
 from radiance.delivery.handler import (
@@ -121,35 +122,42 @@ def test_a_linear_delivery_does_not_clamp_the_master(tmp_path):
 
 # ── versioning ──────────────────────────────────────────────────────────────
 
-def test_the_first_version_is_v01_when_nothing_is_there(tmp_path):
-    assert get_next_version(str(tmp_path / "nope"), "shot") == "v01"
-    assert get_next_version(str(tmp_path), "shot") == "v01"
+def test_the_first_version_is_v0001_when_nothing_is_there(tmp_path):
+    assert get_next_version(str(tmp_path / "nope"), "shot") == "v0001"
+    assert get_next_version(str(tmp_path), "shot") == "v0001"
 
 
 def test_the_version_follows_the_highest_on_disk(tmp_path):
-    for name in ("shot_v01.mov", "shot_v02.mov", "shot_v07.mov"):
+    for name in ("shot_v0001.mov", "shot_v0002.mov", "shot_v0007.mov"):
         (tmp_path / name).touch()
-    assert get_next_version(str(tmp_path), "shot") == "v08", (
+    assert get_next_version(str(tmp_path), "shot") == "v0008", (
         "a gap in the numbering must not hand back a version that already exists"
     )
 
 
-def test_versions_stay_two_digits_until_they_cannot(tmp_path):
-    (tmp_path / "shot_v09.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v10"
-    (tmp_path / "shot_v99.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v100"
+def test_versions_are_four_digits_like_the_writer_stamps(tmp_path):
+    (tmp_path / "shot_v0009.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0010"
+    (tmp_path / "shot_v9999.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v10000"
+
+
+def test_names_from_before_4_0_still_count(tmp_path):
+    """3.x wrote shot_v02_v0001.mov; the counter must continue past it."""
+    (tmp_path / "shot_v02_v0001.mov").touch()
+    (tmp_path / "shot_v07.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0008"
 
 
 def test_another_shots_versions_do_not_count(tmp_path):
-    (tmp_path / "other_v42.mov").touch()
-    assert get_next_version(str(tmp_path), "shot") == "v01"
+    (tmp_path / "other_v0042.mov").touch()
+    assert get_next_version(str(tmp_path), "shot") == "v0001"
 
 
 def test_a_regex_special_character_in_the_name_is_not_a_pattern(tmp_path):
     """`shot.a` must not match `shotXa`. The base goes through re.escape."""
-    (tmp_path / "shotXa_v03.mov").touch()
-    assert get_next_version(str(tmp_path), "shot.a") == "v01"
+    (tmp_path / "shotXa_v0003.mov").touch()
+    assert get_next_version(str(tmp_path), "shot.a") == "v0001"
 
 
 # ── the session log ─────────────────────────────────────────────────────────
@@ -225,16 +233,42 @@ def test_an_empty_grade_writes_an_identity_cdl(tmp_path):
 
 
 @pytest.mark.parametrize("colour,expected", [
-    ("ACEScg (AP1)", "ACEScg_to_ACES"),
-    ("sRGB (Standard)", "sRGB_100nits"),
-    ("ACEScct", "ACEScct_to_ACES"),
+    ("ACEScg (AP1)", "CSC.Academy.ACEScg_to_ACES.a2.v1"),
+    ("ACEScct", "CSC.Academy.ACEScct_to_ACES.a2.v1"),
 ])
-def test_the_output_transform_follows_the_colour_space(tmp_path, colour, expected):
+def test_the_input_transform_follows_the_colour_space(tmp_path, colour, expected):
     out = tmp_path / colour.replace(" ", "_").replace("(", "").replace(")", "")
     out.mkdir()
-    assert expected in _amf(out, {}, colour).read_text(encoding="utf-8")
+    text = _amf(out, {}, colour).read_text(encoding="utf-8")
+    assert f"<aces:transformId>urn:ampas:aces:transformId:v2.0:{expected}</aces:transformId>" in text
+    # one output transform, the ACES 2.0 view, whatever the master's container
+    assert "Output.Academy.Rec709-D65_100nit_in_Rec709-D65_BT1886.a2.v1" in text
 
 
-def test_an_unknown_colour_space_falls_back_rather_than_writing_nothing(tmp_path):
-    amf = _amf(tmp_path, {}, "Some Show LUT")
-    assert "Rec709_100nits" in amf.read_text(encoding="utf-8")
+def test_an_ap0_master_has_no_input_transform(tmp_path):
+    text = _amf(tmp_path, {}, "ACES2065-1 (AP0)").read_text(encoding="utf-8")
+    assert "inputTransform" not in text and "lookTransform" in text
+
+
+@pytest.mark.parametrize("colour", ["sRGB (Standard)", "Linear (sRGB)", "ARRI LogC3",
+                                    "DaVinci Intermediate", "PQ (HDR10 / ST.2084)", "Some Show LUT"])
+def test_a_master_that_is_not_aces_gets_no_amf(tmp_path, colour):
+    """The old writer filled the output-transform slot with an IDT or a CSC for these
+    (LogC3, DaVinci Intermediate) or a Rec.709 ODT for anything unknown: an AMF that
+    names the wrong pipeline is worse than none."""
+    with pytest.raises(ValueError, match="not ACEScg"):
+        _amf(tmp_path, {}, colour)
+    assert not list(tmp_path.glob("*.amf"))
+
+
+def test_the_deliver_amf_is_valid_against_the_academy_schema(tmp_path):
+    etree = pytest.importorskip("lxml.etree")
+    data = Path(__file__).parent / "data" / "aces_amf"
+    schema = etree.XMLSchema(etree.parse(str(data / "acesMetadataFile.xsd")))
+    for colour in ("ACEScg (AP1)", "ACES2065-1 (AP0)", "ACEScct"):
+        out = tmp_path / colour.split()[0]
+        out.mkdir()
+        grade = {"gain": [1.25, 1.0, 0.75], "offset": [0.01, 0.0, -0.02], "gamma": [0.9, 1.0, 1.1],
+                 "saturation": 1.4}
+        doc = etree.parse(str(_amf(out, grade, colour)))
+        assert schema.validate(doc), (colour, schema.error_log)

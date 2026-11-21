@@ -29,7 +29,7 @@ def _write_and_read(tmp_path, image_np, fmt, **write_kwargs):
     writer.write(image=img_t, output_path=out_path, format=fmt, overwrite=True, **write_kwargs)
     produced = list(tmp_path.glob("test_out*"))
     assert produced, f"No file produced for format {fmt!r}"
-    img_out, mask_out, _info = reader.read(path=str(produced[0]))
+    img_out, mask_out, _info, *_ = reader.read(path=str(produced[0]))
     return img_out[0].numpy(), mask_out, produced[0]
 
 
@@ -125,7 +125,7 @@ class TestAlphaRoundTrip:
                      mask=torch.from_numpy(mask), overwrite=True)
         produced = list(tmp_path.glob("alpha_out*"))
         assert produced
-        _, mask_out, _info = reader.read(path=str(produced[0]))
+        _, mask_out, _info, *_ = reader.read(path=str(produced[0]))
         assert mask_out is not None and mask_out.abs().max().item() > 0.5, \
             f"{fmt}: alpha not written/read correctly"
 
@@ -165,7 +165,7 @@ class Test16BitPrecisionPreservation:
         rgb16 = (np.random.default_rng(2).random((16, 16, 3)) * 65535).astype(np.uint16)
         path = tmp_path / "rgb16.png"
         cv2.imwrite(str(path), cv2.cvtColor(rgb16, cv2.COLOR_RGB2BGR))
-        img_out, _mask, _info = nodes_io.RadianceRead().read(path=str(path))
+        img_out, _mask, _info, *_ = nodes_io.RadianceRead().read(path=str(path))
         readback = (img_out[0].numpy() * 65535).round().astype(np.int32)
         assert np.abs(readback - rgb16.astype(np.int32)).max() <= 1
 
@@ -174,7 +174,7 @@ class Test16BitPrecisionPreservation:
         rgb8 = (np.random.default_rng(3).random((16, 16, 3)) * 255).astype(np.uint8)
         path = tmp_path / "rgb8.png"
         PIL.fromarray(rgb8).save(path)
-        img_out, _mask, _info = nodes_io.RadianceRead().read(path=str(path))
+        img_out, _mask, _info, *_ = nodes_io.RadianceRead().read(path=str(path))
         readback = (img_out[0].numpy() * 255).round().astype(np.int32)
         assert np.abs(readback - rgb8.astype(np.int32)).max() <= 1
 
@@ -243,7 +243,7 @@ class TestVideoFormats:
         produced = list(tmp_path.glob("audio_out*"))
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(produced[0])],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         assert "audio" in probe.stdout
 

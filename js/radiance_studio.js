@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { DISCIPLINES } from "./radiance_palette.js";
 
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
@@ -17,30 +18,23 @@ const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
 //  BACKDROP COLOR PALETTE (Nuke-style, desaturated for professional look)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ComfyUI's own group colours (LGraphCanvas.node_colors groupcolor), so a
+// backdrop looks the same with or without Radiance.
 const BACKDROP_COLORS = {
-    "Gray": "#3a3a3a",
-    "Dark": "#1a1a1a",
-    "Red": "#5a2a2a",
-    "Orange": "#5a3a1a",
-    "Yellow": "#5a5a2a",
-    "Green": "#2a5a2a",
-    "Cyan": "#2a5a5a",
-    "Blue": "#2a2a5a",
-    "Purple": "#3a2a5a",
-    "Magenta": "#5a2a5a",
+    "Red": "#A88",
+    "Brown": "#b06634",
+    "Green": "#8A8",
+    "Blue": "#88A",
+    "Pale blue": "#3f789e",
+    "Cyan": "#8AA",
+    "Purple": "#a1309b",
+    "Yellow": "#b58b2a",
+    "Black": "#444",
 };
 
-// Quick presets: labeled backdrops with semantic colors
-const BACKDROP_PRESETS = [
-    { label: "Generation", color: "Purple", icon: "◎" },
-    { label: "Conditioning", color: "Orange", icon: "◎" },
-    { label: "Post-Processing", color: "Cyan", icon: "◎" },
-    { label: "IO", color: "Blue", icon: "◎" },
-    { label: "Upscale", color: "Green", icon: "◎" },
-    { label: "Debug", color: "Red", icon: "◎" },
-    { label: "Depth / Masks", color: "Gray", icon: "◎" },
-    { label: "LoRA / Models", color: "Magenta", icon: "◎" },
-];
+// Quick presets: the shared colour code (radiance_palette.js).
+const BACKDROP_PRESETS = ["generate", "hdr", "color", "sdr", "vfx", "upscale", "io", "review", "optional"]
+    .map((k) => ({ label: DISCIPLINES[k].label, colorValue: DISCIPLINES[k].group, icon: "◎" }));
 
 function promptRadianceStudio(titleText, message, defaultValue = "", confirmLabel = "Create") {
     return new Promise((resolve) => {
@@ -67,7 +61,7 @@ function promptRadianceStudio(titleText, message, defaultValue = "", confirmLabe
         const confirm = document.createElement("button");
         confirm.type = "button";
         confirm.textContent = confirmLabel;
-        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(10,132,255,0.45);background:rgba(10,132,255,0.16);color:#409cff;cursor:pointer;font-weight:700;";
         const close = (value) => {
             overlay.remove();
             resolve(value);
@@ -103,24 +97,28 @@ app.registerExtension({
         const selectedNodes = Object.values(canvas.selected_nodes || {});
         const projectManagerOptions = [
             {
-                content: "Open Project Manager",
+                content: "Open Radiance",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+                        window.showRadianceDashboard(`${_EXT_BASE}/studio.html#home`, "Radiance");
                     } else {
-                        window.open("${_EXT_BASE}/project_manager_dashboard.html", "_blank");
+                        window.open(`${_EXT_BASE}/studio.html#home`, "_blank");
                     }
                 }
             },
             {
-                content: "Open Workflow Library",
+                content: "Open Workflows",
                 callback: () => {
                     if (window.showRadianceDashboard) {
-                        window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+                        window.showRadianceDashboard(`${_EXT_BASE}/studio.html#workflows`, "Radiance");
                     } else {
-                        window.open("${_EXT_BASE}/workspace_dashboard.html", "_blank");
+                        window.open(`${_EXT_BASE}/studio.html#workflows`, "_blank");
                     }
                 }
+            },
+            {
+                content: "Radiance Tour",
+                callback: () => window.radianceWelcome?.open("tour"),
             },
         ];
 
@@ -128,7 +126,7 @@ app.registerExtension({
             return [
                 null,
                 {
-                    content: "◎ Radiance Studio",
+                    content: "◎ Radiance",
                     submenu: {
                         options: projectManagerOptions,
                     },
@@ -139,7 +137,7 @@ app.registerExtension({
         return [
             null, // Separator
             {
-                content: "◎ Radiance Studio",
+                content: "◎ Radiance",
                 submenu: {
                     options: [
                         ...projectManagerOptions,
@@ -162,7 +160,7 @@ app.registerExtension({
                                     // No prompt — instant gray
                                     {
                                         content: "Quick (no title)",
-                                        callback: () => createBackdrop(graph, selectedNodes, "", BACKDROP_COLORS.Gray),
+                                        callback: () => createBackdrop(graph, selectedNodes, "", BACKDROP_COLORS.Black),
                                     },
                                 ]
                             }
@@ -173,7 +171,7 @@ app.registerExtension({
                             submenu: {
                                 options: BACKDROP_PRESETS.map(preset => ({
                                     content: `${preset.icon} ${preset.label}`,
-                                    callback: () => createBackdrop(graph, selectedNodes, preset.label, BACKDROP_COLORS[preset.color]),
+                                    callback: () => createBackdrop(graph, selectedNodes, preset.label, preset.colorValue),
                                 }))
                             }
                         },
@@ -238,7 +236,7 @@ function createBackdrop(graph, nodes, title, color) {
     group.title = title || "";
     group.pos = [minX, minY];
     group.size = [width, height];
-    group.color = color || BACKDROP_COLORS.Gray;
+    group.color = color || BACKDROP_COLORS.Black;
     group.font_size = title ? 24 : 16;
 
     graph.add(group);

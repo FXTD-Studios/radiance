@@ -172,8 +172,12 @@ def test_terminal_bridge_runs_on_calling_thread(monkeypatch):
 def test_input_space_converts_to_what_each_format_expects(tmp_path, monkeypatch):
     import radiance.nodes.pipeline.studio_integrations as si
     got = {}
-    monkeypatch.setattr(si, "_save_pil_image", lambda a, p, f: got.__setitem__(Path(p).suffix, a.copy()))
-    monkeypatch.setattr(si, "_save_exr", lambda a, p, half=True: got.__setitem__(Path(p).suffix, a.copy()))
+    # Record what each writer was given, and leave a file: the send checks it was written.
+    def rec(a, p):
+        got[Path(p).suffix] = a.copy()
+        Path(p).write_bytes(b"x")
+    monkeypatch.setattr(si, "_save_pil_image", lambda a, p, f: rec(a, p))
+    monkeypatch.setattr(si, "_save_exr", lambda a, p, half=True: rec(a, p))
     lin = torch.full((1, 2, 2, 3), 0.18)
     si.RadianceDaVinciSend().run(lin, str(tmp_path), "a", "16bit", input_space="Scene-linear")
     assert got[".tif"][0, 0, 0] == pytest.approx(0.4614, abs=1e-3)       # 18 % grey, sRGB-encoded
@@ -208,17 +212,27 @@ def _fake_resolve(monkeypatch, tmp_path, running=True):
 def test_resolve_import_of_a_sequence_uses_the_frame_pattern(tmp_path, monkeypatch):
     import radiance.nodes.pipeline.studio_integrations as si
     pool = _fake_resolve(monkeypatch, tmp_path)
-    monkeypatch.setattr(si, "_save_pil_image", lambda *a, **k: None)
+    # Stand-in files: E-04 checks they exist before asking Resolve for them.
+    monkeypatch.setattr(si, "_save_pil_image", lambda *a, **k: Path(a[1]).write_bytes(b"x"))
     status, _ = si.RadianceDaVinciSend().run(torch.rand(3, 4, 4, 3), str(tmp_path), "plate", "16bit",
                                              import_to_media_pool=True)
     assert "imported 1 clip(s) into 'Show'" in status
+    assert "3/3 file(s) on disk" in status
     assert json.loads(pool.read_text()) == [[{"FilePath": str(tmp_path / "plate.%04d.tif"), "StartIndex": 1001, "EndIndex": 1003}]]
+
+
+def test_resolve_import_of_missing_files_is_refused_before_resolve_is_asked(tmp_path, monkeypatch):
+    import radiance.nodes.pipeline.studio_integrations as si
+    pool = _fake_resolve(monkeypatch, tmp_path)
+    status = si.import_into_resolve([], 1001, 1003, str(tmp_path / "gone.%04d.tif"))
+    assert "not imported: none of the files exist here" in status
+    assert not pool.exists(), "Resolve was asked to import files that are not there"
 
 
 def test_resolve_not_running_is_reported_not_raised(tmp_path, monkeypatch):
     import radiance.nodes.pipeline.studio_integrations as si
     _fake_resolve(monkeypatch, tmp_path, running=False)
-    monkeypatch.setattr(si, "_save_pil_image", lambda *a, **k: None)
+    monkeypatch.setattr(si, "_save_pil_image", lambda *a, **k: Path(a[1]).write_bytes(b"x"))
     status, _ = si.RadianceDaVinciSend().run(torch.rand(1, 4, 4, 3), str(tmp_path), "still", "8bit",
                                              import_to_media_pool=True)
     assert "not imported: Resolve is not running" in status

@@ -207,6 +207,11 @@ th { background: #2a2a2a; }
 
 class RadianceQC:
     MODES = ["Analyze", "Export"]
+    #: What the image's values mean (4.0). Display: 0..1 is the whole signal,
+    #: so values above white_threshold are clipping. Scene-linear / HDR: values
+    #: above 1.0 are highlights, reported as a peak in stops, not as clipping.
+    #: Auto picks scene-linear when any value is above 1.0.
+    SIGNALS = ["Auto", "Display (0-1)", "Scene-linear / HDR"]
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -226,6 +231,7 @@ class RadianceQC:
                 "output_path": ("STRING", {"default": "", "tooltip": "Export folder. Empty = ComfyUI output folder; relative = subfolder of it; absolute paths are used as is. Export mode only."}),
                 "filename_prefix": ("STRING", {"default": "qc_report", "tooltip": "Report file name stem; a date-time stamp and the extension are appended. Export mode only."}),
                 "export_format": (["json", "csv", "html", "all"], {"default": "json", "tooltip": "Report file format to write; all writes JSON, CSV and HTML. Export mode only."}),
+                "signal": (cls.SIGNALS, {"default": "Auto", "tooltip": "What the values mean. Display (0-1): values above white_threshold are clipping and fail the frame. Scene-linear / HDR (EXR masters, ACEScg, PQ in nits): values above 1.0 are highlights, reported as the peak in stops above 18% grey, and negative values are a warning. Auto: scene-linear when any value is above 1.0."}),
             },
         }
 
@@ -243,7 +249,7 @@ class RadianceQC:
             enable_artifacts_check: bool = True, enable_noise_check: bool = True,
             fail_on_errors: bool = False, qc_report_json: str = "{}",
             output_path: str = "", filename_prefix: str = "qc_report",
-            export_format: str = "json"):
+            export_format: str = "json", signal: str = "Auto"):
         if mode == "Analyze":
             if image is None:
                 if fail_on_errors:
@@ -251,7 +257,8 @@ class RadianceQC:
                 return self._error("image is required in Analyze mode")
             return self._analyze(image, black_threshold, white_threshold, overlay_opacity,
                                 banding_threshold, enable_focus_check,
-                                enable_artifacts_check, enable_noise_check, fail_on_errors)
+                                enable_artifacts_check, enable_noise_check, fail_on_errors,
+                                signal)
         else:
             status = self._export(qc_report_json, output_path, filename_prefix, export_format)
             dummy = torch.zeros(1, 64, 64, 3)
@@ -259,7 +266,7 @@ class RadianceQC:
 
     def _analyze(self, image, black_threshold, white_threshold, overlay_opacity,
                  banding_threshold, enable_focus_check,
-                 enable_artifacts_check, enable_noise_check, fail_on_errors):
+                 enable_artifacts_check, enable_noise_check, fail_on_errors, signal="Auto"):
         # FIX-007: with fail_on_errors on, an invalid input or an analysis
         # failure stops the graph too; it used to return an "ERROR" status
         # and let the delivery continue.
@@ -278,6 +285,8 @@ class RadianceQC:
             if B == 0 or H == 0 or W == 0:
                 return _fail(f"Empty image {tuple(image.shape)}")
 
+            finite = torch.where(torch.isfinite(image), image, torch.zeros_like(image))
+            linear = signal == "Scene-linear / HDR" or (signal == "Auto" and bool((finite > 1.0).any()))
             levels = defects.analyze_levels(image, black_threshold, white_threshold)
             gamut = defects.check_gamut(image)
             banding = defects.detect_banding(image)
@@ -289,6 +298,7 @@ class RadianceQC:
                 "timestamp": datetime.now().isoformat(),
                 "image_info": {"shape": [B, H, W, C], "dtype": str(image.dtype), "device": str(image.device)},
                 "thresholds": {"black": black_threshold, "white": white_threshold, "banding": banding_threshold},
+                "signal": "scene-linear" if linear else "display",
                 "frames": [],
             }
 
@@ -296,7 +306,9 @@ class RadianceQC:
                 "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557",
                 "\u2551" + f"     RADIANCE QC REPORT v{_RADIANCE_VERSION}".ljust(40) + "\u2551",
                 "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d",
-                f"Image: {B} frame(s), {W}x{H}, {C} channel(s)", "",
+                f"Image: {B} frame(s), {W}x{H}, {C} channel(s)",
+                "Signal: " + ("scene-linear / HDR (values above 1.0 are highlights)" if linear
+                              else f"display (values above {white_threshold} are clipping)"), "",
             ]
             overall_pass = True
             overlays = []
@@ -325,28 +337,52 @@ class RadianceQC:
                     "status": "FAIL" if non_finite else "PASS", "non_finite_count": non_finite,
                 }
 
-                if crushed_pct > 0:
+                if linear:
+                    # Scene-linear: negative values are a warning (gamut conversions
+                    # make some); above 1.0 is the highlight range, reported as a peak.
+                    peak = float(finite[i].max().item())
+                    stops = math.log2(peak / 0.18) if peak > 0 else float("-inf")
+                    frame_lines.append(f"  PEAK: {peak:.3f} ({stops:+.1f} stops above 18% grey)")
+                    frame_data["checks"]["peak"] = {"status": "PASS", "peak": peak, "stops_above_grey": stops}
+                    if crushed_pct > 0:
+                        frame_lines.append(f"  NEGATIVE: {crushed_pct:.2f}% of values below {black_threshold} (warning)")
+                    frame_data["checks"]["crushed_blacks"] = {
+                        "status": "WARN" if crushed_pct > 0 else "PASS",
+                        "percentage": crushed_pct, "threshold": black_threshold,
+                    }
+                    frame_data["checks"]["clipped_whites"] = {"status": "SKIP", "percentage": clipped_pct,
+                                                              "threshold": white_threshold}
+                    frame_data["checks"]["gamut"] = {"status": "WARN" if crushed_pct > 0 else "PASS",
+                                                     "out_of_gamut_pct": crushed_pct}
+                elif crushed_pct > 0:
                     frame_lines.append(f"  CRUSHED: {crushed_pct:.2f}% < {black_threshold}")
                     frame_pass = False
-                frame_data["checks"]["crushed_blacks"] = {
-                    "status": "FAIL" if crushed_pct > 0 else "PASS",
-                    "percentage": crushed_pct, "threshold": black_threshold,
-                }
-                if clipped_pct > 0:
+                if not linear:
+                    frame_data["checks"]["crushed_blacks"] = {
+                        "status": "FAIL" if crushed_pct > 0 else "PASS",
+                        "percentage": crushed_pct, "threshold": black_threshold,
+                    }
+                if linear:
+                    pass
+                elif clipped_pct > 0:
                     frame_lines.append(f"  CLIPPED: {clipped_pct:.2f}% > {white_threshold}")
                     frame_pass = False
-                frame_data["checks"]["clipped_whites"] = {
-                    "status": "FAIL" if clipped_pct > 0 else "PASS",
-                    "percentage": clipped_pct, "threshold": white_threshold,
-                }
-                if oog_pct > 0:
+                if not linear:
+                    frame_data["checks"]["clipped_whites"] = {
+                        "status": "FAIL" if clipped_pct > 0 else "PASS",
+                        "percentage": clipped_pct, "threshold": white_threshold,
+                    }
+                if linear:
+                    pass
+                elif oog_pct > 0:
                     frame_lines.append(f"  GAMUT: {oog_pct:.2f}% out-of-gamut")
                     if oog_pct > 1.0:
                         frame_pass = False
-                frame_data["checks"]["gamut"] = {
-                    "status": "PASS" if oog_pct == 0 else "WARN",
-                    "out_of_gamut_pct": oog_pct,
-                }
+                if not linear:
+                    frame_data["checks"]["gamut"] = {
+                        "status": "PASS" if oog_pct == 0 else "WARN",
+                        "out_of_gamut_pct": oog_pct,
+                    }
                 if banding_pct >= banding_threshold:
                     frame_lines.append(f"  BANDING: {banding_pct:.2f}% risk (threshold: {banding_threshold}%)")
                 frame_data["checks"]["banding"] = {
@@ -390,7 +426,8 @@ class RadianceQC:
                 target = image[i].clone()
                 if overlay_opacity > 0:
                     overlay = target.clone()
-                    clipped_mask = (target > white_threshold).any(dim=-1)
+                    clipped_mask = (target > white_threshold).any(dim=-1) if not linear \
+                        else torch.zeros(target.shape[:-1], dtype=torch.bool, device=target.device)
                     if clipped_mask.any():
                         red = torch.tensor([1.0, 0.0, 0.0], device=overlay.device, dtype=overlay.dtype)
                         overlay[clipped_mask] = red[:C]

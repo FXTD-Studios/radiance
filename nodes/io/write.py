@@ -29,6 +29,7 @@ Supported WRITE
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -62,13 +63,16 @@ except ImportError:
 
 try:
     from ...hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report
+    from ...hdr.io import depth_with_empty, signed_normals
 except ImportError:
     try:
         from hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report  # type: ignore[import]
+        from hdr.io import depth_with_empty, signed_normals  # type: ignore[import]
     except ImportError:
         write_exr_robust = None      # type: ignore[assignment]
         write_exr_multipart = None   # type: ignore[assignment]
         write_exr_multipart_report = None   # type: ignore[assignment]
+        depth_with_empty = signed_normals = None   # type: ignore[assignment]
 
 try:
     from ...path_utils import get_safe_output_dir, strip_path_quotes
@@ -106,6 +110,7 @@ from ...io.writer import (  # noqa: F401  (re-exported for this module's other u
     OUTPUT_COLOR_SPACES,
     WRITE_WORKING_SPACES,
     EXR_COMPRESSIONS,
+    AUDIO_CODECS,
     _ffmpeg_bin,
     _ffprobe_bin,
     _ffmpeg_ok,
@@ -123,6 +128,8 @@ from ...io.writer import (  # noqa: F401  (re-exported for this module's other u
     coerce_to_frames as _coerce_to_frames_impl,
     resolve_output_path as _resolve_output_path,
     write_frames as _write_frames,
+    MASTERING_DISPLAYS as _MASTERING_DISPLAYS,
+    DEFAULT_MASTERING_DISPLAY as _DEFAULT_MASTERING_DISPLAY,
 )
 
 
@@ -255,10 +262,10 @@ class RadianceRead:
         "4444 alpha on the mask output, and honours the file's colour tags."
     )
     FUNCTION     = "read"
-    # `info` is appended last on purpose: ComfyUI links outputs by index, so
-    # every workflow saved against the two-output version keeps working.
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
-    RETURN_NAMES = ("image", "mask", "info")
+    # Outputs are only ever appended: ComfyUI links outputs by index, so every
+    # workflow saved against an older version keeps working.
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "FLOAT", "AUDIO")
+    RETURN_NAMES = ("image", "mask", "info", "fps", "audio")
     OUTPUT_TOOLTIPS = (
         "Frames as a batch. Scene-linear once color_space has decoded them.",
         "Alpha. For a ProRes 4444, an RGBA EXR or an RGBA sequence this is the "
@@ -266,21 +273,29 @@ class RadianceRead:
         "JSON describing what was actually read: resolution, frame count and "
         "range, bit depth, codec, EXR layers and windows, colour tags, "
         "timecode. Nuke's metadata tab, as a wire you can plug in.",
+        "Frame rate the frames play at: the clip's or the sequence header's "
+        "rate, divided by frame_step; 24 for a still or a sequence with no "
+        "rate. Wire it to Write's fps so a 25 or 30 fps clip is not written at 24.",
+        "The clip's sound under the frames that were read (48 kHz stereo), "
+        "for Write's audio input. Empty for stills, sequences and silent clips.",
     )
 
     @classmethod
     def INPUT_TYPES(cls):
         return {"required": {
+            # 4.0: no "image_upload". With it ComfyUI's node UI listed and
+            # uploaded images only, so an MP4 or MOV in the input folder never
+            # showed. The list is every image and video in the input folder;
+            # the Upload button (js/radiance_io.js) takes both kinds.
             "browse": (_get_input_files(), {
-                "image_upload": True,
+                "radiance_upload": True,
                 "tooltip": (
-                    "Browse or upload a file from disk.\n"
-                    "• Click the upload icon (📎) to open a native file picker.\n"
-                    "• Supports images (PNG, JPG, TIFF, EXR, DPX, HDR, WebP) "
-                    "and video (MP4, MOV, MXF, AVI, WebM, MKV).\n"
-                    "• Uploaded files are copied to ComfyUI's input"
-                    "• Leave blank and fill in 'path' below for absolute / "
-                    "network / sequence paths."
+                    "An image or video in ComfyUI's input folder.\n"
+                    "• Upload… (below) or drop a file on the node to add one.\n"
+                    "• Images: PNG, JPG, TIFF, EXR, DPX, HDR, WebP. "
+                    "Video: MP4, MOV, MXF, AVI, WebM, MKV and more.\n"
+                    "• Leave blank and fill in 'path' below for absolute, "
+                    "network or sequence paths."
                 ),
             }),
             }, "optional": {
@@ -516,7 +531,8 @@ class RadianceRead:
             # ALBABIT-FIX: node and console progress for sequences.
             on_frame=_FrameProgress("Read"),
         )
-        return (image, mask, json.dumps(info, default=str))
+        from ...io.reader import playback_fps, read_clip_audio
+        return (image, mask, json.dumps(info, default=str), playback_fps(info), read_clip_audio(info))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -659,7 +675,7 @@ class RadianceWrite:
     ├──────────────┼─────────────────────────────────────────────────────────┤
     │ Image        │ quality, overwrite                                       │
     │ EXR          │ exr_compression, overwrite                               │
-    │ Video        │ fps, quality (CRF), audio_source, broadcast_safe         │
+    │ Video        │ fps, quality (CRF), audio_source, audio_codec            │
     │ Sequence     │ fps, start_frame, frame_padding, overwrite               │
     └──────────────┴─────────────────────────────────────────────────────────┘
 
@@ -680,61 +696,75 @@ class RadianceWrite:
         return {"required": {
             "image": ("*", {
                 "tooltip": (
-                    "Accepts any ComfyUI output: IMAGE tensor, batched video frames, "
-                    "VHS"
-                    "or any dict/list carrying a video path."
+                    "Accepts any ComfyUI output:\n"
+                    "• IMAGE tensor.\n"
+                    "• Batched video frames.\n"
+                    "• VHS video output.\n"
+                    "• Any dict/list carrying a video path."
                 ),
             }),
             "output_path": ("STRING", {
-                "default": str(Path.home() / "radiance_output"),
+                "default": "~/radiance_output",
                 "multiline": False,
                 "placeholder": "/output/render  or  //nas/share/render  or  Z:/renders/shot",
                 "tooltip": (
-                    "Output directory + filename stem.  Extension is appended automatically based on format.\n"
+                    "Output directory + filename stem (only the directory when filename is set).\n"
+                    "Extension is appended automatically based on format.\n\n"
                     "For sequences: output_path becomes a folder and frames are named <folder>_<frame>.<ext> "
                     "(e.g. /out/shot -> /out/shot/shot_1001.exr).\n\n"
-                    "Network paths are fully supported — use the path as mounted on this machine:\n"
-                    "  Linux / Mac  →  /mnt/nas/renders/shot_001\n"
-                    "  Windows UNC  →  \\\\server\\share\\renders\\shot_001\n"
-                    "  Windows drive→  Z:\\renders\\shot_001\n"
-                    "The directory is created automatically (mkdir -p) if it does not exist.\n"
+                    "A relative path is under ComfyUI's output folder.\n\n"
+                    "Network paths are fully supported. Use the path as mounted on this machine:\n"
+                    "• Linux / Mac: /mnt/nas/renders/shot_001\n"
+                    "• Windows UNC: \\\\server\\share\\renders\\shot_001\n"
+                    "• Windows drive: Z:\\renders\\shot_001\n\n"
+                    "The directory is created automatically (mkdir -p) if it does not exist. "
                     "Write permissions on the share are required."
                 ),
             }),
             "format": (WRITE_FORMATS, {
                 "default": "IMG │ EXR (16-bit half)",
-                "tooltip": "Output format.  Extension is appended automatically.",
+                "tooltip": "Output format.\nExtension is appended automatically.",
             }),
         }, "optional": {
             "filename": ("STRING", {
                 "default": "",
                 "placeholder": "shot_001",
-                "tooltip": "Output filename stem (version appended automatically). Leave empty to use output_path as the full stem.",
+                "tooltip": "Output filename stem (version appended automatically).\n"
+                           "Leave empty to use output_path as the full stem, with no version.",
             }),
             "version": ("INT", {
                 "default": 1,
                 "min": 0,
                 "max": 9999,
-                "tooltip": "Version number appended to filename (e.g. shot_001_v0001).",
+                "control_after_generate": "fixed",
+                "tooltip": ("Version number appended to filename (e.g. shot_001_v0001), when filename is set.\n\n"
+                            "Its control steps it after each run:\n"
+                            "• fixed: stays as it is.\n"
+                            "• increment: +1 after each run, so every run writes a new version, "
+                            "even when nothing upstream changed."),
             }),
             "color_space": (OUTPUT_COLOR_SPACES, {
                 "default": "Linear (pass-through)",
-                "tooltip": ("File encoding: transfer AND primaries, from working_space. "
-                            "Linear (pass-through) writes the working values unchanged. "
-                            "EXR and DPX record it in their headers (chromaticities, "
-                            "oiio:ColorSpace); video gets primaries/transfer/matrix tags. "
-                            "For a video of scene-linear HDR (e.g. from SDR -> HDR Universal) "
-                            "pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light "
-                            "in a video plays back too dark."),
+                "tooltip": ("File encoding: transfer AND primaries, from working_space.\n"
+                            "• Linear (pass-through) writes the working values unchanged.\n"
+                            "• EXR and DPX record it in their headers (chromaticities, "
+                            "oiio:ColorSpace); video gets primaries/transfer/matrix tags.\n\n"
+                            "For a video of scene-linear HDR (e.g. from SDR -> HDR Universal):\n"
+                            "• Pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light "
+                            "in a video plays back too dark.\n"
+                            "• PQ and HLG video need a 10-bit format (H.265 10-bit or ProRes); "
+                            "H.264 and DNxHR HQ are refused.\n"
+                            "• PQ H.265 carries HDR10 metadata (hdr10_mastering_display, "
+                            "MaxCLL/MaxFALL measured from the frames)."),
             }),
             "fps": ("FLOAT", {
                 "default": 0.0, "min": 0.0, "max": 240.0, "step": 0.001,
-                "tooltip": "Frame rate for video and sequence outputs. "
+                "tooltip": "Frame rate for video and sequence outputs.\n"
                            "0 = auto-detect from the source video (falls back to 24 if unavailable).",
             }),
             "quality": ("INT", {
                 "default": 18, "min": 0, "max": 51,
-                "tooltip": "CRF quality for H.264/H.265 (lower = better).  Also JPEG quality 0–100 (remapped).",
+                "tooltip": "CRF quality for H.264/H.265 (lower = better).\nAlso JPEG quality 0–100 (remapped).",
             }),
             "exr_compression": (EXR_COMPRESSIONS, {
                 "default": "ZIP",
@@ -742,73 +772,137 @@ class RadianceWrite:
             }),
             "start_frame": ("INT", {
                 "default": 1001, "min": 0, "max": 99999,
-                "tooltip": "First frame number for sequences.",
+                "tooltip": "First frame number for sequences.\n\nEXR frames and the sequence's .wav carry "
+                           "it as timecode, at fps (frame 1001 at 24 fps = 00:00:41:17).",
             }),
             "frame_padding": ("INT", {
                 "default": 4, "min": 1, "max": 8,
                 "tooltip": "Zero-padding width for frame numbers (e.g. 4 → 0001).",
             }),
-            "audio_source": ("STRING", {
-                "default": "",
-                "tooltip": "Path to audio file to mux into video output (optional). "
-                           "Takes priority over the 'audio' input when both are set.",
-            }),
             "broadcast_safe": ("BOOLEAN", {
                 "default": False,
-                "tooltip": "8/16-bit stills: clamp to legal range (16–235). Video is always "
-                           "encoded legal-range by the RGB→YUV step; float formats are never clamped.",
+                "tooltip": "8/16-bit stills: clamp to legal range (16–235).\n"
+                           "• Video is always encoded legal-range by the RGB→YUV step.\n"
+                           "• Float formats are never clamped.",
             }),
             "overwrite": ("BOOLEAN", {
                 # AUDIT-UX (2026-08): default was True. Destroying an existing
                 # file must be an explicit choice; with versioning built in and
                 # a unique-suffix fallback, the safe default costs nothing.
                 "default": False,
-                "tooltip": "Overwrite existing files.  When disabled (default), a unique suffix is appended instead of destroying the existing file.",
+                "tooltip": "Overwrite existing files.\nWhen disabled (default), a unique suffix is appended instead of destroying the existing file.",
             }),
             "proxy_scale": ("FLOAT", {
                 "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
                 "tooltip": "Downscale output by this factor for proxy preview (0 = full resolution).",
             }),
             "audio": ("AUDIO", {
-                "tooltip": "Audio tensor from Video Loader (muxed into video output).",
+                "tooltip": ("Audio tensor, e.g. from a video loader.\n"
+                            "• Video: muxed into the file.\n"
+                            "• Sequences: written as an audio file when write_audio is on."),
             }),
             "mask": ("MASK", {
                 "tooltip": (
                     "Optional alpha/matte, written as the alpha channel of EXR, PNG, "
-                    "TIFF, DPX, WEBP and ProRes 4444. Ignored by JPEG, HDR, H.264, "
-                    "H.265, ProRes 422 and DNxHR, which have no alpha."
+                    "TIFF, DPX, WEBP and ProRes 4444.\n\n"
+                    "Ignored by JPEG, HDR, H.264, H.265, ProRes 422 and DNxHR, which have no alpha."
                 ),
             }),
             # ── Colour management (3.5) ─────────────────────────────────
             "working_space": (WRITE_WORKING_SPACES, {
                 "default": "Linear Rec.709 (sRGB)",
                 "tooltip": (
-                    "Scene-linear space the incoming IMAGE is in. color_space is "
-                    "encoded from here, primaries AND transfer. Match the Read "
-                    "node's working_space."
+                    "Scene-linear space the incoming IMAGE is in.\n"
+                    "color_space is encoded from here, primaries AND transfer.\n"
+                    "Match the Read node's working_space."
                 ),
             }),
             "ocio_colorspace": ("STRING", {
                 "default": "",
                 "placeholder": "e.g. ACEScct · S-Log3 S-Gamut3.Cine · Rec.1886 Rec.709 - Display",
                 "tooltip": (
-                    "Any colorspace name or alias from the OCIO config. When set it "
-                    "overrides color_space and OpenColorIO encodes the working space "
-                    "into it. Empty = use color_space."
+                    "Any colorspace name or alias from the OCIO config.\n"
+                    "When set, it overrides color_space and OpenColorIO encodes the working space "
+                    "into it.\nEmpty = use color_space."
                 ),
             }),
             "ocio_config": ("STRING", {
                 "default": "",
                 "placeholder": "empty = $OCIO, else OCIO's ACES studio config",
-                "tooltip": "Path to a config.ocio or an ocio:// URI. Empty = $OCIO, else OCIO's built-in ACES 2.0 studio config.",
+                "tooltip": "Path to a config.ocio or an ocio:// URI.\nEmpty = $OCIO, else OCIO's built-in ACES 2.0 studio config.",
             }),
             "hdr_reference_nits": ("FLOAT", {
                 "default": 203.0, "min": 48.0, "max": 1000.0, "step": 1.0,
                 "tooltip": (
                     "PQ and HLG only: the luminance scene-linear 1.0 (diffuse white) "
-                    "is written at. 203 is BT.2408 and Radiance's HDR convention; "
-                    "100 matches OCIO/ACES. PQ clips at 10,000 nits, HLG at about "
-                    "3.8x diffuse white."
+                    "is written at.\n"
+                    "• 203 is BT.2408 and Radiance's HDR convention.\n"
+                    "• 100 matches OCIO/ACES.\n\n"
+                    "PQ clips at 10,000 nits, HLG at about 3.8x diffuse white."
+                ),
+            }),
+            "hdr10_mastering_display": (list(_MASTERING_DISPLAYS), {
+                "default": _DEFAULT_MASTERING_DISPLAY,
+                "tooltip": (
+                    "PQ with MP4 (H.265 10-bit) only: the HDR10 mastering display "
+                    "(SMPTE ST 2086) written into the file, the monitor the grade was "
+                    "judged on.\n"
+                    "• P3-D65 · 1000 nits is the usual OLED grading display and "
+                    "the streaming default.\n"
+                    "• 4000 nits for high-end LCD grading monitors.\n\n"
+                    "MaxCLL / MaxFALL are always measured from the frames."
+                ),
+            }),
+            # ── Audio ───────────────────────────────────────────────────
+            "write_audio": ("BOOLEAN", {
+                "default": False,
+                "tooltip": "Sequences: also write the sound (the 'audio' input or audio_source) "
+                           "as an audio file, as long as the frames.\n\nA .wav starts at the first "
+                           "frame's timecode (Broadcast WAV), so an editor lines it up with them.",
+            }),
+            "audio_source": ("STRING", {
+                "default": "",
+                "tooltip": "Path to an audio file, used instead of the 'audio' input (optional).\n"
+                           "It is converted to audio_codec and fitted to the picture's length.",
+            }),
+            "audio_codec": (AUDIO_CODECS, {
+                "default": "Auto",
+                "tooltip": (
+                    "Audio of a video:\n"
+                    "• Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), AAC in an MP4.\n"
+                    "• PCM in an MP4 is read by few players.\n"
+                    "• FLAC cannot go in a MOV, which gets PCM 24-bit instead.\n"
+                    "• AAC is 256 kb/s, MP3 320 kb/s.\n\n"
+                    "A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3."
+                ),
+            }),
+            "audio_path": ("STRING", {
+                "default": "",
+                "placeholder": "empty = beside the frames",
+                "tooltip": (
+                    "Sequences: where the audio file goes.\n"
+                    "• Empty: in the sequence's folder, named like the frames (shot_v0001.wav).\n"
+                    "• Otherwise a folder, or a file path (its extension follows audio_codec).\n\n"
+                    "A relative path is under ComfyUI's output folder; quotes from \"Copy as path\" are fine."
+                ),
+            }),
+            "aces_amf": ("BOOLEAN", {
+                "default": False,
+                "tooltip": (
+                    "EXR in ACEScg or ACES2065-1 only: also write an ACES Metadata File (AMF v2.0) "
+                    "beside the master, as RUDRA does: one per sequence (named after it, frames as "
+                    "####) or per image. It names the ACES 2.0 SDR Rec.709 output transform and, for "
+                    "ACEScg, the ACEScg to ACES2065-1 input transform, so grading and review tools "
+                    "open the master in the right ACES pipeline."
+                ),
+            }),
+            "hdr10plus_json": ("STRING", {
+                "default": "",
+                "tooltip": (
+                    "PQ with MP4 (H.265 10-bit) only: an HDR10+ JSON (◎ HDR Dynamic Metadata (RUDRA)'s "
+                    "hdr10plus_path, or any x265 --dhdr10-info file) carried into the video as ST 2094-40 "
+                    "dynamic metadata, as RUDRA does. It needs an ffmpeg whose x265 was built with HDR10+; "
+                    "the receipt says whether the file carries it. Empty: HDR10 only."
                 ),
             }),
         }, "hidden": {
@@ -881,6 +975,12 @@ class RadianceWrite:
         ocio_colorspace: str  = "",
         ocio_config:    str   = "",
         hdr_reference_nits: float = 203.0,
+        hdr10_mastering_display: str = "P3-D65 · 1000 nits",
+        audio_codec:    str   = "Auto",
+        write_audio:    bool  = False,
+        audio_path:     str   = "",
+        aces_amf:       bool  = False,
+        hdr10plus_json: str   = "",
     ):
         """The node surface. The maths and the file writing are in
         radiance/io/writer.py; this signature is the widget contract and must
@@ -918,9 +1018,15 @@ class RadianceWrite:
             ocio_colorspace=ocio_colorspace,
             ocio_config=strip_path_quotes(ocio_config or "") if ocio_config else "",
             hdr_reference_nits=hdr_reference_nits,
+            hdr10_mastering_display=hdr10_mastering_display,
             # ALBABIT-FIX: node and console progress for sequences and video.
             on_frame=_FrameProgress("Write"),
             receipt=receipt,
+            audio_codec=audio_codec,
+            write_audio=write_audio,
+            audio_path=audio_path,
+            aces_amf=aces_amf,
+            hdr10plus_json=strip_path_quotes(hdr10plus_json or "") if hdr10plus_json else "",
         )
         return _with_history(res, t0, receipt)
 
@@ -958,8 +1064,8 @@ class RadianceEXRMultiPart:
 
     Standard parts:
       • beauty      → R, G, B (+ A if alpha connected)
-      • depth       → Z  (single channel)
-      • normal      → NX, NY, NZ
+      • depth       → Z  (single channel, 32-bit float, 1e10 where empty)
+      • normal      → N.R, N.G, N.B (signed -1..1)
       • albedo      → albedo.R/G/B
       • custom_1/2  → <name>.R/G/B
 
@@ -988,15 +1094,15 @@ class RadianceEXRMultiPart:
                 "beauty":    ("IMAGE", {
                     "tooltip": "Main image, written as the 'beauty' part (R, G, B, plus A if it has 4 channels). Values are written unchanged, so feed scene-linear data. Each frame of a batch is written to its own file."}),
                 "bit_depth": (_EXR_BIT_DEPTHS,   {"default": "16-bit Half Float",
-                    "tooltip": "Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float."}),
+                    "tooltip": "Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float. The depth part is always 32-bit float."}),
                 "compression": (_EXR_COMPRESSIONS, {"default": "ZIP",
                     "tooltip": "EXR compression for every part. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; PXR24 is lossy on 32-bit float; B44, B44A, DWAA and DWAB are lossy."}),
             },
             "optional": {
                 "depth":         ("IMAGE", {
-                    "tooltip": "Depth AOV written as a single Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised."}),
+                    "tooltip": "Depth AOV written as a single 32-bit float Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised. 0 (no surface, e.g. sky) is written as 1e10, far away, as renderers do, so ZDefocus and fog do not treat the sky as touching the lens."}),
                 "normal":        ("IMAGE", {
-                    "tooltip": "Normals AOV written as NX, NY, NZ in a 'normal' part, values unchanged (no 0-1 to -1..1 remap)."}),
+                    "tooltip": "Normals AOV written as N.R, N.G, N.B in a 'normal' part, signed -1..1 (camera space, +Y up, +Z toward the camera), as compositors expect. A 0..1 encoded pass (Multipass Estimate's normal_map) is decoded; a signed pass is kept."}),
                 "albedo":        ("IMAGE", {
                     "tooltip": "Albedo AOV written as albedo.R/G/B in an 'albedo' part, values unchanged."}),
                 "custom_1":      ("IMAGE", {
@@ -1018,6 +1124,13 @@ class RadianceEXRMultiPart:
                 "strict": ("BOOLEAN", {"default": True,
                     "tooltip": "On: stop with an error unless every frame is one multi-part EXR holding every part. "
                                "Off: if multi-part writing fails, write one EXR per part instead and list them in manifest."}),
+                "rudra_reconstructed": ("MASK", {
+                    "tooltip": "SDR → HDR Universal/Recover reconstructed_mask, written into the beauty part as the "
+                               "channel rudra.reconstructed (where light was estimated, not taken from the source), "
+                               "as RUDRA masters carry it."}),
+                "rudra_generated": ("MASK", {
+                    "tooltip": "SDR → HDR AI Fill generated_mask, written into the beauty part as the channel "
+                               "rudra.generated (1 = drawn by the AI fill)."}),
             },
         }
 
@@ -1039,6 +1152,8 @@ class RadianceEXRMultiPart:
         frame_index: int = 1,
         custom_metadata: str = "",
         strict: bool = True,
+        rudra_reconstructed: Optional[torch.Tensor] = None,
+        rudra_generated: Optional[torch.Tensor] = None,
     ) -> Tuple[str, str]:
         import datetime, re as _re
 
@@ -1095,19 +1210,44 @@ class RadianceEXRMultiPart:
             # A custom part named like a standard one replaced it silently.
             raise ValueError(f"[EXRMultiPart] Duplicate part name(s): {', '.join(_dupes)}.")
 
-        def _t(t: torch.Tensor, b: int) -> np.ndarray:
-            arr = t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]
-            return arr.detach().float().cpu().numpy()
+        # Decided on the whole clip, as Relight does: a 0..1 encoded normal
+        # pass (Multipass Estimate, the IMAGE convention) has no negative value.
+        normals_encoded = None
+        if normal is not None:
+            _n = normal.float()[..., :3]
+            _n = _n[torch.isfinite(_n)]
+            normals_encoded = bool(_n.numel()) and float(_n.min()) >= 0.0
+
+        def _t(t: torch.Tensor, b: int, name: str = "") -> np.ndarray:
+            arr = (t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]).detach().float().cpu().numpy()
+            if name == "normal":
+                return signed_normals(arr, encoded=normals_encoded)
+            if name == "depth":
+                return depth_with_empty(arr)[..., None]
+            return arr
+
+        # RUDRA's mask channels ride in the beauty part, named as RUDRA names
+        # them, so RUDRA's own tools (the AI fill, the app's View menu) read them.
+        rudra_masks = [(m, n) for m, n in ((rudra_reconstructed, "rudra.reconstructed"),
+                                           (rudra_generated, "rudra.generated")) if m is not None]
+        for m, n in rudra_masks:
+            if m.dim() == 3 and m.shape[0] not in (1, batch):
+                raise ValueError(f"[EXRMultiPart] '{n}' has {m.shape[0]} frames; beauty has {batch}.")
 
         def write_frame(b: int) -> Dict[str, Any]:
             frame_num = str(frame_index + b).zfill(4)
             filepath  = os.path.join(out_dir, f"{filename_prefix}.{frame_num}.exr")
-            parts: Dict[str, np.ndarray] = {name: _t(t, b) for t, name in named}
+            parts: Dict[str, np.ndarray] = {name: _t(t, b, name) for t, name in named}
+            extra = None
+            if rudra_masks:
+                extra = {"beauty": {
+                    n: (m if m.dim() == 2 else m[0 if m.shape[0] == 1 else b]).detach().float().cpu().numpy()
+                    for m, n in rudra_masks}}
 
             if write_exr_multipart_report is None:
                 raise RuntimeError("[EXRMultiPart] No EXR writer available")
             receipt = write_exr_multipart_report(filepath, parts, bit_depth, comp, meta,
-                                                 allow_fallback=not strict)
+                                                 allow_fallback=not strict, extra_channels=extra)
             receipt["frame"] = frame_index + b
             if not receipt["complete"] or (strict and receipt["mode"] != "multipart"):
                 failed = [n for n, st in receipt["parts"].items() if st["status"] != "written"]
@@ -1224,7 +1364,7 @@ class RadianceDigitalCinemaRead:
         else:
             read_start = start_frame
             read_end = (start_frame + frame_limit - 1) if frame_limit > 0 else 0
-        img, mask, read_info = reader.read(
+        img, mask, read_info, *_ = reader.read(
             path=source_path,
             media_type=media_type,
             color_space=cs_in,
@@ -1288,7 +1428,7 @@ class RadianceDigitalCinemaWrite:
                 # It used to default to "", so dropping the node and queueing
                 # crashed inside pathlib instead of writing anything.
                 "output_path": ("STRING", {
-                    "default": str(Path.home() / "radiance_output"),
+                    "default": "~/radiance_output",
                     "placeholder": "/output/render  or  Z:/renders/shot",
                     "tooltip": ("Output path, as in the Write node. With filename empty it is the full stem "
                                 "(single images and video get the extension appended; sequences use it as a folder)."),
@@ -1392,6 +1532,29 @@ def _is_inside_allowed_read_root(path: str) -> bool:
     return False
 
 
+def _still_poster_png(path: str, longest: int = 1024) -> Optional[bytes]:
+    """A PNG preview of a still the browser cannot show (EXR, DPX, HDR, TIFF),
+    read by Read's own reader. Linear float is tone-mapped (Reinhard, then a
+    2.2 gamma) for the preview only; the node reads the file untouched."""
+    try:
+        import io as _io
+        from PIL import Image
+        image, _ = _read_image(path)
+        x = image[0, ..., :3].float().cpu().numpy()
+        ext = os.path.splitext(path)[1].lower()
+        if ext in _EXR_EXT or ext in (".hdr", ".pic") or float(np.nanmax(x)) > 1.0:
+            x = np.clip(np.nan_to_num(x), 0.0, None)
+            x = np.power(x / (1.0 + x), 1.0 / 2.2)
+        img = Image.fromarray((np.clip(x, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+        img.thumbnail((longest, longest))
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as exc:  # noqa: BLE001 - a preview, best effort
+        log.debug("[Radiance/Read] still poster failed for %s: %s", path, exc)
+        return None
+
+
 def register_read_routes():
     """Endpoints the Read node's widgets call: EXR layers, and media info."""
     try:
@@ -1410,15 +1573,18 @@ def register_read_routes():
         if not raw:
             return None, web.json_response({"error": "no path given"}, status=400)
         candidate = _resolve_browse(raw) or strip_path_quotes(raw)
-        if not os.path.isfile(candidate):
-            return None, web.json_response(
-                {"error": "not a file", "path": candidate}, status=404)
+        # Containment first. Checking existence first answered 404 for a
+        # missing path and 403 for a present one anywhere on the host, the
+        # oracle the root check exists to close.
         if not _is_inside_allowed_read_root(candidate):
             return None, web.json_response({
                 "error": "outside the allowed roots",
                 "hint": f"Set {_ENV_READ_ROOTS} to the directories Radiance may "
                         f"inspect, os.pathsep-separated.",
             }, status=403)
+        if not os.path.isfile(candidate):
+            return None, web.json_response(
+                {"error": "not a file", "path": candidate}, status=404)
         return candidate, None
 
     @PromptServer.instance.routes.get("/radiance/media/layers")
@@ -1448,6 +1614,8 @@ def register_read_routes():
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=200)
 
+    _WEB_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                       ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp"}
     _MIME = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
              ".mkv": "video/x-matroska", ".webm": "video/webm", ".avi": "video/x-msvideo"}
 
@@ -1476,8 +1644,17 @@ def register_read_routes():
         path, error = _resolve_query_path(request)
         if error is not None:
             return error
-        if os.path.splitext(path)[1].lower() not in _VID_EXT:
-            return web.json_response({"error": "not a video"}, status=400)
+        ext = os.path.splitext(path)[1].lower()
+        if ext in _WEB_IMAGE_MIME:              # the browser shows these as they are
+            return web.FileResponse(path, headers={"Content-Type": _WEB_IMAGE_MIME[ext]})
+        if ext in _BROWSEABLE_EXT and ext not in _VID_EXT:
+            # EXR, DPX, HDR, TIFF: a tone-mapped PNG of the first frame (4.0).
+            png = await asyncio.get_running_loop().run_in_executor(None, _still_poster_png, path)
+            if not png:
+                return web.json_response({"error": "cannot decode the image"}, status=415)
+            return web.Response(body=png, content_type="image/png")
+        if ext not in _VID_EXT:
+            return web.json_response({"error": "not an image or a video"}, status=400)
         try:
             import hashlib
             import tempfile

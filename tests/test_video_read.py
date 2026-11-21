@@ -42,6 +42,7 @@ torch = pytest.importorskip("torch")
 
 from radiance.core import video as V  # noqa: E402
 from radiance.core.ffmpeg import ffmpeg_exe, ffprobe_exe  # noqa: E402
+from _repo_files import repo_py_files  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not ffmpeg_exe(), reason="ffmpeg is required to encode the fixtures"
@@ -371,7 +372,7 @@ def test_every_offered_colour_space_can_actually_be_decoded():
 def test_read_node_puts_prores_4444_alpha_on_the_mask_output(prores4444, source):
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(browse="", path=str(prores4444))
+    image, mask, _info, *_ = RadianceRead().read(browse="", path=str(prores4444))
     assert image.shape == (FRAMES, HEIGHT, WIDTH, 3)
     assert mask.shape == (FRAMES, HEIGHT, WIDTH)
     assert np.abs(mask.numpy() - source[..., 3]).max() < 2.0 / 1023.0
@@ -383,14 +384,14 @@ def test_read_node_puts_prores_4444_alpha_on_the_mask_output(prores4444, source)
 def test_read_node_leaves_the_mask_empty_when_there_is_no_alpha(prores422):
     from radiance.nodes.io.write import RadianceRead
 
-    _image, mask, _info = RadianceRead().read(browse="", path=str(prores422))
+    _image, mask, _info, *_ = RadianceRead().read(browse="", path=str(prores422))
     assert float(mask.abs().max()) == 0.0
 
 
 def test_read_node_honours_a_frame_range(prores4444):
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(
+    image, mask, _info, *_ = RadianceRead().read(
         browse="", path=str(prores4444), start_frame=2, end_frame=5)
     assert image.shape[0] == 4
     assert mask.shape[0] == 4
@@ -401,7 +402,7 @@ def test_the_sequence_default_start_frame_does_not_swallow_a_clip(prores4444):
     clip that is 8 frames long, that means decoding nothing at all."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, _info = RadianceRead().read(
+    image, _mask, _info, *_ = RadianceRead().read(
         browse="", path=str(prores4444), start_frame=1001)
     assert image.shape[0] == FRAMES
 
@@ -429,7 +430,7 @@ def test_a_blank_path_still_returns_a_frame_rather_than_erroring():
     """A node just dropped on the canvas is not a failure."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, _info = RadianceRead().read(browse="", path="")
+    image, mask, _info, *_ = RadianceRead().read(browse="", path="")
     assert image.shape[0] == 1 and mask is not None
 
 
@@ -510,7 +511,7 @@ def test_no_module_decodes_video_through_a_png_temp_directory():
 
     root = pathlib.Path(__file__).resolve().parent.parent
     offenders = []
-    for py in root.rglob("*.py"):
+    for py in repo_py_files(root):
         if "test" in py.parts or "_to_delete" in py.parts:
             continue
         text = py.read_text(encoding="utf-8", errors="ignore")
@@ -521,3 +522,26 @@ def test_no_module_decodes_video_through_a_png_temp_directory():
         f"{offenders} decode video by writing PNGs to a temp directory; use "
         "radiance.core.video.decode instead"
     )
+
+
+@pytest.mark.parametrize("banner,want", [
+    ("ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright", False),
+    ("ffmpeg version 6.1.1-3ubuntu5 Copyright", True),
+    ("ffmpeg version n7.0.2 Copyright", True),
+    ("ffmpeg version 8.0-essentials_build-www.gyan.dev Copyright", True),
+    # Git and nightly builds carry no release number and are current: they
+    # used to get -vsync, which current ffmpeg has removed (every decode failed).
+    ("ffmpeg version N-127579-g5cb9fcd211-20261016 Copyright", True),
+    ("ffmpeg version 2026-10-14-git-1a2b3c4d5e-full_build-www.gyan.dev Copyright", True),
+    ("", False),
+])
+def test_fps_mode_detection_reads_release_and_git_builds(monkeypatch, banner, want):
+    import subprocess as _sp
+    monkeypatch.setattr(V, "ffmpeg_exe", lambda: "ffmpeg")
+    monkeypatch.setattr(V.subprocess, "run",
+                        lambda *a, **k: _sp.CompletedProcess(a, 0, stdout=banner, stderr=""))
+    V._supports_fps_mode.cache_clear()
+    try:
+        assert V._supports_fps_mode() is want
+    finally:
+        V._supports_fps_mode.cache_clear()

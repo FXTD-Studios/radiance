@@ -62,6 +62,7 @@ const ARCHS_BY_MODEL_TYPE_JS = {
     "WAN TI2V (48ch)": ["wan_ti2v"],
     "HunyuanVideo (16ch)": ["hunyuan_video"],
     "Flux.2 / Flux.2 Klein (128ch)": ["flux2", "flux2-klein"],
+    "Flux.3 Klein (128ch)": ["flux3"],
     "MiniMax H3 (24ch)": ["minimax"],
     "Qwen-Image / Krea 2 (16ch)": ["qwen_image", "krea2"],
     "Qwen-Image 2.1 (64ch)": ["qwen_image21"],
@@ -81,6 +82,7 @@ const SPATIAL_SCALE_JS = {
     // see resolution.py's SPATIAL_SCALE for the full explanation.
     "LTXV (128ch)": 32,
     "Flux.2 / Flux.2 Klein (128ch)": 16,
+    "Flux.3 Klein (128ch)": 16,
     // ALBABIT-FIX: WAN 2.2 TI2V-5B's VAE compresses 16x spatially (double
     // standard WAN's 8x) -- real bug fix, see resolution.py's SPATIAL_SCALE.
     "WAN TI2V (48ch)": 16,
@@ -162,6 +164,7 @@ function _forceMiniMaxFrameRate(modelTypeW, frameRateW) {
     if (frameRateW && _isMiniMaxH3(modelTypeW?.value) && parseFloat(frameRateW.value) !== 24) {
         frameRateW.value = 24;
         if (frameRateW.inputEl) frameRateW.inputEl.value = 24;
+        frameRateW._radForced = true;
     }
 }
 
@@ -253,11 +256,38 @@ function syncModelTypeFromLoader(node) {
     const modelTypeW = node.widgets?.find(w => w.name === "model_type");
     const linked = MODEL_TYPE_BY_ARCH_JS[loaderModelType(modelMetaSourceNode(node))];
     // ALBABIT-FIX: "Manual" follows the Loader, as at execution: never a choice to keep.
-    if (modelTypeW?.value === "Manual") modelTypeW._radAutoValue = undefined;
-    const synced = syncAutoValue(modelTypeW, linked);
+    if (modelTypeW?.value === "Manual") {
+        modelTypeW._radAutoValue = undefined;
+        delete node.properties?.radiance_auto_values?.model_type;
+    }
+    const synced = syncAutoValue(node, modelTypeW, linked);
     if (synced) modelTypeW.callback?.call(modelTypeW, modelTypeW.value);
     const marker = linked === undefined ? "" : modelTypeW?.value === linked ? " 🧲" : " ✎";
     return _setLabelMarker(modelTypeW, !!marker, marker) || synced;
+}
+
+// ALBABIT-FIX: frame_rate follows the Loader the same way for the video models made for one
+// rate (their official templates): Wan 2.2 14B and Wan 2.1 16 fps, the others 24. LTX reads
+// the rate it is given; MiniMax H3's 24 is forced elsewhere.
+const FRAME_RATE_BY_FAMILY = { wan: 16, wan_ti2v: 24, hunyuan_video: 24, hunyuan_video_15: 24, kandinsky5: 24 };
+function syncFrameRateFromLoader(node) {
+    const frameRateW = node.widgets?.find(w => w.name === "frame_rate");
+    const modelTypeW = node.widgets?.find(w => w.name === "model_type");
+    const linked = FRAME_RATE_BY_FAMILY[loaderModelType(modelMetaSourceNode(node))];
+    // A model with no fixed rate keeps a rate set by hand for when a mapped one comes back;
+    // MiniMax H3's forced 24 is no edit of the user's: the Loader's rate comes back after it.
+    if (linked === undefined || _isMiniMaxH3(modelTypeW?.value)) return _setLabelMarker(frameRateW, false, "");
+    if (frameRateW._radForced) {
+        frameRateW._radForced = false;
+        if (parseFloat(frameRateW.value) === 24) frameRateW._radAutoValue = frameRateW.value;
+    }
+    const synced = syncAutoValue(node, frameRateW, linked);
+    if (synced) {
+        frameRateW.callback?.call(frameRateW, frameRateW.value);
+        _syncDurationSecondsStep(modelTypeW, node.widgets?.find(w => w.name === "duration_seconds"), frameRateW);
+    }
+    const marker = linked === undefined ? "" : parseFloat(frameRateW?.value) === linked ? " 🧲" : " ✎";
+    return _setLabelMarker(frameRateW, !!marker, marker) || synced;
 }
 
 function updateResolutionMarkers(node) {
@@ -279,6 +309,7 @@ function updateResolutionMarkers(node) {
     // every 250ms via the polling loop. Unconditional setDirtyCanvas here
     // was the same anti-pattern fixed in the Sampler's updateSigmaLocks().
     let changed = syncModelTypeFromLoader(node);
+    if (syncFrameRateFromLoader(node)) changed = true;
     if (_setLabelMarker(scaleFactorW, scaleActive, " 📐")) changed = true;
     if (_setLabelMarker(mpTargetW, mpActive, " 📐")) changed = true;
     if (_setLabelMarker(widthW, scaleActive || mpActive, " 📐")) changed = true;

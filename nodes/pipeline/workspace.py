@@ -147,9 +147,11 @@ class RadianceProjectManager:
         if not prompt:
             return ()
 
-        # Use prompt (always available) as primary graph data;
-        # extra_pnginfo adds workflow layout metadata when available.
-        graph_data = prompt or extra_pnginfo or {}
+        # Store the UI workflow (extra_pnginfo["workflow"]) when ComfyUI gives
+        # it: it is what the library reopens with loadGraphData. `prompt` is the
+        # API graph ({id: {class_type, inputs}}), kept only as the fallback.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        graph_data = workflow if isinstance(workflow, dict) and workflow.get("nodes") else prompt
         graph_json = json.dumps(graph_data)
 
         # Build pipeline metadata via scene inspector
@@ -177,8 +179,8 @@ class RadianceProjectManager:
         _create_version_backup(filepath, message=f"Save v{version}", author=artist or "unknown")
 
         # Use v3 container for richer metadata
-        binary = _pack_rad_v3(graph_json, metadata)
-        filepath.write_bytes(binary)
+        binary = _pack_rad_v3(graph_json, metadata, *_input_assets(graph_json))
+        _atomic_write_bytes(filepath, binary)
 
         count = tech_profile.get("node_count", 0)
         return ()
@@ -215,7 +217,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ALBABIT-FIX: the package's workflows/ folder, not one beside this file. Moving
 # the module into nodes/pipeline/ had sent the library to a stray folder there,
 # hiding earlier saves and the shipped workflows/official/.
-WORKFLOW_DIR = str(Path(__file__).resolve().parents[2] / "workflows")
+# 4.0: the library lives in ComfyUI's user directory (user/radiance/workflows), so
+# a Registry update, which replaces the package folder, no longer takes the
+# user's saves with it. official/ there is a synced copy of the shipped cards.
+# Outside ComfyUI it stays in the package folder (core/user_data.py).
+_PACKAGE_WORKFLOWS = Path(__file__).resolve().parents[2] / "workflows"
+from radiance.core.user_data import library_dir as _library_dir  # noqa: E402
+WORKFLOW_DIR = str(_library_dir(_PACKAGE_WORKFLOWS))
 OFFICIAL_DIR = os.path.join(WORKFLOW_DIR, "official")
 os.makedirs(WORKFLOW_DIR, exist_ok=True)
 os.makedirs(OFFICIAL_DIR, exist_ok=True)
@@ -277,7 +285,17 @@ def _inspect_graph_content(graph_json: str) -> dict:
 
     try:
         data  = json.loads(graph_json)
-        nodes = data.get("nodes", [])
+        nodes = data.get("nodes")
+        if nodes is None:
+            # API format: {id: {"class_type": ..., "inputs": {...}}}. Read it as
+            # nodes whose widget values are the literal inputs (lists are links).
+            nodes = [
+                {"type": n.get("class_type", ""),
+                 "widgets_values": [v for v in (n.get("inputs") or {}).values()
+                                    if not isinstance(v, (list, dict))]}
+                for n in data.values()
+                if isinstance(n, dict) and "class_type" in n
+            ]
         profile["node_count"] = len(nodes)
 
         for node in nodes:
@@ -324,11 +342,14 @@ def _inspect_graph_content(graph_json: str) -> dict:
 #                         VERSION CONTROL BACKEND (v3.5)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist") -> None:
+def _create_version_backup(filepath: Path, message: str = "Auto-save", author: str = "Radiance Artist",
+                           keep: "Path | None" = None) -> None:
     """
     Rotate existing file into a .vN backup before overwrite.
     Keeps at most MAX_VERSIONS backups, deleting the oldest.
     Also writes a .vN.json sidecar with commit metadata (message, author, timestamp).
+    ``keep`` is a backup that eviction must not delete (the version being
+    restored): at the limit, the oldest other backup goes instead.
     """
     if not filepath.exists():
         return
@@ -358,7 +379,9 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
 
     # Evict oldest if at capacity
     if len(existing) >= MAX_VERSIONS:
-        for old in existing[: len(existing) - MAX_VERSIONS + 1]:
+        _keep = Path(keep).resolve() if keep is not None else None
+        evictable = [p for p in existing if _keep is None or p.resolve() != _keep]
+        for old in evictable[: len(existing) - MAX_VERSIONS + 1]:
             old.unlink(missing_ok=True)
             old.with_suffix(old.suffix + ".json").unlink(missing_ok=True)
 
@@ -375,7 +398,7 @@ def _create_version_backup(filepath: Path, message: str = "Auto-save", author: s
         "timestamp": time.time(),
         "original_filename": filepath.name
     }
-    meta_path.write_text(json.dumps(commit_info, indent=2), encoding="utf-8")
+    _atomic_write_text(meta_path, json.dumps(commit_info, indent=2))
     
     logger.info(f"[Radiance] Commit: {message} ({backup_name})")
 
@@ -416,6 +439,7 @@ def _pack_rad_v3(
     graph_json: str,
     metadata: dict,
     assets: dict | None = None,
+    inputs: dict | None = None,
 ) -> bytes:
     """
     Pack a workflow + metadata + optional assets into a .rad v3 ZIP container.
@@ -424,13 +448,15 @@ def _pack_rad_v3(
         graph_json: The ComfyUI graph JSON string.
         metadata:   Arbitrary metadata dict (author, description, timestamps).
         assets:     Optional dict of {asset_name: bytes} to embed in assets/.
+        inputs:     Optional {asset_name: path in ComfyUI's input folder} for the
+                    assets that are input files (see _input_assets).
 
     Returns:
         Raw bytes of the ZIP-based .rad v3 container.
 
     Format:
         A standard Python zipfile.ZIP_DEFLATED archive with:
-          manifest.json  — {rad_version:3, metadata:{...}, assets:[name,...]}
+          manifest.json  — {rad_version:3, metadata:{...}, assets:[name,...], inputs:{...}}
           workflow.json  — raw graph JSON
           assets/<name>  — one entry per asset in `assets` dict
     """
@@ -438,6 +464,7 @@ def _pack_rad_v3(
         "rad_version": 3,
         "metadata": metadata,
         "assets": list((assets or {}).keys()),
+        "inputs": inputs or {},
         "packed_at": time.time(),
         "stats": metadata.get("stats", {}),  # Promote stats to top level for fast access
     }
@@ -470,6 +497,24 @@ def _pack_rad_v3(
     return RAD_MAGIC_V3 + raw
 
 
+def _check_rad_zip_admission(zf: "zipfile.ZipFile") -> list:
+    """Entry-count and uncompressed-size limits for a .rad v3 ZIP, before any
+    entry is expanded. Shared by the unpacker and the preview route."""
+    infos = zf.infolist()
+    if len(infos) > MAX_RAD_ZIP_ENTRIES:
+        raise ValueError(".rad v3: too many ZIP entries")
+    total_uncompressed = sum(info.file_size for info in infos)
+    if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
+        )
+    return infos
+
+
+#: A preview is a thumbnail; anything larger is not one.
+MAX_RAD_PREVIEW_BYTES = 8 * 1024 * 1024
+
+
 def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
     """
     Unpack a .rad v3 ZIP container.
@@ -490,15 +535,7 @@ def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
         raise ValueError(f"Corrupt .rad v3 ZIP: {e}")
 
     with zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_RAD_ZIP_ENTRIES:
-            raise ValueError(".rad v3: too many ZIP entries")
-
-        total_uncompressed = sum(info.file_size for info in infos)
-        if total_uncompressed > MAX_RAD_UNCOMPRESSED_BYTES:
-            raise ValueError(
-                f".rad v3: uncompressed payload exceeds {MAX_WORKFLOW_SIZE_MB}MB limit"
-            )
+        infos = _check_rad_zip_admission(zf)
 
         names = [info.filename for info in infos]
 
@@ -512,6 +549,7 @@ def _unpack_rad_v3(data: bytes) -> tuple[str, dict, dict]:
             metadata = manifest.get("metadata", {})
             metadata["rad_version"] = 3
             metadata["assets"] = manifest.get("assets", [])
+            metadata["inputs"] = manifest.get("inputs", {})
 
         assets = {}
         for n in names:
@@ -549,6 +587,116 @@ def _unpack_any_rad(data: bytes) -> tuple[str, dict]:
         return _unpack_rad_v2(data)
     else:
         return data.decode("utf-8"), {"format": "v1", "secure": False}
+
+
+def _walk_strings(obj, fn):
+    """Return a copy of a parsed graph with every string passed through fn."""
+    if isinstance(obj, dict):
+        return {key: _walk_strings(value, fn) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_walk_strings(value, fn) for value in obj]
+    return fn(obj) if isinstance(obj, str) else obj
+
+
+def _input_assets(graph_json: str, reserved: int = 0) -> tuple[dict, dict]:
+    """
+    The input files a graph reads, to embed in its .rad v3 so it opens on another
+    machine: ({asset_name: bytes}, {asset_name: path in ComfyUI's input folder}).
+
+    Any string in the graph that names a file in the input folder counts (a loader's
+    widget value, "name.png" or "name.png [input]"), so every loader node is covered.
+    A file that would take the container past its limits is left out with a warning;
+    the workflow then keeps only its name, as before. `reserved` is room already
+    taken by other entries (the preview).
+    """
+    try:
+        graph = json.loads(graph_json)
+    except json.JSONDecodeError:
+        return {}, {}
+
+    input_dir = Path(folder_paths.get_input_directory()).resolve()
+    found = {}
+
+    def note(value):
+        if len(value) <= MAX_FILENAME_LENGTH:
+            name, base_dir = folder_paths.annotated_filepath(value)
+            if base_dir is None or Path(base_dir).resolve() == input_dir:
+                # ALBABIT-FIX: a string that is no file name (a NUL, too long in bytes) is not a file.
+                try:
+                    path = (input_dir / name).resolve()
+                    if path.is_relative_to(input_dir) and path.is_file():
+                        found[path] = path.relative_to(input_dir).as_posix()
+                except (OSError, ValueError):
+                    pass
+        return value
+
+    _walk_strings(graph, note)
+
+    budget = MAX_RAD_UNCOMPRESSED_BYTES - len(graph_json.encode("utf-8")) - reserved - 65536
+    assets, inputs = {}, {}
+    for path, rel in sorted(found.items(), key=lambda item: item[1]):
+        size = path.stat().st_size
+        if size > budget or len(assets) >= MAX_RAD_ZIP_ENTRIES - 3:
+            logger.warning("[Radiance] %s is not embedded in the .rad: it would pass the "
+                           "%dMB / %d files limit.", rel, MAX_WORKFLOW_SIZE_MB, MAX_RAD_ZIP_ENTRIES)
+            continue
+        name, n = path.name, 1
+        while name in assets:
+            name, n = f"{path.stem}_{n}{path.suffix}", n + 1
+        assets[name] = path.read_bytes()
+        inputs[name] = rel
+        budget -= size
+    return assets, inputs
+
+
+def _restore_input_assets(graph_json: str, assets: dict, inputs: dict) -> str:
+    """
+    Put a .rad's embedded input files back into ComfyUI's input folder and return
+    the graph to open.
+
+    A file already there with the same bytes is reused. A different file of the
+    same name is never overwritten: the restored one takes a free name
+    ("name_1.png") and the graph's references to it follow.
+    """
+    input_dir = Path(folder_paths.get_input_directory()).resolve()
+    renamed = {}
+    # CodeRabbit review on PR #76: the manifest comes from the file, so its
+    # "inputs" may be anything. Only {name: relative path} strings are honoured.
+    if not isinstance(inputs, dict):
+        raise ValueError(".rad v3: malformed input list")
+    for name, rel in inputs.items():
+        if not isinstance(name, str) or not isinstance(rel, str) or not rel.strip():
+            raise ValueError(".rad v3: unsafe input path")
+        if name not in assets:
+            continue
+        # ALBABIT-FIX: the input folder itself ("", ".") too, its free name would be a sibling.
+        target = (input_dir / rel).resolve()
+        if target == input_dir or not target.is_relative_to(input_dir):
+            raise ValueError(".rad v3: unsafe input path")
+        path, n = target, 1
+        while path.exists() and not (path.is_file() and path.read_bytes() == assets[name]):
+            path, n = target.with_name(f"{target.stem}_{n}{target.suffix}"), n + 1
+        # The free name is checked again before writing: a link already in the
+        # folder under that name must not carry the write outside it.
+        if not path.resolve().is_relative_to(input_dir):
+            raise ValueError(".rad v3: unsafe input path")
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_bytes(path, assets[name])
+        if path != target:
+            renamed[rel] = path.relative_to(input_dir).as_posix()
+
+    if not renamed:
+        return graph_json
+
+    def follow(value):
+        if value in renamed:
+            return renamed[value]
+        if value.endswith(" [input]") and value[:-8] in renamed:
+            return renamed[value[:-8]] + " [input]"
+        return value
+
+    return json.dumps(_walk_strings(json.loads(graph_json), follow))
 
 
 def _pack_rad_v2(graph_json: str, metadata: dict) -> bytes:
@@ -597,7 +745,12 @@ def _unpack_rad_v2(data: bytes) -> tuple[str, dict]:
     graph_start = meta_end
     # FIX 5: use graph_len from the header to slice exactly — previously
     # payload[graph_start:] was used which silently accepted any trailing bytes.
-    graph_data  = zlib.decompress(payload[graph_start:graph_start + graph_len])
+    # Bounded: a few KB of zlib can expand to gigabytes. A real workflow is far
+    # below MAX_WORKFLOW_SIZE_BYTES, so cap the output there plus one byte.
+    _dz = zlib.decompressobj()
+    graph_data = _dz.decompress(payload[graph_start:graph_start + graph_len], MAX_WORKFLOW_SIZE_BYTES + 1)
+    if len(graph_data) > MAX_WORKFLOW_SIZE_BYTES or _dz.unconsumed_tail:
+        raise ValueError(f"Workflow expands beyond the {MAX_WORKFLOW_SIZE_MB}MB limit")
     return graph_data.decode("utf-8"), metadata
 
 
@@ -623,6 +776,32 @@ def _route(method: str, path: str):
         return lambda f: f
     _reg.add(_key)
     return getattr(PromptServer.instance.routes, method)(path)
+
+
+def _atomic_write_bytes(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` so a failure leaves the previous file whole.
+
+    Raises on failure so the caller can say so. One implementation for the
+    package: ``core/sequence_safety.write_bytes_atomic``.
+    """
+    from radiance.core.sequence_safety import write_bytes_atomic
+    write_bytes_atomic(path, data)
+
+
+def _set_aside_corrupt(path) -> None:
+    """Copy an unreadable JSON file aside before an empty default replaces it."""
+    try:
+        path = Path(path)
+        if path.is_file():
+            shutil.copy2(path, path.with_name(f"{path.name}.corrupt-{int(time.time())}"))
+            logger.warning("[Radiance] %s is not valid JSON; kept a copy as .corrupt-*", path.name)
+    except OSError:
+        pass
+
+
+def _atomic_write_text(path, text: str) -> None:
+    from radiance.core.sequence_safety import write_text_atomic
+    write_text_atomic(path, text)
 
 
 def _format_bytes(size: int | float) -> str:
@@ -661,7 +840,9 @@ def _project_slug(value: str) -> str:
 
 def _shot_from_name(value: str) -> str:
     """Extract a VFX-style shot code from a filename or metadata string."""
-    match = re.search(r"\bsh[-_ ]?(\d{2,5})\b", value, flags=re.IGNORECASE)
+    # Not \b: "_" is a word character, so "sh010_v002" (the Project Manager's
+    # own naming) did not match. Bounded by anything but a letter or digit.
+    match = re.search(r"(?<![a-z0-9])sh[-_ ]?(\d{2,5})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"SH{match.group(1)}"
     return "GENERAL"
@@ -669,7 +850,7 @@ def _shot_from_name(value: str) -> str:
 
 def _version_from_name(value: str) -> str:
     """Extract a vNNN/vNNNN version token from a filename."""
-    match = re.search(r"\bv(\d{3,4})\b", value, flags=re.IGNORECASE)
+    match = re.search(r"(?<![a-z0-9])v(\d{3,4})(?![a-z0-9])", value, flags=re.IGNORECASE)
     if match:
         return f"v{match.group(1)}"
     return "v001"
@@ -777,10 +958,11 @@ def _build_project_index(workflows: list[dict]) -> dict[str, dict]:
 
 
 def _project_summary(project: dict) -> dict:
+    planned = {p["shot"] for p in _read_planned_shots(project)}
     return {
         "id": project["id"],
         "name": project["name"],
-        "shots": len(project["shots_set"]),
+        "shots": len((project["shots_set"] - {"GENERAL"}) | planned),
         "workflows": project["workflow_count"],
         "updated": _format_relative_time(project["mtime"]),
         "favorite": False,
@@ -795,7 +977,21 @@ def _find_project(project_id: str) -> tuple[dict | None, list[dict]]:
 
 
 def _shot_status_path(project: dict) -> Path:
-    return _WORKFLOW_DIR_RESOLVED / project["name"] / ".shot_status.json"
+    """Where a project's shot statuses live: <library>/<project name>/.
+
+    The name comes from metadata inside any .rad in the library, shared ones
+    included, so "../../x" would have put the file outside it. Raises
+    ValueError for a name that does not stay inside the library.
+    """
+    root = _WORKFLOW_DIR_RESOLVED
+    # Lexical, so only leaving the library is refused; a name that stays
+    # inside keeps the location it always had.
+    path = Path(os.path.normpath(root / str(project["name"]) / ".shot_status.json"))
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise ValueError(f"project name {project['name']!r} leaves the workflow library") from None
+    return path
 
 
 def _load_shot_status(project: dict) -> dict:
@@ -805,6 +1001,9 @@ def _load_shot_status(project: dict) -> dict:
             data = json.loads(sp.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
+            _set_aside_corrupt(sp)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(sp)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_shot_status(): ignoring %s from `sp = _shot_status_path(project)`: %s",
@@ -814,12 +1013,11 @@ def _load_shot_status(project: dict) -> dict:
 
 
 def _save_shot_status(project: dict, mapping: dict) -> None:
-    try:
-        sp = _shot_status_path(project)
-        sp.parent.mkdir(parents=True, exist_ok=True)
-        sp.write_text(json.dumps(mapping, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save shot status: %s", exc)
+    """Persist shot status atomically. Raises on failure: the route must not
+    report success for a status that was not saved."""
+    sp = _shot_status_path(project)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(sp, json.dumps(mapping, indent=2))
 
 
 def _versions_for_project(project: dict) -> list[dict]:
@@ -830,7 +1028,7 @@ def _versions_for_project(project: dict) -> list[dict]:
         metadata = workflow.get("metadata") or {}
         name = Path(workflow["filename"]).stem
         versions.append({
-            "version": str(metadata.get("version") or _version_from_name(name)),
+            "version": _version_label(metadata.get("version"), name),
             "status": str(status_map.get(str(metadata.get("shot") or _shot_from_name(name))) or metadata.get("status") or metadata.get("review_status") or "WIP"),
             "shot": str(metadata.get("shot") or _shot_from_name(name)),
             "workflow": name,
@@ -857,64 +1055,202 @@ def _versions_for_project(project: dict) -> list[dict]:
                     "updated": _format_relative_time(backup.stat().st_mtime),
                 })
 
-    return versions[:12]
+    # Every workflow, with at most 5 backups each (above). This used to be the
+    # project's 12 newest entries in total, so on a 40-shot show the shots not
+    # saved lately dropped off the Shots page.
+    return versions
+
+
+def _version_label(meta_version, name: str) -> str:
+    """The version as the file name writes it: the Project Manager node stores an
+    int (2), its file says v0002."""
+    if isinstance(meta_version, bool):
+        meta_version = None
+    if isinstance(meta_version, int) or (isinstance(meta_version, str) and meta_version.strip().isdigit()):
+        return f"v{int(meta_version):04d}"
+    if isinstance(meta_version, str) and meta_version.strip():
+        return meta_version.strip()
+    return _version_from_name(name)
+
+
+_OUTPUT_EXTS = {".exr", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".dpx", ".mov", ".mp4"}
+_FRAME_RE = re.compile(r"^(.*?)(\d{3,8})(\.[A-Za-z0-9]+)$")
+#: Files looked at per scan, so a huge output folder cannot stall the page.
+_OUTPUT_SCAN_LIMIT = 200_000
+
+
+def _token_re(token: str) -> "re.Pattern":
+    """A shot or project code as a whole token: SH040 matches SH040_comp and
+    comp.SH040, not SH0400."""
+    return re.compile(r"(?<![a-z0-9])" + re.escape(token.lower()) + r"(?![a-z0-9])")
+
+
+def _output_roots() -> list:
+    roots = []
+    getter = getattr(folder_paths, "get_output_directory", None)
+    if getter:
+        try:
+            roots.append(Path(getter()).resolve())
+        except Exception:  # noqa: BLE001
+            pass
+    # Write's default output_path, outside ComfyUI's output folder.
+    home_out = Path.home() / "radiance_output"
+    if home_out.is_dir():
+        roots.append(home_out.resolve())
+    return [r for r in dict.fromkeys(roots) if r.exists()]
 
 
 def _outputs_for_project(project: dict) -> list[dict]:
-    output_dir_getter = getattr(folder_paths, "get_output_directory", None)
-    if not output_dir_getter:
-        return []
-
-    try:
-        output_root = Path(output_dir_getter()).resolve()
-    except Exception:
-        return []
-
-    if not output_root.exists():
-        return []
-
-    project_tokens = {project["name"].lower(), project["id"].replace("-", "_").lower()}
-    shot_tokens = {shot.lower() for shot in project["shots_set"] if shot != "GENERAL"}
-    allowed = {".exr", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".mov", ".mp4"}
+    """The project's renders, newest first: a numbered sequence is one item with
+    its frame count and range. A file belongs to the project when its name or a
+    folder above it carries the project name or one of its shot codes as a
+    whole token."""
+    tokens = [project["name"], project["id"].replace("-", "_")]
+    tokens += [shot for shot in project["shots_set"] if shot != "GENERAL"]
+    patterns = [_token_re(t) for t in tokens if t]
+    groups: dict = {}
+    seen = 0
+    for root in _output_roots():
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            rel_dirs = os.path.relpath(dirpath, root).lower()
+            dir_match = any(p.search(rel_dirs) for p in patterns) if rel_dirs != "." else False
+            for fn in filenames:
+                seen += 1
+                if seen > _OUTPUT_SCAN_LIMIT:
+                    logger.warning("[Radiance] output scan stopped after %d files; renders past it are not listed.",
+                                   _OUTPUT_SCAN_LIMIT)
+                    break
+                ext = os.path.splitext(fn)[1].lower()
+                if ext not in _OUTPUT_EXTS:
+                    continue
+                low = fn.lower()
+                if not (dir_match or any(p.search(low) for p in patterns)):
+                    continue
+                full = os.path.join(dirpath, fn)
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                m = _FRAME_RE.match(fn) if ext not in (".mov", ".mp4") else None
+                key = (dirpath, m.group(1), m.group(3).lower(), len(m.group(2))) if m else (dirpath, fn, "", 0)
+                g = groups.get(key)
+                if g is None:
+                    g = groups[key] = {"first": full, "frames": [], "bytes": 0, "mtime": 0.0, "fn": fn, "m": m}
+                if m:
+                    g["frames"].append(int(m.group(2)))
+                    if int(m.group(2)) <= min(g["frames"]):
+                        g["first"] = full
+                g["bytes"] += st.st_size
+                g["mtime"] = max(g["mtime"], st.st_mtime)
+            if seen > _OUTPUT_SCAN_LIMIT:
+                break
     outputs = []
-
-    try:
-        for item in output_root.rglob("*"):
-            if not item.is_file() or item.suffix.lower() not in allowed:
-                continue
-            haystack = item.name.lower()
-            if project_tokens and any(token in haystack for token in project_tokens) or any(token in haystack for token in shot_tokens):
-                stat = item.stat()
-                outputs.append({
-                    "name": item.name,
-                    "type": item.suffix.lstrip(".").upper(),
-                    "size": _format_bytes(stat.st_size),
-                    "date": _format_relative_time(stat.st_mtime),
-                    "path": str(item),
-                    "_mtime": stat.st_mtime,
-                })
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to scan outputs for project %s: %s", project["name"], exc)
-
-    outputs.sort(key=lambda item: item.get("_mtime", 0), reverse=True)
+    for (dirpath, stem, ext, pad), g in groups.items():
+        frames = sorted(g["frames"])
+        if g["m"] is not None and len(frames) > 1:
+            name = f"{stem}{'#' * pad}{ext}"
+            item = {"name": name, "type": ext.lstrip(".").upper() + " SEQ", "frames": len(frames),
+                    "range": [frames[0], frames[-1]]}
+        else:
+            item = {"name": g["fn"], "type": os.path.splitext(g["fn"])[1].lstrip(".").upper()}
+        item.update({"size": _format_bytes(g["bytes"]), "date": _format_relative_time(g["mtime"]),
+                     "path": g["first"], "_mtime": g["mtime"]})
+        outputs.append(item)
+    outputs.sort(key=lambda item: item["_mtime"], reverse=True)
     for item in outputs:
         item.pop("_mtime", None)
-    return outputs[:20]
+    return outputs[:50]
 
 
-def _notes_for_project(project: dict) -> list[str]:
-    notes_path = _WORKFLOW_DIR_RESOLVED / project["name"] / ".review_notes.json"
+# ── Planned shots (4.0): a shot made with New shot, before its first version ──
+
+_SHOT_INPUT_RE = re.compile(r"(?:SH[-_ ]?)?(\d{1,5})", re.IGNORECASE)
+
+
+def _normalize_shot_name(raw: str) -> str | None:
+    """"SH040", "sh40", "sh-040" or "40" -> "SH040"; anything else -> None.
+
+    The Shots page reads a shot from a file name as SH plus 2 to 5 digits
+    (_shot_from_name), so a planned shot has the same form: its first version,
+    SH040_v001.rad, then lands on it."""
+    m = _SHOT_INPUT_RE.fullmatch(str(raw or "").strip())
+    if not m:
+        return None
+    digits = m.group(1)
+    if len(digits) < 3:
+        digits = digits.zfill(3)
+    return f"SH{digits}"
+
+
+def _planned_shots_path(project: dict) -> Path:
+    path = Path(os.path.normpath(_WORKFLOW_DIR_RESOLVED / str(project["name"]) / ".planned_shots.json"))
+    path.relative_to(_WORKFLOW_DIR_RESOLVED)          # ValueError for a name that escapes
+    return path
+
+
+def _read_planned_shots(project: dict) -> list:
+    try:
+        path = _planned_shots_path(project)
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [d for d in data if isinstance(d, dict) and _normalize_shot_name(d.get("shot")) == d.get("shot")]
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        logger.warning("[Radiance] planned shots of %s unreadable: %s", project.get("name"), exc)
+    return []
+
+
+def _project_shot_names(project: dict) -> set:
+    return ({s for s in project["shots_set"] if s != "GENERAL"}
+            | {p["shot"] for p in _read_planned_shots(project)})
+
+
+def _next_shot_name(taken) -> str:
+    """The next free shot in steps of ten: SH010, SH020, ... after the highest."""
+    nums = [int(s[2:]) for s in taken if re.fullmatch(r"SH\d{2,5}", s)]
+    n = (max(nums) // 10 + 1) * 10 if nums else 10
+    while f"SH{n:03d}" in taken:
+        n += 10
+    return f"SH{n:03d}"
+
+
+def _notes_path(project: dict) -> Path:
+    path = Path(os.path.normpath(_WORKFLOW_DIR_RESOLVED / str(project["name"]) / ".review_notes.json"))
+    path.relative_to(_WORKFLOW_DIR_RESOLVED)          # ValueError for a name that escapes
+    return path
+
+
+def _read_notes(project: dict) -> list:
+    """The raw entries: strings (older files) or {shot, text, author, at}."""
+    notes_path = _notes_path(project)
     if notes_path.exists():
         try:
             data = json.loads(notes_path.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                return [str(item) for item in data]
+                return data
             if isinstance(data, dict) and isinstance(data.get("notes"), list):
-                return [str(item) for item in data["notes"]]
+                return data["notes"]
         except Exception as exc:
             logger.warning("[Radiance] Failed to read notes for project %s: %s", project["name"], exc)
-
     return []
+
+
+def _note_text(item) -> str:
+    """A note as one line: "SH040 · Ahmed · 20 Nov 2026 15:20 — fix the sky edge"."""
+    if not isinstance(item, dict):
+        return str(item)
+    when = ""
+    try:
+        when = time.strftime("%d %b %Y %H:%M", time.localtime(float(item.get("at"))))
+    except (TypeError, ValueError):
+        pass
+    head = " · ".join(x for x in (str(item.get("shot") or ""), str(item.get("author") or ""), when) if x)
+    return f"{head} — {item.get('text', '')}" if head else str(item.get("text", ""))
+
+
+def _notes_for_project(project: dict) -> list[str]:
+    return [_note_text(item) for item in reversed(_read_notes(project))]   # newest first
 
 
 def _storage_summary() -> dict:
@@ -952,12 +1288,14 @@ def _dashboard_payload() -> dict:
     latest_metadata = latest.get("metadata", {}) if latest else {}
 
     versions = _versions_for_project(active_project) if active_project else []
+    planned = _read_planned_shots(active_project) if active_project else []
     outputs = _outputs_for_project(active_project) if active_project else []
     notes = _notes_for_project(active_project) if active_project else []
 
     return {
+        # The page shows the artist's own name (kept in the browser); this is a neutral default.
         "user": {
-            "name": "Ahmed",
+            "name": "",
             "role": "Artist",
         },
         "storage": _storage_summary(),
@@ -992,6 +1330,8 @@ def _dashboard_payload() -> dict:
         ],
         "source": "Live API",
         "activeProjectId": active_project["id"] if active_project else "",
+        "plannedShots": planned,
+        "nextShot": _next_shot_name(_project_shot_names(active_project)) if active_project else "SH010",
     }
 
 
@@ -1009,14 +1349,16 @@ async def pack_workflow(request):
         if not content:
             return web.json_response({"error": "Missing content"}, status=400)
             
+        # ALBABIT-FIX: v3 when the graph reads input files, the only format that carries them.
+        assets, inputs = _input_assets(content)
         metadata = {
             "description": description,
             "saved_at": time.time(),
-            "format": "v2",
+            "format": "v3" if assets else "v2",
             "author": data.get("author", "Radiance Artist")
         }
         
-        binary_rad = _pack_rad_v2(content, metadata)
+        binary_rad = _pack_rad_v3(content, metadata, assets, inputs) if assets else _pack_rad_v2(content, metadata)
         
         return web.Response(body=binary_rad, content_type='application/octet-stream')
     except Exception as e:
@@ -1042,6 +1384,7 @@ async def unpack_workflow_api(request):
 
         if ver == 3:
             graph_json, metadata, assets = _unpack_rad_v3(body)
+            graph_json = _restore_input_assets(graph_json, assets, metadata.get("inputs", {}))
             return web.json_response({
                 "success":  True,
                 "content":  graph_json,
@@ -1118,8 +1461,11 @@ async def save_workflow(request):
         }
         
         # Use v3 ZIP container if preview or stats are present, else v2 for speed
-        if metadata["preview_image"] or metadata["stats"]:
-            binary_rad = _pack_rad_v3(content, metadata)
+        # ALBABIT-FIX: v3 too when the graph reads input files, the only format that carries them.
+        # ALBABIT-FIX: the preview is stored twice, base64 in manifest.json and decoded in preview.png.
+        assets, inputs = _input_assets(content, reserved=2 * len(metadata["preview_image"]))
+        if metadata["preview_image"] or metadata["stats"] or assets:
+            binary_rad = _pack_rad_v3(content, metadata, assets, inputs)
             filename_final = filename
         else:
             binary_rad = _pack_rad_v2(content, metadata)
@@ -1129,7 +1475,7 @@ async def save_workflow(request):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         _create_version_backup(filepath, message=commit_message, author=author)
 
-        filepath.write_bytes(binary_rad)
+        _atomic_write_bytes(filepath, binary_rad)
 
         # Clean up legacy sidecar if it exists
         meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1228,6 +1574,56 @@ async def list_project_outputs(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
+@_route("get", "/radiance/projects/{project_id}/shots")
+async def list_project_shots(request):
+    """Planned shots (made with New shot, no version yet) and the next free name."""
+    try:
+        project, _ = _find_project(request.match_info.get("project_id", ""))
+        if project is None:
+            return web.json_response({"error": "Project not found"}, status=404)
+        return web.json_response({"shots": _read_planned_shots(project),
+                                  "next": _next_shot_name(_project_shot_names(project))})
+    except Exception as e:
+        logger.exception("[Radiance] list_project_shots failed")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@_route("post", "/radiance/projects/{project_id}/shots")
+async def create_project_shot(request):
+    """New shot: {shot, author}. The shot is added to the project before it has
+    a version, so the Shots page lists it (Not started) and the first "Save
+    canvas as a version" with it selected writes <project>/<SHOT>_v001.rad."""
+    try:
+        project, _ = _find_project(request.match_info.get("project_id", ""))
+        if project is None:
+            return web.json_response({"error": "Project not found"}, status=404)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        shot = _normalize_shot_name(data.get("shot"))
+        if shot is None:
+            return web.json_response({"error": "A shot name is SH and 2 to 5 digits, for example SH040."}, status=400)
+        taken = _project_shot_names(project)
+        if shot in taken:
+            return web.json_response({"error": f"{shot} is already in {project['name']}.",
+                                      "next": _next_shot_name(taken)}, status=409)
+        try:
+            path = _planned_shots_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        planned = _read_planned_shots(project)
+        planned.append({"shot": shot, "created": time.time(),
+                        "author": str(data.get("author") or "").strip()[:64]})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_text(path, json.dumps(planned, indent=2))
+        return web.json_response({"success": True, "shot": shot, "project": project["name"],
+                                  "shots": planned, "next": _next_shot_name(taken | {shot})})
+    except Exception as e:
+        logger.exception("[Radiance] create_project_shot failed")
+        return web.json_response({"error": str(e)}, status=500)
+
+
 @_route("get", "/radiance/projects/{project_id}/notes")
 async def list_project_notes(request):
     try:
@@ -1238,6 +1634,41 @@ async def list_project_notes(request):
         return web.json_response({"notes": _notes_for_project(project)})
     except Exception as e:
         logger.exception("[Radiance] list_project_notes failed")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@_route("post", "/radiance/projects/{project_id}/notes")
+async def add_project_note(request):
+    """Add a review note to a shot: {shot, text, author}. It is what Ask for
+    changes sends with the retake, so the artist sees why."""
+    try:
+        project_id = request.match_info.get("project_id", "")
+        project, _ = _find_project(project_id)
+        if project is None:
+            return web.json_response({"error": "Project not found"}, status=404)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        text = str(data.get("text") or "").strip()
+        shot = str(data.get("shot") or "").strip()
+        if not text:
+            return web.json_response({"error": "a note needs some text"}, status=400)
+        if len(text) > 4000 or len(shot) > 64:
+            return web.json_response({"error": "the note or shot name is too long"}, status=400)
+        try:
+            path = _notes_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        entries = _read_notes(project)
+        entry = {"shot": shot, "text": text, "author": str(data.get("author") or "")[:80], "at": time.time()}
+        entries.append(entry)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        from radiance.core.sequence_safety import write_text_atomic
+        write_text_atomic(path, json.dumps({"notes": entries}, indent=2))
+        return web.json_response({"success": True, "note": _note_text(entry)})
+    except Exception as e:
+        logger.exception("[Radiance] add_project_note failed")
         return web.json_response({"error": str(e)}, status=500)
 
 
@@ -1259,7 +1690,15 @@ async def save_project_version(request):
         author = str(data.get("author") or "Radiance Artist")
 
         if content:
-            filename = data.get("filename", "").strip()
+            filename = str(data.get("filename") or "").strip()
+            shot = str(data.get("shot") or "").strip()
+            if not filename and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,39}", shot) and shot.upper() != "GENERAL":
+                # The next version of the shot the artist has selected, named the
+                # way the Shots page reads it: SH040_v003.rad.
+                taken = [int(m.group(1)) for w in project["workflows"]
+                         if _shot_from_name(Path(w["filename"]).stem) == _shot_from_name(shot)
+                         for m in [re.search(r"(?<![a-z0-9])v(\d{1,4})(?![a-z0-9])", Path(w["filename"]).stem, re.I)] if m]
+                filename = f"{project['name']}/{shot}_v{(max(taken) + 1 if taken else 1):03d}.rad"
             if not filename:
                 filename = f"{project['name']}/dashboard_{int(time.time())}.rad"
             else:
@@ -1283,7 +1722,7 @@ async def save_project_version(request):
                 "saved_at": time.time(),
                 "pipeline": _inspect_graph_content(content),
             }
-            filepath.write_bytes(_pack_rad_v3(content, metadata))
+            _atomic_write_bytes(filepath, _pack_rad_v3(content, metadata, *_input_assets(content)))
             
             # Clean up legacy sidecar if it exists
             meta_path = filepath.with_suffix(filepath.suffix + ".json")
@@ -1354,7 +1793,12 @@ async def get_workflow(request):
         ver = _detect_rad_version(raw_data)
 
         # Unified v1 / v2 / v3 dispatch
-        graph_json, metadata = _unpack_any_rad(raw_data)
+        # ALBABIT-FIX: opening a v3 also puts its input files back, so it runs on another machine.
+        if ver == 3:
+            graph_json, metadata, assets = _unpack_rad_v3(raw_data)
+            graph_json = _restore_input_assets(graph_json, assets, metadata.get("inputs", {}))
+        else:
+            graph_json, metadata = _unpack_any_rad(raw_data)
         return web.json_response({
             "success":  True,
             "content":  graph_json,
@@ -1503,11 +1947,19 @@ async def restore_workflow_version(request):
         if not source_path.exists() or not source_path.is_file():
             return web.json_response({"error": "Version file not found"}, status=404)
 
-        # Before restoring, back up current state as a 'Restore Point' commit
-        _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}")
-
-        # Perform restore
-        shutil.copy2(str(source_path), str(target_path))
+        # Copy the chosen version beside the target first, then back up the
+        # current state, then swap. The pre-restore backup can evict the
+        # oldest version, which at the retention limit was the one being
+        # restored: the copy then failed and that version was gone.
+        tmp_path = target_path.with_name(f".{target_path.name}.restore-{os.getpid()}-{os.urandom(4).hex()}")
+        shutil.copy2(str(source_path), str(tmp_path))
+        try:
+            _create_version_backup(target_path, message=f"Pre-restore backup of {version_file}",
+                                   keep=source_path)
+            os.replace(str(tmp_path), str(target_path))
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
         
         logger.info(f"[Radiance] Restored {filename} from {version_file}")
         return web.json_response({"success": True, "restored_from": version_file})
@@ -1535,10 +1987,23 @@ async def get_workflow_preview(request):
             return web.json_response({"error": "Previews only supported in .rad v3"}, status=400)
 
         with zipfile.ZipFile(filepath, "r") as zf:
-            if "preview.png" not in zf.namelist():
+            # The unpacker's limits apply here too: this route used to expand
+            # preview.png from an archive the unpacker refuses.
+            try:
+                _check_rad_zip_admission(zf)
+            except ValueError as exc:
+                return web.json_response({"error": str(exc)}, status=413)
+            try:
+                info = zf.getinfo("preview.png")
+            except KeyError:
                 return web.json_response({"error": "No preview image"}, status=404)
-            
-            preview_data = zf.read("preview.png")
+            if info.file_size > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
+            # Bounded read: the declared size is not trusted.
+            with zf.open(info) as fh:
+                preview_data = fh.read(MAX_RAD_PREVIEW_BYTES + 1)
+            if len(preview_data) > MAX_RAD_PREVIEW_BYTES:
+                return web.json_response({"error": "Preview image is too large"}, status=413)
             return web.Response(body=preview_data, content_type='image/png')
 
     except Exception as e:
@@ -1605,6 +2070,9 @@ def _load_bins() -> "list[dict]":
             data = json.loads(_ASSETS_BINS_PATH.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 return data
+            _set_aside_corrupt(_ASSETS_BINS_PATH)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _set_aside_corrupt(_ASSETS_BINS_PATH)
     except Exception as _exc:
         logger.debug(
             "[Radiance] _load_bins(): ignoring %s from `if _ASSETS_BINS_PATH.exists():`: %s",
@@ -1614,10 +2082,8 @@ def _load_bins() -> "list[dict]":
 
 
 def _save_bins(bins: "list[dict]") -> None:
-    try:
-        _ASSETS_BINS_PATH.write_text(json.dumps(bins, indent=2), encoding="utf-8")
-    except Exception as exc:
-        logger.warning("[Radiance] Failed to save asset bins: %s", exc)
+    """Persist asset bins atomically. Raises on failure (see _save_shot_status)."""
+    _atomic_write_text(_ASSETS_BINS_PATH, json.dumps(bins, indent=2))
 
 
 def _scan_assets() -> "list[dict]":
@@ -1743,7 +2209,11 @@ async def create_asset_bin(request):
     bin_id = _hashlib.sha1((name + str(time.time())).encode()).hexdigest()[:10]
     new_bin = {"id": bin_id, "name": name[:60], "assets": []}
     bins.append(new_bin)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True, "bin": new_bin})
 
 
@@ -1771,7 +2241,11 @@ async def modify_asset_bin(request):
         bins = [b for b in bins if b.get("id") != bin_id]
     else:
         return web.json_response({"error": "Unknown action"}, status=400)
-    _save_bins(bins)
+    try:
+        _save_bins(bins)
+    except Exception as exc:
+        logger.exception("[Radiance] could not save asset bins")
+        return web.json_response({"error": f"Could not save the bin: {exc}"}, status=500)
     return web.json_response({"success": True})
 
 
@@ -1863,6 +2337,37 @@ async def asset_thumb(request):
     return web.json_response({"error": "not previewable"}, status=415)
 
 
+def _claim_upload_path(dest_dir: Path, name: str):
+    """Create a new, empty file for ``name`` in dest_dir and return (path, handle).
+
+    Never replaces a file: a taken name becomes stem_1.ext, stem_2.ext, ...
+    Exclusive creation ("xb") also holds against a concurrent upload.
+    """
+    stem, suffix = Path(name).stem, Path(name).suffix
+    for n in range(10000):
+        candidate = dest_dir / (name if n == 0 else f"{stem}_{n}{suffix}")
+        try:
+            return candidate, open(candidate, "xb")
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"No free name for {name} in {dest_dir}")
+
+
+class _UploadTooLarge(Exception):
+    pass
+
+
+def _upload_limit_bytes() -> int:
+    try:
+        mb = int(os.environ.get("RADIANCE_UPLOAD_MAX_MB", "4096"))
+    except ValueError:
+        mb = 4096
+    return max(1, mb) * 1024 * 1024
+
+
+_MAX_UPLOAD_BYTES = _upload_limit_bytes()
+
+
 @_route("post", "/radiance/assets/upload")
 async def upload_asset(request):
     try:
@@ -1873,20 +2378,45 @@ async def upload_asset(request):
         dest_dir.mkdir(parents=True, exist_ok=True)
         reader = await request.multipart()
         saved = []
-        async for part in reader:
-            if part.filename:
-                safe_name = os.path.basename(part.filename)
-                if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
-                    continue
-                dest = dest_dir / safe_name
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = await part.read_chunk()
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-                saved.append(safe_name)
-        return web.json_response({"success": True, "saved": saved})
+        renamed = {}
+        claimed: list[Path] = []
+        try:
+            async for part in reader:
+                if part.filename:
+                    safe_name = os.path.basename(part.filename)
+                    if Path(safe_name).suffix.lower() not in _ASSET_EXTS:
+                        continue
+                    # Opening with "wb" replaced an existing file of the same
+                    # name, so a workflow that referenced it read the new one.
+                    dest, fh = _claim_upload_path(dest_dir, safe_name)
+                    claimed.append(dest)
+                    written = 0
+                    with fh:
+                        while True:
+                            chunk = await part.read_chunk()
+                            if not chunk:
+                                break
+                            written += len(chunk)
+                            if written > _MAX_UPLOAD_BYTES:
+                                raise _UploadTooLarge(safe_name)
+                            fh.write(chunk)
+                    saved.append(dest.name)
+                    if dest.name != safe_name:
+                        renamed[safe_name] = dest.name
+        except BaseException:
+            # All or nothing: the client gets an error and no list of what was
+            # saved, so no truncated file and no orphan from an earlier part.
+            for path in claimed:
+                path.unlink(missing_ok=True)
+            raise
+        result = {"success": True, "saved": saved}
+        if renamed:
+            result["renamed"] = renamed
+        return web.json_response(result)
+    except _UploadTooLarge as e:
+        return web.json_response(
+            {"error": f"{e.args[0]} is larger than the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit "
+                      "(RADIANCE_UPLOAD_MAX_MB raises it)"}, status=413)
     except Exception as e:
         logger.exception("[Radiance] upload_asset failed")
         return web.json_response({"error": str(e)}, status=500)
@@ -1908,6 +2438,10 @@ async def set_shot_status(request):
         allowed = {"WIP", "Review", "Approved", "Retake", "Final"}
         if status not in allowed:
             return web.json_response({"error": "status must be one of %s" % sorted(allowed)}, status=400)
+        try:
+            _shot_status_path(project)
+        except ValueError as exc:
+            return web.json_response({"error": str(exc)}, status=400)
         mapping = _load_shot_status(project)
         if shot:
             mapping[shot] = status

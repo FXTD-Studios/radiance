@@ -12,9 +12,9 @@ import { escapeHtml } from "./radiance_dom_utils.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PANEL_ID = "radiance-gizmo-modal";
-const ACCENT_COLOR = "#00a8ff"; // Radiance blue
-const BACKDROP_COLOR = "rgba(15, 15, 20, 0.9)";
-const GLASS_BORDER = "1.5px solid rgba(0, 168, 255, 0.25)";
+const ACCENT_COLOR = "#0a84ff"; // Radiance blue
+const BACKDROP_COLOR = "rgba(28, 28, 30, 0.92)";
+const GLASS_BORDER = "1.5px solid rgba(10, 132, 255, 0.25)";
 
 function escapeAttr(value) {
     return escapeHtml(value).replace(/`/g, "&#96;");
@@ -23,15 +23,15 @@ function escapeAttr(value) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Toast Notification Helper
 // ─────────────────────────────────────────────────────────────────────────────
-function showGizmoToast(msg, color = "#00a8ff") {
+function showGizmoToast(msg, color = "#0a84ff") {
     const t = document.createElement("div");
     Object.assign(t.style, {
         position: "fixed", top: "24px", left: "50%",
         transform: "translateX(-50%)",
-        background: "#0f0f14", color,
+        background: "#1c1c1e", color,
         padding: "14px 24px", borderRadius: "8px",
         border: `1.5px solid ${color}44`, zIndex: "10002",
-        fontFamily: "'Courier New',monospace", fontSize: "12px",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontSize: "12px",
         fontWeight: "bold", letterSpacing: "0.5px",
         boxShadow: "0 12px 40px rgba(0,0,0,0.9)",
         pointerEvents: "none",
@@ -53,7 +53,7 @@ function openGizmoCreationModal(selectedNodes) {
     document.getElementById(PANEL_ID)?.remove();
 
     if (selectedNodes.length === 0) {
-        showGizmoToast("Select at least one node to create a Gizmo.", "#ff4a4a");
+        showGizmoToast("Select at least one node to create a Gizmo.", "#ff453a");
         return;
     }
 
@@ -143,9 +143,9 @@ function openGizmoCreationModal(selectedNodes) {
     overlay.id = PANEL_ID;
     Object.assign(overlay.style, {
         position: "fixed", top: "0", left: "0", width: "100vw", height: "100vh",
-        background: "rgba(5, 5, 8, 0.75)", backdropFilter: "blur(12px)",
+        background: "rgba(0, 0, 0, 0.6)", backdropFilter: "blur(12px)",
         zIndex: "10000", display: "flex", justifyContent: "center", alignItems: "center",
-        fontFamily: "'Courier New',monospace", color: "#d0d8e4"
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#d1d1d6"
     });
 
     // 4. Construct Glassmorphic Modal dialog
@@ -165,21 +165,21 @@ function openGizmoCreationModal(selectedNodes) {
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
                 <span style="font-size:16px; font-weight:bold; color:${ACCENT_COLOR}; letter-spacing:1px;">◎ COLLAPSE TO RADIANCE GIZMO</span>
-                <div style="font-size:10px; color:#556677; margin-top:4px;">Collapsing subgraph: [ ${escapeHtml(nodeSummaryText)} ]</div>
+                <div style="font-size:10px; color:#8e8e93; margin-top:4px;">Collapsing subgraph: [ ${escapeHtml(nodeSummaryText)} ]</div>
             </div>
-            <button id="gizmo-close-btn" style="background:none; border:none; color:#567; cursor:pointer; font-size:22px; line-height:1;">✕</button>
+            <button id="gizmo-close-btn" style="background:none; border:none; color:#8e8e93; cursor:pointer; font-size:22px; line-height:1;">✕</button>
         </div>
 
         <!-- Node Setup Row -->
         <div style="display:flex; gap:16px;">
             <div style="flex:1;">
-                <label style="font-size:11px; color:#8ba0b8; display:block; margin-bottom:6px;">GIZMO UNIQUE CLASS NAME</label>
+                <label style="font-size:11px; color:#98989d; display:block; margin-bottom:6px;">GIZMO UNIQUE CLASS NAME</label>
                 <input id="gizmo-class-name" placeholder="RadianceVFXChromeAb" value="RadianceGizmo_CustomTool"
-                       style="width:100%; background:#0b0b0f; border:1px solid #2a3a4c; color:#fff; padding:8px 12px; border-radius:5px; font-family:monospace; font-size:12px;" />
+                       style="width:100%; background:#111113; border:1px solid #3a3a3c; color:#fff; padding:8px 12px; border-radius:5px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:12px;" />
             </div>
             <div style="width:200px;">
-                <label style="font-size:11px; color:#8ba0b8; display:block; margin-bottom:6px;">DISCIPLINE / PALETTE</label>
-                <select id="gizmo-category" style="width:100%; background:#0b0b0f; border:1px solid #2a3a4c; color:#fff; padding:7px 10px; border-radius:5px; font-family:monospace; font-size:12px;">
+                <label style="font-size:11px; color:#98989d; display:block; margin-bottom:6px;">DISCIPLINE / PALETTE</label>
+                <select id="gizmo-category" style="width:100%; background:#111113; border:1px solid #3a3a3c; color:#fff; padding:7px 10px; border-radius:5px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:12px;">
                     <option value="FXTD STUDIOS/Radiance/Core" selected>Core</option>
                     <option value="FXTD STUDIOS/Radiance/Load & Save">Load & Save</option>
                     <option value="FXTD STUDIOS/Radiance/Generate">Generate</option>
@@ -196,62 +196,62 @@ function openGizmoCreationModal(selectedNodes) {
         </div>
 
         <div>
-            <label style="font-size:11px; color:#8ba0b8; display:block; margin-bottom:6px;">GIZMO DESCRIPTION</label>
+            <label style="font-size:11px; color:#98989d; display:block; margin-bottom:6px;">GIZMO DESCRIPTION</label>
             <input id="gizmo-description" placeholder="Describe what this dynamic pipeline tool does..."
-                   style="width:100%; background:#0b0b0f; border:1px solid #2a3a4c; color:#8ba0b8; padding:8px 12px; border-radius:5px; font-family:monospace; font-size:12px;" />
+                   style="width:100%; background:#111113; border:1px solid #3a3a3c; color:#98989d; padding:8px 12px; border-radius:5px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:12px;" />
         </div>
 
-        <hr style="border:none; border-top:1px solid #1a2533; margin:5px 0;" />
+        <hr style="border:none; border-top:1px solid #2c2c2e; margin:5px 0;" />
 
         <!-- BOUNDARY PORTS CONTAINER -->
         <div style="display:flex; gap:20px; max-height:300px; overflow-y:auto;">
             <!-- Inputs Column -->
-            <div style="flex:1; border-right:1px solid #1a2533; padding-right:10px;">
-                <span style="font-size:11px; font-weight:bold; color:#7eb8f7; display:block; margin-bottom:8px;">1. EXPOSE BOUNDARY INPUTS</span>
+            <div style="flex:1; border-right:1px solid #2c2c2e; padding-right:10px;">
+                <span style="font-size:11px; font-weight:bold; color:#f5f5f7; display:block; margin-bottom:8px; letter-spacing:.06em;">1. EXPOSE BOUNDARY INPUTS</span>
                 <div id="gizmo-inputs-list" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
 
             <!-- Outputs Column -->
             <div style="flex:1;">
-                <span style="font-size:11px; font-weight:bold; color:#a27ef7; display:block; margin-bottom:8px;">2. EXPOSE BOUNDARY OUTPUTS</span>
+                <span style="font-size:11px; font-weight:bold; color:#f5f5f7; display:block; margin-bottom:8px; letter-spacing:.06em;">2. EXPOSE BOUNDARY OUTPUTS</span>
                 <div id="gizmo-outputs-list" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
         </div>
 
-        <hr style="border:none; border-top:1px solid #1a2533; margin:5px 0;" />
+        <hr style="border:none; border-top:1px solid #2c2c2e; margin:5px 0;" />
 
         <!-- PROMOTED PARAMETERS WIDGETS -->
         <div>
-            <span style="font-size:11px; font-weight:bold; color:#f7c07e; display:block; margin-bottom:8px;">3. PROMOTE CONTROL WIDGETS / KNOBS</span>
+            <span style="font-size:11px; font-weight:bold; color:#f5f5f7; display:block; margin-bottom:8px; letter-spacing:.06em;">3. PROMOTE CONTROL WIDGETS / KNOBS</span>
             <div id="gizmo-widgets-list" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; padding-right:6px;"></div>
         </div>
 
         <!-- Buttons Footer -->
-        <div style="display:flex; gap:10px; justify-content:flex-end; padding-top:10px; border-top:1px solid #1a2533; margin-top:5px;">
-            <button id="gizmo-cancel-btn" style="padding:8px 22px; background:#11141c; border:1px solid #2a3a4c; color:#88aabf; border-radius:5px; cursor:pointer; font-family:monospace; font-size:12px;">Cancel</button>
-            <button id="gizmo-save-btn" style="padding:8px 26px; background:#005cbf; border:1px solid #00a8ff; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; font-family:monospace; font-size:12px;">◎ Collapse to Gizmo</button>
+        <div style="display:flex; gap:10px; justify-content:flex-end; padding-top:10px; border-top:1px solid #2c2c2e; margin-top:5px;">
+            <button id="gizmo-cancel-btn" style="padding:8px 22px; background:#1c1c1e; border:1px solid #3a3a3c; color:#98989d; border-radius:5px; cursor:pointer; font-family:inherit; font-size:12px;">Cancel</button>
+            <button id="gizmo-save-btn" style="padding:8px 26px; background:#0a84ff; border:1px solid #0a84ff; color:#fff; border-radius:5px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:12px;">◎ Collapse to Gizmo</button>
         </div>
     `;
 
     // 5. Populate Expose Inputs
     const inputsList = modal.querySelector("#gizmo-inputs-list");
     if (boundaryInputs.length === 0) {
-        inputsList.innerHTML = `<span style="font-size:10px; color:#567;">No unconnected inputs available.</span>`;
+        inputsList.innerHTML = `<span style="font-size:10px; color:#8e8e93;">No unconnected inputs available.</span>`;
     } else {
         boundaryInputs.forEach((item, index) => {
             const div = document.createElement("div");
             Object.assign(div.style, {
-                display: "flex", alignItems: "center", gap: "6px", background: "#0e111a",
-                padding: "6px 8px", borderRadius: "4px", border: "1px solid #1b2533"
+                display: "flex", alignItems: "center", gap: "6px", background: "#1c1c1e",
+                padding: "6px 8px", borderRadius: "4px", border: "1px solid #2c2c2e"
             });
             div.innerHTML = `
                 <input type="checkbox" id="${escapeAttr(item.key)}" checked style="accent-color:${ACCENT_COLOR}; cursor:pointer;" />
                 <div style="flex:1; min-width:0;">
-                    <div style="font-size:8px; color:#567; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</div>
-                    <span style="font-size:10px; color:#e0e8f0; font-weight:bold;">${escapeHtml(item.inputName)}</span>
+                    <div style="font-size:8px; color:#8e8e93; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</div>
+                    <span style="font-size:10px; color:#f5f5f7; font-weight:bold;">${escapeHtml(item.inputName)}</span>
                 </div>
                 <input class="rename-input" placeholder="${escapeAttr(item.inputName)}" value="${escapeAttr(item.inputName)}"
-                       style="width:90px; background:#06080e; border:1px solid #233346; color:#00a8ff; font-family:monospace; font-size:9px; padding:3px 5px; border-radius:3px;" />
+                       style="width:90px; background:#111113; border:1px solid #3a3a3c; color:#f5f5f7; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:9px; padding:3px 5px; border-radius:3px;" />
             `;
             // Keep boundary data references
             div.dataset.nodeId = item.nodeId;
@@ -265,22 +265,22 @@ function openGizmoCreationModal(selectedNodes) {
     // 6. Populate Expose Outputs
     const outputsList = modal.querySelector("#gizmo-outputs-list");
     if (boundaryOutputs.length === 0) {
-        outputsList.innerHTML = `<span style="font-size:10px; color:#567;">No unconnected outputs available.</span>`;
+        outputsList.innerHTML = `<span style="font-size:10px; color:#8e8e93;">No unconnected outputs available.</span>`;
     } else {
         boundaryOutputs.forEach((item, index) => {
             const div = document.createElement("div");
             Object.assign(div.style, {
-                display: "flex", alignItems: "center", gap: "6px", background: "#0e111a",
-                padding: "6px 8px", borderRadius: "4px", border: "1px solid #1b2533"
+                display: "flex", alignItems: "center", gap: "6px", background: "#1c1c1e",
+                padding: "6px 8px", borderRadius: "4px", border: "1px solid #2c2c2e"
             });
             div.innerHTML = `
-                <input type="checkbox" id="${escapeAttr(item.key)}" checked style="accent-color:#a27ef7; cursor:pointer;" />
+                <input type="checkbox" id="${escapeAttr(item.key)}" checked style="accent-color:#0a84ff; cursor:pointer;" />
                 <div style="flex:1; min-width:0;">
-                    <div style="font-size:8px; color:#567; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</div>
-                    <span style="font-size:10px; color:#e0e8f0; font-weight:bold;">${escapeHtml(item.outputName)}</span>
+                    <div style="font-size:8px; color:#8e8e93; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</div>
+                    <span style="font-size:10px; color:#f5f5f7; font-weight:bold;">${escapeHtml(item.outputName)}</span>
                 </div>
                 <input class="rename-output" placeholder="${escapeAttr(item.outputName)}" value="${escapeAttr(item.outputName)}"
-                       style="width:90px; background:#06080e; border:1px solid #233346; color:#a27ef7; font-family:monospace; font-size:9px; padding:3px 5px; border-radius:3px;" />
+                       style="width:90px; background:#111113; border:1px solid #3a3a3c; color:#f5f5f7; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:9px; padding:3px 5px; border-radius:3px;" />
             `;
             // Keep boundary data references
             div.dataset.nodeId = item.nodeId;
@@ -295,24 +295,24 @@ function openGizmoCreationModal(selectedNodes) {
     // 7. Populate Promotable Widgets
     const widgetsList = modal.querySelector("#gizmo-widgets-list");
     if (promotableWidgets.length === 0) {
-        widgetsList.innerHTML = `<span style="font-size:10px; color:#567;">No controls available to promote.</span>`;
+        widgetsList.innerHTML = `<span style="font-size:10px; color:#8e8e93;">No controls available to promote.</span>`;
     } else {
         promotableWidgets.forEach((item, index) => {
             const div = document.createElement("div");
             Object.assign(div.style, {
-                display: "flex", alignItems: "center", gap: "10px", background: "#0e111a",
-                padding: "6px 12px", borderRadius: "4px", border: "1px solid #1b2533"
+                display: "flex", alignItems: "center", gap: "10px", background: "#1c1c1e",
+                padding: "6px 12px", borderRadius: "4px", border: "1px solid #2c2c2e"
             });
             div.innerHTML = `
-                <input type="checkbox" id="${escapeAttr(item.key)}" style="accent-color:#f7c07e; cursor:pointer;" />
+                <input type="checkbox" id="${escapeAttr(item.key)}" style="accent-color:#0a84ff; cursor:pointer;" />
                 <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
-                    <span style="font-size:8px; color:#567;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</span>
-                    <span style="font-size:11px; color:#e0e8f0; font-weight:bold;">${escapeHtml(item.widgetName)} <span style="font-weight:normal; color:#495f78; font-size:9px;">(${escapeHtml(item.widgetType)})</span></span>
+                    <span style="font-size:8px; color:#8e8e93;">${escapeHtml(item.nodeTitle)} (#${escapeHtml(item.nodeId)})</span>
+                    <span style="font-size:11px; color:#f5f5f7; font-weight:bold;">${escapeHtml(item.widgetName)} <span style="font-weight:normal; color:#636366; font-size:9px;">(${escapeHtml(item.widgetType)})</span></span>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="font-size:9px; color:#567;">Promoted Label:</span>
+                    <span style="font-size:9px; color:#8e8e93;">Promoted Label:</span>
                     <input class="rename-widget" placeholder="${escapeAttr(item.widgetName)}" value="${escapeAttr(item.widgetName)}"
-                           style="width:140px; background:#06080e; border:1px solid #233346; color:#f7c07e; font-family:monospace; font-size:10px; padding:3px 6px; border-radius:3px;" />
+                           style="width:140px; background:#111113; border:1px solid #3a3a3c; color:#f5f5f7; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:10px; padding:3px 6px; border-radius:3px;" />
                 </div>
             `;
             // Keep widget references
@@ -338,7 +338,7 @@ function openGizmoCreationModal(selectedNodes) {
         const description = modal.querySelector("#gizmo-description").value.trim();
 
         if (!className) {
-            showGizmoToast("Gizmo Unique Class Name cannot be empty.", "#ff4a4a");
+            showGizmoToast("Gizmo Unique Class Name cannot be empty.", "#ff453a");
             return;
         }
 
@@ -465,10 +465,10 @@ function openGizmoCreationModal(selectedNodes) {
                 closePanel();
                 showGizmoToast(`◎ Gizmo '${className}' compiled successfully! Please restart your ComfyUI server to load it.`, ACCENT_COLOR);
             } else {
-                showGizmoToast(result.error || "Failed to create Gizmo.", "#ff4a4a");
+                showGizmoToast(result.error || "Failed to create Gizmo.", "#ff453a");
             }
         } catch (err) {
-            showGizmoToast(`Network Error: ${err.message}`, "#ff4a4a");
+            showGizmoToast(`Network Error: ${err.message}`, "#ff453a");
         }
     });
 

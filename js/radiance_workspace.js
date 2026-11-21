@@ -5,6 +5,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 import { escapeHtml } from "./radiance_dom_utils.js";
+import { openSavedGraph } from "./radiance_graph_format.js";
 
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
@@ -13,17 +14,17 @@ const HEADER = "RAD_WORKSPACE_V1::";
 const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 
-// Listen for postMessage updates from Studio Dashboard
-window.addEventListener("message", (event) => {
+// Listen for postMessage updates from the Radiance page
+window.addEventListener("message", async (event) => {
     // Reject cross-origin senders. Without this, any page that can get a handle
     // to this window could load an arbitrary graph, or ask for the user's graph
     // back via the radiance_save_project_version reply below. The sibling
-    // handler in project_manager_dashboard.mjs already does this check.
+    // handler in studio.mjs does the same check.
     if (event.origin !== window.location.origin) return;
     if (event.data && event.data.type === "radiance_load_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, false);
+            await openSavedGraph(app, graphData, false, event.data.name || "workflow");
             showToast("Workflow loaded from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse loaded graph", "error");
@@ -31,25 +32,74 @@ window.addEventListener("message", (event) => {
     } else if (event.data && event.data.type === "radiance_append_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, true);
+            await openSavedGraph(app, graphData, true, event.data.name || "workflow");
             showToast("Workflow merged from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse merged graph", "error");
         }
+    } else if (event.data && event.data.type === "radiance_add_node") {
+        // The Gizmos page: put one gizmo node at the centre of the view.
+        const type = String(event.data.nodeType || "");
+        const node = type && globalThis.LiteGraph?.createNode?.(type);
+        if (!node) {
+            showToast(`${event.data.title || type} is not loaded yet: restart ComfyUI to use a new gizmo`, "error");
+            return;
+        }
+        const c = app.canvas;
+        const [x, y] = c?.ds ? [(-c.ds.offset[0] + c.canvas.width / 2 / c.ds.scale), (-c.ds.offset[1] + c.canvas.height / 2 / c.ds.scale)] : [100, 100];
+        node.pos = [x - (node.size?.[0] || 200) / 2, y - (node.size?.[1] || 100) / 2];
+        app.graph.add(node);
+        app.graph.setDirtyCanvas?.(true, true);
+        window.closeRadianceDashboard?.();
+        showToast(`Added ${event.data.title || type} to the canvas`, "success");
+    } else if (event.data && event.data.type === "radiance_close_dashboard") {
+        window.closeRadianceDashboard?.();
+    } else if (event.data && event.data.type === "radiance_new_shot") {
+        // New shot (4.0): the Radiance page added the shot to the project; the
+        // artist starts it on an empty canvas. A new blank workflow tab, so the
+        // graph that was open is kept, unsaved changes included.
+        const shot = String(event.data.shot || "");
+        const project = String(event.data.project || "");
+        let opened = false;
+        try {
+            const run = app.extensionManager?.command?.execute;
+            if (typeof run === "function") {
+                await run.call(app.extensionManager.command, "Comfy.NewBlankWorkflow");
+                opened = true;
+            }
+        } catch (err) {
+            console.warn("[Radiance] New blank workflow failed:", err);
+        }
+        if (!opened) {
+            // Older frontends: clear this canvas, asking first when it has nodes.
+            const nodes = (app.graph?._nodes || []).length;
+            if (nodes && !confirm(`Start ${shot} on an empty canvas? The ${nodes} node(s) on the canvas are cleared; save them first if you need them.`)) return;
+            app.graph?.clear?.();
+            app.graph?.setDirtyCanvas?.(true, true);
+        }
+        window.closeRadianceDashboard?.();
+        showToast(`${shot} is ready in ${project}. Start from any template; Save canvas as a version saves ${shot}_v001.`, "success");
     } else if (event.data && event.data.type === "radiance_save_project_version") {
         try {
             const projectId = event.data.projectId || "general";
             const graphData = app.graph.serialize();
 
-            // Sync with the active canvas widgets if a RadianceWorkspace node is present
-            const wsNode = app.graph._nodes.find(n => n.type === "RadianceWorkspace");
+            // The Project Manager node on the canvas names the save, as its own run
+            // would: <filename>_<artist>_v<version>. It is RadianceProjectManager;
+            // RadianceWorkspace is the older name of the same node. Looking for the
+            // old name only, the save ignored the node and became
+            // dashboard_<time>.rad, which the Shots page never showed.
+            const wsNode = (app.graph._nodes || []).find(n => n.type === "RadianceProjectManager" || n.type === "RadianceWorkspace");
             let filename = undefined;
             let artist = undefined;
             if (wsNode) {
-                const filenameWidget = wsNode.widgets.find(w => w.name === "filename");
-                const artistWidget = wsNode.widgets.find(w => w.name === "artist");
-                if (filenameWidget?.value) filename = filenameWidget.value;
-                if (artistWidget?.value) artist = artistWidget.value;
+                const val = (name) => wsNode.widgets?.find(w => w.name === name)?.value;
+                artist = String(val("artist") || "").trim() || undefined;
+                const stem = String(val("filename") || "").trim();
+                if (stem) {
+                    const v = Math.max(1, parseInt(val("version"), 10) || 1);
+                    filename = `${stem}_${artist || "unknown"}_v${String(v).padStart(4, "0")}`;
+                }
             }
 
             const bodyPayload = {
@@ -58,6 +108,8 @@ window.addEventListener("message", (event) => {
                 author: artist || localStorage.getItem("radiance_artist") || "Radiance Artist",
             };
             if (filename) bodyPayload.filename = filename;
+            // With no node, the page's selected shot names the next version (SH040_v003).
+            else if (event.data.shot) bodyPayload.shot = String(event.data.shot);
 
             const response = api.fetchApi(`/radiance/projects/${encodeURIComponent(projectId)}/save-version`, {
                 method: "POST",
@@ -117,7 +169,7 @@ if (!window.showRadianceDashboard) {
             position: "relative",
             width: "min(94vw, 1500px)", height: "min(92vh, 980px)",
             display: "flex", flexDirection: "column",
-            background: "#0d0d0d",
+            background: "#111113",
             border: "1px solid rgba(255,255,255,0.10)", borderRadius: "14px",
             overflow: "hidden",
             boxShadow: "0 40px 120px -40px rgba(0,0,0,0.9)",
@@ -128,13 +180,13 @@ if (!window.showRadianceDashboard) {
             display: "flex", alignItems: "center", gap: "10px",
             padding: "12px 16px", flex: "0 0 auto",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
-            background: "linear-gradient(180deg,#121212,#0d0d0d)",
+            background: "linear-gradient(180deg,#1c1c1e,#111113)",
             fontFamily: "'Space Grotesk','Inter',sans-serif",
         });
         const dot = document.createElement("span");
         Object.assign(dot.style, {
             width: "9px", height: "9px", borderRadius: "50%",
-            background: "#c8a96e", boxShadow: "0 0 10px rgba(200,169,110,0.8)",
+            background: "#0a84ff", boxShadow: "0 0 10px rgba(10,132,255,0.8)",
         });
         const label = document.createElement("div");
         label.textContent = title;
@@ -168,13 +220,16 @@ if (!window.showRadianceDashboard) {
         const iframe = document.createElement("iframe");
         iframe.src = bust(url);
         Object.assign(iframe.style, {
-            flex: "1 1 auto", width: "100%", border: "0", background: "#0d0d0d",
+            flex: "1 1 auto", width: "100%", border: "0", background: "#111113",
         });
 
         const close = () => {
             window.removeEventListener("keydown", onKey);
             overlay.remove();
+            if (window.closeRadianceDashboard === close) delete window.closeRadianceDashboard;
         };
+        // The Radiance page closes the overlay itself after opening a workflow.
+        window.closeRadianceDashboard = close;
         const onKey = (e) => { if (e.key === "Escape") close(); };
         closeBtn.onclick = close;
         overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
@@ -259,7 +314,7 @@ function confirmRadianceAction(message, confirmLabel = "Continue") {
 
         const copy = document.createElement("p");
         copy.style.margin = "14px 0 22px";
-        copy.style.color = "#b8c0cc";
+        copy.style.color = "#d1d1d6";
         copy.style.lineHeight = "1.45";
         copy.textContent = message;
 
@@ -308,7 +363,7 @@ function promptRadianceAction(titleText, message, defaultValue = "", confirmLabe
 
         const copy = document.createElement("p");
         copy.style.margin = "14px 0 12px";
-        copy.style.color = "#b8c0cc";
+        copy.style.color = "#d1d1d6";
         copy.style.lineHeight = "1.45";
         copy.textContent = message;
 
@@ -383,15 +438,15 @@ const style = document.createElement("style");
 style.textContent = `
     .radiance-toast {
         position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(10px);
-        background: rgba(30, 32, 40, 0.95); color: #fff; padding: 12px 24px;
+        background: rgba(28, 28, 30, 0.95); color: #fff; padding: 12px 24px;
         border-radius: 8px; font-size: 0.9em; z-index: 10001;
         opacity: 0; transition: opacity 0.3s, transform 0.3s;
         box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
         pointer-events: none; font-family: 'Inter', sans-serif;
     }
-    .radiance-toast-success { border-left: 3px solid #34c759; }
-    .radiance-toast-error   { border-left: 3px solid #ff3b30; }
-    .radiance-toast-info    { border-left: 3px solid #4db3ff; }
+    .radiance-toast-success { border-left: 3px solid #30d158; }
+    .radiance-toast-error   { border-left: 3px solid #ff453a; }
+    .radiance-toast-info    { border-left: 3px solid #0a84ff; }
 
     .radiance-modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -400,7 +455,7 @@ style.textContent = `
         font-family: 'Inter', sans-serif;
     }
     .radiance-modal {
-        background: rgba(30, 32, 40, 0.95); color: #ddd; padding: 25px; border-radius: 12px;
+        background: rgba(28, 28, 30, 0.95); color: #ddd; padding: 25px; border-radius: 12px;
         width: 85%; max-width: 750px; max-height: 85%; overflow-y: auto;
         box-shadow: 0 10px 40px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1);
     }
@@ -416,7 +471,7 @@ style.textContent = `
         background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
         padding: 10px 15px; border-radius: 6px; color: #fff; font-size: 1em; outline: none;
     }
-    .radiance-search-input:focus { border-color: #4db3ff; box-shadow: 0 0 0 2px rgba(77, 179, 255, 0.2); }
+    .radiance-search-input:focus { border-color: #0a84ff; box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2); }
 
     .radiance-workflow-list { list-style: none; padding: 0; margin: 0; }
     .radiance-workflow-item {
@@ -441,29 +496,29 @@ style.textContent = `
         transition: background 0.2s, color 0.2s;
     }
     .radiance-btn:hover { background: rgba(255,255,255,0.2); }
-    .radiance-btn:focus-visible { outline: 2px solid #4db3ff; outline-offset: 2px; }
-    .radiance-btn.primary { background: #005bb7; }
+    .radiance-btn:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+    .radiance-btn.primary { background: #0a84ff; color: #fff; }
     .radiance-btn.primary:hover { background: #0076eb; }
-    .radiance-btn.danger { background: rgba(255, 59, 48, 0.1); color: #ff3b30; }
-    .radiance-btn.danger:hover { background: rgba(255, 59, 48, 0.2); }
-    .radiance-btn.gold { background: rgba(212, 168, 83, 0.2); color: #d4a853; border: 1px solid rgba(212, 168, 83, 0.3); }
-    .radiance-btn.gold:hover { background: rgba(212, 168, 83, 0.3); }
+    .radiance-btn.danger { background: rgba(255, 69, 58, 0.1); color: #ff453a; }
+    .radiance-btn.danger:hover { background: rgba(255, 69, 58, 0.2); }
+    .radiance-btn.gold { background: rgba(255, 214, 10, 0.2); color: #ffd60a; border: 1px solid rgba(255, 214, 10, 0.3); }
+    .radiance-btn.gold:hover { background: rgba(255, 214, 10, 0.3); }
 
     .radiance-badge {
         background: #444; color: #aaa; padding: 2px 6px; border-radius: 4px;
         font-size: 0.7em; text-transform: uppercase; margin-left: 8px; vertical-align: middle;
     }
-    .radiance-badge.system { background: #1a1c23; color: #4db3ff; border: 1px solid #005bb7; }
+    .radiance-badge.system { background: #2c2c2e; color: #0a84ff; border: 1px solid #0060df; }
 
     .radiance-folder-group { margin-bottom: 25px; }
     .radiance-folder-header {
-        font-size: 0.9em; font-weight: 700; color: #4db3ff; text-transform: uppercase;
+        font-size: 0.9em; font-weight: 700; color: #0a84ff; text-transform: uppercase;
         letter-spacing: 0.1em; margin-bottom: 12px; display: flex; align-items: center;
         opacity: 0.8;
     }
     .radiance-folder-header::before {
         content: ""; display: inline-block; width: 4px; height: 14px;
-        background: #4db3ff; margin-right: 10px; border-radius: 2px;
+        background: #0a84ff; margin-right: 10px; border-radius: 2px;
     }
 
     .radiance-modal-close { margin-top: 25px; width: 100%; padding: 12px; font-weight: bold; background: #333; }
@@ -476,7 +531,7 @@ style.textContent = `
     /* --- Control Deck HUD Styles --- */
     .radiance-hud-container {
         font-family: 'Roboto Mono', monospace;
-        color: #00f2ff;
+        color: #0a84ff;
         font-size: 10px;
         pointer-events: none;
     }
@@ -484,15 +539,15 @@ style.textContent = `
     .radiance-hud-value { color: #aaa; }
     .radiance-hud-led {
         display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-        margin-right: 6px; box-shadow: 0 0 5px rgba(0, 242, 255, 0.5);
+        margin-right: 6px; box-shadow: 0 0 5px rgba(10, 132, 255, 0.5);
     }
-    .radiance-hud-led.active { background: #00f2ff; animation: radiance-pulse 2s infinite; }
+    .radiance-hud-led.active { background: #0a84ff; animation: radiance-pulse 2s infinite; }
     .radiance-hud-led.idle { background: #333; box-shadow: none; }
 
     @keyframes radiance-pulse {
-        0% { opacity: 1; box-shadow: 0 0 2px #00f2ff; }
-        50% { opacity: 0.4; box-shadow: 0 0 8px #00f2ff; }
-        100% { opacity: 1; box-shadow: 0 0 2px #00f2ff; }
+        0% { opacity: 1; box-shadow: 0 0 2px #0a84ff; }
+        50% { opacity: 0.4; box-shadow: 0 0 8px #0a84ff; }
+        100% { opacity: 1; box-shadow: 0 0 2px #0a84ff; }
     }
 `;
 document.head.appendChild(style);
@@ -514,22 +569,22 @@ app.registerExtension({
             origOnNodeCreated?.apply(this, arguments);
 
             // Keep the Project Manager dashboard separate from the workflow library.
-            this.addWidget("button", "◎ PROJECT MANAGER", "launch_project_manager", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+            this.addWidget("button", "◎ STUDIO · SHOTS", "launch_project_manager", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#shots`, "Radiance");
             });
-            this.addWidget("button", "WORKFLOW LIBRARY", "launch_dashboard", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+            this.addWidget("button", "WORKFLOWS", "launch_dashboard", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#workflows`, "Radiance");
             });
             this.addWidget("button", "◎ ASSETS", "launch_assets", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/assets_dashboard.html", "Radiance Assets");
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#assets`, "Radiance");
             });
             this.addWidget("button", "QUICK SAVE", "quick_save", () => this.saveToLibrary());
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
             this.addWidget("button", "DOCUMENTATION", "docs_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
             this.addWidget("button", "FXTD STUDIOS", "site_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
 
-            this.color = "#111111";
-            this.bgcolor = "#111111";
+            this.color = "#1c1c1e";
+            this.bgcolor = "#1c1c1e";
             this.size = [240, 300]; // Space for filename, artist, version widgets
 
             this.properties = this.properties || {};
@@ -549,7 +604,7 @@ app.registerExtension({
             const y = this.size[1] - 25;
 
             // 1. Draw elegant horizontal divider
-            ctx.strokeStyle = "rgba(0, 242, 255, 0.2)";
+            ctx.strokeStyle = "rgba(10, 132, 255, 0.2)";
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(10, y - 5);
@@ -557,7 +612,7 @@ app.registerExtension({
             ctx.stroke();
 
             // 2. Neon Border Glow (Slight active canvas highlight)
-            ctx.strokeStyle = "#00f2ff";
+            ctx.strokeStyle = "#0a84ff";
             ctx.lineWidth = 1;
             ctx.globalAlpha = 0.15;
             ctx.strokeRect(0, 0, this.size[0], this.size[1]);
@@ -566,9 +621,9 @@ app.registerExtension({
             // 3. Status Pulse LED indicator
             ctx.beginPath();
             ctx.arc(20, y + 4, 3, 0, Math.PI * 2);
-            ctx.fillStyle = "#00f2ff";
+            ctx.fillStyle = "#0a84ff";
             ctx.shadowBlur = 4;
-            ctx.shadowColor = "#00f2ff";
+            ctx.shadowColor = "#0a84ff";
             ctx.fill();
             ctx.shadowBlur = 0;
 
@@ -576,7 +631,7 @@ app.registerExtension({
             ctx.font = "bold 9px monospace";
             ctx.fillStyle = "#555";
             ctx.fillText("STUDIO LINK:", 32, y + 7);
-            ctx.fillStyle = "#00f2ff";
+            ctx.fillStyle = "#0a84ff";
             ctx.fillText("ACTIVE", 102, y + 7);
 
             ctx.restore();
@@ -611,7 +666,7 @@ app.registerExtension({
                 if (!data.success) throw new Error(data.error);
 
                 const graphData = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-                app.loadGraphData(graphData, append);
+                await openSavedGraph(app, graphData, append, "workflow");
 
                 if (data.secure) {
                     console.log("[Radiance] Verified secure binary .rad workspace.");
@@ -853,7 +908,7 @@ app.registerExtension({
                 content = data.content;
                 metadata = data.metadata;
 
-                app.loadGraphData(typeof content === 'string' ? JSON.parse(content) : content, append);
+                await openSavedGraph(app, typeof content === 'string' ? JSON.parse(content) : content, append, wf.filename);
                 const success = true;
                 if (success) {
                     const action = append ? "Appended" : "Loaded";
@@ -1042,10 +1097,10 @@ app.registerExtension({
 
                     const header = document.createElement("div");
                     header.className = "radiance-folder-header";
-                    header.style.background = "rgba(0, 242, 255, 0.03)";
+                    header.style.background = "rgba(10, 132, 255, 0.03)";
                     header.style.padding = "6px 12px";
                     header.style.borderRadius = "4px";
-                    header.style.borderLeft = "3px solid #00f2ff";
+                    header.style.borderLeft = "3px solid #0a84ff";
 
                     let categoryLabel = folder === "Root" ? "GENERAL BIN" : `${folder.toUpperCase()} BIN`;
                     if (folder.toLowerCase().startsWith("official")) {
@@ -1101,7 +1156,7 @@ app.registerExtension({
                                 statsOverlay.style.background = "rgba(0,0,0,0.7)";
                                 statsOverlay.style.padding = "2px 6px";
                                 statsOverlay.style.fontSize = "9px";
-                                statsOverlay.style.color = "#00f2ff";
+                                statsOverlay.style.color = "#0a84ff";
                                 statsOverlay.style.fontFamily = "monospace";
                                 statsOverlay.textContent = `${wf.metadata.stats.vram_peak || "N/A"} VRAM`;
                                 thumbContainer.appendChild(statsOverlay);
@@ -1126,8 +1181,8 @@ app.registerExtension({
                         } else if (wf.filename.toLowerCase().startsWith("official/")) {
                             const badge = document.createElement("span");
                             badge.className = "radiance-badge system";
-                            badge.style.borderColor = "#d4a853";
-                            badge.style.color = "#d4a853";
+                            badge.style.borderColor = "#ffd60a";
+                            badge.style.color = "#ffd60a";
                             badge.textContent = "Official Workflow";
                             nameSpan.appendChild(badge);
                         } else {
@@ -1148,9 +1203,9 @@ app.registerExtension({
                             badgeRow.style.marginTop = "4px";
                             badgeRow.style.flexWrap = "wrap";
 
-                            const addBadge = (text, color = "#00f2ff") => {
+                            const addBadge = (text, color = "#0a84ff") => {
                                 const b = document.createElement("span");
-                                b.style.background = "rgba(0, 242, 255, 0.05)";
+                                b.style.background = "rgba(10, 132, 255, 0.05)";
                                 b.style.color = color;
                                 b.style.border = `1px solid ${color}44`;
                                 b.style.padding = "1px 5px";
@@ -1166,16 +1221,16 @@ app.registerExtension({
                                 pipeData.resolutions.forEach(r => addBadge(`${r}P`));
                             }
                             if (pipeData.fps) {
-                                addBadge(`${pipeData.fps} FPS`, "#34c759");
+                                addBadge(`${pipeData.fps} FPS`, "#30d158");
                             }
                             if (pipeData.color_spaces?.length) {
                                 pipeData.color_spaces.forEach(cs => {
                                     const label = cs.length > 8 ? cs.substring(0, 6) + ".." : cs;
-                                    addBadge(label, "#ff9500");
+                                    addBadge(label, "#98989d");
                                 });
                             }
                             if (pipeData.is_hdr) {
-                                addBadge("HDR", "#af52de");
+                                addBadge("HDR", "#409cff");
                             }
 
                             info.appendChild(badgeRow);
@@ -1228,8 +1283,8 @@ app.registerExtension({
                         if (wf.filename === "default.rad" || wf.filename.startsWith("System/")) {
                             const updateBtn = document.createElement("button");
                             updateBtn.className = "radiance-btn";
-                            updateBtn.style.background = "rgba(40, 167, 69, 0.2)";
-                            updateBtn.style.color = "#28a745";
+                            updateBtn.style.background = "rgba(48, 209, 88, 0.2)";
+                            updateBtn.style.color = "#30d158";
                             updateBtn.textContent = "Update";
                             updateBtn.onclick = async () => {
                                 if (await confirmRadianceAction(`Overwrite System Workflow "${displayName}" with your current canvas?`, "Overwrite")) {

@@ -608,14 +608,15 @@ class RadianceHDRVAEDecode:
     def _pixel_hdr(sdr: torch.Tensor, peak_nits: float, is_video: bool = False):
         """Decoded SDR -> scene-linear HDR through SDR -> HDR Universal.
 
-        Hybrid mode with the Auto backend: deterministic expansion to BT.2408
-        reference white, plus RUDRA pixel reconstruction inside the clipped
-        highlights when the checkpoint is installed. Without the checkpoint
-        the result is the deterministic expansion, and the returned path
-        says so rather than claiming learned recovery.
+        Hybrid mode with the Auto backend: RUDRA ACES 2 (the learned ACES 2.0
+        model, downloaded on first use) when it can run, else deterministic
+        expansion to BT.2408 reference white plus RUDRA pixel reconstruction
+        inside the clipped highlights when that checkpoint is installed.
+        Without either the result is the deterministic expansion, and the
+        returned path says so rather than claiming learned recovery.
         """
         from radiance.nodes.hdr.uplift_universal import RadianceSDRToHDRUniversal
-        out, _m, _s, _h, _sc, report = RadianceSDRToHDRUniversal().convert(
+        out, _m, _s, _h, _sc, report, *_ = RadianceSDRToHDRUniversal().convert(
             sdr.float().clamp(0.0, 1.0) if sdr.shape[-1] <= 3
             else torch.cat([sdr[..., :3].float().clamp(0.0, 1.0), sdr[..., 3:].float()], dim=-1),
             "sRGB", float(peak_nits), "adaptive", 0.75, 2.0, 0.85, "Linear",
@@ -629,8 +630,8 @@ class RadianceHDRVAEDecode:
         )
         learned = "learned recovery: applied" in report
         path_line = next((l[6:] for l in report.splitlines() if l.startswith("path: ")), "")
-        hdr_path = (f"pixel SDR->HDR model ({path_line})" if learned
-                    else "SDR->HDR expansion only (no pixel checkpoint installed)")
+        hdr_path = (f"learned SDR->HDR model ({path_line})" if learned
+                    else "SDR->HDR expansion only (no learned model installed)")
         return out, report, hdr_path
 
 

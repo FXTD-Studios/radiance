@@ -53,6 +53,9 @@ def _slug(section: str) -> str:
 def _cell(text: Any) -> str:
     s = "" if text is None else str(text)
     s = s.replace("\r", " ").replace("\n", " ").replace("|", "\\|").strip()
+    # ALBABIT-FIX: a "<word>" placeholder outside a code span reads as an HTML
+    # tag, which GitHub drops from the page.
+    s = "`".join(p if i % 2 else p.replace("<", "&lt;") for i, p in enumerate(s.split("`")))
     return re.sub(r"\s{2,}", " ", s)
 
 
@@ -186,6 +189,8 @@ def render(class_mappings: Mapping[str, Any], display_names: Mapping[str, str],
         if getattr(cls, "DEPRECATED", False):
             retired.append((name, key))
             continue
+        if getattr(cls, "DEV_ONLY", False):
+            continue                    # not in the menu (ComfyUI dev mode only)
         by_section.setdefault(_node_section(cls), []).append((name, key, cls))
 
     order = [s for s in section_blurbs if s in by_section] + sorted(s for s in by_section if s not in section_blurbs)

@@ -1,0 +1,659 @@
+{
+"_source": "comfy/ldm/flux3/model.py Flux3(hidden_size=256, num_heads=2, depth=2, depth_single_blocks=3), ComfyUI bdc63e7 (2026-10-15); shapes are of that tiny build, the names are the real checkpoint's.",
+"base": {
+"content_mode_blocks.image.0.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image.0.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image.0.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image.0.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image.0.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image.1.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image.1.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image.1.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image.1.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image_cond.0.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image_cond.0.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.0.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.0.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image_cond.1.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image_cond.1.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.1.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.1.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.v_proj.weight": [
+256,
+256
+],
+"early_stream_modulations.image.lin.weight": [
+768,
+256
+],
+"early_stream_modulations.image_cond.lin.weight": [
+768,
+256
+],
+"early_stream_modulations.txt.lin.weight": [
+768,
+256
+],
+"emb_in.image.weight": [
+256,
+128
+],
+"emb_in.image_cond.weight": [
+256,
+128
+],
+"final_layer.image.adaLN_modulation.1.weight": [
+512,
+256
+],
+"final_layer.image.linear.weight": [
+128,
+256
+],
+"single_blocks.0.attn_out.weight": [
+256,
+256
+],
+"single_blocks.0.k_proj.weight": [
+256,
+256
+],
+"single_blocks.0.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.0.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.0.norm.key_norm.weight": [
+128
+],
+"single_blocks.0.norm.query_norm.weight": [
+128
+],
+"single_blocks.0.q_proj.weight": [
+256,
+256
+],
+"single_blocks.0.v_proj.weight": [
+256,
+256
+],
+"single_blocks.1.attn_out.weight": [
+256,
+256
+],
+"single_blocks.1.k_proj.weight": [
+256,
+256
+],
+"single_blocks.1.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.1.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.1.norm.key_norm.weight": [
+128
+],
+"single_blocks.1.norm.query_norm.weight": [
+128
+],
+"single_blocks.1.q_proj.weight": [
+256,
+256
+],
+"single_blocks.1.v_proj.weight": [
+256,
+256
+],
+"single_blocks.2.attn_out.weight": [
+256,
+256
+],
+"single_blocks.2.k_proj.weight": [
+256,
+256
+],
+"single_blocks.2.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.2.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.2.norm.key_norm.weight": [
+128
+],
+"single_blocks.2.norm.query_norm.weight": [
+128
+],
+"single_blocks.2.q_proj.weight": [
+256,
+256
+],
+"single_blocks.2.v_proj.weight": [
+256,
+256
+],
+"single_stream_modulations.image.lin.weight": [
+768,
+256
+],
+"single_stream_modulations.image_cond.lin.weight": [
+768,
+256
+],
+"single_stream_modulations.txt.lin.weight": [
+768,
+256
+],
+"time_in.in_layer.weight": [
+256,
+256
+],
+"time_in.out_layer.weight": [
+256,
+256
+],
+"txt_in.weight": [
+256,
+20480
+],
+"txt_mode_blocks.0.attn_out.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.k_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.mlp_in.weight": [
+1536,
+256
+],
+"txt_mode_blocks.0.mlp_out.weight": [
+256,
+768
+],
+"txt_mode_blocks.0.norm.key_norm.weight": [
+128
+],
+"txt_mode_blocks.0.norm.query_norm.weight": [
+128
+],
+"txt_mode_blocks.0.q_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.v_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.attn_out.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.k_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.mlp_in.weight": [
+1536,
+256
+],
+"txt_mode_blocks.1.mlp_out.weight": [
+256,
+768
+],
+"txt_mode_blocks.1.norm.key_norm.weight": [
+128
+],
+"txt_mode_blocks.1.norm.query_norm.weight": [
+128
+],
+"txt_mode_blocks.1.q_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.v_proj.weight": [
+256,
+256
+]
+},
+"distilled": {
+"content_mode_blocks.image.0.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image.0.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image.0.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image.0.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image.0.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.0.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image.1.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image.1.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image.1.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image.1.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image.1.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image_cond.0.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image_cond.0.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.0.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.0.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.0.v_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.attn_out.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.k_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.mlp_in.weight": [
+1536,
+256
+],
+"content_mode_blocks.image_cond.1.mlp_out.weight": [
+256,
+768
+],
+"content_mode_blocks.image_cond.1.norm.key_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.1.norm.query_norm.weight": [
+128
+],
+"content_mode_blocks.image_cond.1.q_proj.weight": [
+256,
+256
+],
+"content_mode_blocks.image_cond.1.v_proj.weight": [
+256,
+256
+],
+"early_stream_modulations.image.lin.weight": [
+768,
+256
+],
+"early_stream_modulations.image_cond.lin.weight": [
+768,
+256
+],
+"early_stream_modulations.txt.lin.weight": [
+768,
+256
+],
+"emb_in.image.weight": [
+256,
+128
+],
+"emb_in.image_cond.weight": [
+256,
+128
+],
+"final_layer.image.adaLN_modulation.1.weight": [
+512,
+256
+],
+"final_layer.image.linear.weight": [
+128,
+256
+],
+"ref_time_in.in_layer.weight": [
+256,
+256
+],
+"ref_time_in.out_layer.weight": [
+256,
+256
+],
+"single_blocks.0.attn_out.weight": [
+256,
+256
+],
+"single_blocks.0.k_proj.weight": [
+256,
+256
+],
+"single_blocks.0.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.0.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.0.norm.key_norm.weight": [
+128
+],
+"single_blocks.0.norm.query_norm.weight": [
+128
+],
+"single_blocks.0.q_proj.weight": [
+256,
+256
+],
+"single_blocks.0.v_proj.weight": [
+256,
+256
+],
+"single_blocks.1.attn_out.weight": [
+256,
+256
+],
+"single_blocks.1.k_proj.weight": [
+256,
+256
+],
+"single_blocks.1.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.1.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.1.norm.key_norm.weight": [
+128
+],
+"single_blocks.1.norm.query_norm.weight": [
+128
+],
+"single_blocks.1.q_proj.weight": [
+256,
+256
+],
+"single_blocks.1.v_proj.weight": [
+256,
+256
+],
+"single_blocks.2.attn_out.weight": [
+256,
+256
+],
+"single_blocks.2.k_proj.weight": [
+256,
+256
+],
+"single_blocks.2.mlp_in.weight": [
+1536,
+256
+],
+"single_blocks.2.mlp_out.weight": [
+256,
+768
+],
+"single_blocks.2.norm.key_norm.weight": [
+128
+],
+"single_blocks.2.norm.query_norm.weight": [
+128
+],
+"single_blocks.2.q_proj.weight": [
+256,
+256
+],
+"single_blocks.2.v_proj.weight": [
+256,
+256
+],
+"single_stream_modulations.image.lin.weight": [
+768,
+256
+],
+"single_stream_modulations.image_cond.lin.weight": [
+768,
+256
+],
+"single_stream_modulations.txt.lin.weight": [
+768,
+256
+],
+"time_in.in_layer.weight": [
+256,
+256
+],
+"time_in.out_layer.weight": [
+256,
+256
+],
+"txt_in.weight": [
+256,
+20480
+],
+"txt_mode_blocks.0.attn_out.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.k_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.mlp_in.weight": [
+1536,
+256
+],
+"txt_mode_blocks.0.mlp_out.weight": [
+256,
+768
+],
+"txt_mode_blocks.0.norm.key_norm.weight": [
+128
+],
+"txt_mode_blocks.0.norm.query_norm.weight": [
+128
+],
+"txt_mode_blocks.0.q_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.0.v_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.attn_out.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.k_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.mlp_in.weight": [
+1536,
+256
+],
+"txt_mode_blocks.1.mlp_out.weight": [
+256,
+768
+],
+"txt_mode_blocks.1.norm.key_norm.weight": [
+128
+],
+"txt_mode_blocks.1.norm.query_norm.weight": [
+128
+],
+"txt_mode_blocks.1.q_proj.weight": [
+256,
+256
+],
+"txt_mode_blocks.1.v_proj.weight": [
+256,
+256
+]
+}
+}

@@ -20,6 +20,7 @@ import pathlib
 import re
 
 import pytest
+from _repo_files import repo_py_files  # noqa: E402
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _PLATFORM_REQS = ("requirements_windows.txt", "requirements_linux.txt",
@@ -38,7 +39,7 @@ def test_no_module_invokes_a_bare_ffmpeg_string():
     developer's Linux box and fails on most Windows installs.
     """
     offenders = []
-    for p in _ROOT.rglob("*.py"):
+    for p in repo_py_files(_ROOT):
         rel = p.relative_to(_ROOT).as_posix()
         if rel.startswith(("tests/", "build/", "_to_delete/", ".")) or "__pycache__" in rel:
             continue
@@ -160,7 +161,7 @@ def test_pyproject_runtime_deps_are_all_imported_somewhere():
     }
     sources = "\n".join(
         p.read_text(encoding="utf-8", errors="ignore")
-        for p in _ROOT.rglob("*.py")
+        for p in repo_py_files(_ROOT)
         if not p.relative_to(_ROOT).as_posix().startswith((".", "build/", "_to_delete/"))
     )
     unused = [d for d in deps

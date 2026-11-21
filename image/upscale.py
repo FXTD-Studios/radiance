@@ -449,6 +449,15 @@ def resolve_input_space(img: torch.Tensor, input_color_space: str) -> str:
     return "sRGB"
 
 
+def resolve_ai_upscale_mode(img: torch.Tensor, mode: str) -> str:
+    """AI Upscale's 'Auto': Refine (HDR) when any colour value is above 1.0
+    (the ESRGAN-family models are trained on 0-1), else Standard."""
+    if mode != "Auto":
+        return mode
+    rgb = img[..., :3]
+    return "Refine (HDR)" if rgb.numel() and float(rgb.max()) > 1.0 + 1e-4 else "Standard"
+
+
 # =============================================================================
 # DETAIL ENHANCEMENT (v1.1.0: true 32-bit, no PIL roundtrip)
 # =============================================================================
@@ -1017,6 +1026,7 @@ class RadianceProUpscale:
                      "proportion to edge strength. 0 = off; counteracts sharpening on edges."},
                 ),
                 "input_color_space": (["sRGB", "Linear", "Auto"], {
+                    "default": "Auto",
                     "tooltip": "Encoding of the input. sRGB allows the linear-light conversion; Linear leaves "
                     "values untouched. Auto: Linear when any value is outside 0-1 (HDR), else sRGB; the "
                     "info output says which.",
@@ -1265,7 +1275,7 @@ class RadianceUpscaleBySize:
                 "input_color_space": (
                     ["sRGB", "Linear", "Auto"],
                     {
-                        "default": "sRGB",
+                        "default": "Auto",
                         "tooltip": "Colour space of the input. Linear skips the sRGB-to-linear conversion "
                         "for HDR/linear input. Auto: Linear when any value is outside 0-1, else sRGB.",
                     },
@@ -1411,7 +1421,7 @@ class RadianceDownscale32bit:
                 "input_color_space": (
                     ["sRGB", "Linear", "Auto"],
                     {
-                        "default": "sRGB",
+                        "default": "Auto",
                         "tooltip": (
                             "Colour space of the input image. Linear skips the sRGB-linear conversion "
                             "for HDR or already-linear input. Auto: Linear when any value is outside "
@@ -1822,8 +1832,13 @@ class RadianceAIUpscale:
     MODEL_URLS = {name: spec[0] for name, spec in MODEL_FILES.items()}
 
     def __init__(self):
+        self._last_download_error = None
         self.model = None
         self.current_model_name = None
+        # True when the last upscale() returned the bicubic fallback instead of
+        # running a model. The node's outputs cannot carry it, so callers that
+        # must not ship a resample as an AI upscale (Delivery) read it here.
+        self.used_fallback = False
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -1838,10 +1853,12 @@ class RadianceAIUpscale:
                     },
                 ),
                 "mode": (
-                    ["Standard", "Refine (HDR)", "Normalize (HDR)"],
+                    ["Auto", "Standard", "Refine (HDR)", "Normalize (HDR)"],
                     {
-                        "default": "Standard",
-                        "tooltip": "Processing mode. 'Standard' = direct upscale. 'Refine (HDR)' = log-compression for highlights. 'Normalize (HDR)' = scales to safe range.",
+                        "default": "Auto",
+                        "tooltip": "Processing mode. 'Auto' = Refine (HDR) when any value is above 1.0, else Standard; "
+                                   "the info output says which ran. 'Standard' = direct upscale. 'Refine (HDR)' = "
+                                   "log-compression for highlights. 'Normalize (HDR)' = scales to safe range.",
                     },
                 ),
                 "tile_size": (
@@ -1913,16 +1930,26 @@ class RadianceAIUpscale:
     DESCRIPTION = "AI-powered upscaling using neural network models. Supports tiled processing for large images."
 
     def _download_model(self, model_name: str, target_path: str) -> bool:
-        """Fetch a pinned model file (see MODEL_FILES). True when it is installed."""
+        """Fetch a pinned model file (see MODEL_FILES). True when it is installed.
+
+        On failure the reason (a refusal or a download error) is kept in
+        `_last_download_error` for the node's status.
+        """
+        self._last_download_error = None
         if model_name not in self.MODEL_FILES:
             return False
         url, sha256, size = self.MODEL_FILES[model_name]
+        from radiance.core.consent import LEGACY_UPSCALE_OFFLINE_ENV
         from radiance.core.model_fetch import ModelFetchError, fetch
         try:
-            fetch(url, target_path, sha256=sha256, size=size, label=model_name)
+            # Until 4.0 this ignored the legacy RADIANCE_UPSCALE_OFFLINE=1
+            # opt-out that the rest of the upscale pack honours.
+            fetch(url, target_path, sha256=sha256, size=size, label=model_name,
+                  legacy_offline_env=LEGACY_UPSCALE_OFFLINE_ENV)
             return True
         except ModelFetchError as e:
             logger.error("%s", e)
+            self._last_download_error = str(e)
             return False
 
     def _load_supir_model(self, model_name: str, model_path: str, sdxl_model_name: str = ""):
@@ -2175,7 +2202,8 @@ class RadianceAIUpscale:
                     model_path = target_path
                 else:
                     why = ("auto_download is off" if not auto_download
-                           else "the download failed or downloads are turned off; see the log")
+                           else getattr(self, "_last_download_error", None)
+                           or "the download failed or downloads are turned off; see the log")
                     return (
                         None,
                         f"Model {model_name} not found and not downloaded: {why}. "
@@ -2240,7 +2268,8 @@ class RadianceAIUpscale:
 
     def _fallback_upscale(self, image, model_name):
         """Fallback to algorithmic upscale when AI model unavailable."""
-        logger.warning("Falling back to Lanczos upscale (AI model not loaded)")
+        self.used_fallback = True
+        logger.warning("Falling back to bicubic upscale (AI model not loaded)")
 
         # ── Validate input shape (must be BHWC) ──────────────────────────────
         if not isinstance(image, torch.Tensor) or image.dim() != 4:
@@ -2366,6 +2395,8 @@ class RadianceAIUpscale:
         clip=None,
     ):
         """Upscale image using AI model with tiled processing."""
+        self.used_fallback = False
+        mode, auto_mode = resolve_ai_upscale_mode(image, mode), mode == "Auto"
 
         # Load model if needed
         if self.model is None or self.current_model_name != model_name:
@@ -2517,7 +2548,7 @@ class RadianceAIUpscale:
             # But avoid clamping max for HDR modes
             result = torch.clamp(result, min=0)
 
-            info = f"Upscaled with {model_name} ({scale}x) [{mode}]"
+            info = f"Upscaled with {model_name} ({scale}x) [{mode}{' (Auto)' if auto_mode else ''}]"
 
             if unload_model:
                 # Drop the cache entry too. Clearing self.model alone left the

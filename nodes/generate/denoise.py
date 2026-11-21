@@ -101,7 +101,7 @@ class RadianceDenoise:
                 "motion_compensation": (
                     "BOOLEAN",
                     {"default": True,
-                     "tooltip": "Before temporal blending, shifts each neighbour frame per pixel by the best of the 9 offsets within 1 pixel (lowest RGB difference). Only helps with motion of about 1 pixel per frame."}
+                     "tooltip": "Before temporal blending, aligns each neighbour frame to this one: motion is estimated coarse to fine by 8x8 block matching (up to about 30 pixels per frame on large frames, less on small ones) and the neighbour is warped, edges repeating. Off blends neighbours where they are."}
                 ),
                 "detail_recovery": (
                     "FLOAT",
@@ -266,21 +266,94 @@ class RadianceDenoise:
             return 0.015
         return float(valid.min().item())
 
+    #: Motion search: offsets tried at the coarsest pyramid level and at each
+    #: finer one, block size, pyramid depth. +-4 at 1/8 scale locks onto
+    #: motion of about +-36 px; each finer level refines by +-2.
+    _MC_COARSE_SEARCH = 4
+    _MC_SEARCH = 2
+    _MC_BLOCK = 8
+    _MC_LEVELS = 3
+    _MC_MIN_SIDE = 16
+
     @staticmethod
-    def _motion_compensate_t(frame: torch.Tensor, neighbor: torch.Tensor) -> torch.Tensor:
-        active_frame = frame[..., :3] if frame.shape[-1] >= 3 else frame
-        active_neighbor = neighbor[..., :3] if neighbor.shape[-1] >= 3 else neighbor
-        best_sad = torch.full(frame.shape[:-1], float("inf"), device=frame.device, dtype=frame.dtype)
-        compensated = neighbor.clone()
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                shifted = torch.roll(active_neighbor, shifts=(dy, dx), dims=(0, 1))
-                sad = (active_frame - shifted).abs().sum(dim=-1)
-                mask = sad < best_sad
-                best_sad = torch.where(mask, sad, best_sad)
-                shifted_full = torch.roll(neighbor, shifts=(dy, dx), dims=(0, 1))
-                compensated = torch.where(mask.unsqueeze(-1), shifted_full, compensated)
-        return compensated
+    def _mc_warp(img: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
+        """Sample `img` (1, C, H, W) at p + flow(p); flow (1, 2, H, W) is (dy, dx)
+        in pixels. Edges repeat."""
+        _, _, H, W = img.shape
+        ys = torch.arange(H, device=img.device, dtype=img.dtype).view(H, 1).expand(H, W)
+        xs = torch.arange(W, device=img.device, dtype=img.dtype).view(1, W).expand(H, W)
+        gy = (ys + flow[0, 0]) * (2.0 / max(H - 1, 1)) - 1.0
+        gx = (xs + flow[0, 1]) * (2.0 / max(W - 1, 1)) - 1.0
+        grid = torch.stack([gx, gy], dim=-1).unsqueeze(0)
+        return F.grid_sample(img, grid, mode="bilinear", padding_mode="border", align_corners=True)
+
+    @staticmethod
+    def _mc_shift(img: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
+        """_mc_warp for a whole-pixel flow, as a gather: (1, 1, H, W) only."""
+        _, _, H, W = img.shape
+        fy, fx = flow[0, 0].long(), flow[0, 1].long()
+        ys = (torch.arange(H, device=img.device).view(H, 1) + fy).clamp_(0, H - 1)
+        xs = (torch.arange(W, device=img.device).view(1, W) + fx).clamp_(0, W - 1)
+        return img.reshape(-1)[ys * W + xs].view(1, 1, H, W)
+
+    @staticmethod
+    def _mc_per_pixel(block_flow: torch.Tensor, block: int, h: int, w: int) -> torch.Tensor:
+        return block_flow.repeat_interleave(block, 2).repeat_interleave(block, 3)[..., :h, :w]
+
+    @classmethod
+    def _motion_compensate_t(cls, frame: torch.Tensor, neighbor: torch.Tensor) -> torch.Tensor:
+        """Warp `neighbor` (H, W, C) onto `frame` (H, W, C).
+
+        3.x picked the best of the nine 1-pixel offsets per pixel, so only
+        motion of about a pixel per frame was followed. Since 4.0 this is
+        hierarchical block matching: one motion vector per 8x8 block, found on
+        a pyramid from coarse to fine. The coarsest level tries every vector
+        within +-4, each finer level those within +-2 of the coarser estimate,
+        by the mean absolute difference over the block (no move wins ties). The neighbour is then warped with edge
+        repeat, so nothing wraps around from the far side as torch.roll did.
+        """
+        f = frame[..., :3].float().mean(-1)[None, None]
+        n = neighbor[..., :3].float().mean(-1)[None, None]
+        pyramid = [(f, n)]
+        while (len(pyramid) <= cls._MC_LEVELS
+               and min(pyramid[-1][0].shape[-2:]) >= 2 * cls._MC_MIN_SIDE):
+            pf, pn = pyramid[-1]
+            pyramid.append((F.avg_pool2d(pf, 2), F.avg_pool2d(pn, 2)))
+
+        b = cls._MC_BLOCK
+        block_flow = None
+        for lf, ln in reversed(pyramid):
+            h, w = lf.shape[-2:]
+            hb, wb = -(-h // b), -(-w // b)
+            if block_flow is None:
+                block_flow = lf.new_zeros(1, 2, hb, wb)
+                r = cls._MC_COARSE_SEARCH
+            else:
+                # One level up is half the size: vectors double.
+                block_flow = F.interpolate(block_flow, size=(hb, wb), mode="nearest") * 2.0
+                r = cls._MC_SEARCH
+            # The flow stays whole pixels, so trials are gathers, not resamples.
+            base = cls._mc_per_pixel(block_flow, b, h, w)
+            offsets = [(0, 0)] + [(dy, dx) for dy in range(-r, r + 1)
+                                  for dx in range(-r, r + 1) if (dy, dx) != (0, 0)]
+            best_cost = best = None
+            for dy, dx in offsets:
+                off = base.new_tensor([dy, dx]).view(1, 2, 1, 1)
+                diff = (lf - cls._mc_shift(ln, base + off)).abs()
+                cost = F.avg_pool2d(diff, b, stride=b, ceil_mode=True)
+                trial = block_flow + off
+                if best_cost is None:
+                    best_cost, best = cost, trial
+                    continue
+                better = cost < best_cost
+                best_cost = torch.where(better, cost, best_cost)
+                best = torch.where(better, trial, best)
+            block_flow = best
+
+        H, W = frame.shape[:2]
+        flow = cls._mc_per_pixel(block_flow, b, H, W)
+        src = neighbor.float().permute(2, 0, 1).unsqueeze(0)
+        return cls._mc_warp(src, flow)[0].permute(1, 2, 0).to(neighbor.dtype)
 
     def _denoise_gpu(
         self,

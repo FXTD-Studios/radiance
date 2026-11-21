@@ -19,6 +19,7 @@ and the endpoint returned HTTP 200 with status "error".
 import ast
 import pathlib
 import re
+import os
 import subprocess
 import sys
 
@@ -98,7 +99,8 @@ def test_the_engine_pulls_in_no_node_module_of_its_own():
         "assert callable(w.write_frames);"
         "print('ok')"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"})
     if r.returncode != 0 and "No module named 'torch'" in r.stderr:
         pytest.skip("torch is not importable in a bare interpreter here")
     assert r.returncode == 0, r.stderr[-2000:]
@@ -120,7 +122,8 @@ def test_the_engine_writes_a_file_without_comfyui():
         "assert n==1 and pathlib.Path(p).is_file() and pathlib.Path(p).stat().st_size>0, (p,n);"
         "print('ok')"
     )
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONUTF8": "1"})
     # Third-party only. A bare `No module named` catch also swallowed
     # `No module named 'radiance'` -- so when the folder-name assumption above
     # was wrong, this test reported itself as skipped rather than broken, and

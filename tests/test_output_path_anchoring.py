@@ -135,14 +135,16 @@ class TestNodesWriteWhereTheyShould:
             "the node wrote into the ComfyUI install directory"
 
     def test_cdl_roundtrips_through_the_default_paths(self, comfy_dirs):
-        """Export then Import with stock widget values must find the file."""
+        """Export then Import with the path the widget suggests must find the file.
+
+        4.0: the Import default is empty, with this path as its placeholder."""
         from radiance.nodes.color.cdl import RadianceCDLExport, RadianceCDLImport
 
         RadianceCDLExport().save(
             "grading/shot_01.cdl", 1.25, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0
         )
 
-        default = RadianceCDLImport.INPUT_TYPES()["required"]["file_path"][1]["default"]
+        default = RadianceCDLImport.INPUT_TYPES()["required"]["file_path"][1]["placeholder"]
         result = RadianceCDLImport().load(default)
 
         assert result[1] == pytest.approx(1.25), "the exported CDL was not found"

@@ -4,59 +4,34 @@
 
 Readers, writers, EXR, image, video, and file exchange.
 
-5 nodes. [All sections](README.md)
+4 nodes. [All sections](README.md)
 
-- [DPX Read](#dpx-read)
-- [DPX Write](#dpx-write)
+- [Load Still (RUDRA)](#load-still-rudra)
 - [Read](#read)
 - [Write](#write)
 - [Write EXR](#write-exr)
 
-## DPX Read
+## Load Still (RUDRA)
 
-`RadianceDigitalCinemaRead`
+`RadianceRudraLoadStill`
 
-Read a video, image or frame sequence through the Read node, decoded to scene-linear, and output shot metadata (source info, colorspace, fps) for downstream pipeline nodes.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `source_path` | string |  |  | Video file, image, or frame sequence (e.g. shot.####.exr). Required: an empty path stops the graph. |
-| `read_mode` | choice | `Auto` | `Auto`, `Video`, `Sequence`, `EXR` | How to treat source_path. Auto detects from the path; EXR is handled exactly like Sequence. |
-| `start_frame` | int | 1 |  | Sequence: the frame number to start at (a number outside the range on disk falls back to the first frame). Video: the frame to start at counting from 1, so the default 1 is the clip's first frame. |
-| `frame_limit` | int | 0 |  | Maximum number of frames to read from start_frame. 0 reads to the end. |
-| `input_colorspace` | choice | `sRGB (Standard)` | `sRGB (Standard)`, `Auto / Linear (pass-through)`, `Rec.709 (BT.1886)`, `Rec.709 (camera OETF)`, `Rec.2020 (BT.2020 OETF)`, `P3-D65 (Gamma 2.6)`, `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | Transfer the source was encoded with. It is decoded to scene-linear; shot_metadata.colorspace records the result. |
-| `fps_override` | float | 0 |  | 0 = the source's own rate. Written to shot_metadata.fps. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `mask` | MASK |
-| `shot_metadata` | RADIANCE_SHOT |
-
-## DPX Write
-
-`RadianceDigitalCinemaWrite`
-
-Simplified writer kept for older pipelines: passes images, output_path, format and filename to the Write node with every other setting at its default, and returns a status string.
+Loads an SDR still as RUDRA does: every code kept (8 or 16 bit), the EXIF orientation applied, and the colour tag read (ICC profile, PNG cICP / sRGB / cHRM): Rec.709 / sRGB, Display P3, Rec.2020 or Adobe RGB. Wire `source` into SDR → HDR Analytic (RUDRA) so the master is made from the right primaries. A profile RUDRA does not know is reported and read as Rec.709, never guessed.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `images` | IMAGE |  |  | Frames to write, passed to the Write node with its defaults (color_space Linear (pass-through), so values are written unchanged). |
-| `output_path` | string | `~/radiance_output` |  | Output path, as in the Write node. With filename empty it is the full stem (single images and video get the extension appended; sequences use it as a folder). |
-| `format` (optional) | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. IMG writes only the first frame of a batch; SEQ and VID write every frame. |
-| `filename` (optional) | string |  |  | Optional stem. When set, output_path is treated as a folder and the file is named <filename>_v0001. |
+| `image` | choice |  | files found in the matching models or input folder | A still in ComfyUI's input folder (or upload one). |
+| `path` (optional) | string |  |  | A file anywhere instead. Empty: the image above. |
 
 **Outputs**
 
-| Output | Type |
-| :--- | :--- |
-| `status` | STRING |
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `image` | IMAGE | The still's codes, oriented, 0..1 (not converted). |
+| `alpha` | MASK | Its alpha (1 where it has none). |
+| `source` | RUDRA_SOURCE | Its primaries, for SDR → HDR Analytic (RUDRA)'s source input. |
+| `note` | STRING | What was found and what is done, in words. |
 
 ## Read
 
@@ -68,7 +43,7 @@ Read an image, EXR, video or numbered sequence into the pipeline. Video decodes 
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `browse` | choice |  | `` | Browse or upload a file from disk. • Click the upload icon (📎) to open a native file picker. • Supports images (PNG, JPG, TIFF, EXR, DPX, HDR, WebP) and video (MP4, MOV, MXF, AVI, WebM, MKV). • Uploaded files are copied to ComfyUI's input• Leave blank and fill in 'path' below for absolute / network / sequence paths. |
+| `browse` | choice |  | `` | An image or video in ComfyUI's input folder. • Upload… (below) or drop a file on the node to add one. • Images: PNG, JPG, TIFF, EXR, DPX, HDR, WebP. Video: MP4, MOV, MXF, AVI, WebM, MKV and more. • Leave blank and fill in 'path' below for absolute, network or sequence paths. |
 | `media_type` (optional) | choice | `Auto` | `Auto`, `Image`, `Video`, `Sequence` | Override auto-detection. Auto infers from path extension and pattern. |
 | `path` (optional) | string |  |  | Optional — used only when 'browse' is left blank. Accepts any absolute path, UNC network path, or sequence pattern: Sequence patterns: /frames/f.%04d.exr · /frames/f.####.png · /dir/ Network paths: /mnt/nas/renders/shot or \\server\share\shot Format is auto-detected from extension. |
 | `color_space` (optional) | choice | `Auto / Linear (pass-through)` | `Auto / Linear (pass-through)`, `sRGB`, `Rec.709 (BT.1886)`, `Rec.709 (camera OETF)`, `Rec.2020 (BT.2020 OETF)`, `P3-D65 (Gamma 2.6)`, `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | Decode the input from this color space to scene-linear before processing. |
@@ -95,6 +70,8 @@ Read an image, EXR, video or numbered sequence into the pipeline. Video decodes 
 | `image` | IMAGE | Frames as a batch. Scene-linear once color_space has decoded them. |
 | `mask` | MASK | Alpha. For a ProRes 4444, an RGBA EXR or an RGBA sequence this is the file's own matte; otherwise zeros. |
 | `info` | STRING | JSON describing what was actually read: resolution, frame count and range, bit depth, codec, EXR layers and windows, colour tags, timecode. Nuke's metadata tab, as a wire you can plug in. |
+| `fps` | FLOAT | Frame rate the frames play at: the clip's or the sequence header's rate, divided by frame_step; 24 for a still or a sequence with no rate. Wire it to Write's fps so a 25 or 30 fps clip is not written at 24. |
+| `audio` | AUDIO | The clip's sound under the frames that were read (48 kHz stereo), for Write's audio input. Empty for stills, sequences and silent clips. |
 
 ## Write
 
@@ -106,27 +83,33 @@ Write images or EXR sequences to disk with configurable format options.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | * |  |  | Accepts any ComfyUI output: IMAGE tensor, batched video frames, VHSor any dict/list carrying a video path. |
-| `output_path` | string | `~/radiance_output` |  | Output directory + filename stem. Extension is appended automatically based on format. For sequences: output_path becomes a folder and frames are named <folder>_<frame>.<ext> (e.g. /out/shot -> /out/shot/shot_1001.exr). Network paths are fully supported — use the path as mounted on this machine: Linux / Mac → /mnt/nas/renders/shot_001 Windows UNC → \\server\share\renders\shot_001 Windows drive→ Z:\renders\shot_001 The directory is created automatically (mkdir -p) if it does not exist. Write permissions on the share are required. |
+| `image` | * |  |  | Accepts any ComfyUI output: • IMAGE tensor. • Batched video frames. • VHS video output. • Any dict/list carrying a video path. |
+| `output_path` | string | `~/radiance_output` |  | Output directory + filename stem (only the directory when filename is set). Extension is appended automatically based on format. For sequences: output_path becomes a folder and frames are named &lt;folder>_&lt;frame>.&lt;ext> (e.g. /out/shot -> /out/shot/shot_1001.exr). A relative path is under ComfyUI's output folder. Network paths are fully supported. Use the path as mounted on this machine: • Linux / Mac: /mnt/nas/renders/shot_001 • Windows UNC: \\server\share\renders\shot_001 • Windows drive: Z:\renders\shot_001 The directory is created automatically (mkdir -p) if it does not exist. Write permissions on the share are required. |
 | `format` | choice | `IMG │ EXR (16-bit half)` | `IMG │ PNG (8-bit)`, `IMG │ PNG (16-bit)`, `IMG │ JPEG`, `IMG │ TIFF (16-bit)`, `IMG │ TIFF (32-bit float)`, `IMG │ DPX`, `IMG │ WEBP`, `IMG │ EXR (16-bit half)`, `IMG │ EXR (32-bit float)`, `IMG │ Radiance HDR (.hdr)`, and 12 more | Output format. Extension is appended automatically. |
-| `filename` (optional) | string |  |  | Output filename stem (version appended automatically). Leave empty to use output_path as the full stem. |
-| `version` (optional) | int | 1 | 0 to 9999 | Version number appended to filename (e.g. shot_001_v0001). |
-| `color_space` (optional) | choice | `Linear (pass-through)` | `Linear (pass-through)`, `sRGB`, `Rec.709 (BT.1886)`, `Rec.709`, `Rec.2020`, `P3-D65 (Gamma 2.6)`, `PQ (HDR10 / ST.2084)`, `HLG (Hybrid Log-Gamma)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | File encoding: transfer AND primaries, from working_space. Linear (pass-through) writes the working values unchanged. EXR and DPX record it in their headers (chromaticities, oiio:ColorSpace); video gets primaries/transfer/matrix tags. For a video of scene-linear HDR (e.g. from SDR -> HDR Universal) pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light in a video plays back too dark. |
+| `filename` (optional) | string |  |  | Output filename stem (version appended automatically). Leave empty to use output_path as the full stem, with no version. |
+| `version` (optional) | int | 1 | 0 to 9999 | Version number appended to filename (e.g. shot_001_v0001), when filename is set. Its control steps it after each run: • fixed: stays as it is. • increment: +1 after each run, so every run writes a new version, even when nothing upstream changed. |
+| `color_space` (optional) | choice | `Linear (pass-through)` | `Linear (pass-through)`, `sRGB`, `Rec.709 (BT.1886)`, `Rec.709`, `Rec.2020`, `P3-D65 (Gamma 2.6)`, `PQ (HDR10 / ST.2084)`, `HLG (Hybrid Log-Gamma)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | File encoding: transfer AND primaries, from working_space. • Linear (pass-through) writes the working values unchanged. • EXR and DPX record it in their headers (chromaticities, oiio:ColorSpace); video gets primaries/transfer/matrix tags. For a video of scene-linear HDR (e.g. from SDR -> HDR Universal): • Pick PQ or HLG for HDR, Rec.709 or sRGB for SDR: linear light in a video plays back too dark. • PQ and HLG video need a 10-bit format (H.265 10-bit or ProRes); H.264 and DNxHR HQ are refused. • PQ H.265 carries HDR10 metadata (hdr10_mastering_display, MaxCLL/MaxFALL measured from the frames). |
 | `fps` (optional) | float | 0 | 0 to 240, step 0.001 | Frame rate for video and sequence outputs. 0 = auto-detect from the source video (falls back to 24 if unavailable). |
 | `quality` (optional) | int | 18 | 0 to 51 | CRF quality for H.264/H.265 (lower = better). Also JPEG quality 0–100 (remapped). |
 | `exr_compression` (optional) | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression codec (EXR formats only). |
-| `start_frame` (optional) | int | 1001 | 0 to 99999 | First frame number for sequences. |
+| `start_frame` (optional) | int | 1001 | 0 to 99999 | First frame number for sequences. EXR frames and the sequence's .wav carry it as timecode, at fps (frame 1001 at 24 fps = 00:00:41:17). |
 | `frame_padding` (optional) | int | 4 | 1 to 8 | Zero-padding width for frame numbers (e.g. 4 → 0001). |
-| `audio_source` (optional) | string |  |  | Path to audio file to mux into video output (optional). Takes priority over the 'audio' input when both are set. |
-| `broadcast_safe` (optional) | boolean | off |  | 8/16-bit stills: clamp to legal range (16–235). Video is always encoded legal-range by the RGB→YUV step; float formats are never clamped. |
+| `broadcast_safe` (optional) | boolean | off |  | 8/16-bit stills: clamp to legal range (16–235). • Video is always encoded legal-range by the RGB→YUV step. • Float formats are never clamped. |
 | `overwrite` (optional) | boolean | off |  | Overwrite existing files. When disabled (default), a unique suffix is appended instead of destroying the existing file. |
 | `proxy_scale` (optional) | float | 0 | 0 to 1, step 0.05 | Downscale output by this factor for proxy preview (0 = full resolution). |
-| `audio` (optional) | AUDIO |  |  | Audio tensor from Video Loader (muxed into video output). |
+| `audio` (optional) | AUDIO |  |  | Audio tensor, e.g. from a video loader. • Video: muxed into the file. • Sequences: written as an audio file when write_audio is on. |
 | `mask` (optional) | MASK |  |  | Optional alpha/matte, written as the alpha channel of EXR, PNG, TIFF, DPX, WEBP and ProRes 4444. Ignored by JPEG, HDR, H.264, H.265, ProRes 422 and DNxHR, which have no alpha. |
 | `working_space` (optional) | choice | `Linear Rec.709 (sRGB)` | `Linear Rec.709 (sRGB)`, `ACEScg`, `Linear Rec.2020`, `Linear P3-D65`, `ACES2065-1` | Scene-linear space the incoming IMAGE is in. color_space is encoded from here, primaries AND transfer. Match the Read node's working_space. |
-| `ocio_colorspace` (optional) | string |  |  | Any colorspace name or alias from the OCIO config. When set it overrides color_space and OpenColorIO encodes the working space into it. Empty = use color_space. |
+| `ocio_colorspace` (optional) | string |  |  | Any colorspace name or alias from the OCIO config. When set, it overrides color_space and OpenColorIO encodes the working space into it. Empty = use color_space. |
 | `ocio_config` (optional) | string |  |  | Path to a config.ocio or an ocio:// URI. Empty = $OCIO, else OCIO's built-in ACES 2.0 studio config. |
-| `hdr_reference_nits` (optional) | float | 203 | 48 to 1000, step 1 | PQ and HLG only: the luminance scene-linear 1.0 (diffuse white) is written at. 203 is BT.2408 and Radiance's HDR convention; 100 matches OCIO/ACES. PQ clips at 10,000 nits, HLG at about 3.8x diffuse white. |
+| `hdr_reference_nits` (optional) | float | 203 | 48 to 1000, step 1 | PQ and HLG only: the luminance scene-linear 1.0 (diffuse white) is written at. • 203 is BT.2408 and Radiance's HDR convention. • 100 matches OCIO/ACES. PQ clips at 10,000 nits, HLG at about 3.8x diffuse white. |
+| `hdr10_mastering_display` (optional) | choice | `P3-D65 · 1000 nits` | `P3-D65 · 1000 nits`, `P3-D65 · 4000 nits`, `Rec.2020 · 1000 nits`, `Rec.2020 · 4000 nits` | PQ with MP4 (H.265 10-bit) only: the HDR10 mastering display (SMPTE ST 2086) written into the file, the monitor the grade was judged on. • P3-D65 · 1000 nits is the usual OLED grading display and the streaming default. • 4000 nits for high-end LCD grading monitors. MaxCLL / MaxFALL are always measured from the frames. |
+| `write_audio` (optional) | boolean | off |  | Sequences: also write the sound (the 'audio' input or audio_source) as an audio file, as long as the frames. A .wav starts at the first frame's timecode (Broadcast WAV), so an editor lines it up with them. |
+| `audio_source` (optional) | string |  |  | Path to an audio file, used instead of the 'audio' input (optional). It is converted to audio_codec and fitted to the picture's length. |
+| `audio_codec` (optional) | choice | `Auto` | `Auto`, `PCM 24-bit`, `PCM 32-bit float`, `FLAC 24-bit`, `AAC`, `MP3` | Audio of a video: • Auto: PCM 24-bit (lossless) in a MOV (ProRes, DNxHR), AAC in an MP4. • PCM in an MP4 is read by few players. • FLAC cannot go in a MOV, which gets PCM 24-bit instead. • AAC is 256 kb/s, MP3 320 kb/s. A sequence's audio file: .wav for Auto and PCM, .flac, .m4a (AAC) or .mp3. |
+| `audio_path` (optional) | string |  |  | Sequences: where the audio file goes. • Empty: in the sequence's folder, named like the frames (shot_v0001.wav). • Otherwise a folder, or a file path (its extension follows audio_codec). A relative path is under ComfyUI's output folder; quotes from "Copy as path" are fine. |
+| `aces_amf` (optional) | boolean | off |  | EXR in ACEScg or ACES2065-1 only: also write an ACES Metadata File (AMF v2.0) beside the master, as RUDRA does: one per sequence (named after it, frames as ####) or per image. It names the ACES 2.0 SDR Rec.709 output transform and, for ACEScg, the ACEScg to ACES2065-1 input transform, so grading and review tools open the master in the right ACES pipeline. |
+| `hdr10plus_json` (optional) | string |  |  | PQ with MP4 (H.265 10-bit) only: an HDR10+ JSON (◎ HDR Dynamic Metadata (RUDRA)'s hdr10plus_path, or any x265 --dhdr10-info file) carried into the video as ST 2094-40 dynamic metadata, as RUDRA does. It needs an ffmpeg whose x265 was built with HDR10+; the receipt says whether the file carries it. Empty: HDR10 only. |
 
 Output node: writes or displays, no graph outputs.
 
@@ -140,22 +123,24 @@ Write one multi-part OpenEXR frame with named AOV parts (beauty, depth, normal, 
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `filename_prefix` | string | `radiance_multipart` |  | File name stem. The file is written as <prefix>.<frame_index, 4-digit padded>.exr. |
+| `filename_prefix` | string | `radiance_multipart` |  | File name stem. The file is written as &lt;prefix>.&lt;frame_index, 4-digit padded>.exr. |
 | `beauty` | IMAGE |  |  | Main image, written as the 'beauty' part (R, G, B, plus A if it has 4 channels). Values are written unchanged, so feed scene-linear data. Each frame of a batch is written to its own file. |
-| `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float. |
+| `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float. The depth part is always 32-bit float. |
 | `compression` | choice | `ZIP` | `ZIP`, `ZIPS`, `PIZ`, `RLE`, `Uncompressed`, `PXR24`, `B44`, `B44A`, `DWAA`, `DWAB` | EXR compression for every part. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; PXR24 is lossy on 32-bit float; B44, B44A, DWAA and DWAB are lossy. |
-| `depth` (optional) | IMAGE |  |  | Depth AOV written as a single Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised. |
-| `normal` (optional) | IMAGE |  |  | Normals AOV written as NX, NY, NZ in a 'normal' part, values unchanged (no 0-1 to -1..1 remap). |
+| `depth` (optional) | IMAGE |  |  | Depth AOV written as a single 32-bit float Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised. 0 (no surface, e.g. sky) is written as 1e10, far away, as renderers do, so ZDefocus and fog do not treat the sky as touching the lens. |
+| `normal` (optional) | IMAGE |  |  | Normals AOV written as N.R, N.G, N.B in a 'normal' part, signed -1..1 (camera space, +Y up, +Z toward the camera), as compositors expect. A 0..1 encoded pass (Multipass Estimate's normal_map) is decoded; a signed pass is kept. |
 | `albedo` (optional) | IMAGE |  |  | Albedo AOV written as albedo.R/G/B in an 'albedo' part, values unchanged. |
-| `custom_1` (optional) | IMAGE |  |  | Extra AOV written as <custom_1_name>.R/G/B in a part of that name. |
+| `custom_1` (optional) | IMAGE |  |  | Extra AOV written as &lt;custom_1_name>.R/G/B in a part of that name. |
 | `custom_1_name` (optional) | string | `emission` |  | Part and channel-prefix name for custom_1. Letters, digits, underscore, hyphen or dot only; anything else stops the node. |
-| `custom_2` (optional) | IMAGE |  |  | Extra AOV written as <custom_2_name>.R/G/B in a part of that name. |
+| `custom_2` (optional) | IMAGE |  |  | Extra AOV written as &lt;custom_2_name>.R/G/B in a part of that name. |
 | `custom_2_name` (optional) | string | `specular` |  | Part and channel-prefix name for custom_2. Letters, digits, underscore, hyphen or dot only. |
 | `output_path` (optional) | string |  |  | Output folder. Empty writes to the ComfyUI output folder; a relative path is inside it; an absolute path is used as-is. Created if missing. |
 | `remote_path` (optional) | string |  |  | Optional second folder (for example a NAS or UNC share) the finished file is copied to. A failed copy only logs a warning. |
 | `frame_index` (optional) | int | 1 |  | Frame number of the first image in the batch, used in the file name; later frames count up from it. An AOV with one frame is used for every frame. |
 | `custom_metadata` (optional) | string |  | multi-line text | Extra header attributes, one key=value per line. Keys are stored with a 'rad_' prefix unless they are standard EXR names (owner, comments, capDate and so on). |
 | `strict` (optional) | boolean | on |  | On: stop with an error unless every frame is one multi-part EXR holding every part. Off: if multi-part writing fails, write one EXR per part instead and list them in manifest. |
+| `rudra_reconstructed` (optional) | MASK |  |  | SDR → HDR Universal/Recover reconstructed_mask, written into the beauty part as the channel rudra.reconstructed (where light was estimated, not taken from the source), as RUDRA masters carry it. |
+| `rudra_generated` (optional) | MASK |  |  | SDR → HDR AI Fill generated_mask, written into the beauty part as the channel rudra.generated (1 = drawn by the AI fill). |
 
 **Outputs**
 

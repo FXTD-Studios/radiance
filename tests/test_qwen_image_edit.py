@@ -5,6 +5,7 @@ Qwen-Image Edit 2511 and 2512 are Qwen-Image checkpoints: same DiT keys, same
 16ch VAE and Qwen2.5-VL-7B text encoder, so Radiance resolves them to qwen_image.
 """
 import json
+import types
 
 import pytest
 import torch
@@ -12,7 +13,7 @@ from comfy_api.latest import io
 
 from _sampler_harness import FakeModelPatcher, make_latent, run_sampler
 from radiance.config.model_map import (
-    CHECKPOINT_PRESETS, RADIANCE_MODEL_MAP, VIDEO_MODEL_TYPES, VIDEO_PRESET_NAMES,
+    CHECKPOINT_PRESETS, RADIANCE_MODEL_MAP,
 )
 from radiance.nodes.generate import prompt
 
@@ -42,11 +43,10 @@ class TestQwenImageEditLoader:
             "model_type": "qwen_image", "weight_dtype": "default", "clip_dtype": "default",
         }
 
-    def test_offered_by_the_image_loader_not_the_video_loader(self):
-        from radiance.nodes.generate.loader import MODEL_TYPES
+    def test_offered_by_the_loader(self):
+        from radiance.nodes.generate.loader import MODEL_TYPES, RadianceUnifiedLoader
         assert "qwen_image" in MODEL_TYPES
-        assert "qwen_image" not in VIDEO_MODEL_TYPES
-        assert PRESET not in VIDEO_PRESET_NAMES
+        assert PRESET in RadianceUnifiedLoader.INPUT_TYPES()["required"]["preset"][0]
 
     def test_catalogue_pins_the_templates_files(self):
         expected = {
@@ -61,13 +61,16 @@ class TestQwenImageEditLoader:
             assert entry["url"].startswith(f"https://huggingface.co/Comfy-Org/{repo}/resolve/")
             assert entry["url"].endswith(f"split_files/{kind}/{fname}")
 
-    def test_model_shift_is_the_image_loaders_last_input(self):
-        from radiance.nodes.generate.loader import RadianceUnifiedLoader, RadianceVideoLoader
-        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-1] == "model_shift"
-        assert "model_shift" not in RadianceVideoLoader.INPUT_TYPES()["optional"]
+    def test_model_shift_and_upsampler_are_the_loaders_last_inputs(self):
+        from radiance.nodes.generate.loader import RadianceUnifiedLoader
+        assert list(RadianceUnifiedLoader.INPUT_TYPES()["optional"])[-2:] == ["model_shift", "upsampler"]
 
     @pytest.fixture
     def load(self, monkeypatch):
+        class _QwenModel(str):
+            # Sampled like Qwen-Image: ComfyUI's time scale (multiplier) 1.0.
+            model = types.SimpleNamespace(model_config=types.SimpleNamespace(sampling_settings={"multiplier": 1.0}))
+
         """Runs the image Loader with every file load stubbed out; returns the
         shifts ModelSamplingAuraFlow received and the outputs."""
         from radiance.nodes.generate import loader
@@ -82,8 +85,8 @@ class TestQwenImageEditLoader:
             "_ensure_model_exists": lambda *a: "unet.safetensors",
             "resolve_architecture": lambda *a: ("qwen_image", "qwen_image", "Wan21"),
             "setup_offload_mode": lambda *a: None,
-            "estimate_vram_for_load": lambda *a: (0.0, 0.0, 0.0),
-            "load_unet_and_baked_vae": lambda *a: ("model", None, None, 0.0, False, 0.0, False),
+            "estimate_vram_for_load": lambda *a, **k: (0.0, 0.0, 0.0),
+            "load_unet_and_baked_vae": lambda *a: (_QwenModel("model"), None, None, 0.0, False, 0.0, False),
             "load_clip_stack": lambda *a: ("clip", [], 0.0, False),
             "load_standalone_vae": lambda *a: ("vae", 0.0, False),
             "apply_lora_stack": lambda model, clip, *a: (model, clip, [], None),
@@ -145,6 +148,16 @@ class TestQwenImageEditSampler:
         prompt["3"]["inputs"]["lora_name"] = ["5", 0]
         assert _auto(EDIT_UNET, prompt=prompt, steps=4) == (4.0, 4)
 
+    def test_a_native_lightning_lora_at_model_strength_0_is_left_out(self):
+        """ComfyUI returns the model unchanged at strength_model 0: Edit 2511's own 40 steps, cfg 4."""
+        prompt = {
+            "1": {"class_type": "RadianceUnifiedLoader", "inputs": {}},
+            "3": {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": ["1", 0], "lora_name": LIGHTNING, "strength_model": 0}},
+            "9": {"class_type": "RadianceSamplerPro", "inputs": {"model": ["3", 0]}},
+        }
+        assert _auto(EDIT_UNET, prompt=prompt) == (4.0, 40)
+
     @pytest.mark.parametrize("shape", [(1, 16, 1, 8, 8), (1, 16, 8, 8)])
     def test_the_latent_is_sampled_in_5d_like_the_native_ksampler(self, shape):
         """Qwen-Image's latent format is Wan 2.1's (latent_dimensions 3). A VAE
@@ -194,7 +207,6 @@ class TestQwenImage:
         assert CHECKPOINT_PRESETS["Qwen-Image"] == {
             "model_type": "qwen_image", "weight_dtype": "default", "clip_dtype": "default",
         }
-        assert "Qwen-Image" not in VIDEO_PRESET_NAMES
 
     def test_catalogue_pins_the_templates_transformers(self):
         for fname in ("qwen_image_fp8_e4m3fn.safetensors", "qwen_image_2512_fp8_e4m3fn.safetensors"):

@@ -84,9 +84,8 @@ def test_row_quantile_handles_oversized_rows():
 # checkpoint with the path widget left blank -- the default -- was never used.
 
 @pytest.mark.parametrize("backend,ckpt", [
-    ("Auto", ""),             # the stock defaults
-    ("Auto", "/tmp/x.pt"),
-    ("Direct Pixel", ""),
+    ("Direct Pixel", ""),     # the stock path widget
+    ("Direct Pixel", "/tmp/x.pt"),
 ])
 def test_direct_pixel_runs_when_checkpoint_is_discoverable(node, monkeypatch, backend, ckpt):
     calls = {"n": 0}
@@ -147,10 +146,10 @@ def test_pixels_outside_recovery_mask_are_bit_exact(node, fake_rudra):
     # 0.98 clipping threshold -- i.e. genuinely outside the recovery mask.
     vals = torch.tensor([0.90, 0.95, 0.9664, 0.970, 0.975, 0.979])
     img = vals.view(1, 1, -1, 1).expand(1, 1, 6, 3).contiguous()
-    kw = dict(BASE_KW, highlight_threshold=0.98, shadow_threshold=0.001)
+    kw = dict(BASE_KW, highlight_threshold=0.98, shadow_threshold=0.001, learned_backend="Direct Pixel")
 
-    base, _, _, _, _, _ = node.convert(image=img, rudra_blend=0.0, **kw)
-    out, _, _, _, _, _ = node.convert(image=img, rudra_blend=1.0, pixel_recovery_mode="all", **kw)
+    base, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=0.0, **kw)
+    out, _, _, _, _, _, _ = node.convert(image=img, rudra_blend=1.0, pixel_recovery_mode="all", **kw)
 
     torch.testing.assert_close(out, base, atol=0.0, rtol=0.0)
 
@@ -159,8 +158,8 @@ def test_peak_is_still_enforced_after_removing_the_second_limiter(node, fake_rud
     """Dropping the outer limiter must not let learned radiance exceed peak."""
     fake_rudra(rec_value=1000.0)
     img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(1, 8, 8, 3).contiguous()
-    out, _, _, _, _, report = node.convert(
-        image=img, rudra_blend=1.0, pixel_recovery_mode="all",
+    out, _, _, _, _, report, _ = node.convert(
+        image=img, rudra_blend=1.0, pixel_recovery_mode="all", learned_backend="Direct Pixel",
         **dict(BASE_KW, peak_nits=200.0, shoulder_gamma=1.0))
     assert "learned recovery: applied" in report
     assert float(mod._luma(out).max()) <= 2.0 + 1e-5
@@ -180,7 +179,7 @@ def test_soft_peak_limit_left_alone_is_still_bounded():
 # ── 4. Empty batches ────────────────────────────────────────────────────────
 
 def test_empty_batch_returns_empty_rather_than_raising(node):
-    out, mask, shadows, h_conf, s_conf, _ = node.convert(
+    out, mask, shadows, h_conf, s_conf, _, _ = node.convert(
         image=torch.zeros(0, 4, 4, 3), **dict(BASE_KW, knee_mode="adaptive", knee=0.75))
     assert out.shape[0] == 0
     for m in (mask, shadows, h_conf, s_conf):
@@ -207,7 +206,7 @@ def test_expand_is_monotonic_and_hits_reference_white(node):
     somewhere to put diffuse white.
     """
     ramp = torch.linspace(0, 1, 256).view(1, 1, 256, 1).repeat(1, 1, 1, 3)
-    out, _, _, _, _, _ = node.convert(image=ramp, processing_mode="Expand", **BASE_KW)
+    out, _, _, _, _, _, _ = node.convert(image=ramp, processing_mode="Expand", **BASE_KW)
     y = mod._luma(out)[0, 0]
     assert bool((torch.diff(y) >= -1e-6).all()), "expansion is not monotonic"
     # 3.5.0: Linear is BT.2408-normalised, so reference white is exactly 1.0.
@@ -224,7 +223,7 @@ def test_peak_nits_is_the_ceiling_not_the_target(node, peak):
     brighter. peak_nits is the ceiling and the encode target; where SDR white
     sits is `reference_white_nits`.
     """
-    out, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
+    out, _, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
                                    **dict(BASE_KW, peak_nits=peak, processing_mode="Expand"))
     # 3.5.0: output unit is the effective reference white (capped at peak).
     ref = min(203.0, peak)
@@ -235,7 +234,7 @@ def test_peak_nits_is_the_ceiling_not_the_target(node, peak):
 
 @pytest.mark.parametrize("peak", [1000.0, 4000.0, 10000.0])
 def test_the_old_behaviour_is_still_reachable(node, peak):
-    out, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
+    out, _, _, _, _, _, _ = node.convert(image=torch.ones(1, 4, 4, 3),
                                    **dict(BASE_KW, peak_nits=peak, processing_mode="Expand",
                                           reference_white_nits=peak))
     # reference white == peak: SDR white at the peak, which is linear 1.0.
@@ -246,7 +245,7 @@ def test_alpha_survives_every_output_encoding(node):
     rgba = torch.cat([torch.full((1, 4, 4, 3), 0.5),
                       torch.full((1, 4, 4, 1), 0.25)], dim=-1)
     for enc in ("Linear", "Linear ACES2065-1 (AP0)", "PQ (HDR10)", "HLG"):
-        out, _, _, _, _, _ = node.convert(image=rgba, **dict(BASE_KW, output_encoding=enc))
+        out, _, _, _, _, _, _ = node.convert(image=rgba, **dict(BASE_KW, output_encoding=enc))
         assert out.shape[-1] == 4, enc
         assert float(out[0, 0, 0, 3]) == pytest.approx(0.25), enc
 
@@ -286,9 +285,10 @@ def test_pixel_model_runs_on_comfys_device_and_reports_progress(monkeypatch):
 
 
 @pytest.mark.parametrize("installed", [False, True])
-def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypatch, fake_rudra, installed):
-    """No temporal model is published; Auto used to try one on every clip and
-    log "Temporal RUDRA unavailable" each time."""
+def test_auto_never_tries_the_rudra_3x_models(node, monkeypatch, fake_rudra, installed):
+    """RUDRA 1.0.3's licence rule: the RUDRA 3.x models (non-commercial
+    weights) run only when chosen by name. Auto never tries the temporal or
+    the pixel model, even installed, and the report says how to choose them."""
     fake_rudra()
     tried = []
 
@@ -301,9 +301,14 @@ def test_auto_tries_temporal_only_when_a_checkpoint_is_installed(node, monkeypat
     monkeypatch.setattr(mod.RadianceSDRToHDRUniversal, "_temporal_reconstruct", staticmethod(fake_temporal))
 
     img = torch.linspace(0, 1, 64).reshape(1, 8, 8, 1).expand(5, 8, 8, 3).contiguous()
-    node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
-                 rudra_blend=1.0, **BASE_KW)
-    assert tried == ([True] if installed else [])
+    monkeypatch.setattr(mod, "_aces2_available", lambda p="": False)
+    calls = {"n": 0}
+    monkeypatch.setattr(px, "predict_pixel_sdr2hdr",
+                        lambda srgb, **k: calls.__setitem__("n", calls["n"] + 1) or srgb[..., :3])
+    out = node.convert(image=img, learned_backend="Auto", batch_mode="Video Frames",
+                       rudra_blend=1.0, **BASE_KW)
+    assert tried == [] and calls["n"] == 0
+    assert "Direct Pixel or Temporal" in out[5] and "NOT APPLIED" in out[5]
 
 
 class _RecordedProgress:

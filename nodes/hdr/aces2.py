@@ -17,6 +17,7 @@ Math references
       Academy ACES project — github.com/ampas/aces-dev
   • AMF specification: Academy TB-2014-009 / S-2019-001
   • ACES 2.0 reference Output Transforms: OpenColorIO built-in
+      studio-config-v5.0.0_aces-v2.1_ocio-v2.6 on OCIO 2.6, else
       studio-config-v4.0.0_aces-v2.0_ocio-v2.5 (radiance.hdr.aces2_ocio)
   • Reach gamut compression: ACES Gamut Compression Implementation Guide
 """
@@ -1206,7 +1207,7 @@ class RadianceACES2Compliance:
             "optional": {
                 "peak_nits": ("FLOAT", {
                     "default": 100.0, "min": 48.0, "max": 10000.0, "step": 1.0,
-                    "tooltip": "Shown in the report header only; the peak comes from output_type.",
+                    "tooltip": "Label only: printed in the report header, never checked. The peak the reference is rendered for comes from output_type (SDR 100, PQ 1000/2000/4000, HLG 1000 nits).",
                 }),
             },
         }

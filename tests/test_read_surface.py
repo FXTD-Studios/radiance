@@ -221,7 +221,7 @@ def test_an_explicit_pattern_reports_the_range_on_disk(png_sequence):
 def test_reading_one_frame_reads_the_sequence(png_sequence):
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, info = RadianceRead().read(browse="", path=str(png_sequence))
+    image, mask, info, *_ = RadianceRead().read(browse="", path=str(png_sequence))
     assert image.shape[0] == 8, "picking one frame should offer the whole range"
     assert json.loads(info)["kind"] == "sequence"
 
@@ -230,7 +230,7 @@ def test_media_type_image_still_reads_exactly_one_frame(png_sequence):
     """The escape hatch, for when you really do want the single frame."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, info = RadianceRead().read(
+    image, _mask, info, *_ = RadianceRead().read(
         browse="", path=str(png_sequence), media_type="Image")
     assert image.shape[0] == 1
     assert json.loads(info)["kind"] == "image"
@@ -240,7 +240,7 @@ def test_a_sequence_keeps_its_alpha(png_sequence):
     """`img_t, _ = _read_image(p)` threw the matte away for every frame."""
     from radiance.nodes.io.write import RadianceRead
 
-    _image, mask, info = RadianceRead().read(browse="", path=str(png_sequence))
+    _image, mask, info, *_ = RadianceRead().read(browse="", path=str(png_sequence))
     assert json.loads(info)["alpha"] is True
     assert float(mask.max()) > 0.9, "the sequence's alpha did not reach the mask"
     assert float(mask.min()) < 0.1
@@ -255,7 +255,7 @@ def test_the_sequence_start_frame_default_does_not_swallow_a_sequence(tmp_path, 
 
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, _info = RadianceRead().read(browse="", path=str(d / "take.0003.png"))
+    image, _mask, _info, *_ = RadianceRead().read(browse="", path=str(d / "take.0003.png"))
     assert image.shape[0] == 5
 
 
@@ -302,7 +302,7 @@ def test_a_depth_only_exr_reads_instead_of_raising(exr_depth_only):
     """
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, info = RadianceRead().read(browse="", path=str(exr_depth_only))
+    image, _mask, info, *_ = RadianceRead().read(browse="", path=str(exr_depth_only))
     assert image.shape == (1, 16, 24, 3)
     assert float(image.max()) == pytest.approx(3.25, abs=1e-4)
     assert json.loads(info)["layer"] == "Z"
@@ -335,7 +335,7 @@ def test_layer_choices_puts_the_beauty_first(exr_layers):
 def test_reading_a_named_layer_through_the_node(exr_layers):
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, info = RadianceRead().read(
+    image, _mask, info, *_ = RadianceRead().read(
         browse="", path=str(exr_layers), layer="specular")
     assert float(image[0, 0, 0, 0]) == pytest.approx(0.6, abs=1e-4)
     assert json.loads(info)["layer"] == "specular"
@@ -348,7 +348,7 @@ def test_an_overscan_exr_is_conformed_to_its_display_window(exr_overscan):
     window and returned an offset frame at the wrong resolution, silently."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, info = RadianceRead().read(browse="", path=str(exr_overscan))
+    image, _mask, info, *_ = RadianceRead().read(browse="", path=str(exr_overscan))
     assert image.shape == (1, 18, 24, 3), "not conformed to the display window"
     assert json.loads(info)["overscan"] is True
     # The white region was authored to be exactly the display window.
@@ -358,7 +358,7 @@ def test_an_overscan_exr_is_conformed_to_its_display_window(exr_overscan):
 def test_raw_keeps_the_overscan(exr_overscan):
     from radiance.nodes.io.write import RadianceRead
 
-    image, _mask, _info = RadianceRead().read(
+    image, _mask, _info, *_ = RadianceRead().read(
         browse="", path=str(exr_overscan), raw=True)
     assert image.shape == (1, 30, 40, 3), "raw should hand back the data window"
 
@@ -366,7 +366,7 @@ def test_raw_keeps_the_overscan(exr_overscan):
 def test_the_info_output_reports_both_windows(exr_overscan):
     from radiance.nodes.io.write import RadianceRead
 
-    _image, _mask, info = RadianceRead().read(browse="", path=str(exr_overscan))
+    _image, _mask, info, *_ = RadianceRead().read(browse="", path=str(exr_overscan))
     data = json.loads(info)
     assert data["data_window"] == [40, 30]
     assert data["display_window"] == [24, 18]
@@ -389,7 +389,7 @@ def test_black_frame_is_available_but_says_so(tmp_path, caplog):
     from radiance.nodes.io.write import RadianceRead
 
     with caplog.at_level(logging.WARNING):
-        image, _mask, info = RadianceRead().read(
+        image, _mask, info, *_ = RadianceRead().read(
             browse="", path=str(tmp_path / "absent.exr"), on_error="Black frame")
     assert float(image.abs().max()) == 0.0
     assert json.loads(info)["kind"] == "error"
@@ -423,10 +423,10 @@ def test_premultiplied_divides_rgb_back_out(tmp_path):
     with OpenEXR.File({"type": OpenEXR.scanlineimage}, {"RGBA": rgba}) as f:
         f.write(str(dst))
 
-    plain, _m, _i = RadianceRead().read(browse="", path=str(dst))
+    plain, _m, _i, *_ = RadianceRead().read(browse="", path=str(dst))
     assert float(plain[0, 0, 0, 0]) == pytest.approx(0.25, abs=1e-4)
 
-    unpremult, _m, info = RadianceRead().read(
+    unpremult, _m, info, *_ = RadianceRead().read(
         browse="", path=str(dst), premultiplied=True)
     assert float(unpremult[0, 0, 0, 0]) == pytest.approx(0.5, abs=1e-4)
     assert json.loads(info)["unpremultiplied"] is True
@@ -449,9 +449,9 @@ def test_raw_skips_the_colour_transform(tmp_path, rgba8):
     from radiance.nodes.io.write import RadianceRead
 
     PIL.fromarray(rgba8[..., :3]).save(tmp_path / "srgb.png")
-    managed, _m, _i = RadianceRead().read(
+    managed, _m, _i, *_ = RadianceRead().read(
         browse="", path=str(tmp_path / "srgb.png"), color_space="sRGB")
-    raw, _m, info = RadianceRead().read(
+    raw, _m, info, *_ = RadianceRead().read(
         browse="", path=str(tmp_path / "srgb.png"), color_space="sRGB", raw=True)
     assert not torch.allclose(managed, raw), "raw applied the transform anyway"
     assert "raw" in json.loads(info)["color_space"]
@@ -459,19 +459,19 @@ def test_raw_skips_the_colour_transform(tmp_path, rgba8):
 
 # ── the info output ────────────────────────────────────────────────────────
 
-def test_every_read_returns_three_outputs(png_sequence):
+def test_every_read_returns_five_outputs(png_sequence):
     from radiance.nodes.io.write import RadianceRead
 
-    assert len(RadianceRead().read(browse="", path=str(png_sequence))) == 3
+    assert len(RadianceRead().read(browse="", path=str(png_sequence))) == 5
 
 
 def test_the_node_declares_the_info_output_last():
     """Appended, not inserted: ComfyUI links outputs by index, so a workflow
-    saved against the two-output version must keep working."""
+    saved against the two- or three-output version must keep working."""
     from radiance.nodes.io.write import RadianceRead
 
-    assert RadianceRead.RETURN_TYPES[:2] == ("IMAGE", "MASK")
-    assert RadianceRead.RETURN_NAMES == ("image", "mask", "info")
+    assert RadianceRead.RETURN_TYPES == ("IMAGE", "MASK", "STRING", "FLOAT", "AUDIO")
+    assert RadianceRead.RETURN_NAMES == ("image", "mask", "info", "fps", "audio")
     assert len(RadianceRead.OUTPUT_TOOLTIPS) == len(RadianceRead.RETURN_TYPES)
 
 
@@ -482,7 +482,7 @@ def test_the_info_output_is_valid_json_for_every_media_type(
     PIL.fromarray(rgba8).save(tmp_path / "still.png")
     cases = [str(png_sequence), str(exr_layers), str(tmp_path / "still.png"), ""]
     for path in cases:
-        _image, _mask, info = RadianceRead().read(browse="", path=path)
+        _image, _mask, info, *_ = RadianceRead().read(browse="", path=path)
         data = json.loads(info)
         assert "kind" in data, f"{path or '(blank)'} produced {info!r}"
 
@@ -491,7 +491,7 @@ def test_an_empty_read_is_not_an_error():
     """A node just dropped on the canvas has no file yet."""
     from radiance.nodes.io.write import RadianceRead
 
-    image, mask, info = RadianceRead().read(browse="", path="")
+    image, mask, info, *_ = RadianceRead().read(browse="", path="")
     assert image.shape[0] == 1 and mask is not None
     assert json.loads(info)["kind"] == "empty"
 
@@ -776,3 +776,49 @@ def test_route_registration_is_idempotent():
         "shadows a live route, and an adjacent repeat is the aiohttp "
         "RuntimeError that crashed ComfyUI at startup"
     )
+
+
+# The routes checked that the file existed before checking that it was inside
+# the allowed roots, so any path outside them answered 404 "not a file" (with
+# the path echoed) when missing and 403 when present: the very oracle the root
+# check exists to close (code review P3-2).
+
+def _media_get_handlers(dispatcher):
+    return {r.resource.canonical: r.handler for r in dispatcher.routes() if r.method == "GET"}
+
+
+def _ask_media_route(monkeypatch, allowed, route, paths):
+    import asyncio
+    from radiance.nodes.io import write as nodes_io
+    from radiance.nodes.io.write import register_read_routes
+
+    monkeypatch.setattr(nodes_io, "_allowed_read_roots", lambda: [str(allowed)])
+    with _real_aiohttp_web() as web:
+        dispatcher = web.UrlDispatcher()
+        with _prompt_server_on(dispatcher):
+            register_read_routes()
+            handler = _media_get_handlers(dispatcher)[route]
+            return [asyncio.run(handler(types.SimpleNamespace(query={"path": p}))) for p in paths]
+
+
+@pytest.mark.parametrize("route", ["/radiance/media/info", "/radiance/media/layers"])
+def test_outside_the_roots_a_file_and_a_missing_path_look_the_same(monkeypatch, tmp_path, route):
+    allowed = tmp_path / "plates"
+    allowed.mkdir()
+    secret = tmp_path / "secret.exr"
+    secret.write_bytes(b"not yours")
+
+    present, missing = _ask_media_route(
+        monkeypatch, allowed, route, [str(secret), str(tmp_path / "nothing_here.exr")])
+
+    assert present.status == missing.status == 403
+    assert present.body == missing.body
+    assert b"nothing_here" not in missing.body, "the route must not echo a path it refused"
+
+
+def test_inside_the_roots_a_missing_file_is_still_a_404(monkeypatch, tmp_path):
+    allowed = tmp_path / "plates"
+    allowed.mkdir()
+    (missing,) = _ask_media_route(
+        monkeypatch, allowed, "/radiance/media/info", [str(allowed / "sh010.exr")])
+    assert missing.status == 404

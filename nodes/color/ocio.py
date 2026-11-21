@@ -29,8 +29,8 @@ class RadianceOCIOContext:
         return {
             "required": {
                 "config_path": ("STRING", {
-                    "default": "C:/ACES/config.ocio", "multiline": False,
-                    "tooltip": "Path to a config.ocio file. A relative path is looked for in ComfyUI's input/ then output/ folder. The loaded config replaces the session-wide one until another is loaded.",
+                    "default": "", "multiline": False, "placeholder": "empty = the active config (ACES 2.0 studio, or $OCIO)",
+                    "tooltip": "Path to a config.ocio file. Empty: the config Radiance already uses ($OCIO when it loads, else the built-in ACES 2.0 studio config). A relative path is looked for in ComfyUI's input/ then output/ folder. The loaded config replaces the session-wide one until another is loaded.",
                 }),
             },
         }
@@ -54,7 +54,13 @@ class RadianceOCIOContext:
             raise RuntimeError("OCIO Context: PyOpenColorIO is not installed "
                                "(pip install opencolorio).")
         path = _resolve_config_path(config_path)
-        if not os.path.isfile(path):
+        if not path:
+            # 4.0: the default used to be C:/ACES/config.ocio, a path few machines have.
+            from radiance.color.ocio_setup import active_config_path
+            path = active_config_path()
+            if not path:
+                raise RuntimeError("OCIO Context: no config_path, and no active OCIO config to fall back on.")
+        if not path.startswith("ocio://") and not os.path.isfile(path):
             raise FileNotFoundError(f"OCIO Context: no config at {path!r}.")
         mgr = get_ocio_manager()
         if not mgr.load_config(path):

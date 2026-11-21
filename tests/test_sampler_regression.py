@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+from unittest.mock import patch
 import pytest
 
 # Skip the whole file if real torch is not installed.
@@ -61,6 +62,20 @@ class TestSamplerRegression(unittest.TestCase):
         
         base_sigmas = torch.linspace(1.0, 0.0, steps + 1)
         self.assertFalse(torch.allclose(sigmas, base_sigmas), "Sigmas should have been shifted (different from linear)")
+
+    def test_flux2_simple_schedule_follows_the_image_size(self):
+        """FLUX.2's "simple" is Flux2Scheduler's schedule for the image's token count;
+        another scheduler, or no token count, keeps calculate_sigmas."""
+        calls = []
+        native = torch.linspace(1.0, 0.0, 21) ** 2
+        fake = _types.SimpleNamespace(get_schedule=lambda steps, seq: calls.append((steps, seq)) or native.clone())
+        model = MockModel(model_type="flux2-klein")
+        with patch.dict(get_flux_sigmas.__globals__, {"nodes_flux": fake}):
+            sigmas = get_flux_sigmas(model, "simple", 20, 1.0, image_seq_len=4096)
+            get_flux_sigmas(model, "beta", 20, 1.0, image_seq_len=4096)
+            get_flux_sigmas(model, "simple", 20, 1.0)
+        self.assertEqual(calls, [(20, 4096)])
+        self.assertTrue(torch.allclose(sigmas, native))
 
     def test_sd_turbo_sigmas_mirrors_comfyui_node(self):
         """get_sd_turbo_sigmas mirrors ComfyUI's own SDTurboScheduler node exactly

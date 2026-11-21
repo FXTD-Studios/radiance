@@ -1,0 +1,397 @@
+{
+ "source": "FXTD-Studios/RUDRA native core, commit 74f03b6 (10 Nov 2026): clip_fill_fields, composite, anchor_to_sdr, carry_source_chroma, settle_highlight_grain, apply_region_ev (exposure), scene_linear. lin_* = round(1024 x log2(scene-linear + 1e-4)) as int16, 1.0 = 203 nits. Note: the native id \"unknown\" is the ACES inverse, saved here as \"aces\".",
+ "cases": {
+  "sunset_default": {
+   "sdr": "sunset",
+   "options": {
+    "source_curve": "bt1886"
+   },
+   "partial_pct": 12.3976,
+   "full_pct": 0.237847,
+   "overridden_regions": []
+  },
+  "sunset_detail": {
+   "sdr": "sunset",
+   "options": {
+    "source_curve": "bt1886",
+    "highlight_detail": 1.75
+   },
+   "partial_pct": 12.3976,
+   "full_pct": 0.237847,
+   "overridden_regions": []
+  },
+  "synth_default": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "bt1886"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "synth_raw": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "bt1886",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "synth_peak": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "bt1886",
+    "strength": 0.7,
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false,
+    "exposure_ev": 0.5,
+    "clip_peaks": [
+     [
+      0.75,
+      0.6667,
+      2500
+     ]
+    ]
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": [
+    60
+   ]
+  },
+  "synthc_bt1886_shadows": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "bt1886_shadows"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_bt1886_shadows": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "bt1886_shadows",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  },
+  "synthc_hable": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "hable"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_hable": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "hable",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  },
+  "synthc_agx": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "agx"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_agx": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "agx",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  },
+  "synthc_camera_log": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "camera_log"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_camera_log": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "camera_log",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  },
+  "synthc_clip": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "clip"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_clip": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "clip",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  },
+  "synthc_aces": {
+   "sdr": "synth",
+   "options": {
+    "source_curve": "aces"
+   },
+   "partial_pct": 21.4427,
+   "full_pct": 15.2708,
+   "overridden_regions": []
+  },
+  "dark_aces": {
+   "sdr": "dark",
+   "options": {
+    "source_curve": "aces",
+    "anchor": false,
+    "carry_chroma": false,
+    "settle_grain": false
+   },
+   "partial_pct": 0,
+   "full_pct": 0,
+   "overridden_regions": []
+  }
+ },
+ "phase2": {
+  "cases": {
+   "region_hs": {
+    "sdr": "synth",
+    "options": {
+     "region": {
+      "highlight_from": 0.8,
+      "highlight_softness": 0.1,
+      "highlight_strength": 0.6,
+      "shadow_below": 0.2,
+      "shadow_softness": 0.1,
+      "shadow_strength": 1.5
+     }
+    }
+   },
+   "region_band": {
+    "sdr": "synth",
+    "options": {
+     "region": {
+      "band": true,
+      "band_low": 0.6,
+      "band_high": 0.95,
+      "band_softness": 0.05
+     }
+    }
+   },
+   "region_band_sunset": {
+    "sdr": "sunset",
+    "options": {
+     "region": {
+      "band": true,
+      "band_low": 0.85,
+      "band_high": 1.0,
+      "band_softness": 0.1,
+      "highlight_strength": 1.4
+     }
+    }
+   },
+   "cal1": {
+    "sdr": "sunset",
+    "options": {
+     "calibration": [
+      [
+       128,
+       40.0
+      ]
+     ]
+    }
+   },
+   "cal3": {
+    "sdr": "sunset",
+    "options": {
+     "source_curve": "hable",
+     "calibration": [
+      [
+       20,
+       0.3
+      ],
+      [
+       118,
+       30.0
+      ],
+      [
+       240,
+       600.0
+      ]
+     ]
+    }
+   },
+   "reference": {
+    "sdr": "sunset",
+    "options": {
+     "reference": true
+    }
+   }
+  },
+  "reference_fit": {
+   "codes_seen": 165,
+   "exposure": 0.14264895021915436,
+   "residual_mean": 0.10458547349024208
+  },
+  "region_ev": {
+   "input": "the sunset_default master",
+   "bands": [
+    [
+     400,
+     2000,
+     1.0
+    ],
+    [
+     2000,
+     8000,
+     -0.5
+    ],
+    [
+     0.05,
+     12,
+     0.7
+    ]
+   ],
+   "regionev": {
+    "softness": 1.0,
+    "ev": 0.3
+   },
+   "regionev_masks": {
+    "softness": 0.5,
+    "ev": 0.0,
+    "masks": [
+     "mask0",
+     null,
+     "mask2"
+    ]
+   }
+  },
+  "note": "reference_sunset is float16 of the reference the native fit read (the float32 file differs by rounding; the fit is held to the native numbers within tolerance)."
+ },
+ "phase3": {
+  "cases": {
+   "default": {
+    "sdr": "sunset",
+    "options": {},
+    "generated": false,
+    "share": [
+     0.9968055555555555,
+     3.472222222222222e-05,
+     0.0,
+     0.003159722222222222,
+     0.0
+    ]
+   },
+   "detail": {
+    "sdr": "sunset",
+    "options": {
+     "strength": 0.7,
+     "highlight_detail": 1.8
+    },
+    "generated": false,
+    "share": [
+     0.9371701388888889,
+     0.056354166666666664,
+     0.0,
+     0.0064756944444444445,
+     0.0
+    ]
+   },
+   "region_hs": {
+    "sdr": "synth",
+    "options": {
+     "region": {
+      "highlight_from": 0.8,
+      "highlight_softness": 0.1,
+      "highlight_strength": 0.6,
+      "shadow_below": 0.2,
+      "shadow_softness": 0.1,
+      "shadow_strength": 1.5
+     }
+    },
+    "generated": false,
+    "share": [
+     0.7957291666666667,
+     0.012239583333333333,
+     0.0008854166666666666,
+     0.19114583333333332,
+     0.0
+    ]
+   },
+   "band_sunset": {
+    "sdr": "sunset",
+    "options": {
+     "region": {
+      "band": true,
+      "band_low": 0.85,
+      "band_high": 1.0,
+      "band_softness": 0.1,
+      "highlight_strength": 1.4
+     }
+    },
+    "generated": false,
+    "share": [
+     0.9968055555555555,
+     5.208333333333334e-05,
+     0.0,
+     0.003142361111111111,
+     0.0
+    ]
+   },
+   "dark_gen": {
+    "sdr": "dark",
+    "options": {
+     "source_curve": "aces"
+    },
+    "generated": true,
+    "share": [
+     0.8854166666666666,
+     0.0,
+     0.0,
+     0.0,
+     0.11458333333333333
+    ]
+   }
+  },
+  "note": "RUDRA native core 74f03b6: reconstruction_mattes, classify_pixels (with the generated plane when 'generated'), exposure_bracket of the ungraded composite at 0 EV (grey) and of the final scene-linear at -2/0/+2 EV. Planes float16, classes and codes uint8. Built by a harness over the same objects as phase 1 and 2."
+ }
+}

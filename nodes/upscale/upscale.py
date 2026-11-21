@@ -199,53 +199,6 @@ def _get_models_dir(subdir: str) -> str:
     return fb
 
 
-def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
-    """Return the hex SHA-256 digest of a file."""
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for block in iter(lambda: fh.read(chunk), b""):
-            h.update(block)
-    return h.hexdigest()
-
-
-def _verify_or_report_sha256(dest: str, info: Dict[str, Any], key: str) -> bool:
-    """Verify a downloaded file against the registry SHA-256.
-
-    Returns True if the file is trusted (hash matches, or no hash is pinned).
-    On mismatch the file is deleted and False is returned. When no hash is
-    pinned the computed digest is logged so operators can pin it for
-    reproducible, tamper-evident shot work.
-    """
-    expected = (info.get("sha256") or "").strip().lower()
-    try:
-        actual = _sha256_file(dest)
-    except OSError as exc:
-        logger.warning(f"[Radiance/Upscale] could not hash {dest}: {exc}")
-        return True  # don't block on an unreadable hash; download already succeeded
-    if not expected:
-        logger.info(
-            f"[Radiance/Upscale] {key}: sha256={actual}  "
-            f"(pin this in _UPSCALE_MODEL_REGISTRY['{key}']['sha256'] for integrity checks)"
-        )
-        return True
-    if actual.lower() != expected:
-        logger.error(
-            f"[Radiance/Upscale] CHECKSUM MISMATCH for {key}: expected {expected}, got {actual}. "
-            f"Deleting {dest}; possible corruption or tampering."
-        )
-        try:
-            os.remove(dest)
-        except OSError as _exc:
-            logger.debug(
-                "[Radiance] _verify_or_report_sha256(): ignoring %s from `os.remove(dest)`: %s",
-                type(_exc).__name__, _exc,
-            )
-        return False
-    logger.info(f"[Radiance/Upscale] sha256 verified for {key}")
-    return True
-
-
 def _offline_mode() -> bool:
     """True when auto-download is disabled (airgapped / studio offline).
 
@@ -295,6 +248,10 @@ def _download_upscale_model(key: str, force: bool = False) -> Optional[str]:
     the legacy RADIANCE_UPSCALE_OFFLINE=1 stop it. A model with no pinned
     download (HAT-L) must be installed by hand; the log says where from.
     Returns None when the model is not available.
+
+    A file already installed goes through the same fetch, which checks it
+    against the pinned SHA-256 once and records the pass. Until 4.0 any file
+    with the right name was used unchecked.
     """
     if key not in _UPSCALE_MODEL_REGISTRY:
         logger.error(f"[Radiance/Upscale] Unknown model key '{key}'")
@@ -304,7 +261,8 @@ def _download_upscale_model(key: str, force: bool = False) -> Optional[str]:
     save_dir = _get_models_dir(info["subdir"])
     dest     = os.path.join(save_dir, info["filename"])
 
-    if os.path.isfile(dest) and not force:
+    if os.path.isfile(dest) and not force and not info.get("sha256"):
+        # Hand-installed with nothing pinned to check it against (HAT-L).
         logger.debug(f"[Radiance/Upscale] Already present: {dest}")
         return dest
 
@@ -905,18 +863,33 @@ def _load_spandrel(ckpt_path: str, device: torch.device) -> Any:
         )
 
 
+def _with_resized_alpha(tile_bhwc: torch.Tensor, y_bchw: torch.Tensor) -> torch.Tensor:
+    """Append the tile's alpha, resized to the model output, to an RGB result.
+
+    SR models see only RGB. Until 4.0 the Tier 2 paths returned three
+    channels for an RGBA tile and the four-channel tile accumulator raised.
+    Returns (B,H',W',C) with C matching the tile.
+    """
+    if tile_bhwc.shape[-1] == 4:
+        alpha = tile_bhwc[..., 3:4].permute(0, 3, 1, 2).to(y_bchw.device, y_bchw.dtype)
+        alpha = F.interpolate(alpha, size=y_bchw.shape[-2:], mode="bilinear",
+                              align_corners=False).clamp(0, 1)
+        y_bchw = torch.cat([y_bchw, alpha], dim=1)
+    return y_bchw.permute(0, 2, 3, 1)
+
+
 def _spandrel_infer(model: Any, tile_bhwc: torch.Tensor,
                     device: torch.device) -> torch.Tensor:
     """
     Run one tile through a spandrel-loaded model.
-    Returns (B,H',W',C) float32 [0,1].
+    Returns (B,H',W',C) float32 [0,1]; alpha is resized, not inferred.
     """
     x = tile_bhwc[:, :, :, :3].permute(0, 3, 1, 2).to(device)
     with torch.no_grad():
         # spandrel wraps the raw nn.Module in a ModelDescriptor; call .model for it
         inner = getattr(model, "model", model)
         y     = inner(x).clamp(0, 1)
-    return y.permute(0, 2, 3, 1)
+    return _with_resized_alpha(tile_bhwc, y)
 
 
 def _load_tier2(model_key: str, scale: int, device: torch.device) -> Any:
@@ -1119,15 +1092,22 @@ def _seedvr2_infer(
     eff_prompt = prompt or "high quality, temporally consistent, sharp details"
     B, H, W, C = frames_bhwc.shape
 
+    # SeedVR2 sees RGB; alpha is resized, not inferred, as on Tier 2 and
+    # SD x4. Until 4.0 it got all channels natively and returned three on
+    # the generic path, which the four-channel accumulator rejected.
+    def _with_alpha(rgb_bhwc: torch.Tensor) -> torch.Tensor:
+        rgb = rgb_bhwc.clamp(0, 1).permute(0, 3, 1, 2)
+        return _with_resized_alpha(frames_bhwc, rgb)
+
     # SeedVR2 native API (numz package)
     if hasattr(pipe, "upscale_batch"):
         with torch.inference_mode():
             result = pipe.upscale_batch(
-                frames_bhwc.to(pipe.device),
+                frames_bhwc[..., :3].to(pipe.device),
                 prompt=eff_prompt,
                 num_inference_steps=steps,
             )
-        return result.clamp(0, 1)
+        return _with_alpha(result)
 
     # diffusers DiffusionPipeline generic path
     results = []
@@ -1143,7 +1123,7 @@ def _seedvr2_infer(
             np.array(out).astype("float32")
         ) / 255.0)
 
-    return torch.stack(results, dim=0).clamp(0, 1)
+    return _with_alpha(torch.stack(results, dim=0))
 
 
 def _diffusion_upscale_infer(
@@ -1154,24 +1134,35 @@ def _diffusion_upscale_infer(
     noise_level:         int   = 20,
     guidance_scale:      float = 7.5,
     prefer_seedvr2:      bool  = False,
+    backend_used:        Optional[dict] = None,
 ) -> Optional[torch.Tensor]:
     """
     Unified Tier 3 entry point.
     Tries SeedVR2 first (if prefer_seedvr2), then SD x4 upscaler, then None.
+
+    ``backend_used``, when given, is filled with ``{"name": "SeedVR2" | "SD x4"}``
+    for the backend that produced the result. The caller reports it: a request
+    for SeedVR2 that ran SD x4 must not be labelled SeedVR2.
     """
     if prefer_seedvr2:
         try:
             pipe = _load_seedvr2_pipeline(device)
-            return _seedvr2_infer(pipe, tile_bhwc, prompt=prompt, steps=num_inference_steps)
+            result = _seedvr2_infer(pipe, tile_bhwc, prompt=prompt, steps=num_inference_steps)
+            if backend_used is not None:
+                backend_used["name"] = "SeedVR2"
+            return result
         except RuntimeError as e:
-            logger.info(f"[Radiance/Upscale] SeedVR2 unavailable ({e}), trying SD x4")
+            logger.warning(f"[Radiance/Upscale] SeedVR2 unavailable ({e}), trying SD x4")
 
     try:
         pipe = _load_sd_x4_pipeline(device)
-        return _sd_x4_infer(pipe, tile_bhwc, prompt=prompt,
-                             num_inference_steps=num_inference_steps,
-                             noise_level=noise_level,
-                             guidance_scale=guidance_scale)
+        result = _sd_x4_infer(pipe, tile_bhwc, prompt=prompt,
+                              num_inference_steps=num_inference_steps,
+                              noise_level=noise_level,
+                              guidance_scale=guidance_scale)
+        if backend_used is not None:
+            backend_used["name"] = "SD x4"
+        return result
     except RuntimeError as e:
         logger.warning(f"[Radiance/Upscale] Diffusion upscale failed: {e}")
         return None
@@ -1281,7 +1272,9 @@ def _build_upscale_fn(
     if upscale_model is not None:
         def _fn_ext(tile: torch.Tensor) -> torch.Tensor:
             import comfy.utils  # type: ignore
-            t_bchw = tile.permute(0, 3, 1, 2).to(device)
+            # The model is an RGB network: alpha is resized, not inferred, as
+            # on Tier 2. Until 4.0 an RGBA tile reached it with four channels.
+            t_bchw = tile[..., :3].permute(0, 3, 1, 2).to(device)
             up = comfy.utils.tiled_scale(
                 t_bchw, upscale_model,
                 tile_x=tile_size, tile_y=tile_size,
@@ -1289,7 +1282,7 @@ def _build_upscale_fn(
                 upscale_amount=scale_int,
                 pbar=None,
             )
-            return up.permute(0, 2, 3, 1)
+            return _with_resized_alpha(tile, up)
         return _fn_ext, "external UPSCALE_MODEL"
 
     tier = model_tier.lower()
@@ -1299,9 +1292,10 @@ def _build_upscale_fn(
     if "tier3" in tier:
         use_seedvr2 = prefer_seedvr2 or "seedvr2" in tier
 
-        stats = {"diffusion": 0, "Real-ESRGAN": 0, "bicubic": 0}
+        stats = {"diffusion": 0, _SD_X4_INSTEAD: 0, "Real-ESRGAN": 0, "bicubic": 0}
 
         def _fn_diff(tile: torch.Tensor) -> torch.Tensor:
+            used: dict = {}
             result = _diffusion_upscale_infer(
                 tile, device,
                 prompt=prompt,
@@ -1309,9 +1303,15 @@ def _build_upscale_fn(
                 noise_level=noise_level,
                 guidance_scale=guidance_scale,
                 prefer_seedvr2=use_seedvr2,
+                backend_used=used,
             )
             if result is not None:
-                stats["diffusion"] += 1
+                # SeedVR2 was asked for and SD x4 produced the tile: count it
+                # under its own name so _backend_report does not call it SeedVR2.
+                if use_seedvr2 and used.get("name") == "SD x4":
+                    stats[_SD_X4_INSTEAD] += 1
+                else:
+                    stats["diffusion"] += 1
                 # The diffusion backends are fixed 4x; the node may have been
                 # asked for 2x. Conform before tiled_upscale crops.
                 return _conform_to_scale(tile, result, scale_int)
@@ -1359,7 +1359,7 @@ def _build_upscale_fn(
                 x = tile[:, :, :, :3].permute(0, 3, 1, 2).to(device)
                 with torch.no_grad():
                     y = _m(x).clamp(0, 1)
-                return y.permute(0, 2, 3, 1)
+                return _with_resized_alpha(tile, y)
 
             return _fn_t2, label2
         except RuntimeError as e:
@@ -1388,6 +1388,9 @@ def _build_upscale_fn(
     return _fn_bc, f"bicubic, NOT an AI upscale  [{note.rstrip(', ')}]"
 
 
+_SD_X4_INSTEAD = "SD x4 (SeedVR2 unavailable)"
+
+
 def _backend_report(fn, label: str) -> str:
     """The label, corrected by what the backend actually ran per tile."""
     stats = getattr(fn, "backend_stats", None)
@@ -1398,6 +1401,8 @@ def _backend_report(fn, label: str) -> str:
         return label
     parts = ", ".join(f"{k} {v}/{total}" for k, v in stats.items() if v)
     if stats.get("diffusion", 0) == 0:
+        if stats.get(_SD_X4_INSTEAD, 0) == total:
+            return f"{label} requested, NOT used: SeedVR2 unavailable, tiles ran {parts}"
         return f"{label} requested, NOT used: diffusion unavailable, tiles ran {parts}"
     return f"{label} on some tiles only: {parts}"
 
@@ -2737,13 +2742,23 @@ def _composite_face(
     peak = mask.max().clamp(min=1e-8)
     mask = (mask / peak).unsqueeze(-1)                     # (h, w, 1)
 
-    # Ensure face_hwc matches (h, w, C)
-    face_c = face_hwc[:, :, :C] if face_hwc.shape[2] >= C else \
-             face_hwc.repeat(1, 1, C // face_hwc.shape[2] + 1)[:, :, :C]
+    # Only colour is composited; an alpha channel keeps its original values.
+    # Until 4.0 a 3-channel restored face was repeated to fill 4 channels, so
+    # the face's red channel was written into the alpha.
+    # Grey (+ alpha) images take the face's BT.709 luma; min(C, 3) made a
+    # grey + alpha image's alpha the face's green.
+    nc     = 3 if C >= 3 else 1
+    if nc == 1 and face_hwc.shape[2] >= 3:
+        face_c = (0.2126 * face_hwc[:, :, 0:1] + 0.7152 * face_hwc[:, :, 1:2]
+                  + 0.0722 * face_hwc[:, :, 2:3])
+    elif face_hwc.shape[2] >= nc:
+        face_c = face_hwc[:, :, :nc]
+    else:
+        face_c = face_hwc.repeat(1, 1, nc // face_hwc.shape[2] + 1)[:, :, :nc]
 
-    region  = result[y1:y2, x1:x2, :]
+    region  = result[y1:y2, x1:x2, :nc]
     blended = face_c * mask + region * (1.0 - mask)
-    result[y1:y2, x1:x2, :] = blended.clamp(0, 1)
+    result[y1:y2, x1:x2, :nc] = blended.clamp(0, 1)
     return result
 
 

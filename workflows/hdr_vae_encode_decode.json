@@ -1,24 +1,23 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "fa2530fe-2fd6-4ac9-a5b3-03d194d04f49",
   "revision": 0,
-  "last_node_id": 7,
+  "last_node_id": 9,
   "last_link_id": 7,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
-        620
+        310,
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,7 +369,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -391,7 +387,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -407,7 +402,6 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -441,24 +435,45 @@
         "reload",
         ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      }
     },
     {
       "id": 2,
       "type": "VAELoader",
       "pos": [
-        0,
-        440
+        640,
+        770
       ],
       "size": [
-        270,
+        310,
         58
       ],
       "flags": {},
       "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -470,7 +485,6 @@
           "name": "vae_name",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "vae_name"
@@ -489,7 +503,6 @@
           "name": "VAE",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "VAE",
           "pos": null,
           "slot_index": null,
@@ -503,26 +516,26 @@
         "Node name for S&R": "VAELoader"
       },
       "widgets_values": [
-        "sd_vae_ft_mse.safetensors"
+        "vae-ft-mse-840000-ema-pruned.safetensors"
       ],
-      "color": "#182238",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "vae_name": "vae-ft-mse-840000-ema-pruned.safetensors"
+      }
     },
     {
       "id": 3,
       "type": "RadianceHDRVAEEncode",
       "pos": [
-        400,
-        0
+        1040,
+        70
       ],
       "size": [
-        270,
+        310,
         306
       ],
       "flags": {},
       "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -534,7 +547,6 @@
           "name": "pixels",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 1
@@ -549,7 +561,6 @@
           "name": "vae",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "VAE",
           "pos": null,
           "link": 2
@@ -564,7 +575,6 @@
           "name": "source_space",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "source_space"
@@ -702,7 +712,6 @@
           "name": "samples",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "LATENT",
           "pos": null,
           "slot_index": null,
@@ -720,7 +729,6 @@
           "name": "alpha",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -736,7 +744,6 @@
           "name": "metadata",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -752,7 +759,6 @@
           "name": "latent_format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -768,7 +774,6 @@
           "name": "quality_report",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -788,24 +793,31 @@
         "sample",
         "sequential"
       ],
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "source_space": "Linear",
+        "tile_size": "Auto",
+        "overlap": 128,
+        "exposure": 0,
+        "alpha_handling": "Preserve",
+        "hdr_mode": "Compress (Log)",
+        "latent_sampling": "sample",
+        "processing_mode": "sequential"
+      }
     },
     {
       "id": 4,
       "type": "RadianceHDRVAEDecode",
       "pos": [
-        800,
-        0
+        1440,
+        70
       ],
       "size": [
-        278.556640625,
-        526
+        310,
+        382
       ],
       "flags": {},
       "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -817,7 +829,6 @@
           "name": "samples",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "LATENT",
           "pos": null,
           "link": 3
@@ -832,7 +843,6 @@
           "name": "vae",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "VAE",
           "pos": null,
           "link": 4
@@ -877,7 +887,6 @@
           "name": "target_space",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "target_space"
@@ -1185,7 +1194,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1204,7 +1212,6 @@
           "name": "metadata",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1234,24 +1241,41 @@
         "Auto (Recommended)",
         1000
       ],
-      "color": "#3c2020",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "target_space": "sRGB",
+        "tile_size": "Auto",
+        "overlap": 128,
+        "temporal_size": "Auto",
+        "temporal_overlap": 2,
+        "exposure_adjust": 0,
+        "hdr_mode": "Clip (SDR)",
+        "display_tonemap": "None",
+        "inverse_tonemap": false,
+        "target_stops": 12,
+        "export_rhdr": false,
+        "rhdr_precision": "f32",
+        "source_space": "sRGB",
+        "hdr_output": false,
+        "decode_noise_scale": 0,
+        "hdr_scale_factor": 1,
+        "decode_mode": "Auto (Recommended)",
+        "hdr_peak_nits": 1000
+      }
     },
     {
       "id": 5,
       "type": "RadianceViewer",
       "pos": [
-        1200,
-        -40
+        1840,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
       "order": 5,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1263,7 +1287,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 5
@@ -1296,6 +1319,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1378,7 +1408,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1386,7 +1415,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1395,24 +1536,28 @@
         0,
         ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      }
     },
     {
       "id": 6,
       "type": "RadianceWrite",
       "pos": [
-        1200,
-        540
+        1840,
+        1960
       ],
       "size": [
-        270,
+        310,
         362
       ],
       "flags": {},
       "order": 6,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1424,7 +1569,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 7
@@ -1469,7 +1613,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1486,7 +1629,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1634,23 +1776,6 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
           "localized_name": "broadcast_safe",
           "locked": null,
           "name": "broadcast_safe",
@@ -1764,6 +1889,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1771,52 +1953,109 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/hdr_vae",
-        "IMG \u2502 EXR (32-bit float)",
-        "vae_roundtrip",
+        "radiance_examples/hdr_vae_encode_decode",
+        "IMG │ EXR (32-bit float)",
+        "hdr_vae_encode_decode_hdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "output_path": "radiance_examples/hdr_vae_encode_decode",
+        "format": "IMG │ EXR (32-bit float)",
+        "filename": "hdr_vae_encode_decode_hdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
     },
     {
-      "id": 7,
-      "type": "Note",
+      "type": "MarkdownNote",
       "pos": [
         0,
-        560
+        30
       ],
       "size": [
-        380,
-        300
+        580,
+        120
       ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "showAdvanced": null,
       "inputs": [],
       "outputs": [],
-      "title": "HDR through a VAE",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "VAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode."
+        "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 8,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        680
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## HDR VAE Encode / Decode Workflow for Radiance:\n\nVAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe file goes in `ComfyUI/models/vae`. Pick the VAE your model uses: this one is an example.\n\n**SD 1.5 VAE** (Stability AI)\n- vae: [vae-ft-mse-840000-ema-pruned](https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 vae/\n│       └── vae-ft-mse-840000-ema-pruned.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## HDR VAE Encode / Decode Workflow for Radiance:\n\nVAE Encode (HDR) and VAE Decode (HDR) are a pair. The encoder carries scene-linear HDR into the latent with a log curve (default Compress (Log)) and records it in the latent; the decoder inverts exactly that, so values above 1.0 survive.\n\nUse a linear source (EXR). Pick the VAE your model uses in Load VAE. The Viewer compares the decoded image with the original.\n\nDo not mix these with the stock VAE Encode / VAE Decode.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe file goes in `ComfyUI/models/vae`. Pick the VAE your model uses: this one is an example.\n\n**SD 1.5 VAE** (Stability AI)\n- vae: [vae-ft-mse-840000-ema-pruned](https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   └── 📂 vae/\n│       └── vae-ft-mse-840000-ema-pruned.safetensors\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 9,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -1877,19 +2116,106 @@
       "IMAGE"
     ]
   ],
-  "floatingLinks": null,
-  "groups": [],
-  "definitions": null,
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load HDR Image and VAE",
+      "bounding": [
+        610,
+        0,
+        370,
+        890
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "VAE Encode (HDR)",
+      "bounding": [
+        1010,
+        0,
+        370,
+        890
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "VAE Decode (HDR)",
+      "bounding": [
+        1410,
+        0,
+        370,
+        890
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR (EXR)",
+      "bounding": [
+        1810,
+        1890,
+        370,
+        600
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Viewer",
+      "bounding": [
+        1810,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.3668,
       "offset": [
-        416,
-        110
+        136.3,
+        327.2
       ]
     },
-    "reroutes": null
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          1795,
+          84
+        ],
+        "linkIds": [
+          7
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          1795,
+          1875
+        ],
+        "linkIds": [
+          7
+        ],
+        "parentId": 1
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 7,
+        "parentId": 2
+      }
+    ]
   },
   "version": 0.4
 }

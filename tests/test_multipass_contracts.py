@@ -87,9 +87,12 @@ class TestMultipassContracts(unittest.TestCase):
         self.assertGreaterEqual(float(ao.min()), 0.0)
         self.assertLessEqual(float(ao.max()), 1.0)
 
-    def test_motion_channels_are_raw_xy(self):
+    def test_motion_channels_are_nukes_backward_and_forward_layers(self):
+        # 4.0: Nuke's names (VectorBlur reads them as they are); was MV.X / MV.Y.
         channels = _pass_channels_for_multilayer("motion_vector", np.zeros((2, 2, 3), np.float32))
-        self.assertEqual(set(channels), {"MV.X", "MV.Y"})
+        self.assertEqual(set(channels), {"backward.u", "backward.v"})
+        forward = _pass_channels_for_multilayer("motion_forward", np.zeros((2, 2, 3), np.float32))
+        self.assertEqual(set(forward), {"forward.u", "forward.v"})
         alpha = _pass_channels_for_multilayer("alpha", np.zeros((2, 2, 3), np.float32))
         self.assertEqual(set(alpha), {"A"})
 

@@ -1,9 +1,9 @@
 # .github/workflows/publish.yml
 # ─────────────────────────────────────────────────────────────────────────────
-# Radiance v3 — ComfyUI Registry Publish
+# Radiance — ComfyUI Registry Publish
 #
 # Publishes to the ComfyUI Node Registry on:
-#   • Pushing a version tag  (e.g.  git tag v3.0.1 && git push origin v3.0.1)
+#   • Pushing a version tag  (e.g.  git tag v4.0.0 && git push origin v4.0.0)
 #   • Manual workflow_dispatch (for hotfixes / re-publishes)
 #
 # Prerequisites:
@@ -16,13 +16,13 @@ name: Publish
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"        # v3.0.0, v3.1.2, …
-      - "v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+" # v3.1.0-rc1  (pre-release)
+      - "v[0-9]+.[0-9]+.[0-9]+"        # v4.0.0, v4.1.2, …
+      - "v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+" # v4.1.0-rc1  (pre-release)
 
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to publish (e.g. v3.0.1)"
+        description: "Version tag to publish (e.g. v4.0.0)"
         required: true
         type: string
 
@@ -48,6 +48,24 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # The tag is passed through the environment, never interpolated into the
+      # script, and must be a plain version tag that matches pyproject.toml.
+      - name: Check the tag matches the package version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python - <<'PYEOF'
+          import os, re, sys, tomllib
+          tag = os.environ["TAG"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+(-rc\d+)?", tag):
+              sys.exit(f"Refusing to publish: {tag!r} is not a version tag")
+          with open("pyproject.toml", "rb") as fh:
+              version = tomllib.load(fh)["project"]["version"]
+          if tag.split("-")[0].lstrip("v") != version:
+              sys.exit(f"Refusing to publish: tag {tag} does not match pyproject version {version}")
+          print(f"Tag {tag} matches version {version}")
+          PYEOF
+
       - name: Install test dependencies (real runtime deps)
         run: |
           sudo apt-get update
@@ -59,7 +77,7 @@ jobs:
             "numpy>=1.22" "scipy>=1.9" "Pillow>=9.0" \
             "defusedxml>=0.7" "opencv-python-headless>=4.7" "tqdm>=4.66" \
             "OpenEXR>=3.2.0" "OpenImageIO>=3.0.0" \
-            "opencolorio>=2.3.0" "colour-science>=0.4.4" "einops>=0.7.0" \
+            "opencolorio>=2.5.0" "colour-science>=0.4.4" "einops>=0.7.0" \
             "safetensors>=0.4.0" "tifffile>=2023.7.10" \
             "huggingface-hub>=0.23" \
             "imageio>=2.31" "imageio-ffmpeg>=0.4.9" \
@@ -73,10 +91,33 @@ jobs:
           --timeout=120
           -q
 
+  # ── Gate: the front-end tests, including the browser-driven viewer suites ───
+  # ci.yml runs these on every push; a tag publish must not skip them.
+  gate-js:
+    name: "Run JS tests (publish gate)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright and Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      # The WGSL grade test needs Deno's WebGPU on lavapipe; without them it skips.
+      - name: Install a software Vulkan driver for Deno's WebGPU
+        run: sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run every JS test (unit and browser)
+        run: node --test --test-concurrency=2 js/tests/*.test.mjs
+
   # ── Publish to ComfyUI registry ─────────────────────────────────────────────
   publish:
     name: "Publish to ComfyUI Registry"
-    needs: gate-tests
+    needs: [gate-tests, gate-js]
     runs-on: ubuntu-latest
 
     steps:
@@ -86,8 +127,12 @@ jobs:
 
       # The official ComfyUI publish action — publishes using pyproject.toml
       # metadata and the [tool.comfy] section (PublisherId, DisplayName, …).
+      # Pinned to a commit: a step that holds the registry token must not run
+      # whatever a branch points at today. This is main as of 2026-10-16
+      # (git ls-remote https://github.com/Comfy-Org/publish-node-action);
+      # move the pin on purpose, after reading the diff.
       - name: Publish node pack
-        uses: Comfy-Org/publish-node-action@main
+        uses: Comfy-Org/publish-node-action@d2366e7abb6ab16f3bb03e3520ae25c8cf749bc9
         with:
           ## Personal access token from https://registry.comfy.org
           ## Store it as a repository secret named REGISTRY_ACCESS_TOKEN.
@@ -109,8 +154,10 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG="${INPUT_TAG}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 

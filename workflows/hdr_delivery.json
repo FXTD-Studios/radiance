@@ -1,24 +1,23 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "42386a87-9309-44c9-8a18-f42febf2ab5b",
   "revision": 0,
-  "last_node_id": 7,
-  "last_link_id": 5,
+  "last_node_id": 11,
+  "last_link_id": 15,
   "nodes": [
     {
       "id": 1,
       "type": "RadianceRead",
       "pos": [
-        0,
-        0
+        640,
+        70
       ],
       "size": [
-        270,
-        620
+        310,
+        632
       ],
       "flags": {},
       "order": 0,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -30,7 +29,6 @@
           "name": "browse",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "browse"
@@ -353,7 +351,6 @@
           "name": "upload",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGEUPLOAD",
           "widget": {
             "name": "upload"
@@ -372,15 +369,14 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
           "links": [
             1,
-            2,
             3,
-            5
+            5,
+            6
           ]
         },
         {
@@ -393,7 +389,6 @@
           "name": "mask",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "MASK",
           "pos": null,
           "slot_index": null,
@@ -409,11 +404,48 @@
           "name": "info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
           "links": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "fps",
+          "locked": null,
+          "name": "fps",
+          "nameLocked": null,
+          "removable": null,
+          "type": "FLOAT",
+          "pos": null,
+          "slot_index": 3,
+          "links": [
+            10,
+            12,
+            14
+          ]
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio",
+          "locked": null,
+          "name": "audio",
+          "nameLocked": null,
+          "removable": null,
+          "type": "AUDIO",
+          "pos": null,
+          "slot_index": 4,
+          "links": [
+            11,
+            13,
+            15
+          ]
         }
       ],
       "properties": {
@@ -443,24 +475,45 @@
         "reload",
         ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "browse": "",
+        "media_type": "Auto",
+        "path": "",
+        "color_space": "Auto / Linear (pass-through)",
+        "start_frame": 1001,
+        "end_frame": 0,
+        "frame_step": 1,
+        "max_video_frames": 0,
+        "proxy_scale": 0,
+        "missing_frames": "Skip",
+        "layer": "auto",
+        "on_error": "Error",
+        "raw": false,
+        "premultiplied": false,
+        "reload": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "upload": "image",
+        "RELOAD": "reload",
+        "video_preview": ""
+      }
     },
     {
       "id": 2,
       "type": "RadianceWrite",
       "pos": [
-        400,
-        -60
+        2780,
+        1960
       ],
       "size": [
-        270,
+        310,
         362
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -472,7 +525,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 1
@@ -490,7 +542,7 @@
           "shape": 7,
           "type": "AUDIO",
           "pos": null,
-          "link": null
+          "link": 11
         },
         {
           "color_off": null,
@@ -517,7 +569,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -534,7 +585,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -607,7 +657,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 10
         },
         {
           "color_off": null,
@@ -674,23 +724,6 @@
           "type": "INT",
           "widget": {
             "name": "frame_padding"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
           },
           "link": null
         },
@@ -812,6 +845,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -819,43 +909,70 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
-        "IMG \u2502 EXR (16-bit half)",
-        "master",
+        "radiance_examples/hdr_delivery",
+        "IMG │ EXR (16-bit half)",
+        "hdr_delivery_hdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "output_path": "radiance_examples/hdr_delivery",
+        "format": "IMG │ EXR (16-bit half)",
+        "filename": "hdr_delivery_hdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
     },
     {
       "id": 3,
       "type": "RadianceWrite",
       "pos": [
-        400,
-        380
+        2350,
+        2020
       ],
       "size": [
-        270,
-        434
+        310,
+        482
       ],
       "flags": {},
-      "order": 3,
+      "order": 8,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -867,10 +984,9 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
-          "link": 2
+          "link": 7
         },
         {
           "color_off": null,
@@ -885,7 +1001,7 @@
           "shape": 7,
           "type": "AUDIO",
           "pos": null,
-          "link": null
+          "link": 13
         },
         {
           "color_off": null,
@@ -912,7 +1028,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -929,7 +1044,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1002,7 +1116,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 12
         },
         {
           "color_off": null,
@@ -1069,23 +1183,6 @@
           "type": "INT",
           "widget": {
             "name": "frame_padding"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
           },
           "link": null
         },
@@ -1207,6 +1304,70 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "hdr10plus_json",
+          "name": "hdr10plus_json",
+          "shape": 7,
+          "type": "*",
+          "link": 9
         }
       ],
       "outputs": [],
@@ -1214,43 +1375,70 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
-        "VID \u2502 MP4 (H.265 10-bit)",
-        "hdr10",
+        "radiance_examples/hdr_delivery",
+        "VID │ MP4 (H.265 10-bit)",
+        "hdr_delivery_hdr10",
         1,
+        "fixed",
         "PQ (HDR10 / ST.2084)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "output_path": "radiance_examples/hdr_delivery",
+        "format": "VID │ MP4 (H.265 10-bit)",
+        "filename": "hdr_delivery_hdr10",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "PQ (HDR10 / ST.2084)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
     },
     {
       "id": 4,
       "type": "RadianceACES2OutputTransformFull",
       "pos": [
-        400,
-        920
+        1070,
+        2020
       ],
       "size": [
-        313.513671875,
-        222
+        320,
+        246
       ],
       "flags": {},
-      "order": 4,
+      "order": 2,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1262,7 +1450,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "link": 3
@@ -1277,7 +1464,6 @@
           "name": "input_colorspace",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "input_colorspace"
@@ -1294,7 +1480,6 @@
           "name": "output_transform",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "output_transform"
@@ -1385,6 +1570,16 @@
             "name": "gamut_compress_strength"
           },
           "link": null
+        },
+        {
+          "localized_name": "engine",
+          "name": "engine",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "engine"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -1398,7 +1593,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1416,7 +1610,6 @@
           "name": "transform_info",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "pos": null,
           "slot_index": null,
@@ -1433,26 +1626,34 @@
         "Dim",
         0,
         1,
-        1
+        1,
+        "Auto"
       ],
-      "color": "#2e3a3a",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "input_colorspace": "Linear_sRGB",
+        "output_transform": "ACES 2.0 SDR (sRGB/Rec.709)",
+        "peak_luminance": 100,
+        "surround": "Dim",
+        "exposure_adjust": 0,
+        "creative_white_scale": 1,
+        "gamut_compress_strength": 1,
+        "engine": "Auto"
+      }
     },
     {
       "id": 5,
       "type": "RadianceWrite",
       "pos": [
-        800,
-        920
+        1480,
+        2020
       ],
       "size": [
-        270,
-        434
+        310,
+        458
       ],
       "flags": {},
-      "order": 6,
+      "order": 3,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1464,7 +1665,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "*",
           "pos": null,
           "link": 4
@@ -1482,7 +1682,7 @@
           "shape": 7,
           "type": "AUDIO",
           "pos": null,
-          "link": null
+          "link": 15
         },
         {
           "color_off": null,
@@ -1509,7 +1709,6 @@
           "name": "output_path",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "STRING",
           "widget": {
             "name": "output_path"
@@ -1526,7 +1725,6 @@
           "name": "format",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "COMBO",
           "widget": {
             "name": "format"
@@ -1599,7 +1797,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 14
         },
         {
           "color_off": null,
@@ -1666,23 +1864,6 @@
           "type": "INT",
           "widget": {
             "name": "frame_padding"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "audio_source",
-          "locked": null,
-          "name": "audio_source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "STRING",
-          "widget": {
-            "name": "audio_source"
           },
           "link": null
         },
@@ -1804,6 +1985,63 @@
             "name": "hdr_reference_nits"
           },
           "link": null
+        },
+        {
+          "localized_name": "hdr10_mastering_display",
+          "name": "hdr10_mastering_display",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "hdr10_mastering_display"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "write_audio",
+          "name": "write_audio",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "write_audio"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "audio_source",
+          "locked": null,
+          "name": "audio_source",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_source"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_codec",
+          "name": "audio_codec",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "audio_codec"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "audio_path",
+          "name": "audio_path",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "audio_path"
+          },
+          "link": null
         }
       ],
       "outputs": [],
@@ -1811,43 +2049,70 @@
         "Node name for S&R": "RadianceWrite"
       },
       "widgets_values": [
-        "radiance_examples/delivery",
-        "VID \u2502 MP4 (H.264)",
-        "sdr",
+        "radiance_examples/hdr_delivery",
+        "VID │ MP4 (H.264)",
+        "hdr_delivery_sdr",
         1,
+        "fixed",
         "Linear (pass-through)",
         0,
         18,
         "ZIP",
         1001,
         4,
-        "",
         false,
         false,
         0,
         "Linear Rec.709 (sRGB)",
         "",
         "",
-        203
+        203,
+        "P3-D65 · 1000 nits",
+        false,
+        "",
+        "Auto",
+        ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "output_path": "radiance_examples/hdr_delivery",
+        "format": "VID │ MP4 (H.264)",
+        "filename": "hdr_delivery_sdr",
+        "version": 1,
+        "control_after_generate": "fixed",
+        "color_space": "Linear (pass-through)",
+        "fps": 0,
+        "quality": 18,
+        "exr_compression": "ZIP",
+        "start_frame": 1001,
+        "frame_padding": 4,
+        "broadcast_safe": false,
+        "overwrite": false,
+        "proxy_scale": 0,
+        "working_space": "Linear Rec.709 (sRGB)",
+        "ocio_colorspace": "",
+        "ocio_config": "",
+        "hdr_reference_nits": 203,
+        "hdr10_mastering_display": "P3-D65 · 1000 nits",
+        "write_audio": false,
+        "audio_source": "",
+        "audio_codec": "Auto",
+        "audio_path": ""
+      }
     },
     {
       "id": 6,
       "type": "RadianceViewer",
       "pos": [
-        800,
-        -60
+        1040,
+        70
       ],
       "size": [
-        640,
-        632
+        2660,
+        1760
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
-      "showAdvanced": null,
       "inputs": [
         {
           "color_off": null,
@@ -1859,7 +2124,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE,VIDEO",
           "pos": null,
           "link": 5
@@ -1892,6 +2156,13 @@
           "shape": 7,
           "type": "IMAGE,VIDEO",
           "pos": null,
+          "link": null
+        },
+        {
+          "localized_name": "normal",
+          "name": "normal",
+          "shape": 7,
+          "type": "IMAGE,VIDEO",
           "link": null
         },
         {
@@ -1974,7 +2245,6 @@
           "name": "image",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
           "type": "IMAGE",
           "pos": null,
           "slot_index": null,
@@ -1982,7 +2252,119 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "RadianceViewer"
+        "Node name for S&R": "RadianceViewer",
+        "radiance_viewer_mode": "advanced",
+        "radiance_viewer_workspace": "color",
+        "radiance_grade": {
+          "version": 2,
+          "exposure": 0,
+          "contrast": 1,
+          "pivot": 0.18,
+          "saturation": 1,
+          "temperature": 0,
+          "tint": 0,
+          "highlights": 0,
+          "midDetail": 0,
+          "shadows": 0,
+          "softClip": 0,
+          "lumaMix": 1,
+          "colorBoost": 0,
+          "hueShift": 0,
+          "lift": [
+            0,
+            0,
+            0
+          ],
+          "gamma": [
+            1,
+            1,
+            1
+          ],
+          "gain": [
+            1,
+            1,
+            1
+          ],
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "logShadow": [
+            0,
+            0,
+            0
+          ],
+          "logMidtone": [
+            0,
+            0,
+            0
+          ],
+          "logHighlight": [
+            0,
+            0,
+            0
+          ],
+          "printerR": 0,
+          "printerG": 0,
+          "printerB": 0,
+          "colorScience": 0,
+          "lutIntensity": 1,
+          "maskState": {
+            "type": 0,
+            "center": [
+              0.5,
+              0.5
+            ],
+            "scale": [
+              0.3,
+              0.3
+            ],
+            "feather": 0.2,
+            "rotation": 0,
+            "invert": false,
+            "showOverlay": false
+          },
+          "qualifierState": {
+            "enabled": false,
+            "showMask": false,
+            "h": 0,
+            "hW": 0.1,
+            "hS": 0.05,
+            "s": 0.5,
+            "sW": 0.5,
+            "sS": 0.1,
+            "l": 0.5,
+            "lW": 0.5,
+            "lS": 0.1
+          },
+          "grain": 0,
+          "grainSize": 1,
+          "grainColor": 0,
+          "grainAnimate": false,
+          "activeGrainPreset": "none",
+          "bloom": 0,
+          "halation": 0,
+          "diffusion": 0,
+          "lensDistortion": 0,
+          "lensFringe": 0,
+          "vignetteIntensity": 0,
+          "vignetteFalloff": 0.5,
+          "anamorphicStreaks": 0,
+          "denoise": 0,
+          "dofEnabled": false,
+          "focusDistance": 0.5,
+          "aperture": 0,
+          "apertureBlades": 0,
+          "apertureRotation": 0,
+          "apertureAnamorphic": 1,
+          "bokehHighlightBias": 0,
+          "bokehSoapBubble": 0,
+          "bokehOpticalVig": 0,
+          "curves": null,
+          "inputSpace": "None",
+          "manualLut": null
+        }
       },
       "widgets_values": [
         false,
@@ -1991,33 +2373,367 @@
         0,
         ""
       ],
-      "color": "#282830",
-      "bgcolor": "#141419"
+      "widgets_values_named": {
+        "exposure_bracketing": false,
+        "input_space": "Auto",
+        "float_precision": "Half (16-bit)",
+        "fps": 0,
+        "viewer": ""
+      }
     },
     {
-      "id": 7,
-      "type": "Note",
+      "id": 8,
+      "type": "RadianceRudraPeakFit",
       "pos": [
-        0,
-        560
+        1940,
+        2020
       ],
       "size": [
-        380,
-        360
+        320,
+        190
       ],
       "flags": {},
-      "order": 1,
+      "order": 6,
       "mode": 0,
-      "showAdvanced": null,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "peak_nits"
+          }
+        },
+        {
+          "localized_name": "peak_fit",
+          "name": "peak_fit",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "peak_fit"
+          }
+        },
+        {
+          "localized_name": "knee_nits",
+          "name": "knee_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "knee_nits"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            7,
+            8
+          ]
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraPeakFit"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        1000.0,
+        "Keep luminance (RUDRA default)",
+        0.0,
+        203.0
+      ],
+      "title": "Peak fit to 1000 nits"
+    },
+    {
+      "id": 9,
+      "type": "RadianceRudraDynamicMetadata",
+      "pos": [
+        1940,
+        2298
+      ],
+      "size": [
+        320,
+        420
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "localized_name": "image_space",
+          "name": "image_space",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_space"
+          }
+        },
+        {
+          "localized_name": "peak_nits",
+          "name": "peak_nits",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "peak_nits"
+          }
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "filename_prefix"
+          }
+        },
+        {
+          "localized_name": "write_files",
+          "name": "write_files",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "write_files"
+          }
+        },
+        {
+          "localized_name": "cut_data",
+          "name": "cut_data",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "cut_data"
+          }
+        },
+        {
+          "localized_name": "apply_peak_fit",
+          "name": "apply_peak_fit",
+          "type": "BOOLEAN",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "apply_peak_fit"
+          }
+        },
+        {
+          "localized_name": "peak_fit",
+          "name": "peak_fit",
+          "type": "COMBO",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "peak_fit"
+          }
+        },
+        {
+          "localized_name": "knee_nits",
+          "name": "knee_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "knee_nits"
+          }
+        },
+        {
+          "localized_name": "mastering_min_nits",
+          "name": "mastering_min_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "mastering_min_nits"
+          }
+        },
+        {
+          "localized_name": "shot_threshold",
+          "name": "shot_threshold",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "shot_threshold"
+          }
+        },
+        {
+          "localized_name": "hdr10plus_target_nits",
+          "name": "hdr10plus_target_nits",
+          "type": "INT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "hdr10plus_target_nits"
+          }
+        },
+        {
+          "localized_name": "reference_white_nits",
+          "name": "reference_white_nits",
+          "type": "FLOAT",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "reference_white_nits"
+          }
+        },
+        {
+          "localized_name": "output_path",
+          "name": "output_path",
+          "type": "STRING",
+          "link": null,
+          "shape": 7,
+          "widget": {
+            "name": "output_path"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "summary",
+          "name": "summary",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "hdr10plus_json",
+          "name": "hdr10plus_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "dovi_json",
+          "name": "dovi_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "analysis_json",
+          "name": "analysis_json",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "localized_name": "hdr10plus_path",
+          "name": "hdr10plus_path",
+          "type": "STRING",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RadianceRudraDynamicMetadata"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        1000.0,
+        "hdr10",
+        true,
+        "",
+        false,
+        "Keep luminance (RUDRA default)",
+        0.0,
+        0.0001,
+        0.35,
+        400,
+        203.0,
+        ""
+      ],
+      "title": "HDR10+ / Dolby Vision metadata"
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        580,
+        120
+      ],
       "inputs": [],
       "outputs": [],
-      "title": "Deliver HDR",
+      "title": "Color Legend",
       "properties": {},
       "widgets_values": [
-        "From one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half.\n- HDR10: Write encodes PQ (ST.2084) with Rec.2020 primaries and tags the file. hdr_reference_nits sets where 1.0 lands (203 nits, BT.2408).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr)."
+        "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "widgets_values_named": {
+        "text": "## Color Legend:\n\n- **<font color=\"#8A8\">Green</font>**: SDR.\n- **<font color=\"#b58b2a\">Yellow</font>**: HDR."
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 10,
+      "flags": {},
+      "order": 0,
+      "mode": 0
+    },
+    {
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        210
+      ],
+      "size": [
+        580,
+        700
+      ],
+      "inputs": [],
+      "outputs": [],
+      "title": "Model Links",
+      "properties": {},
+      "widgets_values": [
+        "## HDR Delivery Workflow for Radiance:\n\nFrom one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      ],
+      "widgets_values_named": {
+        "text": "## HDR Delivery Workflow for Radiance:\n\nFrom one scene-linear master (EXR sequence or HDR from SDR to HDR):\n\n- EXR: the archive master, 16-bit half, untouched.\n- HDR10: Peak fit (RUDRA) brings anything brighter than 1000 nits under it, keeping each pixel's luminance, so the display does not clip it. HDR10+ / Dolby Vision metadata measures that fitted picture shot by shot and writes hdr10plus.json, a Dolby Vision 8.1 dovi_tool JSON and an analysis JSON. Write encodes PQ (ST.2084) with Rec.2020 primaries and carries the HDR10+ metadata inside the H.265 file (needs an ffmpeg whose x265 has HDR10+, such as gyan.dev's full build; the receipt says if it was carried).\n- SDR: ACES 2.0 Output Transform tone maps to sRGB/Rec.709, then Write saves H.264.\n\nMatch Read's working_space, Peak fit's image_space and Write's working_space. For a sequence, point Read's path at the frames (e.g. /shots/sh010.####.exr). Cuts: connect Scene Cut Detect's JSON to cut_data, or leave it empty and the metadata node finds the shots itself.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+      },
+      "color": "#222",
+      "bgcolor": "#000",
+      "id": 11,
+      "flags": {},
+      "order": 0,
+      "mode": 0
     }
   ],
   "links": [
@@ -2026,14 +2742,6 @@
       1,
       0,
       2,
-      0,
-      "IMAGE"
-    ],
-    [
-      2,
-      1,
-      0,
-      3,
       0,
       "IMAGE"
     ],
@@ -2060,21 +2768,284 @@
       6,
       0,
       "IMAGE"
+    ],
+    [
+      6,
+      1,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      7,
+      8,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      8,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      9,
+      4,
+      3,
+      25,
+      "STRING"
+    ],
+    [
+      10,
+      1,
+      3,
+      2,
+      8,
+      "FLOAT"
+    ],
+    [
+      11,
+      1,
+      4,
+      2,
+      1,
+      "AUDIO"
+    ],
+    [
+      12,
+      1,
+      3,
+      3,
+      8,
+      "FLOAT"
+    ],
+    [
+      13,
+      1,
+      4,
+      3,
+      1,
+      "AUDIO"
+    ],
+    [
+      14,
+      1,
+      3,
+      5,
+      8,
+      "FLOAT"
+    ],
+    [
+      15,
+      1,
+      4,
+      5,
+      1,
+      "AUDIO"
     ]
   ],
-  "floatingLinks": null,
-  "groups": [],
-  "definitions": null,
+  "groups": [
+    {
+      "id": 1,
+      "title": "Load HDR Master",
+      "bounding": [
+        610,
+        0,
+        370,
+        910
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Write HDR Master (EXR)",
+      "bounding": [
+        2750,
+        1890,
+        370,
+        1000
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 9,
+      "title": "HDR10 Output (MP4)",
+      "bounding": [
+        1880,
+        1890,
+        840,
+        1000
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "HDR10 Peak Fit and Metadata",
+      "bounding": [
+        1910,
+        1950,
+        380,
+        910
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Write HDR10 (MP4)",
+      "bounding": [
+        2320,
+        1950,
+        370,
+        910
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "SDR Output (MP4)",
+      "bounding": [
+        1010,
+        1890,
+        840,
+        1000
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "SDR Output Transform",
+      "bounding": [
+        1040,
+        1950,
+        380,
+        910
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Write SDR (MP4)",
+      "bounding": [
+        1450,
+        1950,
+        370,
+        910
+      ],
+      "color": "#8A8",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "Viewer",
+      "bounding": [
+        1010,
+        0,
+        2720,
+        1860
+      ],
+      "color": "#b58b2a",
+      "flags": {}
+    }
+  ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9,
+      "scale": 0.3177,
       "offset": [
-        416,
-        110
+        157.4,
+        377.7
       ]
     },
-    "reroutes": null
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          995,
+          84
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ]
+      },
+      {
+        "id": 2,
+        "pos": [
+          995,
+          1875
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ],
+        "parentId": 1
+      },
+      {
+        "id": 3,
+        "pos": [
+          1025,
+          1875
+        ],
+        "linkIds": [
+          1,
+          3,
+          6
+        ],
+        "parentId": 2
+      },
+      {
+        "id": 4,
+        "pos": [
+          1895,
+          1875
+        ],
+        "linkIds": [
+          1,
+          6
+        ],
+        "parentId": 3
+      },
+      {
+        "id": 5,
+        "pos": [
+          2735,
+          1875
+        ],
+        "linkIds": [
+          1
+        ],
+        "parentId": 4
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 1,
+        "parentId": 5
+      },
+      {
+        "id": 3,
+        "parentId": 3
+      },
+      {
+        "id": 6,
+        "parentId": 4
+      }
+    ]
   },
   "version": 0.4
 }

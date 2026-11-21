@@ -11,6 +11,7 @@ from ....core.tensor.chunking import FrameSink, chunks, compute_device, frames_p
 
 _NORMAL_INPUTS = ["OpenGL (Y-Up)", "DirectX (Y-Down)"]
 _LIGHT_TYPES = ["Directional", "Point"]
+_RELIGHT_OUTPUTS = ["Replace (relit only)", "Add light to beauty"]
 logger = logging.getLogger("radiance.vfx.multipass.relight_comp")
 
 
@@ -161,7 +162,7 @@ class RadianceMultipassRelight:
                 "alpha": ("IMAGE", {"tooltip": "Coverage matte, first channel, 0..1. Passed through to the alpha output and used for output_premultiplied; defaults to 1."}),
                 "shadow_mask": ("IMAGE", {"tooltip": "Shadow pass, first channel: 1 = fully shadowed, 0 = lit. Blocks direct diffuse and specular light but not ambient."}),
                 "depth_map": ("IMAGE", {"tooltip": "Normalised 0..1 depth pass. Only used by a Point light when world_position is not connected, to give pixels a synthetic Z."}),
-                "world_position": ("IMAGE", {"tooltip": "Position pass in camera space metres (OpenGL axes: X right, Y up, +Z toward the camera). Only used by a Point light, and overrides depth_map."}),
+                "world_position": ("IMAGE", {"tooltip": "Position pass in camera space metres (OpenGL axes: X right, Y up, +Z toward the camera), as Multipass Estimate writes it. Gives the specular a perspective view direction; for a Point light it also places the pixels, overriding depth_map."}),
                 "normal_convention": (_NORMAL_INPUTS, {"default": "OpenGL (Y-Up)", "tooltip": "Green channel convention of the normal pass. DirectX (Y-Down) flips the Y component before lighting."}),
                 "light_type": (_LIGHT_TYPES, {"default": "Directional", "tooltip": "Directional: light_x/y/z is a direction, no falloff. Point: light_x/y/z is a position, with soft distance falloff 1 / (1 + 0.08 d^2)."}),
                 "light_x": ("FLOAT", {"default": -0.35, "min": -10.0, "max": 10.0, "step": 0.01, "tooltip": "Light X (+ = screen right). Directional: component of the direction toward the light. Point: position in world_position units, or in screen units (X spans +/- aspect ratio) without it."}),
@@ -177,6 +178,7 @@ class RadianceMultipassRelight:
                 "depth_near_is_white": ("BOOLEAN", {"default": True, "tooltip": "Set on when near pixels are white in depth_map. Only used for a Point light with depth_map and no world_position."}),
                 "mix_with_beauty": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Linear blend of the relit result toward the beauty input: 0 = relight only, 1 = original beauty. Needs beauty connected."}),
                 "output_premultiplied": ("BOOLEAN", {"default": False, "tooltip": "Multiply the relit output (and the beauty mix) by alpha. Off leaves it unpremultiplied."}),
+                "relight_output": (_RELIGHT_OUTPUTS, {"default": _RELIGHT_OUTPUTS[0], "tooltip": "Replace: relit = albedo lit by this light plus ambient (a new lighting setup). Add light to beauty: relit = beauty + this light's diffuse and specular on the albedo, the plate's own light, texture and shadows kept, as a compositor adds a key or a kicker. Needs beauty."}),
             },
         }
 
@@ -212,8 +214,12 @@ class RadianceMultipassRelight:
         depth_near_is_white: bool = True,
         mix_with_beauty: float = 0.0,
         output_premultiplied: bool = False,
+        relight_output: str = _RELIGHT_OUTPUTS[0],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, str]:
         batch, height, width, _ = albedo.shape
+        add_light = relight_output == _RELIGHT_OUTPUTS[1]
+        if add_light and beauty is None:
+            raise ValueError("[Multipass Relight] 'Add light to beauty' needs the beauty input connected.")
         # 3.5.0: shaded a few frames at a time on the GPU. The whole clip used
         # to be shaded at once on the input's device (the CPU in ComfyUI) with
         # about 25 frame-sized temporaries, and unconnected passes were built
@@ -259,9 +265,12 @@ class RadianceMultipassRelight:
             shadow = scalar(shadow_mask, a, b, n, 0.0)
             visibility = (1.0 - shadow).clamp(0.0, 1.0)
 
+            cam_positions = None
+            if world_position is not None:
+                cam_positions = _match_image(part(world_position, a, b), n, height, width, 3).to(device=device)
             if light_type == "Point":
-                if world_position is not None:
-                    positions = _match_image(part(world_position, a, b), n, height, width, 3).to(device=device)
+                if cam_positions is not None:
+                    positions = cam_positions
                 else:
                     positions = _view_positions(n, height, width, device, part(depth_map, a, b), depth_scale)
                     # +Z is toward the camera, and _view_positions maps white to
@@ -281,7 +290,16 @@ class RadianceMultipassRelight:
                 light_dir = _normalize(_color_tensor(light_x, light_y, light_z, device))   # (1,1,1,3)
                 attenuation = 1.0
 
-            view_dir = _normalize(_color_tensor(0.0, 0.0, 1.0, device))                   # (1,1,1,3)
+            if cam_positions is not None:
+                # Perspective: each pixel sees the camera along -P (camera at
+                # the origin). A fixed +Z put every highlight where an
+                # orthographic camera would see it.
+                view_dir = _normalize(-cam_positions)
+                view_dir = torch.where(cam_positions.abs().sum(-1, keepdim=True) > 0, view_dir,
+                                       _color_tensor(0.0, 0.0, 1.0, device).expand_as(view_dir))
+            else:
+                view_dir = _normalize(_color_tensor(0.0, 0.0, 1.0, device))               # (1,1,1,3)
+            del cam_positions
             half_vec = _normalize(light_dir + view_dir)
 
             ndotl = (normals * light_dir).sum(dim=-1, keepdim=True).clamp(0.0, 1.0)
@@ -320,9 +338,16 @@ class RadianceMultipassRelight:
             del spec_brdf
 
             ambient_light = light_color * float(ambient) * accessibility.unsqueeze(-1)
-            diffuse = base * (1.0 - metal_v) * (diffuse_light + ambient_light)
-            relit = (diffuse + specular_light).clamp(min=0.0)
-            del diffuse
+            if add_light:
+                # The plate already holds its own light, ambient included;
+                # only this light's contribution goes on top of it.
+                src = _match_image(part(beauty, a, b), n, height, width, 3).to(device=device).clamp(min=0.0)
+                relit = (src + base * (1.0 - metal_v) * diffuse_light + specular_light).clamp(min=0.0)
+                del src
+            else:
+                diffuse = base * (1.0 - metal_v) * (diffuse_light + ambient_light)
+                relit = (diffuse + specular_light).clamp(min=0.0)
+                del diffuse
             if output_premultiplied:
                 relit = relit * alpha_s.unsqueeze(-1)
 
@@ -366,6 +391,8 @@ class RadianceMultipassRelight:
             "light_type": light_type,
             "normal_convention": normal_convention,
             "output_premultiplied": output_premultiplied,
+            "relight_output": relight_output,
+            "view": "perspective (from world_position)" if world_position is not None else "orthographic (+Z)",
             "note": "This node consumes supplied utility/PBR passes; it does not extract or hallucinate missing passes from beauty.",
         }
 

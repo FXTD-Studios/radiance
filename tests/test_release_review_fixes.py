@@ -185,15 +185,36 @@ def test_shipped_workflows_match_current_widget_types():
         or (spec.get("optional") or {}).get("peak_nits")
     assert entry is not None, "peak_nits vanished from RadianceHDREncode"
     options = entry[0]
-    doc = json.loads(_src("workflows/official/wan22_t2v_hdr_universal.json"))
+    import glob, os
     seen = 0
-    for node in doc.get("nodes", []):
-        if node.get("type") != "RadianceHDREncode":
+    for path in sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workflows", "*.json"))):
+        doc = json.loads(open(path, encoding="utf-8").read())
+        for node in doc.get("nodes", []):
+            if node.get("type") != "RadianceHDREncode":
+                continue
+            seen += 1
+            value = (node.get("widgets_values") or [None, None])[1]
+            assert value in options, (
+                f"{os.path.basename(path)} sends peak_nits={value!r} ({type(value).__name__}), "
+                f"which is not in {options}"
+            )
+    # No shipped workflow uses the encoder since the v3.1.2 WAN example went;
+    # the check stays for the next one that does.
+    del seen
+
+
+def test_every_shipped_json_workflow_is_where_the_templates_menu_reads():
+    """
+    ComfyUI's Templates menu reads `<custom node>/workflows/*.json` only
+    (app/custom_node_manager.py), so a .json in a subfolder never reaches
+    the menu. Library .rad files under workflows/official/ are not affected.
+    """
+    import os
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workflows")
+    nested = []
+    for dirpath, _dirs, files in os.walk(root):
+        if os.path.abspath(dirpath) == os.path.abspath(root):
             continue
-        seen += 1
-        value = (node.get("widgets_values") or [None, None])[1]
-        assert value in options, (
-            f"the shipped workflow sends peak_nits={value!r} ({type(value).__name__}), "
-            f"which is not in {options}"
-        )
-    assert seen, "the RadianceHDREncode node vanished from the shipped workflow"
+        nested += [os.path.relpath(os.path.join(dirpath, f), root) for f in files if f.endswith(".json")
+                   and not f.startswith("_") and ".versions" not in dirpath and ".asset_thumbs" not in dirpath]
+    assert not nested, f"these workflows are invisible in ComfyUI's Templates menu: {nested}"
