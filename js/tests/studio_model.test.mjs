@@ -183,3 +183,28 @@ test("a shot code matches as a whole token, and a sequence says its frames", () 
     assert.equal(rows[0].outputs.length, 1);
     assert.deepEqual(rows[0].notes, ["SH040 · Sup — fix the edge"]);
 });
+
+// ── New shot (4.0) ───────────────────────────────────────────────────────────
+test('shot names normalise as the server does, and the next free shot steps by ten', () => {
+    assert.deepEqual(['SH040', 'sh40', 'sh-040', '40', ' 7 ', 'SH01234'].map(M.normalizeShotName),
+        ['SH040', 'SH040', 'SH040', 'SH040', 'SH007', 'SH01234']);
+    assert.deepEqual(['', 'intro', 'SH', 'SH123456', '../SH010', 'SH010_v001'].map(M.normalizeShotName), ['', '', '', '', '', '']);
+    assert.equal(M.nextShotName([]), 'SH010');
+    assert.equal(M.nextShotName(['SH010', 'SH020']), 'SH030');
+    assert.equal(M.nextShotName(['SH015']), 'SH020');
+});
+
+test('a planned shot is a Not started row until its first version, then the version row wins', () => {
+    const planned = [{ shot: 'SH040', created: Date.now() / 1000 }];
+    const rows = M.shotRows([{ shot: 'SH010', version: 'v001', status: 'WIP' }], [], [], planned);
+    assert.deepEqual(rows.map((r) => r.shot), ['SH010', 'SH040']);
+    const p = rows[1];
+    assert.equal(p.planned, true);
+    assert.equal(p.status.key, 'New');
+    assert.equal(p.status.label, 'Not started');
+    assert.deepEqual(p.versions, []);
+    assert.equal(M.filterShots(rows, 'New').length, 1);
+    const saved = M.shotRows([{ shot: 'SH040', version: 'v001', status: 'WIP' }], [], [], planned);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].planned, undefined);
+});

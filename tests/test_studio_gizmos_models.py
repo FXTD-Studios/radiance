@@ -143,12 +143,13 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
         f.locator("#stToast", has_text="Halo deleted").wait_for()
         assert not (library.gizmos / "halo.gizmo").exists()
         assert list((library.gizmos / ".trash").glob("halo.*.gizmo"))
-        assert f.locator(".st-tile-wrap", has_text="Halo").count() == 0
+        f.locator(".st-tile-wrap", has_text="Halo").wait_for(state="detached")
         # ... and the Delete key on a focused tile.
         f.locator(".st-grid .st-tile", has_text="Haze").focus()
         page.keyboard.press("Delete")
         f.locator("#stToast", has_text="Haze deleted").wait_for()
         assert not (library.gizmos / "haze.gizmo").exists()
+        f.locator(".st-tile-wrap", has_text="Haze").wait_for(state="detached")
         assert f.locator(".st-grid .st-tile").count() == 2
 
         # Models: this computer, Radiance's folder made, what each workflow needs.

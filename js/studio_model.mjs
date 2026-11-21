@@ -197,7 +197,25 @@ export function outputLabel(o) {
     return o?.frames && Array.isArray(o.range) ? `${name} · ${o.frames} frames · ${o.range[0]}-${o.range[1]}` : name;
 }
 
-export function shotRows(versions, outputs = [], notes = []) {
+/** "SH040", "sh40", "sh-040" or "40" -> "SH040"; anything else -> "" (as the server's _normalize_shot_name). */
+export function normalizeShotName(raw) {
+    const m = String(raw ?? "").trim().match(/^(?:SH[-_ ]?)?(\d{1,5})$/i);
+    return m ? `SH${m[1].padStart(3, "0")}` : "";
+}
+
+/** The next free shot in steps of ten after the highest (SH010, SH020, ...), as the server's _next_shot_name. */
+export function nextShotName(taken) {
+    const set = new Set([...(taken || [])].map(String));
+    const nums = [...set].map((s) => s.match(/^SH(\d{2,5})$/)).filter(Boolean).map((m) => parseInt(m[1], 10));
+    let n = nums.length ? (Math.floor(Math.max(...nums) / 10) + 1) * 10 : 10;
+    while (set.has(`SH${String(n).padStart(3, "0")}`)) n += 10;
+    return `SH${String(n).padStart(3, "0")}`;
+}
+
+/** Shots made with New shot (4.0) show as Not started until their first version. */
+export const NOT_STARTED = { key: "New", label: "Not started", tone: "" };
+
+export function shotRows(versions, outputs = [], notes = [], planned = []) {
     const byShot = new Map();
     for (const v of Array.isArray(versions) ? versions : []) {
         const shot = String(v?.shot || "").trim();
@@ -224,10 +242,21 @@ export function shotRows(versions, outputs = [], notes = []) {
             notes: (Array.isArray(notes) ? notes : []).map(String).filter((n) => hasToken(n, up)),
         });
     }
+    for (const p of Array.isArray(planned) ? planned : []) {
+        const shot = String(p?.shot || "").trim();
+        if (!shot || byShot.has(shot)) continue;          // its first version is saved: a real row
+        const up = shot.toUpperCase();
+        rows.push({
+            shot, version: "", status: { ...NOT_STARTED }, workflow: "No version yet", filename: "",
+            updated: p.created ? relativeTime(p.created).replace(/^./, (c) => c.toUpperCase()) : "", versions: [], planned: true,
+            outputs: (Array.isArray(outputs) ? outputs : []).filter((o) => hasToken(o?.name, up) || hasToken(o?.path, up)),
+            notes: (Array.isArray(notes) ? notes : []).map(String).filter((n) => hasToken(n, up)),
+        });
+    }
     return rows.sort((a, b) => a.shot.localeCompare(b.shot, "en", { numeric: true }));
 }
 
-export const SHOT_FILTERS = [["all", "All"], ["Review", "In review"], ["WIP", "In progress"], ["Retake", "Retakes"], ["Approved", "Approved"]];
+export const SHOT_FILTERS = [["all", "All"], ["New", "Not started"], ["Review", "In review"], ["WIP", "In progress"], ["Retake", "Retakes"], ["Approved", "Approved"]];
 
 export function filterShots(rows, filter = "all", query = "") {
     const q = String(query || "").trim().toLowerCase();
