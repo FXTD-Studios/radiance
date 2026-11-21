@@ -13,6 +13,7 @@ export const TOUR_PAGES = Object.freeze(['welcome', 'setup', 'workflows', 'viewe
 export const LINKS = Object.freeze({
     radiance: 'https://www.fxtdstudios.com/radiance-comfyui.html',
     issues: 'https://github.com/FXTD-Studios/radiance/issues',
+    discord: 'https://discord.gg/C7aTNFhJeP',
     studio: 'https://www.fxtdstudios.com',
 });
 

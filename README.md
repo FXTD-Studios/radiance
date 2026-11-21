@@ -180,12 +180,13 @@ Something not working? Try these first:
 2. Look in the ComfyUI console for errors or missing packages.
 3. Make sure the requirements went into ComfyUI's own Python.
 
-Still stuck? [Open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
+Still stuck? Ask on [Discord](https://discord.gg/C7aTNFhJeP), or [open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
 
 ### Learn more
 
 - **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
 - **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
+- **[Discord](https://discord.gg/C7aTNFhJeP)**: community, help and updates
 - **[Node reference](docs/nodes/README.md)**: all 120 visible nodes and their inputs
 - **[Environment variables](docs/ENVIRONMENT.md)**: offline mode, extra read folders, ffmpeg, DCC bridges
 - **[Changelog](CHANGELOG.md)**: what changed and upgrade notes

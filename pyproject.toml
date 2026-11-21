@@ -113,6 +113,7 @@ Repository    = "https://github.com/fxtd-studios/radiance"
 Documentation = "https://www.fxtdstudios.com/radiance-comfyui.html"
 Changelog     = "https://github.com/fxtd-studios/radiance/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/fxtd-studios/radiance/issues"
+Discord       = "https://discord.gg/C7aTNFhJeP"
 Models        = "https://huggingface.co/fxtdstudios/RUDRA"
 
 [tool.comfy]

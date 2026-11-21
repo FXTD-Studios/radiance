@@ -582,10 +582,11 @@ app.registerExtension({
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
             this.addWidget("button", "DOCUMENTATION", "docs_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
             this.addWidget("button", "FXTD STUDIOS", "site_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
+            this.addWidget("button", "DISCORD", "discord_link", () => window.open("https://discord.gg/C7aTNFhJeP", "_blank", "noopener,noreferrer"));
 
             this.color = "#1c1c1e";
             this.bgcolor = "#1c1c1e";
-            this.size = [240, 300]; // Space for filename, artist, version widgets
+            this.size = [240, 324]; // Space for filename, artist, version widgets (+24 for the Discord button)
 
             this.properties = this.properties || {};
             this.properties.last_commit = "No commits yet";

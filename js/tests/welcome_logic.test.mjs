@@ -69,6 +69,7 @@ test('the tour does not mention LTX', () => {
 test('links point at the FXTD site and the GitHub issues', () => {
     assert.match(LINKS.radiance, /^https:\/\/www\.fxtdstudios\.com\//);
     assert.match(LINKS.issues, /^https:\/\/github\.com\/FXTD-Studios\/radiance\/issues$/);
+    assert.match(LINKS.discord, /^https:\/\/discord\.gg\/[A-Za-z0-9]+$/);
 });
 
 // ── First-start display check (4.0) ─────────────────────────────────────────

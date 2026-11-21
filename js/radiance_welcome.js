@@ -516,6 +516,7 @@ const PAGES = {
             const box = el("div", "rw-links");
             [["Radiance on fxtdstudios.com", "Guides, the node reference and what’s new", LINKS.radiance],
              ["Report a problem", "GitHub issues, with your log and workflow", LINKS.issues],
+             ["Join the Discord", "Ask questions, share renders, get updates", LINKS.discord],
              ["FXTD Studios", "Our other tools and contact", LINKS.studio]].forEach(([title, text, href]) => {
                 const a = el("a", "rw-link"); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
                 const s = el("span"); s.append(el("b", null, title), el("span", null, text));
