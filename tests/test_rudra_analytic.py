@@ -35,7 +35,8 @@ def _sdr(name):
 def _options(o):
     o = dict(o)
     peaks = o.pop("clip_peaks", [])
-    return ra.AnalyticOptions(**o, clip_peaks=[ra.ClipPeak(*p) for p in peaks])
+    # The goldens are the native command line's video path: canonical codes, not own codes.
+    return ra.AnalyticOptions(**o, clip_peaks=[ra.ClipPeak(*p) for p in peaks], own_codes=False)
 
 
 @pytest.mark.parametrize("case", sorted(INDEX["cases"]))
@@ -183,7 +184,7 @@ def test_phase2_matches_rudra_native(case):
         o["calibration"] = [ra.CalibrationPoint(int(c), float(n)) for c, n in o["calibration"]]
     if o.pop("reference", False):
         o["reference"] = ra.fit_reference(sdr, GOLD2["reference_sunset"].astype(np.float32))
-    r = ra.analytic_master(sdr, ra.AnalyticOptions(**o))
+    r = ra.analytic_master(sdr, ra.AnalyticOptions(**o, own_codes=False))
     err = _stops(r.image, _gold2(case))
     assert err.max() < MAX_STOPS and err.mean() < MEAN_STOPS, f"{case}: {err.max():.3f} / {err.mean():.4f} stops"
 
@@ -296,7 +297,7 @@ def _p3(case):
     o = dict(meta["options"])
     if "region" in o:
         o["region"] = ra.Region(**o["region"])
-    r = ra.analytic_master(_sdr(meta["sdr"]), ra.AnalyticOptions(**o))
+    r = ra.analytic_master(_sdr(meta["sdr"]), ra.AnalyticOptions(**o, own_codes=False))
     gen = GOLD3["generated_dark"].astype(np.float32) / 255.0 if meta["generated"] else None
     return meta, r, gen
 
@@ -406,3 +407,30 @@ def test_master_write_writes_what_rudra_writes(tmp_path):
         RadianceRudraMasterWrite().write(image, "pq", "From the mattes", "16-bit Half Float", True, False,
                                          mattes={"frames": mattes["frames"], "encoding": "PQ (HDR10)"},
                                          output_path=str(tmp_path))
+
+
+def test_bt1886_reads_own_codes_as_the_video_codes_they_are():
+    """RUDRA 1.3 (24 Nov 2026, test_source_curve.cpp): a still or a ComfyUI frame holds the source's own codes.
+    BT.1886 reads each as the BT.709 video code it is, code^2.4; before, it came out 2.7 stops dark at code 26."""
+    codes = np.arange(256, dtype=np.float32) / np.float32(255.0)
+    have = ra.inverse_aces_approx(ra.srgb_to_linear(codes)).astype(np.float64)
+    own = ra.curve_knots("bt1886", True).astype(np.float64)
+    for code in range(2, 255):                      # code 1 copies code 2 by convention; 255 meets the clamp
+        got = have[code] * 2.0 ** own[code]
+        assert abs(np.log2(got / (code / 255.0) ** 2.4)) < 0.01, code
+    canonical = ra.curve_knots("bt1886", False).astype(np.float64)
+    assert np.log2(have[26] * 2.0 ** canonical[26] / (26 / 255.0) ** 2.4) < -2.5, "the video path is unchanged"
+    shadows = ra.curve_knots("bt1886_shadows", True).astype(np.float64)
+    assert abs(np.log2(have[51] * 2.0 ** shadows[51] / (51 / 255.0) ** 2.4)) < 0.01
+    for curve in ("aces", "hable", "agx", "camera_log", "clip"):
+        assert np.array_equal(ra.curve_knots(curve, True), ra.curve_knots(curve, False)), curve
+    # Through the anchor and the master: own codes are the default, and the mid-greys come out brighter.
+    t = ra.anchor_target_knots("bt1886", None, True)
+    for code in (26, 51, 128):
+        assert abs(t[code] - np.log2((code / 255.0) ** 2.4 / float(ra.srgb_to_linear(np.float32(code / 255.0))))) < 0.01
+    sdr = np.full((8, 8, 3), 51 / 255.0, np.float32)
+    plain = dict(clip_fill=False, anchor=False, carry_chroma=False, settle_grain=False, mattes=False)
+    assert ra.AnalyticOptions().own_codes is True
+    a = ra.analytic_master(sdr, ra.AnalyticOptions(**plain)).image.mean()
+    b = ra.analytic_master(sdr, ra.AnalyticOptions(**plain, own_codes=False)).image.mean()
+    assert 1.1 < np.log2(a / b) < 1.5, np.log2(a / b)

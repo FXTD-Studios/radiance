@@ -2,6 +2,25 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **SDR → HDR Analytic (RUDRA): BT.1886 masters are no longer too dark in the
+  shadows** (RUDRA 1.3.0, 24 Nov 2026; also on `release/4.0` for 4.0.1). A still
+  or a video frame in ComfyUI holds the source's own 8-bit codes, and BT.1886 and
+  BT.1886 shadows now read each one as the BT.709 video code it is (BT.1886 gives
+  code^2.4). They went through the sRGB decode and then the BT.709 OETF: 0.36 stop
+  dark at code 128, 1.3 stops at 51 and 2.8 at 26. The other Source curves are
+  unchanged; `AnalyticOptions(own_codes=False)` keeps the RUDRA command line's
+  video path.
+
+### RUDRA 1.3 models
+- Checked against fxtdstudios/rudra-models on 25 Nov 2026 (RUDRA 1.3.0, Hub
+  commit `6fd8893`): RUDRA ACES 2 and AI fill v3 are byte-identical to the files
+  Radiance pins, so nothing changes for them. AI fill v4.3 (RUDRA 1.2.4) and
+  AI fill v5 (RUDRA 1.3.0, region re-render with RUDRA's thin hold) are published
+  but not run by Radiance yet; see docs/MODELS.md.
+
 ## [4.0.0] - 2026-11-21
 
 **RUDRA models in this release** (fxtdstudios/rudra-models, checked against the
