@@ -151,6 +151,16 @@ _SHADOW_LOG2_SCENE = np.array([0.0,
 ], np.float32)
 
 
+def _bt709_inverse_oetf(v):
+    """The light a BT.709 video code stands for (source_curve.cpp bt709_inverse_oetf)."""
+    v = np.clip(np.asarray(v, np.float32), 0.0, 1.0)
+    return np.where(v < 0.081, v / 4.5, np.power((v + 0.099) / 1.099, 1.0 / 0.45)).astype(np.float32)
+
+
+# The curves that read a source's own codes as the BT.709 video codes they are (RUDRA 1.3, 24 Nov 2026).
+VIDEO_CODE_CURVES = ("bt1886", "bt1886_shadows")
+
+
 def _inverse_bt1886(display):
     return np.power(_bt709_oetf(np.clip(display, 0.0, 0.995)), 2.4).astype(np.float32)
 
@@ -185,15 +195,25 @@ def _inverse_curve(curve: str, display):
 
 
 @lru_cache(maxsize=None)
-def curve_knots(curve: str) -> np.ndarray:
-    """(256,) float32 per-code log2 correction of the curve over the ACES inverse (source_baseline.py)."""
+def curve_knots(curve: str, own_codes: bool = False) -> np.ndarray:
+    """(256,) float32 per-code log2 correction of the curve over the ACES inverse (source_baseline.py).
+
+    ``own_codes`` (RUDRA 1.3, source_curve.cpp, 24 Nov 2026): the SDR holds the source's own code values
+    (a still, or a video frame as ComfyUI decodes it), not BT.709 light re-encoded as sRGB (the RUDRA
+    command line's video path, which the golden fixtures come from). BT.1886 and BT.1886 shadows then read
+    each code as the BT.709 video code it is, so BT.1886 gives code^2.4. Without it an own code went
+    through the sRGB decode and then the BT.709 OETF: 0.36 stop dark at code 128, 1.3 at 51, 2.8 at 26.
+    The other curves are the same either way.
+    """
     if curve not in SOURCE_CURVES:
         raise ValueError(f"unknown source curve {curve!r}; choose one of {SOURCE_CURVES}")
     if curve == "aces":
         out = np.zeros(KNOTS, np.float32)
     else:
-        display = srgb_to_linear(np.arange(KNOTS, dtype=np.float32) / np.float32(255.0))
-        want, have = _inverse_curve(curve, display), inverse_aces_approx(display)
+        codes = np.arange(KNOTS, dtype=np.float32) / np.float32(255.0)
+        display = srgb_to_linear(codes)
+        read = _bt709_inverse_oetf(codes) if (own_codes and curve in VIDEO_CODE_CURVES) else display
+        want, have = _inverse_curve(curve, read), inverse_aces_approx(display)
         ok = (want > 0) & (have > 0)
         out = np.where(ok, np.log2(np.where(ok, want, 1.0) / np.where(ok, have, 1.0)), 0.0).astype(np.float32)
         out[0] = out[1]
@@ -234,19 +254,19 @@ def baseline_value(code):
     return _baseline_exact(code)
 
 
-def effective_knots(curve: str, extra: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
+def effective_knots(curve: str, extra: Optional[np.ndarray] = None, own_codes: bool = False) -> Optional[np.ndarray]:
     """The picked curve's knots plus a calibration or reference correction (composite.cpp baseline_curve_params)."""
     if extra is None:
-        return None if curve == "aces" else curve_knots(curve)
-    return (curve_knots(curve) + np.asarray(extra, np.float32)).astype(np.float32)
+        return None if curve == "aces" else curve_knots(curve, own_codes)
+    return (curve_knots(curve, own_codes) + np.asarray(extra, np.float32)).astype(np.float32)
 
 
 def baseline_network(sdr: np.ndarray, curve: str = DEFAULT_SOURCE_CURVE,
-                     extra: Optional[np.ndarray] = None) -> np.ndarray:
+                     extra: Optional[np.ndarray] = None, own_codes: bool = False) -> np.ndarray:
     """The corrected baseline: the inverse of the picked curve (and its calibration), network units."""
     c = np.clip(np.asarray(sdr, np.float32), 0.0, 1.0)
     v = baseline_value(c)
-    knots = effective_knots(curve, extra)
+    knots = effective_knots(curve, extra, own_codes)
     if knots is not None:
         v = (v * np.exp2(_curve_correction_log2(c, knots))).astype(np.float32)
     return v
@@ -793,10 +813,10 @@ def region_weights(y, r: Optional[Region]):
 
 def composite(sdr, fields: _Fields, curve: str, strength: float = 1.0, mode: str = "all",
               region: Optional[Region] = None, extra_knots: Optional[np.ndarray] = None,
-              limit: Optional[np.ndarray] = None) -> np.ndarray:
+              limit: Optional[np.ndarray] = None, own_codes: bool = False) -> np.ndarray:
     """``limit`` (H, W) in [0, 1]: where the reconstruction may act; 0 is the baseline, bit for bit."""
     c = np.clip(np.asarray(sdr, np.float32), 0.0, 1.0)
-    base = baseline_network(c, curve, extra_knots)
+    base = baseline_network(c, curve, extra_knots, own_codes)
     y = _luma(c)
     hp = _sigmoid((y - np.float32(0.82)) * np.float32(24.0))
     sp = _sigmoid((np.float32(0.10) - y) * np.float32(24.0))
@@ -825,12 +845,13 @@ def _srgb_to_linear_d(v):
     return np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4)
 
 
-def anchor_target_knots(curve: str, extra: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
+def anchor_target_knots(curve: str, extra: Optional[np.ndarray] = None,
+                        own_codes: bool = False) -> Optional[np.ndarray]:
     """composite.cpp anchor_target_knots: the curve's inverse over sRGB decode, per code (log2)."""
     if curve == "aces" and extra is None:
         return None
     ramp = np.repeat((np.arange(KNOTS, dtype=np.float32) / np.float32(KNOTS - 1))[:, None], 3, 1)
-    base = baseline_network(ramp, curve, extra)[:, 1].astype(np.float64) * (10000.0 / 203.0)
+    base = baseline_network(ramp, curve, extra, own_codes)[:, 1].astype(np.float64) * (10000.0 / 203.0)
     have = srgb_to_linear(np.arange(KNOTS, dtype=np.float32) / np.float32(KNOTS - 1)).astype(np.float64)
     ok = (base > 0) & (have > 0)
     knots = np.where(ok, np.log2(np.where(ok, base, 1.0) / np.where(ok, have, 1.0)), 0.0).astype(np.float32)
@@ -979,6 +1000,9 @@ class AnalyticOptions:
     reference: Optional[ReferenceFit] = None        # replaces the calibration when set
     limit: Optional[np.ndarray] = None              # (H, W) where the reconstruction may act
     mattes: bool = True                             # also build the mattes and pixel classes (RUDRA 1.1)
+    # The SDR holds the source's own codes, as every ComfyUI image does (RUDRA 1.3): BT.1886 reads them as
+    # video codes. False reproduces the RUDRA command line's video path, which the golden fixtures come from.
+    own_codes: bool = True
 
 
 @dataclass
@@ -1025,15 +1049,16 @@ def analytic_master(sdr: np.ndarray, opt: AnalyticOptions = AnalyticOptions()) -
     extra, note = curve_correction(opt)
     fields, info = clip_fill(sdr, opt.clip_peaks, opt.highlight_detail, opt.clip_fill)
     net = composite(sdr, fields, opt.source_curve, opt.strength, region=opt.region, extra_knots=extra,
-                    limit=opt.limit)
+                    limit=opt.limit, own_codes=opt.own_codes)
     mattes = None
     if opt.mattes:
-        base = baseline_network(np.clip(sdr, 0.0, 1.0), opt.source_curve, extra)
+        base = baseline_network(np.clip(sdr, 0.0, 1.0), opt.source_curve, extra, opt.own_codes)
         mattes = reconstruction_mattes(sdr, fields, net, base, opt.strength, region=opt.region, limit=opt.limit)
         mattes.settings = _settings_of(opt)
     nits = net.astype(np.float64) * 10000.0
     if opt.anchor:
-        nits = anchor_to_sdr(nits, sdr, opt.anchor_knee, 0.04, anchor_target_knots(opt.source_curve, extra))
+        nits = anchor_to_sdr(nits, sdr, opt.anchor_knee, 0.04,
+                             anchor_target_knots(opt.source_curve, extra, opt.own_codes))
     if opt.carry_chroma:
         nits = carry_source_chroma(nits, sdr)
     if opt.settle_grain:
@@ -1193,7 +1218,8 @@ def _settings_of(opt: "AnalyticOptions") -> dict:
             "chroma_carried": bool(opt.carry_chroma), "grain_settled": bool(opt.settle_grain),
             "exposure_ev": float(opt.exposure_ev), "region": None if opt.region is None else vars(opt.region).copy(),
             "calibration": [[p.code, p.nits] for p in opt.calibration] if opt.reference is None else [],
-            "reference": opt.reference is not None, "limited": opt.limit is not None}
+            "reference": opt.reference is not None, "limited": opt.limit is not None,
+            "own_codes": bool(opt.own_codes)}
 
 
 def classify_pixels(sdr, reconstruction, baseline, generated=None):
