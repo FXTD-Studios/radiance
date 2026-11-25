@@ -2,6 +2,18 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
+## [4.0.1] - Unreleased
+
+### Fixed
+- **SDR → HDR Analytic (RUDRA): BT.1886 masters are no longer too dark in the
+  shadows** (RUDRA 1.3.0, 24 Nov 2026). A still or a video frame in ComfyUI holds
+  the source's own 8-bit codes, and BT.1886 and BT.1886 shadows now read each one
+  as the BT.709 video code it is (BT.1886 gives code^2.4). They went through the
+  sRGB decode and then the BT.709 OETF: 0.36 stop dark at code 128, 1.3 stops at
+  51 and 2.8 at 26. Masters made with the default Source (BT.1886) since 4.0.0 come
+  out brighter below mid-grey; the other Source curves are unchanged.
+  `AnalyticOptions(own_codes=False)` keeps the RUDRA command line's video path.
+
 ## [4.0.0] - Release candidate 1 (feature-frozen 16 Nov 2026, branch release/4.0)
 
 **Feature freeze.** 4.0 is feature-complete. Until 4.0.0 is released, the
