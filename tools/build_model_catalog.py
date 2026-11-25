@@ -57,6 +57,10 @@ RADIANCE_PACKS = {
                                "page": "https://huggingface.co/fxtdstudios/rudra-models"},
     "radiance/rudra_genfill_v3": {"title": "RUDRA AI fill v3", "size_mb": 271, "licence": "Apache 2.0",
                                   "page": "https://huggingface.co/fxtdstudios/rudra-models"},
+    "radiance/rudra_genfill_v5": {"title": "RUDRA AI fill v5 (region re-render)", "size_mb": 263,
+                                  "licence": "Apache 2.0", "page": "https://huggingface.co/fxtdstudios/rudra-models"},
+    "radiance/rudra_genfill_v4": {"title": "RUDRA AI fill v4.3 (region re-render)", "size_mb": 263,
+                                  "licence": "Apache 2.0", "page": "https://huggingface.co/fxtdstudios/rudra-models"},
     "radiance/wan_vace_base": {"title": "Wan2.1-VACE-1.3B (AI fill base model)", "size_mb": 7700,
                                "licence": "Apache 2.0",
                                "page": "https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
@@ -89,8 +93,9 @@ PACK_NODES = {
     "RadianceSDRToHDRRecover": (["radiance/RUDRA_ACES_2"], []),
     "RadianceSDRToHDRAIFill": (["radiance/rudra_genfill_v3", "radiance/wan_vace_base"],
                                ["radiance/wan_vace_text_encoder"]),
-    "RadianceSDRToHDRAIFillRerender": (["radiance/rudra_genfill_v3", "radiance/wan_vace_base"],
-                                       ["radiance/wan_vace_text_encoder"]),
+    # The region re-render: v5's LoRA, the base model, and v3's package for its cached base prompt.
+    "RadianceSDRToHDRAIFillRerender": (["radiance/rudra_genfill_v5", "radiance/rudra_genfill_v3",
+                                        "radiance/wan_vace_base"], ["radiance/wan_vace_text_encoder"]),
     "RadianceMultipassEstimate": (["radiance/moge2", "radiance/marigold_appearance",
                                    "radiance/marigold_lighting"], []),
 }

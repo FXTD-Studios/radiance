@@ -187,7 +187,7 @@ Still stuck? Ask on [Discord](https://discord.gg/C7aTNFhJeP), or [open an issue]
 - **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
 - **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
 - **[Discord](https://discord.gg/C7aTNFhJeP)**: community, help and updates
-- **[Node reference](docs/nodes/README.md)**: all 120 visible nodes and their inputs
+- **[Node reference](docs/nodes/README.md)**: all 121 visible nodes and their inputs
 - **[Environment variables](docs/ENVIRONMENT.md)**: offline mode, extra read folders, ffmpeg, DCC bridges
 - **[Changelog](CHANGELOG.md)**: what changed and upgrade notes
 - **[Known issues](KNOWN_ISSUES.md)**: current limits (long-video windowing, estimated passes)

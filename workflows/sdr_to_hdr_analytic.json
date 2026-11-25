@@ -1,8 +1,8 @@
 {
   "id": "6f1d2c4e-5a7b-4c3d-9e8f-0a1b2c3d4e5f",
   "revision": 0,
-  "last_node_id": 8,
-  "last_link_id": 8,
+  "last_node_id": 9,
+  "last_link_id": 11,
   "nodes": [
     {
       "id": 1,
@@ -46,7 +46,8 @@
           "type": "IMAGE",
           "links": [
             1,
-            5
+            5,
+            10
           ]
         },
         {
@@ -402,8 +403,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            4,
-            7
+            9
           ]
         },
         {
@@ -462,6 +462,223 @@
       ]
     },
     {
+      "id": 9,
+      "type": "RadianceSDRToHDRAIFillRerender",
+      "pos": [
+        1440,
+        790
+      ],
+      "size": [
+        340,
+        620
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "localized_name": "image_encoding",
+          "name": "image_encoding",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "image_encoding"
+          }
+        },
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "IMAGE",
+          "link": 10
+        },
+        {
+          "localized_name": "prompt_highlight",
+          "name": "prompt_highlight",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "prompt_highlight"
+          }
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "condition",
+          "name": "condition",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "condition"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "finish",
+          "name": "finish",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "finish"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "steps",
+          "name": "steps",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "steps"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "seed"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "lora",
+          "name": "lora",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "lora"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "base_model",
+          "name": "base_model",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "base_model"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "fill_package",
+          "name": "fill_package",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "fill_package"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "allow_download",
+          "name": "allow_download",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "allow_download"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "keep_loaded",
+          "name": "keep_loaded",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "keep_loaded"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "region_model",
+          "name": "region_model",
+          "type": "COMBO",
+          "link": null,
+          "widget": {
+            "name": "region_model"
+          },
+          "shape": 7
+        },
+        {
+          "localized_name": "keep_detail",
+          "name": "keep_detail",
+          "type": "BOOLEAN",
+          "link": null,
+          "widget": {
+            "name": "keep_detail"
+          },
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            4,
+            7
+          ]
+        },
+        {
+          "localized_name": "generated_mask",
+          "name": "generated_mask",
+          "type": "MASK",
+          "links": [
+            11
+          ]
+        },
+        {
+          "localized_name": "reconstructed_mask",
+          "name": "reconstructed_mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "localized_name": "report",
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "SDR → HDR AI Fill Re-render (RUDRA v5)",
+      "properties": {
+        "Node name for S&R": "RadianceSDRToHDRAIFillRerender"
+      },
+      "widgets_values": [
+        "Linear (Rec.709)",
+        "",
+        "bt1886",
+        "RUDRA app (1.3)",
+        30,
+        0,
+        "fixed",
+        "",
+        "",
+        "",
+        true,
+        true,
+        "v5",
+        false
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
       "id": 4,
       "type": "RadianceViewer",
       "pos": [
@@ -473,7 +690,7 @@
         1760
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -763,7 +980,7 @@
         330
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -828,7 +1045,7 @@
           "localized_name": "generated_mask",
           "name": "generated_mask",
           "type": "MASK",
-          "link": null,
+          "link": 11,
           "shape": 7
         },
         {
@@ -936,14 +1153,14 @@
       ],
       "size": [
         580,
-        480
+        720
       ],
       "inputs": [],
       "outputs": [],
       "title": "Model Links",
       "properties": {},
       "widgets_values": [
-        "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\n6. AI Fill Re-render (RUDRA v5), optional and bypassed: for a window, an open door, a sky just under white, a practical lamp or sun glare that the photo parks at white, it draws the whole bright region again with RUDRA AI fill v5 and RUDRA 1.3's finish. Turn it on with Ctrl+B; it needs about 16 GB of GPU memory and downloads the v5 LoRA (263 MB) and Wan2.1-VACE-1.3B (7.7 GB) the first time. Inside the region the SDR's codes are not kept; Check > Rebuilt by AI shows what was generated (yellow). Plausible, not recovered: check the result.\n\nFor video, swap Load still for Read and leave source empty (connect Read's image to the AI Fill's source too).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone, unless you turn on the optional AI Fill Re-render. It downloads these itself (or put them there):\n\n- [RUDRA AI fill v5](https://huggingface.co/fxtdstudios/rudra-models/tree/6fd8893ad69676fe675474959aade5f18cbe6cb1/models/rudra_genfill_v5) → `models/radiance/rudra_genfill_v5/`\n- [Wan2.1-VACE-1.3B-diffusers](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) → `models/radiance/Wan2.1-VACE-1.3B-diffusers/`\n- [RUDRA AI fill v3](https://huggingface.co/fxtdstudios/rudra-models/tree/v1.0.0/models/rudra_genfill_v3) (its cached prompt) → `models/radiance/rudra_genfill_v3/`\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       ],
       "widgets_values_named": {
         "text": "## SDR → HDR Analytic (RUDRA) Workflow for Radiance:\n\nSDR photo -> HDR with RUDRA's analytic route: no model, no download, any GPU or none.\n\n1. Load still (RUDRA): a JPEG, PNG, TIFF or WebP. It reads the ICC profile (Display P3, Rec.2020, Adobe RGB) and the EXIF orientation, so a phone photo comes in the right way up and in the right colours.\n2. SDR -> HDR Analytic (RUDRA) inverts the source curve (BT.1886 by default; ACES, Filmic, AgX for CG), rebuilds clipped highlights from the channels that survived and from their glow, and anchors to the source exposure. clip_peaks sets a clipped light's peak in nits. The report says what it did.\n3. Region: where the reconstruction may act (highlights above 0.75, shadows below 0.15). Bypass it (Ctrl+B) for the whole frame, or switch mode to Band.\n4. Viewer: the master against the photo (Compare). Check > Rebuilt by AI shows the regions picture: cyan reconstructed, magenta estimated, yellow generated, with how much of the frame each covers.\n5. RUDRA Master Write: the EXR master with colour tags, a mattes EXR (rudra.highlight, shadow, changed, class, confidence), regions.png, -2 / 0 / +2 EV brackets and a JSON sidecar.\n\nFor video, swap Load still for Read and leave source empty. For large blown skies, add SDR to HDR AI Fill after the Analytic node (16 GB GPU).\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nNone: this workflow needs no model.\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
@@ -983,7 +1200,7 @@
     ],
     [
       4,
-      3,
+      9,
       0,
       4,
       0,
@@ -1007,7 +1224,7 @@
     ],
     [
       7,
-      3,
+      9,
       0,
       5,
       0,
@@ -1020,6 +1237,30 @@
       5,
       6,
       "RUDRA_MATTES"
+    ],
+    [
+      9,
+      3,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      1,
+      0,
+      9,
+      2,
+      "IMAGE"
+    ],
+    [
+      11,
+      9,
+      1,
+      5,
+      7,
+      "MASK"
     ]
   ],
   "groups": [
@@ -1081,6 +1322,18 @@
         1860
       ],
       "color": "#b58b2a",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "AI Fill v5 (Optional, 16 GB GPU)",
+      "bounding": [
+        1410,
+        720,
+        400,
+        720
+      ],
+      "color": "#a1309b",
       "flags": {}
     }
   ],

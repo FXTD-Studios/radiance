@@ -4,9 +4,10 @@ from __future__ import annotations
 import pytest
 
 
-def test_the_unpublished_v4_rerender_is_hidden_from_the_menu():
+def test_the_region_rerender_is_in_the_menu_again_and_still_experimental():
+    """4.0 hid it (a port of the 12 Nov research build); 4.1 runs the published v5 and v4.3."""
     from radiance.nodes.hdr.rudra_rerender import RadianceSDRToHDRAIFillRerender as N
-    assert N.DEV_ONLY is True and N.EXPERIMENTAL is True
+    assert not getattr(N, "DEV_ONLY", False) and N.EXPERIMENTAL is True
 
 
 @pytest.mark.parametrize("module, cls, key", [

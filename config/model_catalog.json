@@ -14,6 +14,18 @@
       "licence": "Apache 2.0",
       "page": "https://huggingface.co/fxtdstudios/rudra-models"
     },
+    "radiance/rudra_genfill_v5": {
+      "title": "RUDRA AI fill v5 (region re-render)",
+      "size_mb": 263,
+      "licence": "Apache 2.0",
+      "page": "https://huggingface.co/fxtdstudios/rudra-models"
+    },
+    "radiance/rudra_genfill_v4": {
+      "title": "RUDRA AI fill v4.3 (region re-render)",
+      "size_mb": 263,
+      "licence": "Apache 2.0",
+      "page": "https://huggingface.co/fxtdstudios/rudra-models"
+    },
     "radiance/wan_vace_base": {
       "title": "Wan2.1-VACE-1.3B (AI fill base model)",
       "size_mb": 7700,
@@ -936,7 +948,12 @@
     "sdr_to_hdr_analytic": {
       "title": "SDR → HDR Analytic",
       "required": [],
-      "optional": []
+      "optional": [
+        "radiance/rudra_genfill_v3",
+        "radiance/rudra_genfill_v5",
+        "radiance/wan_vace_base",
+        "radiance/wan_vace_text_encoder"
+      ]
     },
     "shot_look_match": {
       "title": "Shot Look Match",

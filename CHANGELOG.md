@@ -4,6 +4,27 @@ All notable changes to FXTD Radiance will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **SDR → HDR AI Fill Re-render runs RUDRA AI fill v5** (RUDRA 1.3.0, 24 Nov
+  2026), and v4.3 (RUDRA 1.2.4) on request (`region_model`). It draws a whole
+  bright region again (a window, an open door, a sky just under white, a
+  practical lamp, sun glare) and is finished as RUDRA 1.3's app does it: windows
+  drawn from the source alone and crossfaded, the last one whole, a jump on
+  still pixels held, and with v5 the thin hold (a strip light, a tube, a small
+  lamp held steady) and the crossfade's mix settled against the codec's noise.
+  On the learned route (`condition` aces) the master's share is capped at the
+  fill and a newly clipped pixel joins the mask at its first frame. The v5 and
+  v4.3 LoRAs (263 MB each, Apache 2.0, Hub commit `6fd8893`, SHA-256 checked)
+  download on first use. The node is in the menu again (4.0 hid it), with a new
+  `keep_detail` switch (RUDRA 1.2.7: a grating, a railing, a practical lamp keep
+  their picture). The 12 Nov research build stays as `region_model` v4 research.
+  Experimental: about 16 GB of GPU memory; plausible, not recovered.
+- **SDR → HDR Analytic workflow:** an optional AI Fill Re-render (v5) node,
+  bypassed; Ctrl+B turns it on for a bright region the photo parks at white.
+- RUDRA AI fill v3 also leaves clipped specks smaller than 1/20 000 of the frame
+  alone (RUDRA 1.2.6: a hazy door with scattered clipped pixels got its fill in
+  the specks only).
+
 ### Fixed
 - **SDR → HDR Analytic (RUDRA): BT.1886 masters are no longer too dark in the
   shadows** (RUDRA 1.3.0, 24 Nov 2026; also on `release/4.0` for 4.0.1). A still
@@ -17,9 +38,8 @@ All notable changes to FXTD Radiance will be documented in this file.
 ### RUDRA 1.3 models
 - Checked against fxtdstudios/rudra-models on 25 Nov 2026 (RUDRA 1.3.0, Hub
   commit `6fd8893`): RUDRA ACES 2 and AI fill v3 are byte-identical to the files
-  Radiance pins, so nothing changes for them. AI fill v4.3 (RUDRA 1.2.4) and
-  AI fill v5 (RUDRA 1.3.0, region re-render with RUDRA's thin hold) are published
-  but not run by Radiance yet; see docs/MODELS.md.
+  Radiance pins, so nothing changes for them. AI fill v4.3 and v5 are pinned to
+  `6fd8893` (see Added).
 
 ## [4.0.0] - 2026-11-21
 

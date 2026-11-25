@@ -99,15 +99,15 @@ These parts of the release gate need checks that cannot run in CI:
   default prompt is cached and needs none of it). What it draws is plausible, not recovered: review
   every frame (the report flags frames where the fill adds flicker). RUDRA's
   registered gates covered highlights; shadow fill is off by default.
-- **AI fill v4 (region re-render) is a research build.** It passed RUDRA's
-  gates on one shot (09V) and the held-out set, and fails the structure gate
-  on a second (a flat softbox) and on frame 1 of another; frame 1 is the
-  weakest on every shot. It was gated on RUDRA's analytic route (`condition`
-  `bt1886`). The node is hidden in 4.0: it ports the 12 Nov research build,
-  while the LoRA published on 15 Nov (AI fill v4.3, RUDRA 1.2.4) needs newer
-  settings. It runs only with a LoRA put in `models/radiance/rudra_genfill_v4/`,
-  and the report says when the file is not the 12 Nov one. Inside the region
-  the SDR's codes change.
+- **AI fill v5 / v4.3 (region re-render) is experimental.** About 16 GB of
+  VRAM; inside the region the SDR's codes change, and what it draws is
+  plausible, not recovered. RUDRA checked v5 mostly on its analytic route
+  (`condition` `bt1886`); its own notes say the sky can still shift slightly
+  where windows join and it can invent a sun or flare in a plain sky, so review
+  every frame. Radiance runs RUDRA 1.3's finish; it does not have RUDRA 1.2.5's
+  lower-memory mode, so a card under 16 GB may run out of memory. The 12 Nov
+  research build (`region_model` v4 research) is kept for old graphs and never
+  downloaded.
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 

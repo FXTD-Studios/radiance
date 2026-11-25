@@ -110,6 +110,11 @@ def find_installed(entry: Dict[str, Any]) -> Optional[Path]:
 
 # ── Radiance's own models ───────────────────────────────────────────────────
 
+#: Radiance's own RUDRA packages (model/rudra_download.PACKAGES keys).
+_RUDRA_PACKS = ("RUDRA_ACES_2", "rudra_genfill_v3", "rudra_genfill_v5", "rudra_genfill_v4", "wan_vace_base",
+                "wan_vace_text_encoder")
+
+
 def _rudra(name: str):
     from radiance.model import rudra_download as rd
     return rd, rd.PACKAGES[name]
@@ -124,7 +129,7 @@ def _depth_repo(mid: str):
 
 def _pack_dir(mid: str) -> Optional[Path]:
     key = mid.split("/", 1)[1]
-    if key in ("RUDRA_ACES_2", "rudra_genfill_v3", "wan_vace_base", "wan_vace_text_encoder"):
+    if key in _RUDRA_PACKS:
         rd, pkg = _rudra(key)
         return radiance_dir() / pkg.dirname
     if key == "moge2":
@@ -137,7 +142,7 @@ def _pack_dir(mid: str) -> Optional[Path]:
 def pack_installed(mid: str) -> bool:
     key = mid.split("/", 1)[1]
     try:
-        if key in ("RUDRA_ACES_2", "rudra_genfill_v3", "wan_vace_base", "wan_vace_text_encoder"):
+        if key in _RUDRA_PACKS:
             rd, pkg = _rudra(key)
             return rd.find_package(pkg) is not None
         if key == "moge2":
@@ -159,7 +164,7 @@ def pack_installed(mid: str) -> bool:
 
 def _download_pack(mid: str, job: "Job") -> None:
     key = mid.split("/", 1)[1]
-    if key in ("RUDRA_ACES_2", "rudra_genfill_v3", "wan_vace_base", "wan_vace_text_encoder"):
+    if key in _RUDRA_PACKS:
         rd, pkg = _rudra(key)
         radiance_dir(create=True)
         rd._failed.pop(pkg.name, None)        # a failure earlier in this process is not final here
