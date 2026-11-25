@@ -44,6 +44,36 @@ which takes fixes only). Fixes made on `release/4.0` are merged forward into it.
   Radiance pins, so nothing changes for them. AI fill v4.3 and v5 are pinned to
   `6fd8893` (see Added).
 
+## [4.0.2] - Unreleased
+
+Comfy Registry scan. The Registry flagged 3.5.0–3.5.4 ("command-injection",
+"arbitrary-file-launch"). Every finding was informational, but two came from
+Radiance starting programs on its own, and those are now gone or opt-in.
+
+### Changed
+- **`install.py` no longer runs pip.** ComfyUI-Manager and the Registry install
+  `requirements.txt` / `pyproject.toml` themselves; `install.py` now only checks
+  OpenEXR, OpenColorIO 2.5+, diffusers 0.35+ and accelerate and, if one is
+  missing or too old, prints the exact `python -m pip install -U ...` line to
+  run. Prefetching RUDRA ACES 2 is unchanged.
+- **Deliver: Launch Folder is opt-in per machine.** Opening the output folder in
+  Explorer / Finder / the desktop file manager after an export now needs
+  `RADIANCE_ALLOW_REVEAL=1` in ComfyUI's environment. Without it the Viewer's
+  Launch Folder box does nothing (the server logs why) and the export is
+  otherwise unchanged.
+
+## [4.0.1] - 2026-11-25
+
+### Fixed
+- **SDR → HDR Analytic (RUDRA): BT.1886 masters are no longer too dark in the
+  shadows** (RUDRA 1.3.0, 24 Nov 2026). A still or a video frame in ComfyUI holds
+  the source's own 8-bit codes, and BT.1886 and BT.1886 shadows now read each one
+  as the BT.709 video code it is (BT.1886 gives code^2.4). They went through the
+  sRGB decode and then the BT.709 OETF: 0.36 stop dark at code 128, 1.3 stops at
+  51 and 2.8 at 26. Masters made with the default Source (BT.1886) since 4.0.0 come
+  out brighter below mid-grey; the other Source curves are unchanged.
+  `AnalyticOptions(own_codes=False)` keeps the RUDRA command line's video path.
+
 ## [4.0.0] - 2026-11-21
 
 **RUDRA models in this release** (fxtdstudios/rudra-models, checked against the
