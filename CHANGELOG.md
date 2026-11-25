@@ -2,7 +2,10 @@
 
 All notable changes to FXTD Radiance will be documented in this file.
 
-## [Unreleased]
+## [4.1.0] - Unreleased (in development, branch version-4-Beta)
+
+4.1 is where new features go since 4.0.0 (released 21 Nov 2026, branch `release/4.0`,
+which takes fixes only). Fixes made on `release/4.0` are merged forward into it.
 
 ### Added
 - **SDR → HDR AI Fill Re-render runs RUDRA AI fill v5** (RUDRA 1.3.0, 24 Nov
