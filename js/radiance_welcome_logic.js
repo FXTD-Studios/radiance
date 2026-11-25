@@ -23,6 +23,12 @@ export const LINKS = Object.freeze({
  */
 export const WHATS_NEW = Object.freeze([
     {
+        version: '4.0.1',
+        items: [
+            'SDR → HDR Analytic: BT.1886 masters are no longer too dark in the shadows (RUDRA 1.3).',
+        ],
+    },
+    {
         version: '4.0.0',
         items: [
             'RUDRA ACES 2: SDR to HDR with nothing to set up, and several frames at once on long clips.',
