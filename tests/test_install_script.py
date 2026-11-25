@@ -81,3 +81,16 @@ def test_prefetch_never_fails_the_install(comfy_tree, monkeypatch, capsys):
     (comfy_tree / "model" / "rudra_download.py").write_text("raise RuntimeError('boom')\n")
     inst._prefetch_rudra()
     assert "downloads on first use" in capsys.readouterr().out
+
+
+def test_install_never_runs_pip(monkeypatch, capsys):
+    """Missing libraries are reported with the pip line, not installed (Comfy Registry scan)."""
+    src = (ROOT / "install.py").read_text()
+    assert "subprocess" not in src
+    inst = _load(ROOT / "install.py")
+    monkeypatch.setattr(inst, "_missing", lambda: ["diffusers>=0.35.0"])
+    monkeypatch.setattr(inst, "_prefetch_rudra", lambda: None)
+    assert inst.main() == 0
+    out = capsys.readouterr().out
+    assert "missing or too old: diffusers>=0.35.0" in out
+    assert '-m pip install -U "diffusers>=0.35.0"' in out
