@@ -164,6 +164,7 @@ function _forceMiniMaxFrameRate(modelTypeW, frameRateW) {
     if (frameRateW && _isMiniMaxH3(modelTypeW?.value) && parseFloat(frameRateW.value) !== 24) {
         frameRateW.value = 24;
         if (frameRateW.inputEl) frameRateW.inputEl.value = 24;
+        frameRateW._radForced = true;
     }
 }
 
@@ -265,6 +266,30 @@ function syncModelTypeFromLoader(node) {
     return _setLabelMarker(modelTypeW, !!marker, marker) || synced;
 }
 
+// ALBABIT-FIX: frame_rate follows the Loader the same way for the video models made for one
+// rate (their official templates): Wan 2.2 14B and Wan 2.1 16 fps, the others 24. LTX reads
+// the rate it is given; MiniMax H3's 24 is forced elsewhere.
+const FRAME_RATE_BY_FAMILY = { wan: 16, wan_ti2v: 24, hunyuan_video: 24, hunyuan_video_15: 24, kandinsky5: 24 };
+function syncFrameRateFromLoader(node) {
+    const frameRateW = node.widgets?.find(w => w.name === "frame_rate");
+    const modelTypeW = node.widgets?.find(w => w.name === "model_type");
+    const linked = FRAME_RATE_BY_FAMILY[loaderModelType(modelMetaSourceNode(node))];
+    // A model with no fixed rate keeps a rate set by hand for when a mapped one comes back;
+    // MiniMax H3's forced 24 is no edit of the user's: the Loader's rate comes back after it.
+    if (linked === undefined || _isMiniMaxH3(modelTypeW?.value)) return _setLabelMarker(frameRateW, false, "");
+    if (frameRateW._radForced) {
+        frameRateW._radForced = false;
+        if (parseFloat(frameRateW.value) === 24) frameRateW._radAutoValue = frameRateW.value;
+    }
+    const synced = syncAutoValue(node, frameRateW, linked);
+    if (synced) {
+        frameRateW.callback?.call(frameRateW, frameRateW.value);
+        _syncDurationSecondsStep(modelTypeW, node.widgets?.find(w => w.name === "duration_seconds"), frameRateW);
+    }
+    const marker = linked === undefined ? "" : parseFloat(frameRateW?.value) === linked ? " 🧲" : " ✎";
+    return _setLabelMarker(frameRateW, !!marker, marker) || synced;
+}
+
 function updateResolutionMarkers(node) {
     const scaleFactorW = node.widgets?.find(w => w.name === "scale_factor");
     const mpTargetW    = node.widgets?.find(w => w.name === "mp_target");
@@ -284,6 +309,7 @@ function updateResolutionMarkers(node) {
     // every 250ms via the polling loop. Unconditional setDirtyCanvas here
     // was the same anti-pattern fixed in the Sampler's updateSigmaLocks().
     let changed = syncModelTypeFromLoader(node);
+    if (syncFrameRateFromLoader(node)) changed = true;
     if (_setLabelMarker(scaleFactorW, scaleActive, " 📐")) changed = true;
     if (_setLabelMarker(mpTargetW, mpActive, " 📐")) changed = true;
     if (_setLabelMarker(widthW, scaleActive || mpActive, " 📐")) changed = true;

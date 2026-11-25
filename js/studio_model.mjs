@@ -4,12 +4,12 @@
 // the page shows, so they run under `node --test` without a browser. The DOM
 // side is studio.mjs.
 
-export const SCREENS = ["home", "workflows", "assets", "shots", "renders"];
+export const SCREENS = ["home", "workflows", "gizmos", "assets", "shots", "renders", "models"];
 
 export function screenFromHash(hash) {
     const id = String(hash || "").replace(/^#/, "").split(/[?&]/)[0].toLowerCase();
     // The old dashboards' names still land somewhere sensible.
-    const alias = { library: "workflows", manager: "shots", projects: "shots", dashboard: "home" };
+    const alias = { library: "workflows", manager: "shots", projects: "shots", dashboard: "home", setup: "models" };
     const screen = alias[id] || id;
     return SCREENS.includes(screen) ? screen : "home";
 }
@@ -287,4 +287,114 @@ export function gpuSummary(stats) {
     const used = Math.max(0, total - free);
     const name = String(d.name || "GPU").replace(/^cuda:\d+\s*/, "").replace(/\s*:\s*cudaMallocAsync$/, "");
     return { name, total, used, percent: total ? Math.round((used / total) * 100) : 0, label: total ? `${formatBytes(used)} / ${formatBytes(total)}` : "" };
+}
+
+// ── Gizmos ───────────────────────────────────────────────────────────────────
+
+/** Saved gizmos as cards, by name; one that this start-up has not loaded says so. */
+export function gizmoCards(list) {
+    return (Array.isArray(list) ? list : []).map((g) => {
+        const title = String(g.display_name || g.name || "Gizmo");
+        const status = g.error ? { key: "error", label: "Cannot be read", tone: "bad" }
+            : g.loaded ? { key: "ready", label: "In the node menu", tone: "ok" }
+                : { key: "restart", label: "Restart ComfyUI to use", tone: "warn" };
+        return {
+            id: String(g.name || title), title, status,
+            category: String(g.category || "FXTD STUDIOS/Radiance/◎ Gizmos").split("/").pop(),
+            description: String(g.description || ""),
+            inputs: g.inputs || [], outputs: g.outputs || [], knobs: g.knobs || [],
+            nodes: Number(g.node_count) || 0, nodeTypes: g.node_types || [],
+            className: String(g.class_name || ""), file: String(g.file || ""),
+            size: Number(g.size) || 0, mtime: Number(g.mtime) || 0, error: g.error || "",
+        };
+    }).sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export function filterGizmos(cards, query = "") {
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return cards;
+    return cards.filter((g) => [g.title, g.id, g.description, g.category, ...g.nodeTypes].join(" ").toLowerCase().includes(q));
+}
+
+// ── Models (the setup check) ─────────────────────────────────────────────────
+
+/** Bytes in decimal GB/MB, as model downloads are quoted. */
+export function formatSize(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e9) return `${(v / 1e9).toFixed(v >= 1e10 ? 0 : 1)} GB`;
+    if (v >= 1e6) return `${Math.round(v / 1e6)} MB`;
+    if (v > 0) return `${Math.max(1, Math.round(v / 1e3))} KB`;
+    return "";
+}
+
+/** Memory in binary GB, as GPU and RAM sizes are quoted (a 24 GB card reads 24 GB). */
+export function formatMemory(n) {
+    const v = Number(n) || 0;
+    if (!v) return "";
+    const gb = v / 1024 ** 3;
+    return gb >= 1 ? `${gb.toFixed(gb >= 10 ? 0 : 1)} GB` : `${Math.round(v / 1024 ** 2)} MB`;
+}
+
+/** [label, value] rows describing this machine, from /radiance/setup/scan's hardware. */
+export function hardwareRows(hw = {}) {
+    const rows = [];
+    const gpus = hw.gpus || [];
+    if (!gpus.length) rows.push(["GPU", "None found: models run on the CPU (very slow)"]);
+    gpus.forEach((g, i) => rows.push([gpus.length > 1 ? `GPU ${i}` : "GPU",
+        g.vram ? `${g.name} · ${formatMemory(g.vram)}` : g.name]));
+    if (hw.ram) rows.push(["Memory", `${formatMemory(hw.ram)}${hw.ram_free ? ` · ${formatMemory(hw.ram_free)} free` : ""}`]);
+    if (hw.disk_free != null) rows.push(["Free disk (models)", formatSize(hw.disk_free) || "0"]);
+    rows.push(["PyTorch", [hw.torch, hw.cuda ? `CUDA ${hw.cuda}` : ""].filter(Boolean).join(" · ") || "—"]);
+    if (hw.comfyui) rows.push(["ComfyUI", hw.comfyui]);
+    if (hw.radiance) rows.push(["Radiance", hw.radiance]);
+    return rows;
+}
+
+/** What one GPU can comfortably run, in words, from its memory. */
+export function gpuTier(hw = {}) {
+    const vram = Math.max(0, ...(hw.gpus || []).map((g) => Number(g.vram) || 0));
+    if (!vram) return { tone: "bad", text: "No CUDA GPU: SDR to HDR and grading work; generation is very slow." };
+    const gb = vram / 1024 ** 3;
+    if (gb >= 22) return { tone: "ok", text: "Runs every local workflow, including the 22B video models and the AI fill." };
+    if (gb >= 15) return { tone: "ok", text: "Runs the image workflows and the AI fill; the large video models offload to RAM." };
+    if (gb >= 7.5) return { tone: "warn", text: "Runs SDR to HDR, the Starter and FLUX.2 Klein 4B; larger models offload to RAM (slow)." };
+    return { tone: "warn", text: "Fine for SDR to HDR and grading; generation models will be slow." };
+}
+
+/** One row per workflow: ready, or what is missing and how big it is. */
+export function setupRows(scan = {}) {
+    const models = scan.models || {};
+    return (scan.workflows || []).map((w) => {
+        const missing = (w.missing || []).map((id) => models[id] || { id, title: id });
+        // A partial total ("3 MB+" for four checkpoints) misleads, so it is shown only when all sizes are known or it is already large.
+        const bytes = Number(w.missing_bytes) || 0;
+        const size = !bytes ? "" : w.missing_bytes_known ? formatSize(bytes) : bytes >= 1e9 ? `${formatSize(bytes)}+` : "";
+        let status;
+        if (w.ready) status = { key: "ready", label: "Ready", tone: "ok" };
+        else if ((w.gated || []).length) status = { key: "gated", label: "Needs a licence", tone: "warn" };
+        else status = { key: "missing", label: `${missing.length} to download`, tone: "info" };
+        return { id: w.id, title: w.title, status, missing, size, note: w.gpu_note || "",
+                 required: w.required || [], optional: w.optional || [], needsNothing: !(w.required || []).length };
+    }).sort((a, b) => (a.status.key === "ready") - (b.status.key === "ready") || a.title.localeCompare(b.title));
+}
+
+/** The downloads list's headline: how many run, and the overall progress. */
+export function downloadsSummary(jobs = []) {
+    const active = jobs.filter((j) => j.status === "running" || j.status === "queued");
+    const done = jobs.filter((j) => j.status === "done").length;
+    const failed = jobs.filter((j) => j.status === "failed").length;
+    const total = active.reduce((s, j) => s + (Number(j.total) || 0), 0);
+    const got = active.reduce((s, j) => s + Math.min(Number(j.done) || 0, Number(j.total) || Infinity), 0);
+    return { active: active.length, done, failed, percent: total ? Math.min(100, Math.round((got / total) * 100)) : null };
+}
+
+/** Progress of one download, as a percentage and a line of text. */
+export function jobProgress(j = {}) {
+    const total = Number(j.total) || 0;
+    const done = Number(j.done) || 0;
+    const pct = total ? Math.min(100, Math.round((done / total) * 100)) : null;
+    const text = j.status === "running"
+        ? (total ? `${formatSize(done) || "0 MB"} of ${formatSize(total)}` : (done ? formatSize(done) : "Starting…"))
+        : { queued: "Waiting", done: "Installed", failed: "Failed", cancelled: "Cancelled" }[j.status] || "";
+    return { pct, text };
 }

@@ -465,8 +465,23 @@ def partial_support(source: np.ndarray, weight: np.ndarray) -> np.ndarray:
 
 
 def _lock_device() -> torch.device:
-    """Where the lock's float64 arithmetic runs: the GPU when there is one."""
+    """Where the lock's float64 arithmetic runs: the GPU ComfyUI runs on when it is a
+    CUDA device (the one picked with --cuda-device, not always cuda:0), else the CPU.
+    MPS and DirectML have no float64, so they are not used for this."""
+    dev = None
+    try:
+        import comfy.model_management as mm   # absent outside ComfyUI (tests, scripts)
+        dev = mm.get_torch_device()
+    except Exception:  # noqa: BLE001 - no ComfyUI, or it has no device yet
+        dev = None
+    if isinstance(dev, torch.device) and dev.type == "cuda":
+        return dev
     return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+def _is_oom(exc: BaseException) -> bool:
+    oom = getattr(torch.cuda, "OutOfMemoryError", None)
+    return (oom is not None and isinstance(exc, oom)) or "out of memory" in str(exc).lower()
 
 
 def _smoothest_in_bins(codes: np.ndarray, lo: np.ndarray, hi: np.ndarray, iters: int) -> np.ndarray:
@@ -475,26 +490,41 @@ def _smoothest_in_bins(codes: np.ndarray, lo: np.ndarray, hi: np.ndarray, iters:
     1-pixel edge-replicated pad, so it runs as torch convolutions in float64, on the
     GPU when there is one (200 iterations of a 1080p sky: 18 s in NumPy)."""
     import torch.nn.functional as F
-    dev = _lock_device()
 
     def lap(v):
         p = F.pad(v, (1, 1, 1, 1), mode="replicate")
         return (p[..., :-2, 1:-1] + p[..., 2:, 1:-1] + p[..., 1:-1, :-2] + p[..., 1:-1, 2:]
                 - 4.0 * p[..., 1:-1, 1:-1])
 
-    with torch.inference_mode():
-        to = lambda a: torch.from_numpy(np.ascontiguousarray(a.transpose(2, 0, 1)))[None].to(dev)  # noqa: E731
-        lo_t, hi_t = to(lo), to(hi)
-        u = to(codes)
-        y = u.clone()
-        t = 1.0
-        for _ in range(iters):   # ||Laplacian|| <= 8, so a 1/64 step on L^T L is nonexpansive
-            nu = torch.minimum(torch.maximum(y - lap(lap(y)) / 64.0, lo_t), hi_t)
-            nt = (1 + np.sqrt(1 + 4 * t * t)) / 2
-            y = nu + ((t - 1) / nt) * (nu - u)
-            u = nu
-            t = nt
-        return u[0].permute(1, 2, 0).cpu().numpy()
+    def solve(dev):
+        with torch.inference_mode():
+            to = lambda a: torch.from_numpy(np.ascontiguousarray(a.transpose(2, 0, 1)))[None].to(dev)  # noqa: E731
+            lo_t, hi_t = to(lo), to(hi)
+            u = to(codes)
+            y = u.clone()
+            t = 1.0
+            for _ in range(iters):   # ||Laplacian|| <= 8, so a 1/64 step on L^T L is nonexpansive
+                nu = torch.minimum(torch.maximum(y - lap(lap(y)) / 64.0, lo_t), hi_t)
+                nt = (1 + np.sqrt(1 + 4 * t * t)) / 2
+                y = nu + ((t - 1) / nt) * (nu - u)
+                u = nu
+                t = nt
+            return u[0].permute(1, 2, 0).cpu().numpy()
+
+    dev = _lock_device()
+    try:
+        return solve(dev)
+    except Exception as exc:  # noqa: BLE001 - only an out-of-memory GPU is retried
+        if dev.type == "cpu" or not _is_oom(exc):
+            raise
+        # A float64 4K sky needs a few GB; a GPU still holding a video model may not
+        # have them. The same arithmetic on the CPU gives the same result, slower.
+        logger.warning("[RUDRA] the lock ran out of GPU memory on %s; finishing it on the CPU (slower).", dev)
+        try:
+            torch.cuda.empty_cache()
+        except Exception:  # noqa: BLE001
+            pass
+        return solve(torch.device("cpu"))
 
 
 def dequantize_recorded(source: np.ndarray, region: Optional[np.ndarray] = None, iters: int = 200,

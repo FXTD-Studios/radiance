@@ -2,7 +2,7 @@
   "id": "c77ba63c-d170-4232-83ef-45c68652d3b8",
   "revision": 0,
   "last_node_id": 19,
-  "last_link_id": 32,
+  "last_link_id": 33,
   "nodes": [
     {
       "id": 1,
@@ -624,7 +624,7 @@
       },
       "widgets_values": [
         true,
-        "abandoned brutalist concrete hall, shafts of hard sunlight through roof openings, dust in the air, wet floor, wide establishing shot",
+        "Wide establishing shot of an abandoned brutalist concrete hall, eye-level, 35 mm lens, deep focus with everything sharp from the foreground to the back wall. Hard late-afternoon sunlight through square roof openings casts crisp shadows on a dry, matte concrete floor. Rough board-formed concrete walls, a few fallen concrete blocks and a steel staircase give clear depth cues. Clear air, neutral white balance, photorealistic film plate, no people, no text, no lens flare, no motion blur, no fog.",
         "",
         "None (Custom)",
         "None",
@@ -645,7 +645,7 @@
       ],
       "widgets_values_named": {
         "text_to_video": true,
-        "base_prompt": "abandoned brutalist concrete hall, shafts of hard sunlight through roof openings, dust in the air, wet floor, wide establishing shot",
+        "base_prompt": "Wide establishing shot of an abandoned brutalist concrete hall, eye-level, 35 mm lens, deep focus with everything sharp from the foreground to the back wall. Hard late-afternoon sunlight through square roof openings casts crisp shadows on a dry, matte concrete floor. Rough board-formed concrete walls, a few fallen concrete blocks and a steel staircase give clear depth cues. Clear air, neutral white balance, photorealistic film plate, no people, no text, no lens flare, no motion blur, no fog.",
         "action": "",
         "style_preset": "None (Custom)",
         "framing": "None",
@@ -2176,7 +2176,8 @@
           "type": "IMAGE",
           "links": [
             15,
-            26
+            26,
+            33
           ]
         },
         {
@@ -2453,6 +2454,23 @@
             "name": "batch_is_sequence"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "material_detail",
+          "locked": null,
+          "name": "material_detail",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "material_detail"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -2571,13 +2589,13 @@
         "Node name for S&R": "RadianceMultipassEstimate"
       },
       "widgets_values": [
-        "sRGB (display)",
+        "Auto",
         true,
         true,
         true,
         true,
         9,
-        0,
+        54.4,
         "OpenGL (Y-Up)",
         0.5,
         8,
@@ -2586,16 +2604,17 @@
         1,
         0,
         "fixed",
-        false
+        false,
+        true
       ],
       "widgets_values_named": {
-        "beauty_encoding": "sRGB (display)",
+        "beauty_encoding": "Auto",
         "geometry": true,
         "materials": true,
         "lighting": true,
         "download_missing_models": true,
         "geometry_detail": 9,
-        "fov_x_degrees": 0,
+        "fov_x_degrees": 54.4,
         "normal_convention": "OpenGL (Y-Up)",
         "ao_radius_m": 0.5,
         "ao_quality": 8,
@@ -2604,7 +2623,8 @@
         "ensemble_size": 1,
         "seed": 0,
         "control_after_generate": "fixed",
-        "batch_is_sequence": false
+        "batch_is_sequence": false,
+        "material_detail": true
       }
     },
     {
@@ -2627,6 +2647,21 @@
           "name": "passes",
           "type": "RADIANCE_PASSES",
           "link": 14
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "beauty",
+          "locked": null,
+          "name": "beauty",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "IMAGE",
+          "pos": null,
+          "link": 33
         },
         {
           "localized_name": "filename_prefix",
@@ -3193,6 +3228,23 @@
             "name": "output_premultiplied"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "relight_output",
+          "locked": null,
+          "name": "relight_output",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "relight_output"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -3253,7 +3305,8 @@
         10,
         true,
         0,
-        false
+        false,
+        "Replace (relit only)"
       ],
       "widgets_values_named": {
         "normal_convention": "OpenGL (Y-Up)",
@@ -3270,7 +3323,8 @@
         "depth_scale": 10,
         "depth_near_is_white": true,
         "mix_with_beauty": 0,
-        "output_premultiplied": false
+        "output_premultiplied": false,
+        "relight_output": "Replace (relit only)"
       }
     },
     {
@@ -4156,10 +4210,10 @@
       "title": "Model Links",
       "properties": {},
       "widgets_values": [
-        "## Flux.3 Klein plate + render passes Workflow for Radiance:\n\nGenerates a plate, builds the HDR master with RUDRA ACES 2 and estimates render passes from it.\n- EXR MultiPart (32-bit): beauty = HDR master + depth, normal, albedo and RUDRA's reconstructed mask, one file for Nuke/Blender.\n- EXR Passes Writer: every estimated pass (albedo, roughness, metallic, lighting, normals, depth, position, AO, curvature) as a multilayer EXR.\n- Multipass Relight: quick relight preview; move the light in its widgets.\nMultipass Estimate uses MoGe-2 + Marigold IID; the first run downloads about 4.9 GB.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n**MoGe-2** and **Marigold IID** (render passes; they download themselves on the first run, about 4.9 GB)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors), [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   ├── 📂 vae/\n│   │   └── flux2-vae.safetensors\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "## Flux.3 Klein plate + render passes Workflow for Radiance:\n\nGenerates a plate, builds the HDR master with RUDRA ACES 2 and estimates render passes from it.\n- EXR MultiPart (32-bit): beauty = HDR master + depth, normal, albedo and RUDRA's reconstructed mask, one file for Nuke/Blender.\n- EXR Passes Writer: every estimated pass (albedo, roughness, metallic, lighting, normals, depth, position, AO, curvature) as a multilayer EXR, with the HDR master as its beauty and the camera (35 mm, 54.4° FOV) in the header.\n- Multipass Relight: quick relight preview; move the light in its widgets.\nMultipass Estimate uses MoGe-2 + Marigold IID; the first run downloads about 4.9 GB.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n**MoGe-2** and **Marigold IID** (render passes; they download themselves on the first run, about 4.9 GB)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors), [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   ├── 📂 vae/\n│   │   └── flux2-vae.safetensors\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       ],
       "widgets_values_named": {
-        "text": "## Flux.3 Klein plate + render passes Workflow for Radiance:\n\nGenerates a plate, builds the HDR master with RUDRA ACES 2 and estimates render passes from it.\n- EXR MultiPart (32-bit): beauty = HDR master + depth, normal, albedo and RUDRA's reconstructed mask, one file for Nuke/Blender.\n- EXR Passes Writer: every estimated pass (albedo, roughness, metallic, lighting, normals, depth, position, AO, curvature) as a multilayer EXR.\n- Multipass Relight: quick relight preview; move the light in its widgets.\nMultipass Estimate uses MoGe-2 + Marigold IID; the first run downloads about 4.9 GB.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n**MoGe-2** and **Marigold IID** (render passes; they download themselves on the first run, about 4.9 GB)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors), [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   ├── 📂 vae/\n│   │   └── flux2-vae.safetensors\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
+        "text": "## Flux.3 Klein plate + render passes Workflow for Radiance:\n\nGenerates a plate, builds the HDR master with RUDRA ACES 2 and estimates render passes from it.\n- EXR MultiPart (32-bit): beauty = HDR master + depth, normal, albedo and RUDRA's reconstructed mask, one file for Nuke/Blender.\n- EXR Passes Writer: every estimated pass (albedo, roughness, metallic, lighting, normals, depth, position, AO, curvature) as a multilayer EXR, with the HDR master as its beauty and the camera (35 mm, 54.4° FOV) in the header.\n- Multipass Relight: quick relight preview; move the light in its widgets.\nMultipass Estimate uses MoGe-2 + Marigold IID; the first run downloads about 4.9 GB.\n\n- Radiance: [Documentation](https://www.fxtdstudios.com/comfyu-radiance-docs/)\n- Radiance: [GitHub](https://github.com/FXTD-Studios/radiance)\n\n## Prompting Tips\n\n1. **Whole scene**: Describe the framing, the subject, the background and the light, as one full caption\n\n## Radiance Report Issues :\nTo report any issues with Radiance nodes, [go to GitHub](https://github.com/FXTD-Studios/radiance/issues)\n\n## Model Links (for Local Users)\n\nThe files go in `ComfyUI/models/diffusion_models`, `text_encoders` and `vae`. Links marked 🔒 open after accepting the license on their Hugging Face page.\n\n**FLUX 3 Image Klein**\n- diffusion_models: [flux3-image-klein-base-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-bf16.safetensors) 🔒 (used, base), [flux3-image-klein-bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-bf16.safetensors) 🔒 (distilled)\n- text_encoders: [qwen3vl_4b_bf16](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors) 🔒, [qwen3.5_9b_flux3_prompt_upsampler_int8_convrot](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_int8_convrot.safetensors) 🔒 (optional prompt upsampler)\n- vae: [flux2-vae](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors) 🔒\n**MoGe-2** and **Marigold IID** (render passes; they download themselves on the first run, about 4.9 GB)\n- [moge_2_vitl_normal_fp16](https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_2_vitl_normal_fp16.safetensors), [marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1), [marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)\n\n## Model Storage Location (loaded files)\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │   └── flux3-image-klein-base-bf16.safetensors\n│   ├── 📂 text_encoders/\n│   │   └── qwen3vl_4b_bf16.safetensors\n│   ├── 📂 vae/\n│   │   └── flux2-vae.safetensors\n│   ├── 📂 geometry_estimation/\n│   │   └── moge_2_vitl_normal_fp16.safetensors\n│   └── 📂 radiance/\n│       ├── 📂 marigold/iid-appearance-v1-1/\n│       └── 📂 marigold/iid-lighting-v1-1/\n```\n\n## Report Issue\n\nNote: Please update ComfyUI first ([guide](https://docs.comfy.org/installation/update_comfyui)) and prepare required models. Desktop/Cloud updates follow stable releases, so some nightly-supported models may not be available yet.\n\n- Cannot run / runtime errors: [ComfyUI/issues](https://github.com/Comfy-Org/ComfyUI/issues)\n- UI / frontend issues: [ComfyUI_frontend/issues](https://github.com/Comfy-Org/ComfyUI_frontend/issues)"
       },
       "color": "#222",
       "bgcolor": "#000",
@@ -4424,6 +4478,14 @@
       0,
       17,
       0,
+      "IMAGE"
+    ],
+    [
+      33,
+      6,
+      0,
+      8,
+      1,
       "IMAGE"
     ]
   ],

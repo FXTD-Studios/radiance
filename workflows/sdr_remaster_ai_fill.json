@@ -2,7 +2,7 @@
   "id": "b5959a16-0d36-4170-a379-91925257b5bf",
   "revision": 0,
   "last_node_id": 18,
-  "last_link_id": 21,
+  "last_link_id": 27,
   "nodes": [
     {
       "id": 1,
@@ -242,6 +242,30 @@
           "name": "info",
           "type": "STRING",
           "links": null
+        },
+        {
+          "localized_name": "fps",
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            22,
+            24,
+            26
+          ],
+          "slot_index": 3,
+          "label": null
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            23,
+            25,
+            27
+          ],
+          "slot_index": 4,
+          "label": null
         }
       ],
       "properties": {
@@ -1152,7 +1176,7 @@
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
-          "link": null
+          "link": 23
         },
         {
           "localized_name": "mask",
@@ -1217,7 +1241,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 22
         },
         {
           "localized_name": "quality",
@@ -1461,7 +1485,7 @@
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
-          "link": null
+          "link": 25
         },
         {
           "localized_name": "mask",
@@ -1526,7 +1550,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 24
         },
         {
           "localized_name": "quality",
@@ -1910,7 +1934,7 @@
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
-          "link": null
+          "link": 27
         },
         {
           "localized_name": "mask",
@@ -1975,7 +1999,7 @@
           "widget": {
             "name": "fps"
           },
-          "link": null
+          "link": 26
         },
         {
           "localized_name": "quality",
@@ -3242,6 +3266,54 @@
       16,
       0,
       "STRING"
+    ],
+    [
+      22,
+      1,
+      3,
+      5,
+      8,
+      "FLOAT"
+    ],
+    [
+      23,
+      1,
+      4,
+      5,
+      1,
+      "AUDIO"
+    ],
+    [
+      24,
+      1,
+      3,
+      6,
+      8,
+      "FLOAT"
+    ],
+    [
+      25,
+      1,
+      4,
+      6,
+      1,
+      "AUDIO"
+    ],
+    [
+      26,
+      1,
+      3,
+      8,
+      8,
+      "FLOAT"
+    ],
+    [
+      27,
+      1,
+      4,
+      8,
+      1,
+      "AUDIO"
     ]
   ],
   "groups": [

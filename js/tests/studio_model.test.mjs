@@ -105,3 +105,69 @@ test("gpu summary from /system_stats", () => {
     assert.equal(g.label, "6.0 GB / 24 GB");
     assert.equal(M.gpuSummary({}), null);
 });
+
+test("the Gizmos and Models screens are reachable, setup is an alias", () => {
+    assert.equal(M.screenFromHash("#gizmos"), "gizmos");
+    assert.equal(M.screenFromHash("#models"), "models");
+    assert.equal(M.screenFromHash("#setup"), "models");
+});
+
+test("gizmo cards: by name, a gizmo saved since start-up asks for a restart", () => {
+    const cards = M.gizmoCards([
+        { name: "chroma_ab", display_name: "Chroma Aberration", loaded: false, node_count: 4, category: "FXTD STUDIOS/Radiance/◎ Gizmos",
+          inputs: [{ name: "image", type: "IMAGE" }], outputs: [{ name: "image", type: "IMAGE" }], knobs: ["strength"], node_types: ["ImageBlur"], class_name: "RadianceGizmo_chroma_ab" },
+        { name: "bloom_kit", display_name: "Bloom Kit", loaded: true, node_count: 2 },
+        { name: "broken", error: "cannot be read: bad JSON" },
+    ]);
+    assert.deepEqual(cards.map((c) => c.title), ["Bloom Kit", "broken", "Chroma Aberration"]);
+    assert.equal(cards[0].status.key, "ready");
+    assert.equal(cards[1].status.key, "error");
+    assert.equal(cards[2].status.key, "restart");
+    assert.equal(cards[2].category, "◎ Gizmos");
+    assert.equal(M.filterGizmos(cards, "blur").length, 1);
+    assert.equal(M.filterGizmos(cards, "").length, 3);
+});
+
+test("setup rows: missing first with their size, gated says so; downloads add up", () => {
+    const scan = {
+        models: {
+            "vae/a.safetensors": { id: "vae/a.safetensors", title: "a.safetensors", size: 300_000_000, gated: false },
+            "diffusion_models/b.safetensors": { id: "diffusion_models/b.safetensors", title: "b", size: 9_000_000_000, gated: true },
+        },
+        workflows: [
+            { id: "sdr_to_hdr", title: "SDR → HDR", required: ["radiance/RUDRA_ACES_2"], missing: [], ready: true },
+            { id: "start", title: "Starter", required: ["vae/a.safetensors"], missing: ["vae/a.safetensors"], missing_bytes: 300_000_000, missing_bytes_known: true, gated: [] },
+            { id: "flux", title: "Flux", required: ["diffusion_models/b.safetensors"], missing: ["diffusion_models/b.safetensors"], missing_bytes: 9_000_000_000, missing_bytes_known: false, gated: ["diffusion_models/b.safetensors"], gpu_note: "big" },
+        ],
+    };
+    const rows = M.setupRows(scan);
+    assert.deepEqual(rows.map((r) => r.id), ["flux", "start", "sdr_to_hdr"]);
+    assert.equal(rows[0].status.key, "gated");
+    assert.equal(rows[0].size, "9.0 GB+");
+    assert.equal(rows[1].status.label, "1 to download");
+    assert.equal(rows[1].size, "300 MB");
+    assert.equal(rows[2].status.key, "ready");
+    // A small partial total would read as the whole download, so it is left out.
+    const partial = M.setupRows({ workflows: [{ id: "x", title: "X", missing: ["a", "b"], missing_bytes: 3_000_000, missing_bytes_known: false, gated: [] }] });
+    assert.equal(partial[0].size, "");
+    const sum = M.downloadsSummary([
+        { status: "running", done: 50, total: 100 }, { status: "queued", done: 0, total: 100 }, { status: "done" }, { status: "failed" },
+    ]);
+    assert.deepEqual(sum, { active: 2, done: 1, failed: 1, percent: 25 });
+    assert.deepEqual(M.jobProgress({ status: "running", done: 1_500_000_000, total: 3_000_000_000 }), { pct: 50, text: "1.5 GB of 3.0 GB" });
+    assert.equal(M.jobProgress({ status: "queued" }).text, "Waiting");
+});
+
+test("hardware rows and the GPU tier read like a spec sheet", () => {
+    const hw = { gpus: [{ name: "RTX 4070", vram: 12_878_086_144 }], ram: 34_359_738_368, ram_free: 21_474_836_480, disk_free: 120_000_000_000,
+                 torch: "2.12.1", cuda: "13.0", comfyui: "0.46.0", radiance: "4.0.0" };
+    const rows = Object.fromEntries(M.hardwareRows(hw));
+    assert.equal(rows.GPU, "RTX 4070 · 12 GB");
+    assert.equal(rows.Memory, "32 GB · 20 GB free");
+    assert.equal(rows["Free disk (models)"], "120 GB");
+    assert.equal(rows.PyTorch, "2.12.1 · CUDA 13.0");
+    assert.equal(M.gpuTier(hw).tone, "warn");
+    assert.equal(M.gpuTier({ gpus: [] }).tone, "bad");
+    assert.equal(M.gpuTier({ gpus: [{ vram: 25_756_696_576 }] }).tone, "ok");
+    assert.equal(M.formatMemory(25_756_696_576), "24 GB");
+});

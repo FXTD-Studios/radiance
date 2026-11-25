@@ -62,13 +62,16 @@ except ImportError:
 
 try:
     from ...hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report
+    from ...hdr.io import depth_with_empty, signed_normals
 except ImportError:
     try:
         from hdr.io import write_exr_robust, write_exr_multipart, write_exr_multipart_report  # type: ignore[import]
+        from hdr.io import depth_with_empty, signed_normals  # type: ignore[import]
     except ImportError:
         write_exr_robust = None      # type: ignore[assignment]
         write_exr_multipart = None   # type: ignore[assignment]
         write_exr_multipart_report = None   # type: ignore[assignment]
+        depth_with_empty = signed_normals = None   # type: ignore[assignment]
 
 try:
     from ...path_utils import get_safe_output_dir, strip_path_quotes
@@ -258,10 +261,10 @@ class RadianceRead:
         "4444 alpha on the mask output, and honours the file's colour tags."
     )
     FUNCTION     = "read"
-    # `info` is appended last on purpose: ComfyUI links outputs by index, so
-    # every workflow saved against the two-output version keeps working.
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
-    RETURN_NAMES = ("image", "mask", "info")
+    # Outputs are only ever appended: ComfyUI links outputs by index, so every
+    # workflow saved against an older version keeps working.
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "FLOAT", "AUDIO")
+    RETURN_NAMES = ("image", "mask", "info", "fps", "audio")
     OUTPUT_TOOLTIPS = (
         "Frames as a batch. Scene-linear once color_space has decoded them.",
         "Alpha. For a ProRes 4444, an RGBA EXR or an RGBA sequence this is the "
@@ -269,6 +272,11 @@ class RadianceRead:
         "JSON describing what was actually read: resolution, frame count and "
         "range, bit depth, codec, EXR layers and windows, colour tags, "
         "timecode. Nuke's metadata tab, as a wire you can plug in.",
+        "Frame rate the frames play at: the clip's or the sequence header's "
+        "rate, divided by frame_step; 24 for a still or a sequence with no "
+        "rate. Wire it to Write's fps so a 25 or 30 fps clip is not written at 24.",
+        "The clip's sound under the frames that were read (48 kHz stereo), "
+        "for Write's audio input. Empty for stills, sequences and silent clips.",
     )
 
     @classmethod
@@ -519,7 +527,8 @@ class RadianceRead:
             # ALBABIT-FIX: node and console progress for sequences.
             on_frame=_FrameProgress("Read"),
         )
-        return (image, mask, json.dumps(info, default=str))
+        from ...io.reader import playback_fps, read_clip_audio
+        return (image, mask, json.dumps(info, default=str), playback_fps(info), read_clip_audio(info))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1051,8 +1060,8 @@ class RadianceEXRMultiPart:
 
     Standard parts:
       • beauty      → R, G, B (+ A if alpha connected)
-      • depth       → Z  (single channel)
-      • normal      → NX, NY, NZ
+      • depth       → Z  (single channel, 32-bit float, 1e10 where empty)
+      • normal      → N.R, N.G, N.B (signed -1..1)
       • albedo      → albedo.R/G/B
       • custom_1/2  → <name>.R/G/B
 
@@ -1081,15 +1090,15 @@ class RadianceEXRMultiPart:
                 "beauty":    ("IMAGE", {
                     "tooltip": "Main image, written as the 'beauty' part (R, G, B, plus A if it has 4 channels). Values are written unchanged, so feed scene-linear data. Each frame of a batch is written to its own file."}),
                 "bit_depth": (_EXR_BIT_DEPTHS,   {"default": "16-bit Half Float",
-                    "tooltip": "Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float."}),
+                    "tooltip": "Pixel type for every part: 16-bit half float (smaller, about 11 bits of precision) or 32-bit float. The depth part is always 32-bit float."}),
                 "compression": (_EXR_COMPRESSIONS, {"default": "ZIP",
                     "tooltip": "EXR compression for every part. ZIP, ZIPS, PIZ, RLE and Uncompressed are lossless; PXR24 is lossy on 32-bit float; B44, B44A, DWAA and DWAB are lossy."}),
             },
             "optional": {
                 "depth":         ("IMAGE", {
-                    "tooltip": "Depth AOV written as a single Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised."}),
+                    "tooltip": "Depth AOV written as a single 32-bit float Z channel in a 'depth' part, from the first channel (a grey depth image carries the same value in all three); values are not normalised. 0 (no surface, e.g. sky) is written as 1e10, far away, as renderers do, so ZDefocus and fog do not treat the sky as touching the lens."}),
                 "normal":        ("IMAGE", {
-                    "tooltip": "Normals AOV written as NX, NY, NZ in a 'normal' part, values unchanged (no 0-1 to -1..1 remap)."}),
+                    "tooltip": "Normals AOV written as N.R, N.G, N.B in a 'normal' part, signed -1..1 (camera space, +Y up, +Z toward the camera), as compositors expect. A 0..1 encoded pass (Multipass Estimate's normal_map) is decoded; a signed pass is kept."}),
                 "albedo":        ("IMAGE", {
                     "tooltip": "Albedo AOV written as albedo.R/G/B in an 'albedo' part, values unchanged."}),
                 "custom_1":      ("IMAGE", {
@@ -1197,9 +1206,21 @@ class RadianceEXRMultiPart:
             # A custom part named like a standard one replaced it silently.
             raise ValueError(f"[EXRMultiPart] Duplicate part name(s): {', '.join(_dupes)}.")
 
-        def _t(t: torch.Tensor, b: int) -> np.ndarray:
-            arr = t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]
-            return arr.detach().float().cpu().numpy()
+        # Decided on the whole clip, as Relight does: a 0..1 encoded normal
+        # pass (Multipass Estimate, the IMAGE convention) has no negative value.
+        normals_encoded = None
+        if normal is not None:
+            _n = normal.float()[..., :3]
+            _n = _n[torch.isfinite(_n)]
+            normals_encoded = bool(_n.numel()) and float(_n.min()) >= 0.0
+
+        def _t(t: torch.Tensor, b: int, name: str = "") -> np.ndarray:
+            arr = (t if t.dim() == 3 else t[0 if t.shape[0] == 1 else b]).detach().float().cpu().numpy()
+            if name == "normal":
+                return signed_normals(arr, encoded=normals_encoded)
+            if name == "depth":
+                return depth_with_empty(arr)[..., None]
+            return arr
 
         # RUDRA's mask channels ride in the beauty part, named as RUDRA names
         # them, so RUDRA's own tools (the AI fill, the app's View menu) read them.
@@ -1212,7 +1233,7 @@ class RadianceEXRMultiPart:
         def write_frame(b: int) -> Dict[str, Any]:
             frame_num = str(frame_index + b).zfill(4)
             filepath  = os.path.join(out_dir, f"{filename_prefix}.{frame_num}.exr")
-            parts: Dict[str, np.ndarray] = {name: _t(t, b) for t, name in named}
+            parts: Dict[str, np.ndarray] = {name: _t(t, b, name) for t, name in named}
             extra = None
             if rudra_masks:
                 extra = {"beauty": {
@@ -1339,7 +1360,7 @@ class RadianceDigitalCinemaRead:
         else:
             read_start = start_frame
             read_end = (start_frame + frame_limit - 1) if frame_limit > 0 else 0
-        img, mask, read_info = reader.read(
+        img, mask, read_info, *_ = reader.read(
             path=source_path,
             media_type=media_type,
             color_space=cs_in,

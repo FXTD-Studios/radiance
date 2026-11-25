@@ -158,7 +158,7 @@ Universal loader v3.3 — streamlined to be extremely visual and modular. Auto-d
 | `text_projection` (optional) | choice | `None` | `None`, `Baked (from UNET)` | Text projection matrix. Used by: LTX 2.3 (with Gemma 3 llm_encoder). 'Baked (from UNET)' loads it from the main LTX 2.3 checkpoint, like the native LTXV Audio Text Encoder Loader. |
 | `clip_dtype` (optional) | choice | `default` | `default`, `fp16`, `bf16`, `fp8_e4m3fn`, `fp32` | CLIP weight precision. Independent from UNET. For Flux T5XXL: fp8 saves ~4.7 GB vs fp16. |
 | `offload_mode` (optional) | choice | `none` | `none`, `cpu_offload`, `sequential` | none = GPU only. cpu_offload = CLIP loaded to CPU RAM. sequential = enable ComfyUI sequential CPU offload (8–12 GB GPUs). This switches ComfyUI to LOW_VRAM (a --novram launch stays as it is) for the rest of the session, for every workflow; restart ComfyUI to undo it. |
-| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. |
+| `lora_stack` (optional) | LORA_STACK |  |  | Accept a LORA_STACK from a LoRA Stack node. • WAN 2.2: a high_noise LoRA goes on model, its low_noise file (found by name, as the UNET's) on model_low_noise. |
 | `check_vram` (optional) | choice | `On` | `On`, `Off` | Estimate VRAM before load and warn if tight. |
 | `use_cache` (optional) | choice | `On` | `On`, `Off` | Cache loaded models. Skips disk I/O when re-running with the same files. Cache auto-invalidates if files change. |
 | `lora_on_error` (optional) | choice | `raise` | `warn`, `raise` | 'warn' skips failed LoRA and continues. 'raise' stops execution. |
@@ -246,9 +246,9 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `upsample_prompt` (optional) | boolean | off |  | FLUX 3 Image Klein and Qwen-Image 2.1: rewrites the prompt into the detailed caption the model was trained on, with the model authors' upsampler and system prompt (as ComfyUI's templates do). • With reference images, it uses the edit instructions and sees the images. • positive_text shows the rewritten prompt. |
 | `upsampler_seed` (optional) | int | 0 | 0 to 18446744073709551615 | Seed of the upsampler's sampling. The same seed and prompt give the same rewrite. |
 | `layout` (optional) | string |  | multi-line text | FLUX 3 Image Klein: the layout table. • A JSON list of {"id": "obj_1", "bbox": [ymin, xmin, ymax, xmax], "desc": "..."}, bbox on a 0-1000 grid, as ComfyUI's FLUX 3 Image Layout Prompt writes it. • Draw the boxes in the Viewer (Tools > FLUX 3 Layout Boxes), or paste the table at the end of base_prompt. • Cite them in the prompt as &lt;obj_1>, &lt;obj_2>… |
-| `video_latent` (optional) | LATENT |  |  | MiniMax H3 with a first or last frame: the Resolution's latent, the one the Sampler samples on. • The Resolution's model_type is MiniMax H3 (24ch) (or its model_meta comes from the MiniMax H3 Loader), with enable_video on. • Gives the frames the video's size. • Places last_frame on the last frame. |
-| `first_frame` (optional) | IMAGE |  |  | MiniMax H3: the video's first frame (image to video). • Alone, or with last_frame. • Needs vae and video_latent. • Qwen3-VL sees it with the prompt: write the prompt from it. |
-| `last_frame` (optional) | IMAGE |  |  | MiniMax H3: the video's last frame. • Alone, or with first_frame (first and last frames). • Needs vae and video_latent. • To leave a frame out, disconnect its image or bypass the node that feeds it. |
+| `video_latent` (optional) | LATENT |  |  | MiniMax H3 or Wan with a first or last frame: the Resolution's latent, the one the Sampler samples on. • The Resolution's model_type is MiniMax H3 (24ch), WAN (16ch) or WAN TI2V (48ch) (or its model_meta comes from the Loader), with enable_video on. • Gives the frames the video's size. • Places last_frame on the last frame. • Sample on the Prompt's latent output: the Wan 5B's holds its first frame. |
+| `first_frame` (optional) | IMAGE |  |  | MiniMax H3 and Wan: the video's first frame (image to video). • Alone, or with last_frame. • Needs vae and video_latent. • MiniMax H3: Qwen3-VL sees it with the prompt, so write the prompt from it. • Wan 2.2 14B: load its i2v files. The 5B (TI2V) reads the first frame only. |
+| `last_frame` (optional) | IMAGE |  |  | MiniMax H3 and Wan (not the 5B): the video's last frame. • Alone, or with first_frame (first and last frames). • Needs vae and video_latent. • To leave a frame out, disconnect its image or bypass the node that feeds it. |
 
 **Outputs**
 
@@ -260,7 +260,7 @@ Professional cinematic encoder. Detects the text encoder (CLIP, T5 or LLM) and w
 | `negative_text` | STRING | Final negative prompt text that was encoded. |
 | `resolved_arch` | STRING | Detected architecture used to choose prose vs CLIP-style prompting. |
 | `token_count` | INT | Token count of the positive prompt, from the model's tokenizer. |
-| `latent` | LATENT | Empty latent at image_1's size after the resize. • Sample on it to edit: any other size shifts the edit. • MiniMax H3: an empty latent of video_latent's size. • None without reference images or frames. |
+| `latent` | LATENT | Empty latent at image_1's size after the resize. • Sample on it to edit: any other size shifts the edit. • MiniMax H3: an empty latent of video_latent's size. • Wan: the frames' latent (the 5B's holds its first frame). • Without images or frames: video_latent as it came, None without it. |
 
 ## Regional Grid
 

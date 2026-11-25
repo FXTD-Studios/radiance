@@ -917,11 +917,18 @@ def test_the_cdl_sidecar_carries_the_grade_that_was_delivered(h):
 def test_the_amf_sidecar_is_written_when_asked_for(h):
     import xml.etree.ElementTree as ET
     h.put(flat(0.5))
-    body = h.body(h.run({"export_amf": True}, {"saturation": 1.4}))
+    body = h.body(h.run({"export_amf": True, "colorSpace": "ACEScg (AP1)"}, {"saturation": 1.4}))
     amf = os.path.splitext(body["path"])[0] + ".amf"
     assert os.path.isfile(amf)
     ET.parse(amf)
     assert "1.400000" in open(amf, encoding="utf-8").read()
+
+
+def test_no_amf_for_a_master_that_is_not_aces(h):
+    h.put(flat(0.5))
+    body = h.body(h.run({"export_amf": True}))          # Linear (sRGB): not an ACES master
+    assert not os.path.isfile(os.path.splitext(body["path"])[0] + ".amf")
+    assert any("AMF sidecar was not written" in w for w in body.get("warnings", [])), body
 
 
 def test_the_amf_sidecar_is_absent_by_default(h):

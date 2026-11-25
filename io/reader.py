@@ -1240,6 +1240,69 @@ def _probe_for_ui(path: str) -> Dict[str, Any]:
             out["summary"] = f"unreadable: {exc}"
     return out
 
+#: The rate a still, or a sequence whose headers carry none, is said to play at.
+STILL_FPS = 24.0
+#: Audio taken from a clip is resampled to this, in stereo: what Write muxes and
+#: what ComfyUI's own audio nodes expect, whatever the source carried.
+AUDIO_RATE, AUDIO_CHANNELS = 48000, 2
+
+
+def playback_fps(info: Dict[str, Any]) -> float:
+    """The rate the frames Read returned play at: the source rate, divided by
+    frame_step (every other frame of a 25 fps clip plays at 12.5 for the same
+    duration). Stills and header-less sequences say STILL_FPS."""
+    fps = info.get("fps") if isinstance(info, dict) else None
+    try:
+        fps = float(fps) if fps else 0.0
+    except (TypeError, ValueError):
+        fps = 0.0
+    if not math.isfinite(fps) or fps <= 0:
+        return STILL_FPS
+    step = max(int(info.get("frame_step") or 1), 1)
+    return fps / step
+
+
+def read_clip_audio(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The audio under the frames Read returned, as a ComfyUI AUDIO dict
+    ``{"waveform": (1, C, N) float32, "sample_rate": int}``, or None when the
+    read was not a clip with an audio stream.
+
+    The span is the decoded frames' own: from start_frame for decoded_frames x
+    frame_step source frames, so Write muxes sound that lines up with the
+    picture (it pads or trims to the picture's length)."""
+    if not isinstance(info, dict) or info.get("kind") != "video" or not info.get("audio_streams"):
+        return None
+    path = info.get("path")
+    fps = float(info.get("fps") or 0.0)
+    n = int(info.get("decoded_frames") or info.get("frames") or 0)
+    if not path or not os.path.isfile(path) or fps <= 0 or n <= 0:
+        return None
+    step = max(int(info.get("frame_step") or 1), 1)
+    start_s = max(int(info.get("start_frame") or 0), 0) / fps
+    dur_s = n * step / fps
+    import subprocess
+    from ..core.ffmpeg import ffmpeg_exe
+    exe = ffmpeg_exe()
+    if not exe:
+        log.warning("[Radiance/Read] %s has audio but ffmpeg is missing; the audio output is empty.",
+                    os.path.basename(path))
+        return None
+    cmd = [exe, "-v", "error", "-nostdin", "-ss", f"{start_s:.6f}", "-t", f"{dur_s:.6f}", "-i", path,
+           "-map", "0:a:0", "-vn", "-ac", str(AUDIO_CHANNELS), "-ar", str(AUDIO_RATE), "-f", "f32le", "pipe:1"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=600, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("[Radiance/Read] could not read the audio of %s: %s", os.path.basename(path), exc)
+        return None
+    if res.returncode != 0 or not res.stdout:
+        log.warning("[Radiance/Read] could not read the audio of %s: %s", os.path.basename(path),
+                    res.stderr.decode("utf-8", "replace").strip()[-300:] or f"ffmpeg exit {res.returncode}")
+        return None
+    pcm = np.frombuffer(res.stdout, dtype=np.float32)
+    pcm = pcm[: (pcm.size // AUDIO_CHANNELS) * AUDIO_CHANNELS].reshape(-1, AUDIO_CHANNELS).T
+    return {"waveform": torch.from_numpy(np.ascontiguousarray(pcm))[None], "sample_rate": AUDIO_RATE}
+
+
 def read_frames(
     *,
     media_type: str = "Auto",

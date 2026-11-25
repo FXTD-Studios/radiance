@@ -126,6 +126,129 @@ def parse_timecode(tc_str: str, fps: float = 24.0) -> Optional[Any]:
         return None
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#               AOV CONVENTIONS (multipass EXR, 4.0)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# How Radiance's pass writers (Write EXR Passes, EXR MultiPart) name and store
+# AOVs, so a compositor's reader picks them up without shuffling:
+#
+#   beauty          R G B (A)          scene-linear
+#   alpha           A
+#   depth           Z                  metric planar depth, float32; pixels with
+#                                      no surface (sky) hold EMPTY_DEPTH_Z, far
+#                                      away, as renderers do, never 0 (at the lens)
+#   normal          N.R N.G N.B        signed -1..1, camera space, +X right,
+#                                      +Y up, +Z toward the camera
+#   world_position  P.R P.G P.B        metres in that same camera space; the
+#                                      header's worldToCamera is identity
+#   motion_vector   backward.u .v      pixels to the previous frame, +y up (Nuke)
+#   motion_forward  forward.u .v       pixels to the next frame, +y up (Nuke)
+#   ao, roughness, metallic, curvature, geometry_mask
+#                   <name>.Y           one channel (OpenEXR's grey convention)
+#   anything else   <name>.R .G .B (.A)
+
+EMPTY_DEPTH_Z = 1.0e10
+SCALAR_AOVS = frozenset({"ao", "roughness", "metallic", "curvature", "geometry_mask"})
+DATA_AOVS = frozenset({"depth", "world_position", "motion_vector", "motion_forward", "object_id"})
+REC709_CHROMATICITIES = (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
+#: Header attributes stored under their own name with their own type (not
+#: prefixed rad_, not limited to str/int/float).
+_TYPED_STANDARD_ATTRIBUTES = ("chromaticities", "worldToCamera", "worldToNDC")
+
+
+def aov_channels(name: str, image: np.ndarray) -> Dict[str, np.ndarray]:
+    """{EXR channel name: (H, W) plane} for one pass, by the conventions above."""
+    arr = np.asarray(image, dtype=np.float32)
+    if arr.ndim == 2:
+        arr = arr[..., np.newaxis]
+    count = arr.shape[2]
+    first = arr[..., 0]
+    if name == "beauty":
+        names = ["R", "G", "B", "A"][:count]
+    elif name == "alpha":
+        return {"A": first}
+    elif name == "depth":
+        return {"Z": first}
+    elif name in SCALAR_AOVS:
+        return {f"{name}.Y": first}
+    elif name == "normal":
+        names = ["N.R", "N.G", "N.B"][:min(count, 3)]
+    elif name == "world_position":
+        names = ["P.R", "P.G", "P.B"][:min(count, 3)]
+    elif name == "motion_vector":
+        names = ["backward.u", "backward.v"][:count]
+    elif name == "motion_forward":
+        names = ["forward.u", "forward.v"][:count]
+    else:
+        names = [f"{name}.{ch}" for ch in ["R", "G", "B", "A"][:count]]
+    return {cname: arr[..., i] for i, cname in enumerate(names)}
+
+
+def signed_normals(image: np.ndarray, convention: str = "OpenGL (Y-Up)",
+                   encoded: Optional[bool] = None) -> np.ndarray:
+    """(H, W, 3) signed unit normals in OpenGL camera space (+Y up).
+
+    A 0..1 encoded pass (Radiance's IMAGE convention, Multipass Estimate's
+    normal_map) is decoded; a signed pass (renderer N, Read AOVs) is kept.
+    `encoded` None decides from the values: an encoded pass has no negative
+    component. DirectX (Y-Down) passes get their green flipped back.
+    """
+    n = np.asarray(image, dtype=np.float32)[..., :3]
+    if encoded is None:
+        finite = n[np.isfinite(n)]
+        encoded = bool(finite.size) and float(finite.min()) >= 0.0
+    if encoded:
+        n = n * 2.0 - 1.0
+    if str(convention).startswith("DirectX"):
+        n = n * np.array([1.0, -1.0, 1.0], dtype=np.float32)
+    length = np.linalg.norm(n, axis=-1, keepdims=True)
+    return np.where(length > 1e-6, n / np.maximum(length, 1e-6), 0.0).astype(np.float32)
+
+
+def depth_with_empty(image: np.ndarray) -> np.ndarray:
+    """(H, W) metric depth with no-surface pixels (0, negative, not finite) at EMPTY_DEPTH_Z."""
+    z = np.asarray(image, dtype=np.float32)
+    if z.ndim == 3:
+        z = z[..., 0]
+    return np.where(np.isfinite(z) & (z > 0.0), z, np.float32(EMPTY_DEPTH_Z)).astype(np.float32)
+
+
+def camera_attributes(camera: Optional[Dict[str, Any]], frame: int = 0) -> Dict[str, Any]:
+    """EXR header attributes for the pinhole camera Multipass Estimate measured.
+
+    worldToCamera is identity because the P pass is in camera space; the focal
+    length is also given in millimetres on a 36 mm filmback (a Nuke Camera's
+    default horizontal aperture), so the camera can be typed in directly.
+    """
+    if not camera:
+        return {}
+    fovs = camera.get("fov_x_degrees") or []
+    if not fovs:
+        return {}
+    i = min(max(int(frame), 0), len(fovs) - 1)
+    fov = float(fovs[i])
+    width = int(camera.get("width") or 0)
+    height = int(camera.get("height") or 0)
+    tan_half = np.tan(np.radians(fov) / 2.0)
+    focal_mm = 18.0 / tan_half if tan_half > 0 else 0.0
+    attrs: Dict[str, Any] = {
+        "worldToCamera": np.eye(4, dtype=np.float32),
+        "rad_camera_space": "P and N are camera space: +X right, +Y up, +Z toward the camera (camera looks down -Z)",
+        "rad_fov_x_degrees": round(fov, 4),
+        "rad_focal_length_mm": round(float(focal_mm), 4),
+        "rad_haperture_mm": 36.0,
+        "rad_fov_source": str(camera.get("fov_source", "")),
+        "rad_depth_empty": float(EMPTY_DEPTH_Z),
+    }
+    if width > 0 and height > 0:
+        attrs["rad_vaperture_mm"] = round(36.0 * height / width, 4)
+    focal_px = camera.get("focal_px") or []
+    if focal_px:
+        attrs["rad_focal_length_px"] = round(float(focal_px[min(i, len(focal_px) - 1)]), 4)
+    return attrs
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #                           EXR WRITERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -185,6 +308,8 @@ def write_exr_openexr(filepath: str, channels: Dict[str, np.ndarray], compressio
                 # ("unrecognized type of attribute"); it wants plain str.
                 header[k] = v
             elif k in ["reelName", "capDate", "software", "comments", "owner"]:
+                header[k] = v
+            elif k in _TYPED_STANDARD_ATTRIBUTES:
                 header[k] = v
             elif isinstance(v, (str, int, float)):
                 # Prefix Radiance-specific metadata to avoid collisions unless it is standard or Cryptomatte
@@ -356,14 +481,16 @@ def write_exr_multipart_report(
     metadata: Optional[Dict[str, Any]] = None,
     allow_fallback: bool = False,
     extra_channels: Optional[Dict[str, Dict[str, np.ndarray]]] = None,
+    channel_names: Optional[Dict[str, List[str]]] = None,
+    float_parts: Optional[set] = None,
 ) -> Dict[str, Any]:
     """
     Write a multi-part EXR v2 file with named layers.
 
     Each entry in `parts` is written as a separate named part:
       • "beauty"  → channels R, G, B (or R, G, B, A if 4-channel)
-      • "depth"   → channel Z
-      • "normal"  → channels NX, NY, NZ
+      • "depth"   → channel Z, always 32-bit float
+      • "normal"  → channels N.R, N.G, N.B
       • "albedo"  → channels albedo.R, albedo.G, albedo.B
       • any key   → written with layered channel names (key.R, key.G, ...)
 
@@ -386,6 +513,10 @@ def write_exr_multipart_report(
                   ``rudra.reconstructed`` / ``rudra.generated`` in the beauty part
                   (multi-part mode only; the per-part fallback leaves them out
                   and says so in the receipt).
+        channel_names: Optional {part name: [channel names]} replacing the
+                  default naming for that part (one name per channel used).
+        float_parts: Optional part names written as 32-bit float whatever
+                  bit_depth says (data passes: depth, position, motion).
 
     Returns a receipt (FIX-015/016)::
 
@@ -443,13 +574,18 @@ def write_exr_multipart_report(
 
                 # Build channel names
                 is_depth = part_name.lower() in ("depth", "z", "zdepth", "depth_z")
-                if is_depth or n_ch == 1:
+                # Depth is a measurement, not a colour: half float holds about
+                # 3 significant digits, 3 cm of error at 50 m.
+                part_dtype = np.float32 if (is_depth or part_name in (float_parts or ())) else np_dtype
+                if channel_names and part_name in channel_names:
+                    ch_names = list(channel_names[part_name])
+                elif is_depth or n_ch == 1:
                     ch_names = ["Z"]
                 elif n_ch == 2:
                     ch_names = ["R", "G"]
                 elif n_ch == 3:
                     ch_names = ["R", "G", "B"] if part_name == "beauty" else \
-                               ["NX", "NY", "NZ"] if "normal" in part_name.lower() else \
+                               ["N.R", "N.G", "N.B"] if "normal" in part_name.lower() else \
                                [f"{part_name}.R", f"{part_name}.G", f"{part_name}.B"]
                 elif n_ch >= 4:
                     if part_name == "beauty":
@@ -468,6 +604,8 @@ def write_exr_multipart_report(
                             header[k] = v
                         elif k in ["timeCode", "reelName", "capDate", "software", "comments", "owner"]:
                             header[k] = v
+                        elif k in _TYPED_STANDARD_ATTRIBUTES:
+                            header[k] = v
                         elif isinstance(v, (str, int, float)):
                             key = k if (k.startswith("cryptomatte") or k.startswith("rad_")) else f"rad_{k}"
                             header[key] = v
@@ -476,7 +614,7 @@ def write_exr_multipart_report(
                     arr = arr[..., np.newaxis]
                 channels_dict = {
                     cname: np.ascontiguousarray(
-                        arr[..., ci] if ci < arr.shape[2] else arr[..., 0], dtype=np_dtype
+                        arr[..., ci] if ci < arr.shape[2] else arr[..., 0], dtype=part_dtype
                     )
                     for ci, cname in enumerate(ch_names)
                 }
@@ -563,6 +701,8 @@ def write_exr_multipart(
     bit_depth: str = "16-bit Half Float",
     compression: str = "ZIP",
     metadata: Optional[Dict[str, Any]] = None,
+    channel_names: Optional[Dict[str, List[str]]] = None,
+    float_parts: Optional[set] = None,
 ) -> bool:
     """True only when ``filepath`` is a multi-part EXR holding every part.
 
@@ -571,5 +711,6 @@ def write_exr_multipart(
     exist. Use ``write_exr_multipart_report`` for the fallback and receipt.
     """
     r = write_exr_multipart_report(filepath, parts, bit_depth, compression, metadata,
-                                   allow_fallback=False)
+                                   allow_fallback=False, channel_names=channel_names,
+                                   float_parts=float_parts)
     return r["mode"] == "multipart" and r["complete"]

@@ -32,9 +32,16 @@ Lighting, Marigold IID Lighting v1.1, scaled to the plate:
 
 Measured:
     motion_vector   backward optical flow to the previous frame (DIS), pixels,
-                    +x right, +y up (Nuke convention)
+                    +x right, +y up (Nuke convention). In a sequence the
+                    bundle also carries motion_forward (to the next frame), so
+                    Write EXR Passes writes Nuke's forward and backward layers.
 
 All colour passes, and the beauty in `passes`, are scene-linear.
+
+Sequences (4.0): with fov_x_degrees at 0 the field of view is estimated on the
+first frame and held for the rest of the batch, so the camera, the metric
+depth and the positions do not breathe from frame to frame. The bundle carries
+the camera (`_camera`) for the EXR header.
 """
 from __future__ import annotations
 
@@ -48,7 +55,7 @@ import torch.nn.functional as F
 
 logger = logging.getLogger("radiance.vfx.multipass.estimate")
 
-BEAUTY_ENCODINGS = ("sRGB (display)", "Linear (scene)")
+BEAUTY_ENCODINGS = ("Auto", "sRGB (display)", "Linear (scene)")
 NORMAL_CONVENTIONS = ("OpenGL (Y-Up)", "DirectX (Y-Down)")
 
 
@@ -62,6 +69,49 @@ def srgb_to_linear(x: torch.Tensor) -> torch.Tensor:
 def linear_to_srgb(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp(0.0, 1.0)
     return torch.where(x <= 0.0031308, x * 12.92, 1.055 * x.pow(1.0 / 2.4) - 0.055)
+
+
+def resolve_beauty_encoding(rgb: torch.Tensor, encoding: str) -> str:
+    """'Auto': Linear (scene) when any colour value is above 1.0 (an HDR or EXR
+    plate), else sRGB (display), the ComfyUI IMAGE convention."""
+    if encoding != "Auto":
+        return encoding
+    if rgb.numel() and float(rgb[..., :3].max()) > 1.0 + 1e-4:
+        return "Linear (scene)"
+    return "sRGB (display)"
+
+
+def _box(x: torch.Tensor, r: int) -> torch.Tensor:
+    """Mean over a (2r+1)^2 window of (B,C,H,W), edges by replication."""
+    k = 2 * r + 1
+    return F.avg_pool2d(F.pad(x, (r, r, r, r), mode="replicate"), k, 1)
+
+
+def guided_upsample(p: torch.Tensor, guide: torch.Tensor, radius: int, eps: float = 1e-3) -> torch.Tensor:
+    """Guided filter (He et al. 2010) of (B,H,W,C) `p` by the (B,H,W) `guide`.
+
+    Marigold predicts at about 768 px and its output is resized to the plate,
+    so its passes are soft at 1080p and above. The filter keeps the prediction
+    where the plate is flat and takes the plate's edges where it is not, which
+    is what a compositor would otherwise do by hand with a guided blur.
+    """
+    if radius < 1:
+        return p
+    I = guide.unsqueeze(1).float()
+    P = p.permute(0, 3, 1, 2).float()
+    mI = _box(I, radius)
+    mP = _box(P, radius)
+    cov = _box(I * P, radius) - mI * mP
+    var = _box(I * I, radius) - mI * mI
+    a = cov / (var + eps)
+    b = mP - a * mI
+    q = _box(a, radius) * I + _box(b, radius)
+    return q.permute(0, 2, 3, 1)
+
+
+def lock_sequence_fov(intrinsics_first: torch.Tensor) -> float:
+    """Horizontal FOV in degrees from one frame's normalised intrinsics (1,3,3)."""
+    return math.degrees(2 * math.atan(0.5 / float(intrinsics_first[0, 0, 0])))
 
 
 # ── Geometry ────────────────────────────────────────────────────────────────
@@ -228,8 +278,13 @@ def gtao(
             off = (1.0 + t * (r_px - 1.0)).clamp(min=1.0)                        # pixels, at least one
             delta = (off.unsqueeze(-1) * screen) * to_ndc                          # (B,h,w,2)
             for side in (1.0, -1.0):
-                sp = F.grid_sample(P_bchw, base + side * delta, mode="nearest",
+                g = base + side * delta
+                sp = F.grid_sample(P_bchw, g, mode="nearest",
                                    padding_mode="border", align_corners=False).permute(0, 2, 3, 1)
+                # Outside the frame there is no geometry. Clamping to the
+                # border pixel made the edge occlude itself: a flat open wall
+                # read 0.92 at the sides and 0.84 in the corners.
+                sp = torch.where((g.abs() <= 1.0).all(-1, keepdim=True), sp, far.expand_as(sp))
                 d = sp - P
                 dist = d.norm(dim=-1).clamp(min=1e-6)
                 shc = ((d / dist.unsqueeze(-1)) * view).sum(-1)
@@ -394,9 +449,9 @@ class RadianceMultipassEstimate:
         "Metallic 0..1 (Marigold IID Appearance).",
         "Diffuse light contribution, scene-linear, scaled to the plate (Marigold IID Lighting).",
         "Non-diffuse light (reflections, highlights), scene-linear, scaled to the plate.",
-        "Camera-space normals, 0..1 encoded (MoGe-2).",
-        "Metric z depth in metres; 0 where there is no surface (MoGe-2).",
-        "Camera-space position in metres, OpenGL axes (MoGe-2).",
+        "Camera-space normals, 0..1 encoded for display (MoGe-2). EXR writers store them signed -1..1 as N.",
+        "Metric z depth in metres; 0 where there is no surface (MoGe-2). EXR writers store those pixels as 1e10 (far).",
+        "Position in metres in camera space (camera at the origin looking down -Z, OpenGL axes; MoGe-2). Written as the P layer, with an identity worldToCamera in the EXR header.",
         "Ambient occlusion from the metric geometry, 1 = open.",
         "Mean curvature in 1/metre, convex positive.",
         "Backward optical flow to the previous frame in pixels, +y up.",
@@ -411,9 +466,10 @@ class RadianceMultipassEstimate:
                 "beauty": ("IMAGE", {"tooltip": "The plate. One image or a batch of frames."}),
                 "beauty_encoding": (list(BEAUTY_ENCODINGS), {
                     "default": BEAUTY_ENCODINGS[0],
-                    "tooltip": "How the plate is encoded. Ordinary images and video frames are sRGB. "
-                               "Choose Linear for scene-linear EXR plates; values above 1.0 are clipped "
-                               "for the models and left out of the lighting fit."}),
+                    "tooltip": "How the plate is encoded. Auto: Linear when any value is above 1.0 (an HDR "
+                               "or EXR plate), else sRGB; info says which ran. Ordinary images and video "
+                               "frames are sRGB. Pick Linear for a scene-linear plate that stays below 1.0. "
+                               "Values above 1.0 are clipped for the models and left out of the lighting fit."}),
                 "geometry": ("BOOLEAN", {"default": True, "tooltip": "Depth, position, normals, AO and curvature (MoGe-2, 662 MB)."}),
                 "materials": ("BOOLEAN", {"default": True, "tooltip": "Albedo, roughness, metallic (Marigold IID Appearance, 2.5 GB)."}),
                 "lighting": ("BOOLEAN", {"default": True, "tooltip": "Diffuse and specular lighting (Marigold IID Lighting, 1.7 GB; shares files with Appearance)."}),
@@ -427,7 +483,10 @@ class RadianceMultipassEstimate:
                 "moge_model": ("MOGE_MODEL", {"tooltip": "Optional: a model from ComfyUI's Load MoGe Model. Must be MoGe-2 for normals."}),
                 "geometry_detail": ("INT", {"default": 9, "min": 0, "max": 9, "tooltip": "MoGe resolution level: 0 fastest, 9 most detail."}),
                 "fov_x_degrees": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 170.0, "step": 0.1,
-                                             "tooltip": "Known horizontal field of view. 0 = estimate it."}),
+                                             "tooltip": "Known horizontal field of view. 0 = estimate it; in a sequence "
+                                                        "(batch_is_sequence) it is estimated on the first frame and held "
+                                                        "for every frame, so depth and position do not breathe. "
+                                                        "A 35 mm lens on a 36 mm filmback is 54.4."}),
                 "normal_convention": (list(NORMAL_CONVENTIONS), {"default": NORMAL_CONVENTIONS[0],
                                                                   "tooltip": "Encoding of the camera-space normal pass (0..1, +Z toward the camera). "
                                                                              "DirectX (Y-Down) flips the green channel; match the renderer or tool reading it."}),
@@ -442,7 +501,13 @@ class RadianceMultipassEstimate:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF, "control_after_generate": "fixed",
                                  "tooltip": "Marigold noise seed, reused on every frame to limit flicker."}),
                 "batch_is_sequence": ("BOOLEAN", {"default": True,
-                                                  "tooltip": "Treat the batch as consecutive frames for motion vectors."}),
+                                                  "tooltip": "Treat the batch as consecutive frames: forward and backward "
+                                                             "motion vectors, and one field of view for the whole shot."}),
+                "material_detail": ("BOOLEAN", {"default": True,
+                                                "tooltip": "Marigold runs at material_resolution and is resized to the plate. "
+                                                           "On: a guided filter takes the plate's edges back into albedo, "
+                                                           "roughness, metallic and lighting when the plate is larger. "
+                                                           "Off: the plain resize."}),
             },
         }
 
@@ -466,6 +531,7 @@ class RadianceMultipassEstimate:
         ensemble_size: int = 1,
         seed: int = 0,
         batch_is_sequence: bool = True,
+        material_detail: bool = True,
     ) -> Tuple:
         from . import estimate_models as em
         from .core import _flow_to_hsv_image, _luminance, _optical_flow  # noqa: F401
@@ -475,6 +541,8 @@ class RadianceMultipassEstimate:
         B, H, W = beauty.shape[:3]
         out_dev = beauty.device
         rgb = _rgb(beauty.float())
+        requested_encoding = beauty_encoding
+        beauty_encoding = resolve_beauty_encoding(rgb, beauty_encoding)
         if beauty_encoding.startswith("Linear"):
             lin = rgb.clamp(min=0.0)
             srgb = linear_to_srgb(lin)
@@ -485,7 +553,8 @@ class RadianceMultipassEstimate:
             clipped = (rgb >= 0.995).any(-1)
         alpha = beauty.float()[..., 3] if beauty.shape[-1] >= 4 else None
 
-        info: Dict[str, Any] = {"frames": B, "size": [W, H], "encoding": beauty_encoding}
+        info: Dict[str, Any] = {"frames": B, "size": [W, H],
+                                "encoding": beauty_encoding + (" (Auto)" if requested_encoding == "Auto" else "")}
         passes: Dict[str, Any] = {"beauty": lin.contiguous()}
         zeros3 = torch.zeros(B, H, W, 3, device=out_dev)
         device = _compute_device()
@@ -509,6 +578,7 @@ class RadianceMultipassEstimate:
                 logger.warning("[Multipass Estimate] MoGe-1 has no normal head; normals are derived from the point map.")
             pts, dep, msk, nrm, K = [], [], [], [], []
             fov = None if fov_x_degrees <= 0 else float(fov_x_degrees)
+            lock_fov = fov is None and batch_is_sequence and B > 1
             for i in range(B):
                 _interrupt_check()
                 with torch.inference_mode():
@@ -524,6 +594,10 @@ class RadianceMultipassEstimate:
                     from comfy_extras.nodes_moge import _normals_from_points  # type: ignore
                     nrm.append(_normals_from_points(o["points"].float()).to(out_dev))
                 K.append(o["intrinsics"].float().to(out_dev))
+                if lock_fov and i == 0:
+                    # One camera per shot: MoGe re-estimates the focal length
+                    # per frame, which made depth and position breathe.
+                    fov = lock_sequence_fov(K[0])
                 tick()
             points = torch.cat(pts)
             depth_m = torch.cat(dep)
@@ -557,9 +631,17 @@ class RadianceMultipassEstimate:
             })
             fov_est = [round(math.degrees(2 * math.atan(0.5 / float(k[0, 0]))), 2) for k in intr]
             vd = depth_z[valid]
+            passes["_camera"] = {
+                "fov_x_degrees": fov_est,
+                "focal_px": [round(float(v), 4) for v in f],
+                "width": W, "height": H,
+                "fov_source": ("given" if fov_x_degrees > 0 else
+                               "estimated on frame 1, held for the sequence" if lock_fov else "estimated per frame"),
+            }
             info["geometry"] = {
                 "model": "MoGe-2 ViT-L normal (MIT)" if moge_model is None else "MoGe (connected model)",
-                "fov_x_degrees": fov_est if fov is None else [fov] * B,
+                "fov_x_degrees": fov_est,
+                "fov_source": passes["_camera"]["fov_source"],
                 "depth_range_m": [round(float(vd.min()), 3), round(float(vd.max()), 3)] if vd.numel() else None,
                 "surface_fraction": round(float(valid.float().mean()), 4),
                 "normal_convention": normal_convention,
@@ -576,6 +658,18 @@ class RadianceMultipassEstimate:
             iid = em.load_marigold(download_missing_models, device).to(device)
             try:
                 res = int(material_resolution) if material_resolution > 0 else 0
+                # Guided upsampling radius: about the resize factor, in plate pixels.
+                gf_r = 0
+                if material_detail and 0 < res < max(H, W):
+                    gf_r = max(1, int(math.ceil(max(H, W) / res)))
+                guide = _luminance(srgb, (0.2126, 0.7152, 0.0722)) if gf_r else None
+
+                def detail(x: torch.Tensor, i: int) -> torch.Tensor:
+                    """(H,W,C) prediction for frame i, edges from the plate."""
+                    if not gf_r:
+                        return x
+                    return guided_upsample(x.unsqueeze(0), guide[i:i + 1], gf_r)[0]
+
                 albedo_l, rough_l, metal_l, diff_l, spec_l = [], [], [], [], []
                 fits = []
                 # All frames through one model, then the other: on the CPU only
@@ -587,8 +681,8 @@ class RadianceMultipassEstimate:
                         x = srgb[i:i + 1].permute(0, 3, 1, 2).contiguous()
                         pa = iid.predict("appearance", x, steps=material_steps, resolution=res,
                                          ensemble=ensemble_size, seed=seed).to(out_dev)
-                        alb = pa[names.index("albedo")].permute(1, 2, 0)
-                        mat = pa[names.index("material")].permute(1, 2, 0)
+                        alb = detail(pa[names.index("albedo")].permute(1, 2, 0), i).clamp(0.0, 1.0)
+                        mat = detail(pa[names.index("material")].permute(1, 2, 0), i)
                         albedo_l.append(srgb_to_linear(alb))
                         rough_l.append(_three(mat[..., 0].clamp(0, 1)))
                         metal_l.append(_three(mat[..., 1].clamp(0, 1)))
@@ -600,9 +694,9 @@ class RadianceMultipassEstimate:
                         x = srgb[i:i + 1].permute(0, 3, 1, 2).contiguous()
                         pl = iid.predict("lighting", x, steps=material_steps, resolution=res,
                                          ensemble=ensemble_size, seed=seed).to(out_dev)
-                        a_lin = pl[names.index("albedo")].permute(1, 2, 0)
-                        shading = pl[names.index("shading")].permute(1, 2, 0)
-                        residual = pl[names.index("residual")].permute(1, 2, 0)
+                        a_lin = detail(pl[names.index("albedo")].permute(1, 2, 0), i).clamp(min=0.0)
+                        shading = detail(pl[names.index("shading")].permute(1, 2, 0), i).clamp(min=0.0)
+                        residual = detail(pl[names.index("residual")].permute(1, 2, 0), i).clamp(min=0.0)
                         diffuse_unit = a_lin * shading
                         usable = (~clipped[i]) & valid[i]
                         a, b, err = fit_lighting(lin[i], diffuse_unit, residual, usable)
@@ -620,7 +714,8 @@ class RadianceMultipassEstimate:
                     "metallic": torch.stack(metal_l).contiguous(),
                 })
                 info["materials"] = {"model": "Marigold IID Appearance v1.1 (OpenRAIL++-M)",
-                                     "steps": material_steps, "resolution": res, "ensemble": ensemble_size, "seed": seed}
+                                     "steps": material_steps, "resolution": res, "ensemble": ensemble_size, "seed": seed,
+                                     "detail": f"guided filter, radius {gf_r} px" if gf_r else "resize only"}
             if lighting:
                 passes.update({
                     "diffuse_lighting": torch.stack(diff_l).contiguous(),
@@ -652,11 +747,22 @@ class RadianceMultipassEstimate:
             passes["motion_vector"] = torch.stack([u, -v, torch.zeros_like(u)], dim=-1).contiguous()
             info["motion"] = {"method": "DIS optical flow", "direction": "backward (to previous frame)",
                               "units": "pixels, +x right, +y up"}
+            if batch_is_sequence and B > 1:
+                # Forward vectors (to the next frame) complete Nuke's motion
+                # layer; the last frame has no next frame and stays 0.
+                next_luma = torch.cat([luma[1:], luma[-1:]])
+                fu, fv = _optical_flow(luma, next_luma, method="auto")
+                fu[-1] = 0.0
+                fv[-1] = 0.0
+                passes["motion_forward"] = torch.stack([fu, -fv, torch.zeros_like(fu)], dim=-1).contiguous()
+                info["motion"]["direction"] = "backward (to previous frame) and forward (to next frame)"
 
         passes["alpha"] = _three(alpha.clamp(0, 1)) if alpha is not None else torch.ones(B, H, W, 3, device=out_dev)
         passes["_present"] = sorted(k for k, t in passes.items() if isinstance(t, torch.Tensor))
         passes["_estimator"] = "RadianceMultipassEstimate"
         passes["_normal_convention"] = normal_convention
+        passes["_normal_encoding"] = "0..1"          # the IMAGE convention; EXR writers store signed N
+        passes["_colorspace"] = "Linear Rec.709 (sRGB)"
         info["passes"] = passes["_present"]
         not_run = [n for n, on in (("geometry", geometry), ("materials", materials), ("lighting", lighting)) if not on]
         if not_run:

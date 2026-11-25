@@ -80,6 +80,12 @@ def studio(tmp_path, monkeypatch, real_web):
     monkeypatch.setattr(ws_mod, "_THUMB_CACHE", root / ".asset_thumbs")
     monkeypatch.setattr(ws_mod.folder_paths, "get_input_directory", lambda: str(inp))
     monkeypatch.setattr(ws_mod.folder_paths, "get_output_directory", lambda: str(out))
+    from radiance.nodes import gizmo as gizmo_mod
+    from radiance.nodes.pipeline import setup_routes
+    monkeypatch.setattr(gizmo_mod, "web", real_web)
+    monkeypatch.setattr(setup_routes, "web", real_web)
+    (tmp_path / "no_gizmos").mkdir()
+    monkeypatch.setattr(gizmo_mod, "GIZMOS_DIR", str(tmp_path / "no_gizmos"))
 
     for name, photo in (("SH010_grade_v004.jpg", "window"), ("SH020_fill_v003.jpg", "candlelight"),
                         ("SH030_sky_v002.jpg", "mountain")):
@@ -87,14 +93,23 @@ def studio(tmp_path, monkeypatch, real_web):
     for name, photo in (("tree_plate.jpg", "tree"), ("cannon_insert.jpg", "cannon")):
         (inp / name).write_bytes(_photo(photo))
 
-    from server import PromptServer  # the conftest stub, with every route recorded
+    # Every route the modules recorded. A test that swapped sys.modules["server"] before
+    # one of them was first imported leaves its routes on that stub, so read each module's own.
+    import server
+    servers = []
+    for mod in (server, ws_mod, gizmo_mod, setup_routes):
+        ps = getattr(mod, "PromptServer", None)
+        if ps is not None and getattr(getattr(ps.instance, "routes", None), "registered", None) is not None \
+                and all(ps is not s for s in servers):
+            servers.append(ps)
 
     app = real_web.Application(client_max_size=64 * 1024 * 1024)
     seen = set()
-    for method, path, fn in PromptServer.instance.routes.registered:
-        if path.startswith("/radiance/") and (method, path) not in seen:
-            seen.add((method, path))
-            app.router.add_route(method, path, fn)
+    for ps in servers:
+        for method, path, fn in ps.instance.routes.registered:
+            if path.startswith("/radiance/") and (method, path) not in seen:
+                seen.add((method, path))
+                app.router.add_route(method, path, fn)
 
     posted = []
 
@@ -213,10 +228,11 @@ def test_studio_screens_against_the_real_routes(studio):
         f.locator('#stNav [data-go="workflows"]').click()
         f.locator(".st-tile").first.wait_for()
         total = f.locator(".st-grid .st-tile").count()
-        assert total == 45 + 4
+        official = len(list((REPO / "workflows" / "official").rglob("*.rad")))
+        assert total == official + 4
         assert f.locator(".st-grid .st-tile").first.inner_text().find("Starter") >= 0
         f.locator('.st-chip[data-id="api"]').click()
-        assert f.locator(".st-grid .st-tile").count() == 25
+        assert f.locator(".st-grid .st-tile").count() == len(list((REPO / "workflows" / "official" / "API").glob("*.rad")))
         f.locator('.st-chip[data-id="all"]').click()
         f.locator('.st-grid .st-tile', has_text="SDR → HDR Analytic").click()
         assert "SDR → HDR Analytic" in f.locator(".st-rail h2").inner_text()

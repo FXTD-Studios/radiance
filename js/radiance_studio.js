@@ -61,7 +61,7 @@ function promptRadianceStudio(titleText, message, defaultValue = "", confirmLabe
         const confirm = document.createElement("button");
         confirm.type = "button";
         confirm.textContent = confirmLabel;
-        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,168,255,0.45);background:rgba(0,168,255,0.16);color:#9fdcff;cursor:pointer;font-weight:700;";
+        confirm.style.cssText = "height:32px;padding:0 12px;border-radius:6px;border:1px solid rgba(10,132,255,0.45);background:rgba(10,132,255,0.16);color:#409cff;cursor:pointer;font-weight:700;";
         const close = (value) => {
             overlay.remove();
             resolve(value);

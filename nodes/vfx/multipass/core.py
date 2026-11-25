@@ -527,6 +527,12 @@ def _dsine_ensure_model() -> Optional[str]:
     return _download_model("dsine")
 
 
+# The DSINE-hub code torch.hub runs, pinned to one commit (main on 2024-04-29).
+# Unpinned, torch.hub ran whatever that repository's main held on the day of
+# the first run; a ":<sha>" ref makes the code fixed and reviewable.
+DSINE_HUB_REPO = "hugoycj/DSINE-hub"
+DSINE_HUB_REF = "a6b7d253d515f57404002da58f0c61e90d0387a3"
+
 # Module-level cache for the torch.hub DSINE model.
 # Bounded LRU -- was an unbounded dict with no eviction path.
 _DSINE_HUB_CACHE = GPUModelCache(max_size=1)
@@ -542,20 +548,22 @@ def _try_dsine_hub(img_bhwc: torch.Tensor, convention: str) -> "Optional[torch.T
         if "model" not in _DSINE_HUB_CACHE:
             # torch.hub fetches and runs code from GitHub; it went around the
             # download consent every other Radiance download honours.
-            hub_repo = os.path.join(torch.hub.get_dir(), "hugoycj_DSINE-hub_main")
+            hub_repo = os.path.join(torch.hub.get_dir(), f"hugoycj_DSINE-hub_{DSINE_HUB_REF}")
             if not os.path.isdir(hub_repo):
                 from radiance.core.consent import require_consent
                 if not require_consent("DSINE normal model (torch.hub hugoycj/DSINE-hub)",
                                        size_mb=280, dest=torch.hub.get_dir(),
-                                       url="https://github.com/hugoycj/DSINE-hub"):
+                                       url=f"https://github.com/{DSINE_HUB_REPO}/tree/{DSINE_HUB_REF}"):
                     return None
             logger.info(
                 "[Radiance] Loading DSINE via torch.hub (hugoycj/DSINE-hub) — "
                 "first run downloads ~280 MB from GitHub Releases ..."
             )
             model = torch.hub.load(
-                "hugoycj/DSINE-hub", "DSINE",
+                f"{DSINE_HUB_REPO}:{DSINE_HUB_REF}", "DSINE",
                 trust_repo=True, force_reload=False, verbose=False,
+                # a pinned commit, not a fork: the API check only matches branch and tag tips
+                skip_validation=True,
             )
             model.eval()
             _DSINE_HUB_CACHE.put("model", model)
