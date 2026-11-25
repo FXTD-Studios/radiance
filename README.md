@@ -194,6 +194,12 @@ Still stuck? Ask on [Discord](https://discord.gg/C7aTNFhJeP), or [open an issue]
 
 Tip: in ComfyUI, hover over any node or input to read what it does.
 
+## Credits
+
+Radiance is made by [FXTD Studios](https://fxtdstudios.com).
+
+**[Albabit](https://github.com/Albabit)** is a major contributor to Radiance 4. More than 200 of their commits are in this release. They cover the Sampler, Prompt, Loader, Write and Resolution nodes, the Viewer, the VAE decode, and the official workflows. Their work includes Auto matching ComfyUI's native templates, WAN 2.2 expert detection, frame-rate handling across Loaders, and the optional frame interpolation in Wan → HDR. Thank you.
+
 ## License
 
 Radiance is licensed under [GPL-3.0](LICENSE). Model weights have their own licences; check them before you use or share them.
