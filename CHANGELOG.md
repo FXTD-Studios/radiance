@@ -7,6 +7,11 @@ All notable changes to FXTD Radiance will be documented in this file.
 4.1 is where new features go since 4.0.0 (released 21 Nov 2026, branch `release/4.0`,
 which takes fixes only). Fixes made on `release/4.0` are merged forward into it.
 
+### Changed
+- **Licence: Radiance is now Apache-2.0** (was GPL-3.0-only). `LICENSE` holds the
+  Apache 2.0 text and a new `NOTICE` file lists third-party notices. Releases up to
+  4.0.x stay available under GPL-3.0. Model weights keep their own licences.
+
 ### Added
 - **SDR → HDR AI Fill Re-render runs RUDRA AI fill v5** (RUDRA 1.3.0, 24 Nov
   2026), and v4.3 (RUDRA 1.2.4) on request (`region_model`). It draws a whole

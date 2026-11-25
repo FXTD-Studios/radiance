@@ -2,6 +2,7 @@
   "name": "radiance-comfyui",
   "version": "4.1.0",
   "description": "Radiance – Professional HDR Image Processing Suite for ComfyUI",
+  "license": "Apache-2.0",
   "private": true,
   "scripts": {
     "test": "node --test js/tests/*.test.mjs"
