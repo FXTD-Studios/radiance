@@ -43,12 +43,12 @@ MODEL_EXT = re.compile(r"\.(safetensors|ckpt|pth|pt|gguf|bin|sft)$", re.I)
 LINK = re.compile(r"\[([^\]]+)\]\((https://huggingface\.co/[^)\s]+)\)([^\[\n]*)")
 KNOWN_FOLDERS = ("diffusion_models", "text_encoders", "vae", "loras", "latent_upscale_models",
                  "upscale_models", "checkpoints", "clip", "clip_vision", "unet", "controlnet",
-                 "geometry_estimation", "audio_encoders", "model_patches")
+                 "geometry_estimation", "audio_encoders", "model_patches", "frame_interpolation")
 
 # Files a workflow loads that its widgets do not name: the loader picks them
 # itself (Wan 2.2's low-noise expert is paired with the high-noise one).
 IMPLIED = {
-    "wan22_hdr_shot_plates": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
+    "wan_hdr": ["wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"],
 }
 
 # Radiance's own models, fetched and verified by their own downloaders.
@@ -57,6 +57,10 @@ RADIANCE_PACKS = {
                                "page": "https://huggingface.co/fxtdstudios/rudra-models"},
     "radiance/rudra_genfill_v3": {"title": "RUDRA AI fill v3", "size_mb": 271, "licence": "Apache 2.0",
                                   "page": "https://huggingface.co/fxtdstudios/rudra-models"},
+    "radiance/rudra_genfill_v5": {"title": "RUDRA AI fill v5 (region re-render)", "size_mb": 263,
+                                  "licence": "Apache 2.0", "page": "https://huggingface.co/fxtdstudios/rudra-models"},
+    "radiance/rudra_genfill_v4": {"title": "RUDRA AI fill v4.3 (region re-render)", "size_mb": 263,
+                                  "licence": "Apache 2.0", "page": "https://huggingface.co/fxtdstudios/rudra-models"},
     "radiance/wan_vace_base": {"title": "Wan2.1-VACE-1.3B (AI fill base model)", "size_mb": 7700,
                                "licence": "Apache 2.0",
                                "page": "https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
@@ -89,8 +93,9 @@ PACK_NODES = {
     "RadianceSDRToHDRRecover": (["radiance/RUDRA_ACES_2"], []),
     "RadianceSDRToHDRAIFill": (["radiance/rudra_genfill_v3", "radiance/wan_vace_base"],
                                ["radiance/wan_vace_text_encoder"]),
-    "RadianceSDRToHDRAIFillRerender": (["radiance/rudra_genfill_v3", "radiance/wan_vace_base"],
-                                       ["radiance/wan_vace_text_encoder"]),
+    # The region re-render: v5's LoRA, the base model, and v3's package for its cached base prompt.
+    "RadianceSDRToHDRAIFillRerender": (["radiance/rudra_genfill_v5", "radiance/rudra_genfill_v3",
+                                        "radiance/wan_vace_base"], ["radiance/wan_vace_text_encoder"]),
     "RadianceMultipassEstimate": (["radiance/moge2", "radiance/marigold_appearance",
                                    "radiance/marigold_lighting"], []),
 }
@@ -153,7 +158,9 @@ def _links(text: str) -> dict:
             role = ("alternative" if "alternative" in t else "optional" if "optional" in t
                     else "used" if "(used" in t else "")
             folder = _folder_from_url(url) or (prefix.group(1) if prefix and prefix.group(1) in KNOWN_FOLDERS else "")
-            out.setdefault(fname, {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder})
+            # ALBABIT-FIX: a file listed twice keeps the link marked (used), the one the workflow loads.
+            if fname not in out or (role == "used" and out[fname]["role"] != "used"):
+                out[fname] = {"url": url, "gated": "🔒" in tail, "role": role, "folder": folder}
     return out
 
 
@@ -219,10 +226,11 @@ def build(previous: dict | None = None) -> dict:
             entry = {"file": fname, "folder": folder, "repo": repo, "path": repo_path,
                      "url": link["url"], "gated": bool(link["gated"])}
             old = prev_models.get(mid) or {}
-            if old.get("url") == link["url"]:
+            if old.get("url") == link["url"] and old.get("sha256") and old.get("revision") and old.get("size"):
+                # A pin is kept whole or not at all: a size without its digest came
+                # from a redirect, not from the file.
                 for k in ("revision", "sha256", "size"):
-                    if old.get(k) is not None:
-                        entry[k] = old[k]
+                    entry[k] = old[k]
             if mid in models and models[mid]["url"] != entry["url"]:
                 # The same file linked from two repositories: keep the first; it is the same file.
                 pass
@@ -268,25 +276,22 @@ def pin(catalog: dict) -> int:
     for mid, m in catalog["models"].items():
         if m.get("sha256") and m.get("revision") and m.get("size"):
             continue
-        headers = {"User-Agent": "radiance-comfyui"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request(m["url"], method="HEAD", headers=headers)
         try:
-            opener = urllib.request.build_opener(_NoRedirect)
-            try:
-                resp = opener.open(req, timeout=30)
-            except urllib.error.HTTPError as e:
-                if e.code not in (301, 302, 303, 307, 308):
-                    raise
-                resp = e
-            h = resp.headers
-            sha = (h.get("X-Linked-Etag") or "").strip('"')
-            m["revision"] = h.get("X-Repo-Commit") or m.get("revision")
-            m["sha256"] = sha if re.fullmatch(r"[0-9a-f]{64}", sha or "") else m.get("sha256")
-            size = h.get("X-Linked-Size") or h.get("Content-Length")
-            m["size"] = int(size) if size else m.get("size")
+            h = _hub_head(m["url"], token or "")
+            sha = (h.get("X-Linked-Etag") or "").strip().strip('"')
+            size = h.get("X-Linked-Size")
+            if not (re.fullmatch(r"[0-9a-f]{64}", sha) and size and h.get("X-Repo-Commit")):
+                # No LFS digest: leave the entry unpinned rather than store a
+                # redirect's 140-byte body as the file's size.
+                for k in ("revision", "sha256", "size"):
+                    m.pop(k, None)
+                raise RuntimeError("the Hub's answer names no LFS file (gated without a token, or not an LFS file)")
+            m["revision"], m["sha256"], m["size"] = h["X-Repo-Commit"], sha, int(size)
             print(f"pinned {mid}: {m['revision']} {m['sha256']} {m['size']}")
+        except urllib.error.HTTPError as e:
+            failed += 1
+            why = "gated: accept the licence on its page and set HF_TOKEN" if e.code in (401, 403) else f"HTTP {e.code}"
+            print(f"could not pin {mid}: {why}", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             failed += 1
             print(f"could not pin {mid}: {e}", file=sys.stderr)
@@ -296,6 +301,36 @@ def pin(catalog: dict) -> int:
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None
+
+def _hub_head(url: str, token: str = "", timeout: float = 30.0, opener=None):
+    """Headers of the Hub's answer for a resolve URL, following the Hub's own
+    redirects (a renamed or differently-cased repository answers 307 with a
+    relative Location and no file headers) until the answer names the file:
+    X-Linked-Etag / X-Linked-Size for an LFS file. Redirects to the CDN are not
+    followed; their headers are what is read. Raises urllib.error.HTTPError."""
+    import urllib.parse
+    headers = {"User-Agent": "radiance-comfyui"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    opener = opener or urllib.request.build_opener(_NoRedirect)
+    for _ in range(6):
+        req = urllib.request.Request(url, method="HEAD", headers=headers)
+        try:
+            resp = opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (301, 302, 303, 307, 308):
+                raise
+            resp = e
+        h = resp.headers
+        code = getattr(resp, "code", None) or getattr(resp, "status", 200)
+        loc = h.get("Location") or ""
+        if h.get("X-Linked-Etag") or code not in (301, 302, 303, 307, 308) or not loc:
+            return h
+        nxt = urllib.parse.urljoin(url, loc)
+        if urllib.parse.urlparse(nxt).netloc not in ("huggingface.co", "www.huggingface.co"):
+            return h                                           # off to the CDN: these headers are the file's
+        url = nxt
+    return h
 
 
 def main(argv=None) -> int:

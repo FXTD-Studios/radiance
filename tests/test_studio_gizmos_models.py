@@ -47,6 +47,8 @@ def library(studio, real_web, tmp_path, monkeypatch):
     models = tmp_path / "models"
     models.mkdir()
     monkeypatch.setattr(sc, "models_dir", lambda: models)
+    from radiance.core import first_start
+    monkeypatch.setattr(first_start, "default_output", lambda: tmp_path / "radiance_output")
     monkeypatch.setattr(sc, "_folder_dirs", lambda folder: [models / folder])
     packs = set()
     monkeypatch.setattr(sc, "pack_installed", lambda mid: mid in packs)
@@ -125,9 +127,30 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
         assert (library.gizmos / "glow.gizmo").is_file()
         f.locator(".st-grid .st-tile", has_text="Glow").click()
         f.locator('.st-rail [data-act="delete-gizmo"]').click()
-        f.locator("#stToast", has_text="Gizmo deleted").wait_for()
+        f.locator("#stToast", has_text="Glow deleted").wait_for()
         assert not (library.gizmos / "glow.gizmo").exists()
         assert list((library.gizmos / ".trash").glob("glow.*.gizmo"))
+
+        # Delete straight from the library grid: the tile's trash button (4.0) ...
+        for name, title in (("halo", "Halo"), ("haze", "Haze")):
+            (library.gizmos / f"{name}.gizmo").write_text(json.dumps(_gizmo(name, title)))
+        f.locator('[data-act="reload"]').first.click()
+        tile = f.locator(".st-tile-wrap", has_text="Halo")
+        tile.wait_for()
+        tile.hover()
+        _shot(page, "gizmos_tile_delete")
+        tile.locator('.st-tile-del[data-act="delete-gizmo"]').click()
+        f.locator("#stToast", has_text="Halo deleted").wait_for()
+        assert not (library.gizmos / "halo.gizmo").exists()
+        assert list((library.gizmos / ".trash").glob("halo.*.gizmo"))
+        f.locator(".st-tile-wrap", has_text="Halo").wait_for(state="detached")
+        # ... and the Delete key on a focused tile.
+        f.locator(".st-grid .st-tile", has_text="Haze").focus()
+        page.keyboard.press("Delete")
+        f.locator("#stToast", has_text="Haze deleted").wait_for()
+        assert not (library.gizmos / "haze.gizmo").exists()
+        f.locator(".st-tile-wrap", has_text="Haze").wait_for(state="detached")
+        assert f.locator(".st-grid .st-tile").count() == 2
 
         # Models: this computer, Radiance's folder made, what each workflow needs.
         f.locator('#stNav [data-go="models"]').click()
@@ -138,19 +161,34 @@ def test_gizmos_and_models_screens(studio, library, tmp_path):
         assert "Runs every local workflow" in txt
         row = f.locator(".st-setup-row", has_text="SDR → HDR").filter(has_not_text="Analytic").filter(has_not_text="AI Fill").first
         assert "1 to download" in row.inner_text()
+        # First-start checks: the server's four and the browser's display check, each with a status.
+        checks = f.locator(".st-checks .st-check")
+        assert checks.count() == 5
+        assert [checks.nth(i).get_attribute("data-check") for i in range(5)] == ["ocio", "ffmpeg", "output", "hub", "display"]
+        assert "Hugging Face access" in f.locator('.st-check[data-check="hub"]').inner_text()
+        out_fix = f.locator('.st-check[data-check="output"] [data-act="setup-fix"]')
+        if out_fix.count():
+            out_fix.click()
+            f.locator('.st-check[data-check="output"] .st-pill.ok, .st-check[data-check="output"] .st-pill.warn').wait_for()
+            assert not f.locator('.st-check[data-check="output"] [data-act="setup-fix"]').count()
+            assert (tmp_path / "radiance_output").is_dir()
         page.wait_for_timeout(300)
         _shot(page, "models")
+        f.locator(".st-checks").scroll_into_view_if_needed()
+        _shot(page, "models_checks")
 
         # Download what SDR → HDR needs: RUDRA ACES 2, into models/radiance.
         row.locator('[data-act="dl-workflow"]').click()
-        f.locator(".st-setup-row.is-ready", has_text="SDR → HDR").first.wait_for(timeout=10000)
+        f.locator(".st-setup-row.is-ready", has_text="SDR → HDR").filter(has_not_text="Analytic") \
+            .filter(has_not_text="Remaster").first.wait_for(timeout=10000)
         assert "radiance/RUDRA_ACES_2" in library.packs
         assert (library.models / "radiance" / "RUDRA_ACES_2").is_dir()
 
         # A workflow file goes into the folder ComfyUI reads, pinned from the Hub.
-        start = f.locator(".st-setup-row", has_text="Starter")
+        # T2I is the starter since 20 Nov (PR #107): FLUX.2 Klein 4B.
+        start = f.locator(".st-setup-row", has_text="T2I")
         start.locator('[data-act="dl-workflow"]').click()
-        f.locator(".st-setup-row.is-ready", has_text="Starter").wait_for(timeout=15000)
+        f.locator(".st-setup-row.is-ready", has_text="T2I").wait_for(timeout=15000)
         for rel in ("diffusion_models/flux-2-klein-4b-fp8.safetensors", "text_encoders/qwen_3_4b.safetensors",
                     "vae/flux2-vae.safetensors"):
             assert (library.models / rel).is_file(), rel

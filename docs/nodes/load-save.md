@@ -43,7 +43,7 @@ Read an image, EXR, video or numbered sequence into the pipeline. Video decodes 
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `browse` | choice |  | `` | Browse or upload a file from disk. • Click the upload icon (📎) to open a native file picker. • Supports images (PNG, JPG, TIFF, EXR, DPX, HDR, WebP) and video (MP4, MOV, MXF, AVI, WebM, MKV). • Uploaded files are copied to ComfyUI's input• Leave blank and fill in 'path' below for absolute / network / sequence paths. |
+| `browse` | choice |  | `` | An image or video in ComfyUI's input folder. • Upload… (below) or drop a file on the node to add one. • Images: PNG, JPG, TIFF, EXR, DPX, HDR, WebP. Video: MP4, MOV, MXF, AVI, WebM, MKV and more. • Leave blank and fill in 'path' below for absolute, network or sequence paths. |
 | `media_type` (optional) | choice | `Auto` | `Auto`, `Image`, `Video`, `Sequence` | Override auto-detection. Auto infers from path extension and pattern. |
 | `path` (optional) | string |  |  | Optional — used only when 'browse' is left blank. Accepts any absolute path, UNC network path, or sequence pattern: Sequence patterns: /frames/f.%04d.exr · /frames/f.####.png · /dir/ Network paths: /mnt/nas/renders/shot or \\server\share\shot Format is auto-detected from extension. |
 | `color_space` (optional) | choice | `Auto / Linear (pass-through)` | `Auto / Linear (pass-through)`, `sRGB`, `Rec.709 (BT.1886)`, `Rec.709 (camera OETF)`, `Rec.2020 (BT.2020 OETF)`, `P3-D65 (Gamma 2.6)`, `PQ (ST.2084)`, `HLG (BT.2100)`, `Linear Rec.709 (sRGB)`, `Linear Rec.2020`, and 12 more | Decode the input from this color space to scene-linear before processing. |

@@ -13,6 +13,7 @@ export const TOUR_PAGES = Object.freeze(['welcome', 'setup', 'workflows', 'viewe
 export const LINKS = Object.freeze({
     radiance: 'https://www.fxtdstudios.com/radiance-comfyui.html',
     issues: 'https://github.com/FXTD-Studios/radiance/issues',
+    discord: 'https://discord.gg/C7aTNFhJeP',
     studio: 'https://www.fxtdstudios.com',
 });
 
@@ -22,6 +23,21 @@ export const LINKS = Object.freeze({
  * entry shows the version change and the release-notes link only.
  */
 export const WHATS_NEW = Object.freeze([
+    {
+        version: '4.1.0',
+        items: [
+            'RUDRA AI fill v5: redraws a bright window, door, sky, lamp or sun glare, steadier than before.',
+            'SDR → HDR Analytic: BT.1886 masters are no longer too dark in the shadows (RUDRA 1.3).',
+            'New shot asks for its name and starts on an empty canvas; gizmos delete from the library.',
+        ],
+    },
+    {
+        version: '4.0.2',
+        items: [
+            'Install no longer runs pip: missing libraries are listed with the command to run.',
+            'Deliver: Launch Folder works only when ComfyUI is started with RADIANCE_ALLOW_REVEAL=1.',
+        ],
+    },
     {
         version: '4.0.1',
         items: [
@@ -33,7 +49,7 @@ export const WHATS_NEW = Object.freeze([
         items: [
             'RUDRA ACES 2: SDR to HDR with nothing to set up, and several frames at once on long clips.',
             'A new Viewer: Review, Color and Inspect, with a Project colour sheet and scopes in nits.',
-            '45 workflows, 25 of them API, each in the Templates menu and with a card in Radiance › Workflows.',
+            '40 workflows, 25 of them API, each in the Templates menu and with a card in Radiance › Workflows.',
             'FLUX 3 Klein, and one Prompt node that holds several prompts.',
         ],
     },
@@ -120,4 +136,37 @@ export function setupSummary(scan) {
         ready: `${s.ready} of ${s.workflows} local workflows are ready to run`,
         downloadsOff: scan ? !scan.downloads_allowed : false,
     };
+}
+
+/**
+ * What this browser and screen can show, for the first-start checks (4.0).
+ * probeDisplay(window) reads it; displayCheck(probe) turns it into a check
+ * shaped like the server's: { id, title, status: ok|warn|bad, detail, fix }.
+ */
+export function probeDisplay(win) {
+    const mq = (q) => { try { return !!win.matchMedia?.(q).matches; } catch { return false; } };
+    let webgl = 0, floatTargets = false, renderer = '';
+    try {
+        const c = win.document.createElement('canvas');
+        let gl = c.getContext('webgl2');
+        if (gl) { webgl = 2; floatTargets = !!gl.getExtension('EXT_color_buffer_float'); }
+        else if ((gl = c.getContext('webgl'))) webgl = 1;
+        if (gl) {
+            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+            renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+        }
+    } catch { /* no WebGL */ }
+    return { hdr: mq('(dynamic-range: high)'), p3: mq('(color-gamut: p3)'), webgl, floatTargets, renderer };
+}
+
+export function displayCheck(p) {
+    const title = 'Display and viewer (WebGL)';
+    const check = (status, detail) => ({ id: 'display', title, status, detail, fix: null });
+    if (!p || !p.webgl) return check('bad', 'This browser has no WebGL, so the Viewer and the scopes cannot draw. Turn on hardware acceleration in the browser settings and reload.');
+    if (p.webgl < 2) return check('warn', 'This browser has WebGL 1 only: the Viewer works, slower and without float scopes. Use a current Chrome, Edge or Firefox.');
+    if (!p.floatTargets) return check('warn', 'WebGL 2 without float render targets: scopes fall back to 8-bit. Update the GPU driver or turn on hardware acceleration.');
+    const screen = p.hdr ? 'HDR display' : p.p3 ? 'SDR display, wide gamut (P3)' : 'SDR display (Rec.709)';
+    const hdrNote = p.hdr ? ': HDR previews show above 100 nits' : ': HDR is shown tone-mapped; masters are unaffected';
+    return check('ok', `WebGL 2 with float targets · ${screen}${hdrNote}`);
 }

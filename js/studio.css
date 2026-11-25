@@ -247,3 +247,37 @@ button.st-tr[aria-pressed="true"] { background: rgba(10,132,255,.07); }
 .st-setup-head { display: flex; gap: 14px; align-items: center; min-width: 0; }
 .st-setup-head > .st-thumb { width: 132px; flex-shrink: 0; border-radius: 8px; }
 .st-setup-head .st-row-between { min-width: 0; flex-wrap: wrap; }
+/* Shots: the review note box (Ask for changes sends it with the retake) */
+.st-rail .st-note + .st-note { margin-top: 6px; }
+.st-note-input { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--raised); color: var(--text); font: 13px/1.45 Inter, system-ui, sans-serif; resize: vertical; min-height: 64px; }
+.st-note-input:focus { outline: 2px solid var(--link); outline-offset: 1px; border-color: transparent; }
+
+/* First-start checks (Models page) */
+.st-checks { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; padding: 16px; }
+.st-check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.st-check:first-of-type { border-top: 0; }
+.st-check-title { font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.st-check .st-btn, .st-check .st-link { flex-shrink: 0; margin-top: 2px; }
+
+/* Gizmo tiles: delete straight from the library (4.0) */
+.st-tile-wrap { position: relative; display: flex; flex-direction: column; }
+.st-tile-wrap > .st-tile { flex: 1; }
+.st-tile-del { position: absolute; bottom: 14px; right: 14px; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(28,28,30,.86); border: 1px solid var(--line2); color: var(--text2); opacity: 0; transition: opacity .12s, color .12s, border-color .12s; }
+.st-tile-wrap:hover .st-tile-del, .st-tile-wrap:focus-within .st-tile-del { opacity: 1; }
+.st-tile-del:hover, .st-tile-del:focus-visible { color: var(--bad); border-color: var(--bad); }
+.st-tile-del:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: none) { .st-tile-del { opacity: 1; } }
+
+/* New shot dialog (4.0) */
+.st-modal-back { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.st-modal { width: min(440px, 100%); background: var(--chrome); border: 1px solid var(--line2); border-radius: 14px; padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+.st-modal h2 { margin: 0; font-size: 18px; font-weight: 600; color: var(--text); }
+.st-modal p { margin: 0; font-size: 13px; line-height: 1.5; }
+.st-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--dim); }
+.st-input { height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line2); background: var(--canvas); color: var(--text); font-size: 15px; }
+.st-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.st-field-err { min-height: 18px; font-size: 12px; color: var(--bad); }
+.st-modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.st-pill:not(.ok):not(.info):not(.warn):not(.bad) { color: var(--dim); }
+.st-modal .st-link { color: var(--link); }

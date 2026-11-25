@@ -1,28 +1,32 @@
 """
-◎ Radiance SDR → HDR AI Fill v4: region re-render (RUDRA, experimental)
-═══════════════════════════════════════════════════════════════════════
+◎ Radiance SDR → HDR AI Fill Re-render: region re-render (RUDRA v5, experimental)
+═════════════════════════════════════════════════════════════════════════════════
 
-RUDRA AI fill v4 (RUDRA ``feat/genfill-v4-finish`` 72c4a62, 12 Nov 2026).
-AI fill v3 draws only inside pixels that are fully clipped, often a fraction of
-a per cent of the frame. The region re-render draws a whole bright region
-again: a window, an open door, a sky parked just under white.
+RUDRA AI fill v5 (RUDRA 1.3.0, 24 Nov 2026), and v4.3 (RUDRA 1.2.4) or the
+12 Nov v4 research build on request. AI fill v3 draws only inside pixels that
+are fully clipped, often a fraction of a per cent of the frame. The region
+re-render draws a whole bright region again: a window, an open door, a sky
+parked just under white, a practical lamp, sun glare.
 
 * The regions come from the SOURCE, the SDR the master was made from (codes at
   or above 240), not from the master's own SDR view.
-* Wan2.1-VACE-1.3B with the v4 LoRA draws the region; the fill is finished as
-  RUDRA's app does it: the source's colour (30 % of the model's kept), a level
-  of 3.3 x the master's SDR white crossfaded in from code 240 to 253, the
-  model's detail on it with dark detail at most 0.3 stops deep, edge rules, and
-  0.8 of the previous frame's level kept. It acts only where the source is near
+* Wan2.1-VACE-1.3B with the region LoRA draws it; the fill is finished as
+  RUDRA 1.3's app does it: the source's colour (30 % of the model's kept), a
+  level of 3.3 x the master's SDR white crossfaded in from code 240 to 253, the
+  model's detail on it with dark detail at most 0.3 stops deep, edge rules, 0.8
+  of the previous frame's level kept and a jump on still pixels held (0.9).
+  Windows are drawn from the source alone and crossfaded, the last one whole.
+  With v5 also the thin hold (a strip light, a tube, a small lamp held steady),
+  the crossfade's mix settled against the codec's noise, and on the learned
+  route (condition 'aces') the master's share capped at the fill and a newly
+  clipped pixel taken at its first frame. It acts only where the source is near
   white in every channel; a saturated highlight is left to the master.
 * Inside the region the SDR's codes are NOT kept, unlike v3. Outside it every
   pixel is the master's, bit for bit.
 
-Experimental and off unless wired: v4 has passed RUDRA's gates on one shot
-(09V) and the held-out set, and fails the structure gate on a second shot. It
-was tested on RUDRA's analytic route (the SDR read as BT.1886). The v4 LoRA is
-not published; it is never downloaded. What it draws is a plausible guess:
-check every frame.
+Experimental, as every AI fill: what it draws is a plausible guess, so check
+every frame. The v5 and v4.3 LoRAs (263 MB each, Apache 2.0) download on first
+use; the 12 Nov research LoRA never does.
 """
 from __future__ import annotations
 
@@ -41,7 +45,21 @@ from radiance.nodes.hdr.rudra_aifill import ENCODINGS, _from_acescg, _to_acescg
 logger = logging.getLogger("radiance.nodes.hdr.rudra_rerender")
 
 CONDITIONS = ["bt1886", "aces"]                 # rudra_genfill.Rerender.CONDITIONS
-FINISHES = ["RUDRA app (12 Nov 2026)", "off (the model as registered)"]
+# The first is RUDRA 1.3's app finish for the chosen model. The last is kept so a graph saved with 4.0
+# still opens: it is the same app finish (it named the 12 Nov one, which 'v4 research' still gets).
+FINISHES = ["RUDRA app (1.3)", "off (the model as registered)", "RUDRA app (12 Nov 2026)"]
+REGION_MODELS = ["v5", "v4.3", "v4 research"]   # rudra_genfill.REGION_MODELS
+
+
+def app_settings(region_model: str, condition: str) -> tuple:
+    """(Rerender kwargs, MaskSettings kwargs) RUDRA's app runs *region_model* with (genfill_job.cpp)."""
+    from radiance.model import rudra_genfill as G
+    if region_model == "v5":
+        rer = dict(G.RUDRA_APP_V5, **(G.RUDRA_APP_V5_LEARNED if condition == "aces" else {}))
+        return rer, dict(G.RUDRA_APP_V4_MASK, **(G.RUDRA_APP_V5_LEARNED_MASK if condition == "aces" else {}))
+    if region_model == "v4.3":
+        return dict(G.RUDRA_APP_V43), dict(G.RUDRA_APP_V4_MASK)
+    return dict(G.RUDRA_APP_V4), dict(G.RUDRA_APP_V4_MASK)
 
 
 def source_codes(source: torch.Tensor, n: int, H: int, W: int) -> list:
@@ -66,14 +84,17 @@ def source_codes(source: torch.Tensor, n: int, H: int, W: int) -> list:
 
 
 class RadianceSDRToHDRAIFillRerender:
-    """RUDRA AI fill v4: a bright region of an HDR master drawn again by Wan VACE + the v4 LoRA."""
+    """RUDRA AI fill v5 (or v4.3): a bright region of an HDR master drawn again by Wan VACE + a region LoRA."""
 
     CATEGORY = "FXTD STUDIOS/Radiance/◎ HDR"
+    # 4.1: in the menu again (4.0 hid it as DEV_ONLY): it runs the published v5 and v4.3 with RUDRA 1.3's finish.
+    EXPERIMENTAL = True
     DESCRIPTION = (
-        "RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master "
-        "again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the "
-        "region the SDR's codes are not kept; outside it every pixel is the master's. Needs the v4 LoRA, "
-        "which is not published. Plausible, not recovered."
+        "RUDRA AI fill v5, region re-render (experimental): draws a whole bright region of an HDR master "
+        "again (a window, an open door, a sky just under white, a practical lamp, sun glare), with RUDRA 1.3's "
+        "app finish. Inside the region the SDR's codes are not kept; outside it every pixel is the master's. "
+        "Downloads the v5 LoRA (263 MB) and Wan2.1-VACE-1.3B (7.7 GB) on first use; about 16 GB of GPU memory. "
+        "Plausible, not recovered."
     )
     FUNCTION = "rerender"
     RETURN_TYPES = ("IMAGE", "MASK", "MASK", "STRING")
@@ -109,9 +130,10 @@ class RadianceSDRToHDRAIFillRerender:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF,
                     "tooltip": "Noise seed. The same seed and settings give the same fill."}),
                 "lora": ("STRING", {"default": "",
-                    "tooltip": "The v4 LoRA (rudra_genfill.safetensors of research_genfill_v4_20261109), or its "
-                               "folder. Empty searches RADIANCE_RUDRA_GENFILL_V4, then "
-                               "models/radiance/rudra_genfill_v4/. Never downloaded: it is not published."}),
+                    "tooltip": "A region LoRA file or its folder, instead of region_model's own. Empty: v5 from "
+                               "RADIANCE_RUDRA_GENFILL_V5 or models/radiance/rudra_genfill_v5/, v4.3 from "
+                               "models/radiance/rudra_genfill_v4/ (downloaded if missing); v4 research from "
+                               "RADIANCE_RUDRA_GENFILL_V4 or models/radiance/rudra_genfill_v4/ (never downloaded)."}),
                 "base_model": ("STRING", {"default": "",
                     "tooltip": "Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, "
                                "models/radiance/ and models/diffusers/."}),
@@ -119,17 +141,28 @@ class RadianceSDRToHDRAIFillRerender:
                     "tooltip": "The AI fill v3 folder, used here for its prompt cache only (the base prompt's "
                                "embedding, so no 11 GB text encoder for an empty prompt)."}),
                 "allow_download": ("BOOLEAN", {"default": True,
-                    "tooltip": "Download the Wan base model (7.7 GB) and the v3 package's prompt cache (271 MB) "
-                               "if missing. Never the v4 LoRA. RADIANCE_ALLOW_DOWNLOADS=0 always wins."}),
+                    "tooltip": "Download what is missing: the v5 or v4.3 LoRA (263 MB), the Wan base model "
+                               "(7.7 GB) and the v3 package's prompt cache (271 MB). Never the v4 research LoRA. "
+                               "RADIANCE_ALLOW_DOWNLOADS=0 always wins."}),
                 "keep_loaded": ("BOOLEAN", {"default": True,
                     "tooltip": "Keep Wan VACE on the GPU between runs. Off frees it after this node."}),
+                # 4.1, appended so a graph saved with 4.0 keeps its widget values in place.
+                "region_model": (REGION_MODELS, {"default": "v5",
+                    "tooltip": "Which region LoRA draws. v5 (RUDRA 1.3): steadier on lamps, doors, windows, sun "
+                               "glare and thin objects against a bright sky. v4.3 (RUDRA 1.2.4). v4 research: the "
+                               "12 Nov build this node first ported, with its 12 Nov finish."}),
+                "keep_detail": ("BOOLEAN", {"default": False,
+                    "tooltip": "Thin, broken-up and small parts of the region keep the master's picture (a floor "
+                               "grating's bright bars, a railing, a practical lamp); RUDRA 1.2.7. Off redraws the "
+                               "whole region, as RUDRA's app does by default."}),
             },
         }
 
     @torch.no_grad()
     def rerender(self, image, image_encoding, source, prompt_highlight, reconstructed_mask=None,
                  condition="bt1886", finish=FINISHES[0], steps=30, seed=0, lora="", base_model="",
-                 fill_package="", allow_download=True, keep_loaded=True):
+                 fill_package="", allow_download=True, keep_loaded=True, region_model="v5", keep_detail=False):
+        from radiance.model import rudra_download
         from radiance.model import rudra_genfill as G
 
         img = image.float()
@@ -145,22 +178,39 @@ class RadianceSDRToHDRAIFillRerender:
             z = img[..., 0]
             return (img, z, z, "frames: 0")
 
-        ms = G.MaskSettings(max_gain_stops=0.0, **G.RUDRA_APP_V4_MASK).check()
+        if region_model not in REGION_MODELS:
+            raise ValueError(f"region_model must be one of {', '.join(REGION_MODELS)}")
+        app = finish != FINISHES[1]
+        rer_kw, mask_kw = app_settings(region_model, str(condition))
+        ms = G.MaskSettings(max_gain_stops=0.0, **(mask_kw if app else G.RUDRA_APP_V4_MASK)).check()
         codes = source_codes(source, n, H, W)
         if not any(int(c.max(-1).max()) >= ms.tau_high for c in codes):
             z = torch.zeros((n, H, W))
             return (image, z, torch.maximum(prior.cpu(), z),
-                    f"RUDRA AI fill v4: nothing to re-render — no source code at {ms.tau_high} or above.")
+                    f"RUDRA AI fill {region_model}: nothing to re-render — no source code at {ms.tau_high} or above.")
 
-        lora_path = G.resolve_v4_lora(lora)
-        if lora_path is None:                    # a missing file, not a fault: FileNotFoundError
-            raise FileNotFoundError(
-                "RUDRA AI fill v4 (region re-render) needs its LoRA, which is experimental and not published. "
-                "Put rudra_genfill.safetensors of research_genfill_v4_20261109 in "
-                f"ComfyUI/models/radiance/{G.V4_DIRNAME}/, set {G.V4_ENV}, or give its path in 'lora'. "
-                "For clipped pixels only, use SDR → HDR AI Fill (RUDRA v3).")
-        G.check_runtime()
         allow = None if allow_download else False
+        # The LoRA on disk first; a download only after check_runtime (no download for a Python that
+        # cannot run Wan VACE), and only for a published LoRA that downloads are allowed for.
+        lora_path = G.resolve_region_lora(region_model, lora)
+        pkg = G.region_package(region_model)
+        can_fetch = (pkg is not None and not (lora or "").strip()
+                     and rudra_download.downloads_allowed_for(pkg, allow))
+        if lora_path is not None or can_fetch:
+            G.check_runtime()
+        if lora_path is None and can_fetch:
+            lora_path = G.ensure_region_lora(region_model, lora, allow=allow)
+        if lora_path is None:                    # a missing file, not a fault: FileNotFoundError
+            if region_model == "v4 research":
+                raise FileNotFoundError(
+                    "RUDRA AI fill v4 research (the 12 Nov build) needs its LoRA, which is never downloaded. Put "
+                    "rudra_genfill.safetensors of research_genfill_v4_20261109 in "
+                    f"ComfyUI/models/radiance/{G.V4_DIRNAME}/, set {G.V4_ENV}, or give its path in 'lora'. "
+                    "region_model v5 or v4.3 downloads the published LoRA.")
+            raise FileNotFoundError(
+                f"RUDRA AI fill {region_model} needs its LoRA ({pkg.size_mb} MB), which is not installed and was "
+                f"not downloaded (downloads are off, or it failed: the console says which). Download "
+                f"{pkg.page_url} into ComfyUI/models/radiance/{pkg.dirname}/, or give its path in 'lora'.")
         package = G.ensure_package(fill_package, allow=allow)
         if package is None:                      # no v3 prompt cache: one beside the v4 LoRA
             package = Path(lora_path).parent
@@ -187,9 +237,8 @@ class RadianceSDRToHDRAIFillRerender:
             model.prompts.get(text)
         model.prompts.release()
 
-        app = finish == FINISHES[0]
-        rer = G.Rerender(condition=str(condition), **(G.RUDRA_APP_V4 if app else {})).check()
-        windows = len(G.plan_windows(n, 33, 8))
+        rer = G.Rerender(condition=str(condition), keep_detail=bool(keep_detail), **(rer_kw if app else {})).check()
+        windows = len(G.plan_windows(n, 33, 8, full_last=rer.full_last))
         bar = comfy.utils.ProgressBar(max(1, windows * int(steps)))
 
         def progress(**o):
@@ -213,10 +262,16 @@ class RadianceSDRToHDRAIFillRerender:
         recon = torch.maximum(prior.to(gen.device), gen)
         st = rep["stats"]
         sha = (rep.get("model") or {}).get("lora_sha256")
+        known = {G.GENFILL_V5_SHA256: "v5", G.GENFILL_V43_SHA256: "v4.3", G.GENFILL_V4_SHA256: "v4 research"}
+        drew = known.get(sha)
+        lora_note = (f"the published {drew} LoRA" if drew == region_model else
+                     f"NOT the {region_model} LoRA: " + (f"the {drew} LoRA" if drew else f"sha256 {str(sha)[:16]}"))
         lines = [
-            "RUDRA AI fill v4, region re-render (EXPERIMENTAL; Wan2.1-VACE-1.3B + v4 LoRA) — plausible, not recovered",
-            f"LoRA: {lora_path} ({'the gated v4 LoRA' if sha == G.GENFILL_V4_SHA256 else 'NOT the gated v4 LoRA: sha256 ' + str(sha)[:16]})",
-            f"condition: {condition}; finish: {'RUDRA app ' + json.dumps(G.RUDRA_APP_V4) if app else 'off'}",
+            f"RUDRA AI fill {region_model}, region re-render (EXPERIMENTAL; Wan2.1-VACE-1.3B + region LoRA) "
+            "— plausible, not recovered",
+            f"LoRA: {lora_path} ({lora_note})",
+            f"condition: {condition}; finish: {'RUDRA app (1.3) ' + json.dumps(rer_kw) if app else 'off'}"
+            + ("; keep_detail" if keep_detail else ""),
             f"frames: {st['frames']}, windows: {st['windows']} ({st['windows_generated']} generated), "
             f"working size {st['working_size'][1]}x{st['working_size'][0]}"
             + (f", master SDR white {st['rerender_white']:g}" if "rerender_white" in st else ""),
@@ -229,4 +284,4 @@ class RadianceSDRToHDRAIFillRerender:
 
 
 NODE_CLASS_MAPPINGS = {"RadianceSDRToHDRAIFillRerender": RadianceSDRToHDRAIFillRerender}
-NODE_DISPLAY_NAME_MAPPINGS = {"RadianceSDRToHDRAIFillRerender": "◎ Radiance SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)"}
+NODE_DISPLAY_NAME_MAPPINGS = {"RadianceSDRToHDRAIFillRerender": "◎ Radiance SDR → HDR AI Fill Re-render (RUDRA v5, experimental)"}

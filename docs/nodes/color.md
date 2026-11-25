@@ -167,7 +167,7 @@ Import an ASC CDL (.cdl / .cc / .ccc) file into pipeline metadata.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `file_path` | string | `grading/shot_01.cdl` |  | Path to a .cdl, .cc, or .ccc file. A relative path is looked for in ComfyUI's input/ then output/ folder; absolute paths are used as given. |
+| `file_path` | string |  |  | Path to a .cdl, .cc, or .ccc file. A relative path is looked for in ComfyUI's input/ then output/ folder; absolute paths are used as given. |
 
 **Outputs**
 
@@ -454,7 +454,7 @@ Load an OpenColorIO config into Radiance's shared OCIO manager for this session.
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `config_path` | string | `C:/ACES/config.ocio` |  | Path to a config.ocio file. A relative path is looked for in ComfyUI's input/ then output/ folder. The loaded config replaces the session-wide one until another is loaded. |
+| `config_path` | string |  |  | Path to a config.ocio file. Empty: the config Radiance already uses ($OCIO when it loads, else the built-in ACES 2.0 studio config). A relative path is looked for in ComfyUI's input/ then output/ folder. The loaded config replaces the session-wide one until another is loaded. |
 
 **Outputs**
 

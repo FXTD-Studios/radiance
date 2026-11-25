@@ -19,6 +19,10 @@ function openDash(file, title) {
     else window.open(`${_EXT_BASE}/${file}`, "_blank");
 }
 
+// The FXTD community Discord (also on the tour's last page, LINKS.discord).
+const DISCORD_URL = "https://discord.gg/C7aTNFhJeP";
+const DISCORD_ICON = '<svg width="15" height="12" viewBox="0 0 24 18" aria-hidden="true" style="display:block"><path fill="#5865F2" d="M20.3 1.5A19.8 19.8 0 0 0 15.4 0l-.6 1.3a18.4 18.4 0 0 0-5.5 0L8.6 0a19.7 19.7 0 0 0-4.9 1.5C.6 6.2-.3 10.7.1 15.2A19.9 19.9 0 0 0 6.2 18l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12 0l.5.4c-.6.4-1.3.7-2 1L17.8 18a19.8 19.8 0 0 0 6-3c.5-5.2-.8-9.7-3.5-13.5ZM8 12.4c-1.2 0-2.2-1.1-2.2-2.4S6.8 7.6 8 7.6s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg>';
+
 // ALBABIT-FIX: the button lives in ComfyUI's action bar. As a fixed bottom-right
 // element it covered the canvas toolbar (select, fit view, zoom, minimap) that
 // the frontend now draws in that corner.
@@ -65,6 +69,11 @@ function buildMenu() {
     const tour = item("✦", "Radiance Tour", null, null, () => window.radianceWelcome?.open("tour"));
     tour.dataset.radianceMenu = "tour";
     menu.appendChild(tour);
+    // Community: the FXTD Discord, in a new tab.
+    const discord = item(DISCORD_ICON, `Join our Discord<span style="margin-left:auto;color:#8e8e93;">\u2197</span>`, null, null,
+        () => window.open(DISCORD_URL, "_blank", "noopener,noreferrer"));
+    discord.dataset.radianceMenu = "discord";
+    menu.appendChild(discord);
 
     document.addEventListener("click", () => { menu.style.display = "none"; });
     document.body.appendChild(menu);

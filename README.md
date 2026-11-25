@@ -10,12 +10,12 @@
 
 Generate in HDR, grade and review like a finishing suite, and deliver masters to Nuke and DaVinci Resolve,<br>without leaving ComfyUI.
 
-[![Version](https://img.shields.io/badge/version-4.0.1-c8a96e?style=flat-square)](CHANGELOG.md)
-[![Status](https://img.shields.io/badge/status-release%20candidate-orange?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-4.1.0-c8a96e?style=flat-square)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-4.1%20in%20development-blue?style=flat-square)](CHANGELOG.md)
 [![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Platforms](https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux-5C7CFA?style=flat-square)](#what-you-need)
-[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 
 **[Install](#install)** &nbsp;·&nbsp; **[First HDR image](#your-first-hdr-image)** &nbsp;·&nbsp; **[Workflows](#example-workflows)** &nbsp;·&nbsp; **[Viewer](#using-the-viewer)** &nbsp;·&nbsp; **[Help](#help)**
 
@@ -116,10 +116,10 @@ Open [SDR to HDR, analytic](workflows/sdr_to_hdr_analytic.json).
 
 ### Generate one
 
-1. Drag the [starter workflow](workflows/start.json) onto the canvas.
+1. Drag the [starter workflow](workflows/t2i_i2i_hdr.json) onto the canvas.
 2. Pick the model files in the **Loader** ([which files?](docs/MODELS.md#flux2-klein-starter-workflow)).
 3. Type your prompt and press **Run**.
-4. Review it in the **Viewer**; add **Write** to save.
+4. Review it in the **Viewer**; its **Write** nodes save an SDR PNG and an HDR EXR master.
 
 For another model, pick its preset in the Loader. The Sampler sets its steps and CFG for you.
 
@@ -132,11 +132,11 @@ For another model, pick its preset in the Loader. The Sampler sets its steps and
 Drag a file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
 <table>
-<tr><td width="33%" valign="top"><a href="workflows/start.json"><img src="docs/images/cards/start.png" width="300" alt="Starter workflow card"></a><br><b><a href="workflows/start.json">Starter</a></b><br>Generate an image and review it</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
-<tr><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_ai_fill.json"><img src="docs/images/cards/sdr_to_hdr_ai_fill.png" width="300" alt="SDR to HDR with AI fill workflow card"></a><br><b><a href="workflows/sdr_to_hdr_ai_fill.json">SDR to HDR with AI fill</a></b><br>Rebuild large blown highlights (16 GB GPU)</td><td width="33%" valign="top"><a href="workflows/hdr_delivery.json"><img src="docs/images/cards/hdr_delivery.png" width="300" alt="HDR delivery workflow card"></a><br><b><a href="workflows/hdr_delivery.json">HDR delivery</a></b><br>EXR, HDR10 with HDR10+, and SDR from one master</td><td width="33%" valign="top"><a href="workflows/sdr_remaster_ai_fill.json"><img src="docs/images/cards/sdr_remaster_ai_fill.png" width="300" alt="SDR remaster with AI fill workflow card"></a><br><b><a href="workflows/sdr_remaster_ai_fill.json">SDR remaster with AI fill</a></b><br>SDR footage to an HDR remaster (16 GB GPU)</td></tr>
+<tr><td width="33%" valign="top"><a href="workflows/t2i_i2i_hdr.json"><img src="docs/images/cards/t2i_i2i_hdr.png" width="300" alt="Text to image, edit, image to image workflow card"></a><br><b><a href="workflows/t2i_i2i_hdr.json">Text to image, edit, image to image</a></b><br>Generate or edit an image, into an SDR PNG and an HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master, optional AI fill</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
+<tr><td width="33%" valign="top"><a href="workflows/hdr_delivery.json"><img src="docs/images/cards/hdr_delivery.png" width="300" alt="HDR delivery workflow card"></a><br><b><a href="workflows/hdr_delivery.json">HDR delivery</a></b><br>EXR, HDR10 with HDR10+, and SDR from one master</td><td width="33%" valign="top"><a href="workflows/sdr_remaster_ai_fill.json"><img src="docs/images/cards/sdr_remaster_ai_fill.png" width="300" alt="SDR remaster with AI fill workflow card"></a><br><b><a href="workflows/sdr_remaster_ai_fill.json">SDR remaster with AI fill</a></b><br>SDR footage to an HDR remaster (16 GB GPU)</td><td width="33%" valign="top"><a href="workflows/colour_grade.json"><img src="docs/images/cards/colour_grade.png" width="300" alt="Colour grading workflow card"></a><br><b><a href="workflows/colour_grade.json">Colour grading</a></b><br>Grade an image and save it</td></tr>
 </table>
 
-**[See all 45 workflows →](docs/WORKFLOWS.md)** 20 run on your own GPU; 25 generate with a ComfyUI API node (Nano Banana, Seedance, Veo, Kling…) and lift the result to HDR.
+**[See all 40 workflows →](docs/WORKFLOWS.md)** 15 run on your own GPU; 25 generate with a ComfyUI API node (Nano Banana, Seedance, Veo, Kling…) and lift the result to HDR.
 
 ## Using the Viewer
 
@@ -180,13 +180,15 @@ Something not working? Try these first:
 2. Look in the ComfyUI console for errors or missing packages.
 3. Make sure the requirements went into ComfyUI's own Python.
 
-Still stuck? [Open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
+Still stuck? Ask on [Discord](https://discord.gg/C7aTNFhJeP), or [open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
 
 ### Learn more
 
 - **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
 - **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
+- **[Discord](https://discord.gg/C7aTNFhJeP)**: community, help and updates
 - **[Node reference](docs/nodes/README.md)**: all 121 visible nodes and their inputs
+- **[Environment variables](docs/ENVIRONMENT.md)**: offline mode, extra read folders, ffmpeg, DCC bridges
 - **[Changelog](CHANGELOG.md)**: what changed and upgrade notes
 - **[Known issues](KNOWN_ISSUES.md)**: current limits (long-video windowing, estimated passes)
 
@@ -200,7 +202,7 @@ Radiance is made by [FXTD Studios](https://fxtdstudios.com).
 
 ## License
 
-Radiance is licensed under [GPL-3.0](LICENSE). Model weights have their own licences; check them before you use or share them.
+Radiance is licensed under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE) for third-party notices. Releases up to 4.0.x were published under GPL-3.0. Model weights have their own licences; check them before you use or share them.
 
 The Viewer screenshots use the OpenEXR sample images (Candlelight / StillLife, MtTamWest, Desk), © 2004 Industrial Light & Magic, under the [OpenEXR images licence](docs/images/LICENSE-openexr-images.txt).
 

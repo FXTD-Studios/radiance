@@ -8,6 +8,7 @@
 
 import { escapeHtml as h } from "./radiance_dom_utils.js";
 import * as M from "./studio_model.mjs";
+import { displayCheck, probeDisplay } from "./radiance_welcome_logic.js";
 
 const ICON = {
     home: "M3 11 12 4l9 7v9h-6v-6H9v6H3z",
@@ -17,6 +18,7 @@ const ICON = {
     renders: "M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6",
     upload: "M12 15V3M7 8l5-5 5 5M4 15v5h16v-5",
     gizmos: "M12 3 4 7.5v9L12 21l8-4.5v-9zM4 7.5 12 12l8-4.5M12 12v9",
+    trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
     models: "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
 };
 const NAV = [["home", "Home"], ["workflows", "Workflows"], ["gizmos", "Gizmos"], ["assets", "Assets"], ["shots", "Shots"], ["renders", "Renders"], ["models", "Models"]];
@@ -34,7 +36,7 @@ const S = {
     wf: null, asset: null, shot: null,
     workflows: [], assets: [], bins: [],
     dashboard: null, projectId: store.get("radiance_studio_project") || "",
-    project: { versions: [], outputs: [], notes: [] },
+    project: { versions: [], outputs: [], notes: [], planned: [], next: "SH010" },
     renders: [], gpu: null,
     gizmos: [], gizmo: null, gizmoFolder: "",
     setup: null, downloads: [], scanning: false,
@@ -101,14 +103,18 @@ async function loadDashboard() {
 }
 async function loadProject() {
     const d = S.dashboard;
-    if (!S.projectId) { S.project = { versions: [], outputs: [], notes: [] }; return; }
+    if (!S.projectId) { S.project = { versions: [], outputs: [], notes: [], planned: [], next: "SH010" }; return; }
+    S.shot = S.shot || store.get(`radiance_studio_shot_${S.projectId}`) || null;
     if (S.projectId === d?.activeProjectId) {
-        S.project = { versions: d.versions || [], outputs: d.outputs || [], notes: d.notes || [] };
+        S.project = { versions: d.versions || [], outputs: d.outputs || [], notes: d.notes || [],
+                      planned: d.plannedShots || [], next: d.nextShot || "SH010" };
         return;
     }
     const base = `/radiance/projects/${encodeURIComponent(S.projectId)}`;
-    const [v, o, n] = await Promise.all([getJSON(`${base}/versions`), getJSON(`${base}/outputs`), getJSON(`${base}/notes`)]);
-    S.project = { versions: v.versions || [], outputs: o.outputs || [], notes: n.notes || [] };
+    const [v, o, n, sh] = await Promise.all([getJSON(`${base}/versions`), getJSON(`${base}/outputs`), getJSON(`${base}/notes`),
+        getJSON(`${base}/shots`).catch(() => ({}))]);
+    S.project = { versions: v.versions || [], outputs: o.outputs || [], notes: n.notes || [],
+                  planned: sh.shots || [], next: sh.next || "SH010" };
 }
 async function loadRenders() {
     try {
@@ -127,10 +133,11 @@ async function loadGizmos() {
     } catch (e) { S.errors.gizmos = e.message; }
     S.loaded.gizmos = true;
 }
-async function loadSetup() {
+let displayProbe = null;
+async function loadSetup(refresh = false) {
     S.scanning = true;
     try {
-        S.setup = await postJSON("/radiance/setup/scan");
+        S.setup = await postJSON("/radiance/setup/scan", { refresh });
         S.downloads = S.setup.downloads || [];
         S.errors.setup = "";
     } catch (e) { S.errors.setup = e.message; }
@@ -167,7 +174,77 @@ const shortName = (s) => String(s || "").replace(/\.[^.]+$/, "").slice(0, 2).toU
 
 // ── chrome ───────────────────────────────────────────────────────────────────
 
-function shotsList() { return M.shotRows(S.project.versions, S.project.outputs, S.project.notes); }
+function shotsList() { return M.shotRows(S.project.versions, S.project.outputs, S.project.notes, S.project.planned); }
+
+// ── New shot (4.0): ask for the name, add it to the project, clear the canvas ──
+function projectName() { return (S.dashboard?.projects || []).find((p) => p.id === S.projectId)?.name || ""; }
+
+function openNewShot() {
+    if (!S.projectId) { openWorkflow("official/Local/t2i_i2i_hdr.rad"); return; }
+    if ($("stNewShot")) return;
+    const taken = shotsList().map((r) => r.shot);
+    const suggested = M.nextShotName(taken);
+    const box = document.createElement("div");
+    box.className = "st-modal-back";
+    box.id = "stNewShot";
+    box.innerHTML = `<form class="st-modal" role="dialog" aria-modal="true" aria-labelledby="stNewShotTitle" novalidate>
+        <h2 id="stNewShotTitle">New shot</h2>
+        <p class="st-dim">Adds the shot to <b>${h(projectName())}</b> and opens an empty canvas, so you can start from any template.</p>
+        <label class="st-field"><span>Shot name</span>
+          <input id="stNewShotName" class="st-input st-mono" value="${h(suggested)}" autocomplete="off" spellcheck="false" aria-describedby="stNewShotHint stNewShotErr" maxlength="12"></label>
+        <div id="stNewShotHint" class="st-dim st-small">SH and 2 to 5 digits. 40 becomes SH040. Its first save is <span class="st-mono" id="stNewShotFile">${h(suggested)}_v001</span>.</div>
+        <div id="stNewShotErr" class="st-field-err" role="alert"></div>
+        <div class="st-modal-actions"><button type="button" class="st-link" data-shot-act="starter">Open the Starter instead</button><span class="st-grow"></span>
+          <button type="button" class="st-btn" data-shot-act="cancel">Cancel</button><button type="submit" class="st-btn st-primary">Create shot</button></div>
+      </form>`;
+    ($("studio") || document.body).appendChild(box);     // inside the page root: its fonts and colours
+    const input = $("stNewShotName");
+    const err = $("stNewShotErr");
+    const check = () => {
+        const name = M.normalizeShotName(input.value);
+        $("stNewShotFile").textContent = `${name || "SH…"}_v001`;
+        err.textContent = !input.value.trim() ? "" : !name ? "Use SH and 2 to 5 digits, for example SH040."
+            : taken.includes(name) ? `${name} is already in this project.` : "";
+        return name && !taken.includes(name) ? name : "";
+    };
+    const close = () => { box.remove(); $("stNew")?.focus(); };
+    input.addEventListener("input", check);
+    box.addEventListener("click", (e) => {
+        const act = e.target.closest("[data-shot-act]")?.dataset.shotAct || (e.target === box ? "cancel" : "");
+        if (act === "cancel") close();
+        if (act === "starter") { close(); openWorkflow("official/Local/t2i_i2i_hdr.rad"); }
+    });
+    box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } });
+    box.querySelector("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = check();
+        if (!name) { err.textContent = err.textContent || "Give the shot a name, for example SH040."; input.focus(); return; }
+        const submit = box.querySelector('button[type="submit"]');
+        submit.disabled = true;
+        try {
+            const res = await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/shots`,
+                { shot: name, author: store.get("radiance_artist") || "" });
+            S.shot = res.shot;
+            store.set(`radiance_studio_shot_${S.projectId}`, res.shot);
+            S.project.planned = res.shots || [...S.project.planned, { shot: res.shot, created: Date.now() / 1000 }];
+            S.project.next = res.next || S.project.next;
+            const p = (S.dashboard?.projects || []).find((x) => x.id === S.projectId);
+            if (p) p.shots = (p.shots || 0) + 1;
+            close();
+            S.screen = "shots";
+            render();
+            if (tellCanvas({ type: "radiance_new_shot", projectId: S.projectId, project: res.project, shot: res.shot })) {
+                toast(`${res.shot} added to ${res.project}`);
+            }
+        } catch (e2) {
+            err.textContent = e2.message;
+            submit.disabled = false;
+        }
+    });
+    check();
+    input.focus();
+    input.select();
+}
 
 function renderNav() {
     const shots = shotsList();
@@ -205,9 +282,18 @@ function renderMe() {
     $("stAvatar").textContent = M.initials(name || "Radiance");
 }
 
+function renderNewButton() {
+    const b = $("stNew");
+    if (!b) return;
+    const inProject = !!S.projectId;
+    b.lastChild.textContent = inProject ? "New shot" : "New";
+    b.title = inProject ? `Add a shot to ${projectName()} and start on an empty canvas` : "Open the Starter workflow on the canvas";
+}
+
 function render() {
     renderNav();
     renderProjects();
+    renderNewButton();
     const body = $("stBody");
     const fn = { home: homeView, workflows: workflowsView, gizmos: gizmosView, assets: assetsView, shots: shotsView, renders: rendersView, models: modelsView }[S.screen];
     body.innerHTML = fn();
@@ -254,9 +340,9 @@ function homeView() {
         ? todo.map((t) => `<div class="st-todo-item"><span class="st-dot ${t.tone}"></span><div class="st-todo-text"><span>${h(t.title)}</span><span title="${h(t.text)}">${h(t.text)}</span></div>
             <button type="button" class="st-btn st-sm" data-go="${t.go.screen}" data-shot="${h(t.go.shot || "")}">${h(t.action)}</button></div>`).join("")
         : `<div class="st-todo-item"><span class="st-dot ok"></span><div class="st-todo-text"><span>Nothing is waiting</span><span>No shots in review, no failed renders</span></div></div>`;
-    const starts = ["official/Local/sdr_to_hdr.rad", "official/Local/sdr_to_hdr_analytic.rad", "official/Local/start.rad"]
+    const starts = ["official/Local/sdr_to_hdr.rad", "official/Local/sdr_to_hdr_analytic.rad", "official/Local/t2i_i2i_hdr.rad"]
         .map((f) => S.workflows.find((w) => w.filename.replace(/\\/g, "/") === f)).filter(Boolean);
-    const startText = { sdr_to_hdr: ["From a photo or video", "SDR to HDR with RUDRA ACES 2"], sdr_to_hdr_analytic: ["Without a model", "The analytic route, any GPU"], start: ["Generate one", "The Starter workflow"] };
+    const startText = { sdr_to_hdr: ["From a photo or video", "SDR to HDR with RUDRA ACES 2"], sdr_to_hdr_analytic: ["Without a model", "The analytic route, any GPU"], t2i_i2i_hdr: ["Generate one", "Text to image, edit or image to image"] };
     const startsHtml = starts.map((w) => {
         const [t, s] = startText[w.filename.split("/").pop().replace(".rad", "")] || [w.title, w.kicker];
         return `<button type="button" class="st-tile st-start" data-act="show-wf" data-file="${h(w.filename)}"><span class="st-thumb">${img(coverUrl(w.filename), "", "")}</span>
@@ -385,10 +471,13 @@ function gizmosView() {
     if (sel) S.gizmo = sel.id;
     const restart = S.gizmos.filter((g) => g.status.key === "restart").length;
     const grid = shown.length
-        ? `<div class="st-grid">${shown.map((g) => `<button type="button" class="st-tile" data-act="pick-gizmo" data-id="${h(g.id)}" aria-pressed="${sel && g.id === sel.id}">
+        // The trash button deletes from the library straight from the grid (4.0);
+        // the Delete key does the same on a focused tile.
+        ? `<div class="st-grid">${shown.map((g) => `<div class="st-tile-wrap"><button type="button" class="st-tile" data-act="pick-gizmo" data-id="${h(g.id)}" aria-pressed="${sel && g.id === sel.id}" aria-keyshortcuts="Delete">
             <span class="st-thumb">${gizmoCover(g)}</span>
             <span class="st-tile-text"><span class="st-kicker">Gizmo</span><span class="st-tile-title" title="${h(g.title)}">${h(g.title)}</span>
-            <span class="st-tile-sub"><span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></span></span></button>`).join("")}</div>`
+            <span class="st-tile-sub"><span class="st-pill ${g.status.tone}">${h(g.status.label)}</span></span></span></button>
+            <button type="button" class="st-tile-del" data-act="delete-gizmo" data-id="${h(g.id)}" title="Delete ${h(g.title)} from the library" aria-label="Delete ${h(g.title)} from the library">${svg(ICON.trash, 16)}</button></div>`).join("")}</div>`
         : S.query ? empty("Nothing matches your search", "Try another word, or clear the search.")
             : `<div class="st-empty"><b>No gizmos yet</b>Select some nodes on the canvas, right-click and choose ◎ Create Radiance Gizmo… It is saved here, and in the node menu after a restart.<br><br><button type="button" class="st-btn st-sm" data-act="import-gizmo">Import a .gizmo file</button></div>`;
     return `<div class="st-page">
@@ -419,7 +508,37 @@ function gizmoRail(g) {
       </div></aside>`;
 }
 
+async function deleteGizmo(id) {
+    const g = S.gizmos.find((x) => x.id === id);
+    const name = g?.title || id;
+    if (!confirm(`Delete the gizmo "${name}" from the library?\n\nIt is moved to the gizmos/.trash folder, so it can be brought back by hand. Its node stays in the menu until ComfyUI restarts.`)) return;
+    try {
+        await postJSON("/radiance/gizmos/delete", { name: id });
+        toast(`${name} deleted`);
+        if (S.gizmo === id) S.gizmo = null;
+        await loadGizmos();
+        render();
+    } catch (err) { toast(`Delete failed: ${err.message}`, true); }
+}
+
 // ── models (setup check) ─────────────────────────────────────────────────────
+
+// First-start checks: the server's four, plus the display, which only the browser can see.
+function checksCard(sc) {
+    if (!displayProbe) displayProbe = probeDisplay(window);
+    const list = [...(sc.checks || []), displayCheck(displayProbe)];
+    const label = { ok: "OK", warn: "Check", bad: "Fix needed" };
+    const tone = { ok: "ok", warn: "warn", bad: "bad" };
+    const fix = (c) => !c.fix ? ""
+        : c.fix.action ? `<button type="button" class="st-btn st-sm" data-act="setup-fix" data-id="${h(c.fix.action)}">${h(c.fix.label)}</button>`
+            : c.fix.url ? `<a class="st-link" href="${h(c.fix.url)}" target="_blank" rel="noopener">${h(c.fix.label)}</a>` : "";
+    const issues = list.filter((c) => c.status !== "ok").length;
+    return `<div class="st-card st-checks"><div class="st-row-between" style="margin-bottom:8px"><div class="st-sec">First start</div>
+        <span class="st-dim st-small">${issues ? h(M.plural(issues, "thing")) + " to look at" : "Everything checks out"}</span></div>
+      ${list.map((c) => `<div class="st-check" data-check="${h(c.id)}"><span class="st-dot ${tone[c.status] || "info"}"></span>
+        <div class="st-grow"><div class="st-check-title">${h(c.title)} <span class="st-pill ${tone[c.status] || "info"}">${h(label[c.status] || c.status)}</span></div>
+        <div class="st-dim st-small">${h(c.detail)}</div></div>${fix(c)}</div>`).join("")}</div>`;
+}
 
 function modelsView() {
     if (!S.loaded.setup) return `<div class="st-page"><div class="st-h1"><h1>Models</h1></div>${loading()}</div>`;
@@ -477,6 +596,7 @@ function modelsView() {
         <div class="st-kpis-col"><div class="st-card st-kpi"><span>Local workflows</span><span>${sc.summary.workflows}</span></div><div class="st-card st-kpi"><span>Ready to run</span><span style="color:var(--ok)">${sc.summary.ready}</span></div>
           <div class="st-card st-kpi"><span>Need downloads</span><span style="color:var(--info)">${sc.summary.workflows - sc.summary.ready}</span></div></div>
       </div>
+      ${checksCard(sc)}
       <div class="st-dim st-small">Files go where ComfyUI looks for them (models/diffusion_models, text_encoders, vae, loras…); Radiance's own models go in models/radiance. Each file is checked against its SHA-256 before it is installed. 🔒 models need their licence accepted on Hugging Face and a token (HF_TOKEN, or <span class="st-mono">hf auth login</span>), then a restart.</div>
       <div class="st-setup">${rows.map(card).join("")}</div>
     </div>`;
@@ -554,10 +674,10 @@ function shotsView() {
               <span class="st-pill ${r.status.tone}">${h(r.status.label)}</span>
               <span class="st-dim" style="font-size:12px">${h(r.updated)}</span></button>`).join("")}</div>`
         : rows.length ? empty("No shots match", "Try another filter or clear the search.")
-            : empty("No shots in this project yet", "Save a workflow with a shot name (for example SH010_grade_v001) and it shows up here.");
+            : empty("No shots in this project yet", "Press New shot to add one, then save the canvas as its first version.");
     return `<div class="st-page">
       <div class="st-h1"><h1>Shots</h1><span class="st-dim">${h(projectName)}</span><span class="st-grow"></span>
-        ${S.projectId ? `<button type="button" class="st-btn st-sm" data-act="save-version">Save canvas as a version</button><button type="button" class="st-btn st-sm" data-act="export">Export package</button>` : ""}</div>
+        ${S.projectId ? `<button type="button" class="st-btn st-sm" data-act="save-version">Save canvas as a version</button><button type="button" class="st-btn st-sm" data-act="export">Export package</button><button type="button" class="st-btn st-sm st-primary" data-act="new-shot">New shot</button>` : ""}</div>
       <div class="st-kpis">${kpi("Shots", st.total, "var(--text)")}${kpi("In progress", st.wip, "var(--warn)")}${kpi("Waiting for review", st.review, "var(--info)")}${kpi("Approved", st.approved, "var(--ok)")}</div>
       ${chips(M.SHOT_FILTERS, S.shFilter, "sh")}
       ${table}
@@ -570,13 +690,19 @@ function shotRail(r) {
       <div class="st-thumb v16">${shotThumb(r)}</div>
       <div class="st-rail-body">
         <div class="st-row-between"><h2>${h(r.shot)}</h2><span class="st-pill ${r.status.tone}">${h(r.status.label)}</span></div>
-        <div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
+        ${r.planned ? `<div class="st-note">No version yet. Build the graph on the canvas, then <b>Save canvas as a version</b> with ${h(r.shot)} selected: it saves as <span class="st-mono">${h(r.shot)}_v001</span>.</div>
+          <div class="st-actions"><button type="button" class="st-btn st-primary" data-act="save-version">Save canvas as ${h(r.shot)}_v001</button></div>` : ""}
+        ${r.planned ? "" : `<div class="st-rail-section"><div class="st-sec">Versions</div><div class="st-versions">${r.versions.slice(0, 6).map((v, i) => `
           <div class="st-version"><span class="st-mono" style="width:52px">${h(v.version)}</span><span class="st-dim" style="flex:1;font-size:12px">${h(i === 0 ? "Latest · " : "")}${h(v.updated)}</span>
-          <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>
-        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(o.name)}">${img(thumbUrl(o.path), o.name, shortName(o.name))}</div>`).join("")}</div></div>` : ""}
-        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}</div>
-        <div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Retake">Ask for changes</button></div>
+          <button type="button" class="st-btn st-sm" data-act="open-wf" data-file="${h(v.filename)}">Open</button></div>`).join("")}</div></div>`}
+        ${r.outputs.length ? `<div class="st-rail-section"><div class="st-sec">Outputs</div><div class="st-outs">${r.outputs.slice(0, 6).map((o) => `<div class="st-thumb v16" title="${h(M.outputLabel(o))}">${img(thumbUrl(o.path), o.name, shortName(o.name))}${o.frames ? `<span class="st-badge br st-mono">${h(M.plural(o.frames, "frame"))}</span>` : ""}</div>`).join("")}</div></div>` : ""}
+        <div class="st-rail-section"><div class="st-sec">Notes</div>${notes.length ? notes.map((n) => `<div class="st-note">${h(n)}</div>`).join("") : `<div class="st-dim" style="font-size:13px">No notes for this shot.</div>`}
+          <label class="st-visually-hidden" for="stNoteText">Note for ${h(r.shot)}</label>
+          <textarea id="stNoteText" class="st-note-input" rows="3" placeholder="What needs to change? A retake sends this note with it."></textarea>
+          <div class="st-actions" style="margin-top:6px"><button type="button" class="st-btn st-sm" data-act="add-note" data-shot="${h(r.shot)}">Add note</button></div></div>
+        ${r.planned ? "" : `<div class="st-actions"><button type="button" class="st-btn st-primary st-lg" data-act="status" data-shot="${h(r.shot)}" data-status="Approved">Approve</button><button type="button" class="st-btn st-lg" data-act="retake" data-shot="${h(r.shot)}">Ask for changes</button></div>
         <div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Review">Send to review</button><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="WIP">Back to in progress</button></div>
+        ${r.status.key === "Approved" ? `<div class="st-actions"><button type="button" class="st-btn" data-act="status" data-shot="${h(r.shot)}" data-status="Final">Mark final</button></div>` : ""}`}
       </div></aside>`;
 }
 
@@ -675,6 +801,24 @@ async function setShotStatus(shot, status) {
         await loadDashboard();
         render();
     } catch (e) { toast(`Could not change the status: ${e.message}`, true); }
+}
+
+/** Add the typed note to a shot; with `retake`, the note is required and the shot goes to Retake. */
+async function addNote(shot, retake) {
+    const box = $("stNoteText");
+    const text = (box?.value || "").trim();
+    if (!text) {
+        if (retake) { toast("Write what needs to change first; the note goes with the retake.", true); box?.focus(); }
+        return;
+    }
+    try {
+        await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/notes`,
+            { shot, text, author: store.get("radiance_artist") || "" });
+        if (retake) await postJSON(`/radiance/projects/${encodeURIComponent(S.projectId)}/shots/${encodeURIComponent(shot)}/status`, { status: "Retake" });
+        toast(retake ? `${shot}: retake, with your note` : `${shot}: note added`);
+        await loadDashboard();
+        render();
+    } catch (e) { toast(`Could not save the note: ${e.message}`, true); }
 }
 
 async function exportPackage() {
@@ -784,13 +928,16 @@ async function onClick(e) {
         case "open-asset": window.open(thumbUrl(path), "_blank", "noopener"); break;
         case "bin": await binToggle(t.dataset.bin, id); break;
         case "new-bin": await newBin(id); break;
-        case "pick-shot": S.shot = shot; render(); break;
+        case "pick-shot": S.shot = shot; store.set(`radiance_studio_shot_${S.projectId}`, shot); render(); break;
+        case "new-shot": openNewShot(); break;
         case "status": await setShotStatus(shot, status); break;
+        case "add-note": await addNote(shot, false); break;
+        case "retake": await addNote(shot, true); break;
         case "save-version":
-            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId })) toast("Saving the canvas…");
+            if (tellCanvas({ type: "radiance_save_project_version", projectId: S.projectId, shot: S.shot || "" })) toast("Saving the canvas…");
             break;
         case "export": await exportPackage(); break;
-        case "new": await openWorkflow("official/Local/start.rad"); break;
+        case "new": await openWorkflow("official/Local/t2i_i2i_hdr.rad"); break;
         case "pick-gizmo": S.gizmo = id; render(); break;
         case "add-gizmo": {
             const g = S.gizmos.find((x) => x.id === id);
@@ -804,13 +951,16 @@ async function onClick(e) {
             a.click();
             break;
         }
-        case "delete-gizmo":
-            if (!confirm(`Delete the gizmo ${id}? It is moved to the gizmos/.trash folder; its node stays until ComfyUI restarts.`)) break;
-            try { await postJSON("/radiance/gizmos/delete", { name: id }); toast("Gizmo deleted"); S.gizmo = null; await loadGizmos(); render(); }
-            catch (err) { toast(`Delete failed: ${err.message}`, true); }
-            break;
+        case "delete-gizmo": await deleteGizmo(id); break;
         case "import-gizmo": $("stGizmoFile").click(); break;
-        case "rescan": render(); await loadSetup(); render(); break;
+        case "rescan": displayProbe = null; render(); await loadSetup(true); render(); break;
+        case "setup-fix":
+            try {
+                const res = await postJSON("/radiance/setup/fix", { action: id });
+                S.setup.checks = (S.setup.checks || []).map((c) => (c.id === res.check.id ? res.check : c));
+                render();
+            } catch (err) { toast(err.message, true); }
+            break;
         case "dl-workflow": await startDownloads({ workflow: id }); break;
         case "dl-ids": await startDownloads({ ids: [id] }); break;
         case "cancel-dl":
@@ -832,7 +982,8 @@ function wire() {
         if (el?.tagName === "IMG" && el.dataset.ph != null) el.replaceWith(Object.assign(document.createElement("span"), { className: "st-ph", textContent: el.dataset.ph }));
     }, true);
     $("stImport").onclick = () => $("stImportFile").click();
-    $("stNew").onclick = () => openWorkflow("official/Local/start.rad");
+    // Inside a project, New makes a shot (4.0); with no project it opens the Starter.
+    $("stNew").onclick = () => openNewShot();
     $("stImportFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); };
     $("stGizmoFile").onchange = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importGizmo(f); };
     $("stUploadFile").onchange = (e) => { const fs = e.target.files; if (fs?.length) uploadAssets(fs).finally(() => { e.target.value = ""; }); };
@@ -858,6 +1009,13 @@ function wire() {
     });
     document.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("stSearch").focus(); $("stSearch").select(); return; }
+        // Delete (or Backspace on a Mac) on a focused gizmo tile removes it from the library.
+        const tile = document.activeElement?.closest?.('.st-tile[data-act="pick-gizmo"]');
+        if (tile && (e.key === "Delete" || (e.key === "Backspace" && e.metaKey))) {
+            e.preventDefault();
+            deleteGizmo(tile.dataset.id);
+            return;
+        }
         if (e.key === "Escape") {
             if (document.activeElement === $("stSearch") && $("stSearch").value) { $("stSearch").value = ""; S.query = ""; render(); return; }
             closeStudio();

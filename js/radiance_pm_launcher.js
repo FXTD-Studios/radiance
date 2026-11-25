@@ -58,6 +58,8 @@ function buildLauncher(node) {
     const footer = mk("div", "display:flex;justify-content:center;gap:10px;margin-top:4px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.06);font-size:10.5px;color:#6c707a;");
     footer.appendChild(flink("Docs", "https://www.fxtdstudios.com"));
     footer.appendChild(mk("span", "color:#3a3d42;", "·"));
+    footer.appendChild(flink("Discord", "https://discord.gg/C7aTNFhJeP"));
+    footer.appendChild(mk("span", "color:#3a3d42;", "·"));
     footer.appendChild(flink("FXTD Studios", "https://www.fxtdstudios.com"));
     wrap.appendChild(footer);
     return wrap;

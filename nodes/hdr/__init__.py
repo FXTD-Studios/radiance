@@ -142,7 +142,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RadianceSDRToHDRRecover": "◎ SDR → HDR Recover",
     "RadianceSDRToHDRUniversal": "◎ SDR → HDR Universal",
     "RadianceSDRToHDRAIFill": "◎ SDR → HDR AI Fill (RUDRA v3)",
-    "RadianceSDRToHDRAIFillRerender": "◎ SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)",
+    "RadianceSDRToHDRAIFillRerender": "◎ SDR → HDR AI Fill Re-render (RUDRA v5, experimental)",
     "RadianceHDRExpandDynamicRange": "◎ HDR Expand Dynamic Range",
     "RadianceHDRToneMap": "◎ HDR Tone Map",
     "RadianceHDRSynthesisEngine": "◎ HDR Synthesis Engine",

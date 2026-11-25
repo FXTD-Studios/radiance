@@ -89,7 +89,7 @@ class RadianceCDLImport:
         return {
             "required": {
                 "file_path": ("STRING", {
-                    "default": "grading/shot_01.cdl",
+                    "default": "", "placeholder": "grading/shot_01.cdl",
                     "tooltip": (
                         "Path to a .cdl, .cc, or .ccc file. A relative path is looked "
                         "for in ComfyUI's input/ then output/ folder; absolute paths "
@@ -100,6 +100,8 @@ class RadianceCDLImport:
         }
 
     def load(self, file_path):
+        if not str(file_path or "").strip():
+            raise ValueError("[CDL Import] file_path is empty: set it to a .cdl, .cc or .ccc file.")
         file_path = resolve_input_path(file_path)
         if not os.path.isfile(file_path):
             # Used to return an identity grade, so a missing file delivered ungraded.

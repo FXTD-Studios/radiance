@@ -23,11 +23,11 @@ test("workflow cards: official first, Starter leads, groups from kicker and path
         wf("mine/SH010_grade_v001.rad", ""),
         wf("official/API/api_veo3_hdr.rad", "API · Video"),
         wf("official/Local/hdr_delivery.rad", "Delivery"),
-        wf("official/Local/start.rad", "Start here"),
+        wf("official/Local/t2i_i2i_hdr.rad", "Generate · Image"),
         wf("official/Local/sdr_to_hdr.rad", "HDR"),
         wf("official/Local/ltx25_hdr.rad", "Generate · Video"),
     ]);
-    assert.equal(cards[0].filename, "official/Local/start.rad");
+    assert.equal(cards[0].filename, "official/Local/t2i_i2i_hdr.rad");
     assert.equal(cards[1].filename, "official/Local/sdr_to_hdr.rad");
     assert.equal(cards.at(-1).filename, "mine/SH010_grade_v001.rad");
     const by = Object.fromEntries(cards.map((c) => [c.filename, c.groups]));
@@ -170,4 +170,41 @@ test("hardware rows and the GPU tier read like a spec sheet", () => {
     assert.equal(M.gpuTier({ gpus: [] }).tone, "bad");
     assert.equal(M.gpuTier({ gpus: [{ vram: 25_756_696_576 }] }).tone, "ok");
     assert.equal(M.formatMemory(25_756_696_576), "24 GB");
+});
+
+test("a shot code matches as a whole token, and a sequence says its frames", () => {
+    assert.equal(M.hasToken("SH040_comp_v002.####.exr", "SH040"), true);
+    assert.equal(M.hasToken("comp.sh040.mov", "SH040"), true);
+    assert.equal(M.hasToken("SH0400_comp.exr", "SH040"), false);
+    assert.equal(M.hasToken("", "SH040"), false);
+    assert.equal(M.outputLabel({ name: "SH040_comp.####.exr", frames: 100, range: [1001, 1100] }), "SH040_comp.####.exr · 100 frames · 1001-1100");
+    const rows = M.shotRows([{ shot: "SH040", version: "v0002", filename: "P/SH040_comp_ada_v0002.rad" }],
+        [{ name: "SH040_comp.####.exr", frames: 10 }, { name: "SH0400_x.exr" }], ["SH040 · Sup — fix the edge", "SH0400 · x — no"]);
+    assert.equal(rows[0].outputs.length, 1);
+    assert.deepEqual(rows[0].notes, ["SH040 · Sup — fix the edge"]);
+});
+
+// ── New shot (4.0) ───────────────────────────────────────────────────────────
+test('shot names normalise as the server does, and the next free shot steps by ten', () => {
+    assert.deepEqual(['SH040', 'sh40', 'sh-040', '40', ' 7 ', 'SH01234'].map(M.normalizeShotName),
+        ['SH040', 'SH040', 'SH040', 'SH040', 'SH007', 'SH01234']);
+    assert.deepEqual(['', 'intro', 'SH', 'SH123456', '../SH010', 'SH010_v001'].map(M.normalizeShotName), ['', '', '', '', '', '']);
+    assert.equal(M.nextShotName([]), 'SH010');
+    assert.equal(M.nextShotName(['SH010', 'SH020']), 'SH030');
+    assert.equal(M.nextShotName(['SH015']), 'SH020');
+});
+
+test('a planned shot is a Not started row until its first version, then the version row wins', () => {
+    const planned = [{ shot: 'SH040', created: Date.now() / 1000 }];
+    const rows = M.shotRows([{ shot: 'SH010', version: 'v001', status: 'WIP' }], [], [], planned);
+    assert.deepEqual(rows.map((r) => r.shot), ['SH010', 'SH040']);
+    const p = rows[1];
+    assert.equal(p.planned, true);
+    assert.equal(p.status.key, 'New');
+    assert.equal(p.status.label, 'Not started');
+    assert.deepEqual(p.versions, []);
+    assert.equal(M.filterShots(rows, 'New').length, 1);
+    const saved = M.shotRows([{ shot: 'SH040', version: 'v001', status: 'WIP' }], [], [], planned);
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].planned, undefined);
 });

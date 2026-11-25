@@ -149,31 +149,27 @@ def test_input_types():
    - [ ] Verified `pytest tests/ -q` passes locally
 3. **Submit PR**: include a detailed description of changes.
 
-## 4.0 feature freeze
+## Branches: 4.0 fixes, 4.1 features
 
-4.0 has been feature-frozen since 16 November 2026 (release candidate 1, tag
-`v4.0.0-rc1`). Until 4.0.0 is released:
+4.0.0 was released on 21 November 2026 (tag `v4.0.0`). Since then:
 
 - **`release/4.0` takes fixes only:** bug fixes, crash and security fixes,
-  documentation, and fixes to tests and CI. Branch them as `fix/...` from
-  `release/4.0` and open the pull request against it.
-- **Not on `release/4.0`:** new nodes, new inputs or outputs, new workflows,
-  new models or model versions, new Viewer or Radiance-page features, and
-  changes to defaults or file names. Those wait for 4.1.
-- A fix that changes behaviour someone can see gets a line in the 4.0.0
-  section of the CHANGELOG.
-- Each fix on `release/4.0` is merged forward into the 4.1 work so it is not
+  documentation, and fixes to tests and CI, released as 4.0.x. Branch them as
+  `fix/...` from `release/4.0` and open the pull request against it. A fix that
+  changes behaviour someone can see gets a line in a 4.0.x section of the
+  CHANGELOG.
+- **`version-4-Beta` is 4.1:** new nodes, inputs, workflows, models and Viewer or
+  Radiance-page features. Branch them as `feature/...` from it. Its CHANGELOG
+  section is `[4.1.0] - Unreleased` until 4.1.0 is released.
+- Each fix on `release/4.0` is merged forward into `version-4-Beta` so it is not
   lost.
 - If a fix needs more than a fix (a new input, say), it goes to 4.1 and
   KNOWN_ISSUES.md says so for 4.0.
 
-When the fixes are done and the checks are green, `release/4.0` is tagged
-`v4.0.0`, merged into `main`, and the CHANGELOG heading gets its date.
-
 ## Version Numbering
 
-- **v4.0.x**: Patch fixes (single source of truth: `pyproject.toml` → read via `importlib.metadata`)
-- **v4.1.0**: New features (non-breaking)
+- **v4.0.x**: Patch fixes on `release/4.0` (single source of truth: `pyproject.toml` → read via `importlib.metadata`)
+- **v4.1.0**: New features (non-breaking), on `version-4-Beta`
 - **v5.0.0**: Breaking changes
 
 ## Questions?

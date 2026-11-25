@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 
 import {
     compactWidgetValues,
@@ -83,6 +84,24 @@ function writeWidgetVisibility(v) {
 // else a camera writes -- so the frontend hid the wrong widgets for the files
 // this pack exists to open. tests/test_read_surface.py parses both lists and
 // fails if they drift apart again.
+// What Read's Upload button and drop accept (4.0): images and video in one
+// picker. ComfyUI's own image upload took PNG, JPG and WebP only.
+const READ_UPLOAD_ACCEPT = "image/*,video/*,.exr,.sxr,.dpx,.hdr,.tif,.tiff,.mxf,.braw,.r3d,.mkv,.mov,.avi";
+const READ_UPLOAD_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff",
+	".exr", ".sxr", ".dpx", ".hdr"];
+
+/** Upload a file to ComfyUI's input folder; resolves to the name the list shows. */
+async function uploadToInput(file) {
+	const body = new FormData();
+	body.append("image", file, file.name);
+	body.append("type", "input");
+	body.append("subfolder", "");
+	const res = await api.fetchApi("/upload/image", { method: "POST", body });
+	if (!res.ok) throw new Error(`Upload failed (${res.status} ${res.statusText})`);
+	const data = await res.json();
+	return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+}
+
 const VIDEO_EXTENSIONS = [".asf", ".avi", ".braw", ".dv", ".flv", ".gif", ".m2ts", ".m2v", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mts", ".mxf", ".ogv", ".r3d", ".ts", ".vob", ".webm", ".wmv", ".y4m", ".yuv"];
 
 // FIX 6: Intercept browser file inputs to allow selecting images, videos, and high-fidelity sequences (EXR/DPX/HDR)
@@ -355,8 +374,78 @@ app.registerExtension({
 					? node.addDOMWidget("video_preview", "custom", previewBox, { serialize: false })
 					: null;
 
-				const setPreview = (p, isVid) => {
+				// Upload… and drop: images and video into the input folder (4.0).
+				const isReadable = (name) => {
+					const v = (name || "").toLowerCase();
+					return VIDEO_EXTENSIONS.some(e => v.endsWith(e)) || READ_UPLOAD_EXTENSIONS.some(e => v.endsWith(e));
+				};
+				const takeFile = async (file) => {
+					if (!file || !browseW) return false;
+					if (!isReadable(file.name)) {
+						app.extensionManager?.toast?.add?.({ severity: "warn", summary: "Read",
+							detail: `${file.name} is not an image or a video Read can open.`, life: 5000 });
+						return false;
+					}
+					node.__radianceReadInfo = `Uploading ${file.name}…`;
+					node.setDirtyCanvas(true);
+					try {
+						const name = await uploadToInput(file);
+						const values = browseW.options?.values;
+						if (Array.isArray(values) && !values.includes(name)) {
+							values.push(name);
+							values.sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
+						}
+						browseW.value = name;
+						browseW.callback?.(name);
+						return true;
+					} catch (err) {
+						node.__radianceReadInfo = String(err?.message || err);
+						node.setDirtyCanvas(true);
+						return false;
+					}
+				};
+				const fileInput = document.createElement("input");
+				fileInput.type = "file";
+				fileInput.accept = READ_UPLOAD_ACCEPT;
+				fileInput.style.display = "none";
+				document.body.appendChild(fileInput);
+				fileInput.addEventListener("change", async () => {
+					const file = fileInput.files?.[0];
+					fileInput.value = "";
+					await takeFile(file);
+				});
+				const uploadWidget = node.addWidget("button", "Upload image or video…", "upload", () => fileInput.click());
+				if (uploadWidget) {
+					uploadWidget.serialize = false;
+					// Under the file list, where ComfyUI put its own upload button.
+					const at = node.widgets.indexOf(browseW);
+					if (at >= 0) {
+						node.widgets.splice(node.widgets.indexOf(uploadWidget), 1);
+						node.widgets.splice(at + 1, 0, uploadWidget);
+					}
+				}
+				node.__radianceReadUpload = takeFile;
+				const onRemoved = node.onRemoved;
+				node.onRemoved = function () {
+					fileInput.remove();
+					return onRemoved?.apply(this, arguments);
+				};
+
+				const setPreview = (p, isVid, isImg) => {
 					if (!previewWidget) return;
+					if (isImg && p) {
+						// A still: the browser shows PNG/JPG/WebP as they are; EXR,
+						// DPX, HDR and TIFF come back as a tone-mapped PNG.
+						if (node.__radiancePreviewPath === p) return;
+						node.__radiancePreviewPath = p;
+						videoEl.removeAttribute("src");
+						videoEl.style.display = "none";
+						posterEl.style.display = "block";
+						previewBox.style.display = "block";
+						posterEl.src = `/radiance/media/poster?path=${encodeURIComponent(p)}`;
+						fitNodeSize(node);
+						return;
+					}
 					if (!isVid || !p) {
 						if (node.__radiancePreviewPath) {
 							node.__radiancePreviewPath = "";
@@ -405,7 +494,7 @@ app.registerExtension({
 						csW.label = isRaw ? "color_space (ignored — raw)" : "color_space";
 					}
 
-					setPreview(resolvedPath(), isVid);
+					setPreview(resolvedPath(), isVid, kind === "image" || kind === "exr");
 				};
 
 				let pending = null;
@@ -454,6 +543,19 @@ app.registerExtension({
 
 				setTimeout(() => refresh(true), 50);
 				return r;
+			};
+
+			// Drop an image or a video on the node: it is uploaded and picked (4.0).
+			const onDragOver = nodeType.prototype.onDragOver;
+			nodeType.prototype.onDragOver = function (e) {
+				if (e?.dataTransfer?.types?.includes?.("Files")) return true;
+				return onDragOver ? onDragOver.apply(this, arguments) : false;
+			};
+			const onDragDrop = nodeType.prototype.onDragDrop;
+			nodeType.prototype.onDragDrop = async function (e) {
+				const file = e?.dataTransfer?.files?.[0];
+				if (file && this.__radianceReadUpload) return await this.__radianceReadUpload(file);
+				return onDragDrop ? onDragDrop.apply(this, arguments) : false;
 			};
 
 			// The info line, drawn where Nuke's Read puts its format readout.

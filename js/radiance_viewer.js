@@ -5494,6 +5494,7 @@ class RadianceViewer {
         dvBakeGrade.dataset.dv = 'bake';
         const { wrap: wRevealTarget, cb: dvRevealTarget } = createCheck('◎ Launch Folder', 'dvRevealTarget', true);
         dvRevealTarget.dataset.dv = 'reveal';
+        wRevealTarget.title = 'Opens the output folder after export. Off unless ComfyUI was started with RADIANCE_ALLOW_REVEAL=1.';
         // Sent as settings.soft_clip (the server's broadcast_safe): it clamps
         // RGB code values to 16-235 on 8/16-bit images and is skipped for PQ,
         // HLG, float and video. It was labelled Soft Clip Highlights and on by

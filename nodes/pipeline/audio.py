@@ -295,7 +295,7 @@ class RadianceAudioCut:
         return {
             "required": {
                 "audio_filepath": ("STRING", {
-                    "default": "/path/to/audio.wav",
+                    "default": "", "placeholder": "/path/to/audio.wav",
                     "tooltip": "Absolute path to audio file (WAV, MP3, FLAC, AAC, etc.)",
                 }),
                 "fps": ("FLOAT", {
@@ -650,7 +650,7 @@ class RadianceAudioTranscribe:
         return {
             "required": {
                 "audio_filepath": ("STRING", {
-                    "default": "/path/to/audio.wav",
+                    "default": "", "placeholder": "/path/to/audio.wav",
                     "tooltip": "Absolute path to audio/video file",
                 }),
                 "backend": (cls.BACKENDS, {"default": "Auto",

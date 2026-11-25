@@ -54,20 +54,52 @@ window.addEventListener("message", async (event) => {
         showToast(`Added ${event.data.title || type} to the canvas`, "success");
     } else if (event.data && event.data.type === "radiance_close_dashboard") {
         window.closeRadianceDashboard?.();
+    } else if (event.data && event.data.type === "radiance_new_shot") {
+        // New shot (4.0): the Radiance page added the shot to the project; the
+        // artist starts it on an empty canvas. A new blank workflow tab, so the
+        // graph that was open is kept, unsaved changes included.
+        const shot = String(event.data.shot || "");
+        const project = String(event.data.project || "");
+        let opened = false;
+        try {
+            const run = app.extensionManager?.command?.execute;
+            if (typeof run === "function") {
+                await run.call(app.extensionManager.command, "Comfy.NewBlankWorkflow");
+                opened = true;
+            }
+        } catch (err) {
+            console.warn("[Radiance] New blank workflow failed:", err);
+        }
+        if (!opened) {
+            // Older frontends: clear this canvas, asking first when it has nodes.
+            const nodes = (app.graph?._nodes || []).length;
+            if (nodes && !confirm(`Start ${shot} on an empty canvas? The ${nodes} node(s) on the canvas are cleared; save them first if you need them.`)) return;
+            app.graph?.clear?.();
+            app.graph?.setDirtyCanvas?.(true, true);
+        }
+        window.closeRadianceDashboard?.();
+        showToast(`${shot} is ready in ${project}. Start from any template; Save canvas as a version saves ${shot}_v001.`, "success");
     } else if (event.data && event.data.type === "radiance_save_project_version") {
         try {
             const projectId = event.data.projectId || "general";
             const graphData = app.graph.serialize();
 
-            // Sync with the active canvas widgets if a RadianceWorkspace node is present
-            const wsNode = app.graph._nodes.find(n => n.type === "RadianceWorkspace");
+            // The Project Manager node on the canvas names the save, as its own run
+            // would: <filename>_<artist>_v<version>. It is RadianceProjectManager;
+            // RadianceWorkspace is the older name of the same node. Looking for the
+            // old name only, the save ignored the node and became
+            // dashboard_<time>.rad, which the Shots page never showed.
+            const wsNode = (app.graph._nodes || []).find(n => n.type === "RadianceProjectManager" || n.type === "RadianceWorkspace");
             let filename = undefined;
             let artist = undefined;
             if (wsNode) {
-                const filenameWidget = wsNode.widgets.find(w => w.name === "filename");
-                const artistWidget = wsNode.widgets.find(w => w.name === "artist");
-                if (filenameWidget?.value) filename = filenameWidget.value;
-                if (artistWidget?.value) artist = artistWidget.value;
+                const val = (name) => wsNode.widgets?.find(w => w.name === name)?.value;
+                artist = String(val("artist") || "").trim() || undefined;
+                const stem = String(val("filename") || "").trim();
+                if (stem) {
+                    const v = Math.max(1, parseInt(val("version"), 10) || 1);
+                    filename = `${stem}_${artist || "unknown"}_v${String(v).padStart(4, "0")}`;
+                }
             }
 
             const bodyPayload = {
@@ -76,6 +108,8 @@ window.addEventListener("message", async (event) => {
                 author: artist || localStorage.getItem("radiance_artist") || "Radiance Artist",
             };
             if (filename) bodyPayload.filename = filename;
+            // With no node, the page's selected shot names the next version (SH040_v003).
+            else if (event.data.shot) bodyPayload.shot = String(event.data.shot);
 
             const response = api.fetchApi(`/radiance/projects/${encodeURIComponent(projectId)}/save-version`, {
                 method: "POST",
@@ -548,10 +582,11 @@ app.registerExtension({
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
             this.addWidget("button", "DOCUMENTATION", "docs_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
             this.addWidget("button", "FXTD STUDIOS", "site_link", () => window.open("https://www.fxtdstudios.com", "_blank"));
+            this.addWidget("button", "DISCORD", "discord_link", () => window.open("https://discord.gg/C7aTNFhJeP", "_blank", "noopener,noreferrer"));
 
             this.color = "#1c1c1e";
             this.bgcolor = "#1c1c1e";
-            this.size = [240, 300]; // Space for filename, artist, version widgets
+            this.size = [240, 324]; // Space for filename, artist, version widgets (+24 for the Discord button)
 
             this.properties = this.properties || {};
             this.properties.last_commit = "No commits yet";

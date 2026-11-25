@@ -522,12 +522,16 @@ def _door_tensors(n=2):
     return img, src
 
 
-def test_rerender_node_says_the_lora_is_not_published(monkeypatch):
+def test_rerender_node_says_where_the_lora_goes_when_it_cannot_download(monkeypatch):
     g = _g()
-    monkeypatch.setattr(g, "resolve_v4_lora", lambda *a: None)
+    monkeypatch.setattr(g, "check_runtime", lambda: None)
+    monkeypatch.setattr(g, "resolve_region_lora", lambda *a, **k: None)
+    monkeypatch.setattr(g, "ensure_region_lora", lambda *a, **k: None)
     img, src = _door_tensors(1)
-    with pytest.raises(FileNotFoundError, match="not published"):
+    with pytest.raises(FileNotFoundError, match="v5 needs its LoRA.*rudra_genfill_v5"):
         _rerender_node().rerender(img, "Linear (Rec.709)", src, "")
+    with pytest.raises(FileNotFoundError, match="never downloaded"):
+        _rerender_node().rerender(img, "Linear (Rec.709)", src, "", region_model="v4 research")
 
 
 def test_rerender_node_with_nothing_bright_returns_the_input():
@@ -540,7 +544,7 @@ def test_rerender_node_runs_with_the_app_finish(monkeypatch, tmp_path):
     g = _g()
     lora = tmp_path / "rudra_genfill.safetensors"
     lora.write_bytes(b"x")
-    monkeypatch.setattr(g, "resolve_v4_lora", lambda *a: lora)
+    monkeypatch.setattr(g, "resolve_region_lora", lambda *a, **k: lora)
     monkeypatch.setattr(g, "resolve_package", lambda *a: tmp_path)
     monkeypatch.setattr(g, "resolve_base", lambda *a: str(tmp_path / "base"))
     monkeypatch.setattr(g, "check_runtime", lambda: None)
@@ -558,7 +562,8 @@ def test_rerender_node_runs_with_the_app_finish(monkeypatch, tmp_path):
     assert out.shape == img.shape and float(gen.max()) > 0
     keep = gen == 0
     assert torch.equal(out[keep], img[keep])
-    assert "EXPERIMENTAL" in report and "NOT the gated v4 LoRA" in report and '"level": 3.3' in report
+    assert "EXPERIMENTAL" in report and "NOT the v5 LoRA" in report and '"level": 3.3' in report
+    assert '"hold_clipped": "thin"' in report and '"blend_still": 0.95' in report
     assert model.calls and model.calls[0][1] == "an open door"
 
 
@@ -586,3 +591,111 @@ def test_v3_node_new_inputs_come_last():
     names = list(mod.RadianceSDRToHDRAIFill.INPUT_TYPES()["optional"])
     assert names[-3:] == ["prompt_strength", "focus", "fallback"]
     assert names.index("keep_loaded") == len(names) - 4
+
+
+# ── RUDRA 1.3: AI fill v5 and v4.3, the app's settings, the downloads ────────
+
+def test_rudra_1_3_app_settings_are_the_apps():
+    """native/app/genfill_job.cpp genfill_arguments at RUDRA v1.3.0."""
+    g = _g()
+    assert g.RUDRA_APP_V43 == dict(hue="source", colour=0.3, level=3.3, smooth=0.8, dip=0.3, independent=True,
+                                   calm=0.9, full_last=True)
+    assert g.RUDRA_APP_V5 == dict(g.RUDRA_APP_V43, hold_clipped="thin", blend_still=0.95, hold_calm=0.95)
+    assert g.RUDRA_APP_V5_LEARNED == dict(cap_master=True) and g.RUDRA_APP_V5_LEARNED_MASK == dict(first_frame=True)
+    r = g.Rerender(**g.RUDRA_APP_V5).check()
+    assert r.finishes and r.hold_clipped == "thin"
+    assert g.Rerender(hold_clipped=True).check().hold_clipped == "all"
+    with pytest.raises(ValueError):
+        g.Rerender(blend_still=1.0).check()
+    with pytest.raises(ValueError):
+        g.Rerender(hold_clipped="everything").check()
+    rr = importlib.import_module("radiance.nodes.hdr.rudra_rerender")
+    rer, mask = rr.app_settings("v5", "aces")
+    assert rer["cap_master"] is True and mask["first_frame"] is True
+    rer, mask = rr.app_settings("v5", "bt1886")
+    assert "cap_master" not in rer and "first_frame" not in mask
+    assert rr.app_settings("v4.3", "aces")[0] == g.RUDRA_APP_V43
+    assert rr.app_settings("v4 research", "bt1886")[0] == g.RUDRA_APP_V4
+
+
+def test_the_published_region_loras_are_pinned_to_the_hub():
+    d = importlib.import_module("radiance.model.rudra_download")
+    g = _g()
+    for pkg, sha in ((d.GENFILL_V5, g.GENFILL_V5_SHA256), (d.GENFILL_V43, g.GENFILL_V43_SHA256)):
+        assert pkg.revision == d.REGION_REVISION and pkg.name in d.PACKAGES
+        lora = dict((f, (n, h)) for f, n, h in pkg.files)["rudra_genfill.safetensors"]
+        assert lora == (262570552, sha)
+        assert pkg.url("rudra_genfill.safetensors").endswith(
+            f"/resolve/{d.REGION_REVISION}/{pkg.repo_dir}/rudra_genfill.safetensors")
+    assert d.GENFILL_V5.dirname == "rudra_genfill_v5" and d.GENFILL_V43.dirname == "rudra_genfill_v4"
+
+
+def test_region_lora_is_found_and_downloaded_only_when_published(monkeypatch, tmp_path):
+    g = _g()
+    d = importlib.import_module("radiance.model.rudra_download")
+    paths = importlib.import_module("radiance.model.paths")
+    monkeypatch.setattr(paths, "radiance_model_dirs", lambda: [tmp_path])
+    monkeypatch.delenv(g.V5_ENV, raising=False)
+    monkeypatch.delenv(g.V4_ENV, raising=False)
+    asked = []
+    monkeypatch.setattr(d, "download_package", lambda pkg, **k: asked.append(pkg.name) or None)
+    assert g.ensure_region_lora("v5") is None and asked == ["rudra_genfill_v5"]
+    assert g.ensure_region_lora("v4.3") is None and asked[-1] == "rudra_genfill_v4"
+    assert g.ensure_region_lora("v4 research") is None and len(asked) == 2      # never downloaded
+    f = tmp_path / "mine.safetensors"
+    f.write_bytes(b"x")
+    assert g.ensure_region_lora("v5", str(f)) == f and len(asked) == 2           # an explicit file wins
+    monkeypatch.setenv(g.V5_ENV, str(f))
+    assert g.resolve_region_lora("v5") == f
+    with pytest.raises(ValueError):
+        g.resolve_region_lora("v6")
+
+
+def test_fill_frames_with_the_v5_finish_writes_every_frame_and_only_the_region(monkeypatch):
+    """Independent windows crossfaded over their overlap, the last one whole, RUDRA 1.3's finish."""
+    g = _g()
+    codes, masters = _door(n=11)
+    ms = g.MaskSettings(max_gain_stops=0.0, **g.RUDRA_APP_V4_MASK)
+    model = _FakeModel()
+    outs, alphas, rep = g.fill_frames(masters, model, None, g.FillSettings(steps=1), ms, window=5, overlap=2,
+                                      max_area=64 * 96, rerender=g.Rerender(**g.RUDRA_APP_V5), source_codes=codes)
+    assert len(outs) == 11 and all(o is not None for o in outs)
+    assert [w[:2] for w in g.plan_windows(11, 5, 2, full_last=True)] == [(0, 0), (3, 5), (6, 8)]
+    assert rep["rerender"]["independent"] and rep["rerender"]["hold_clipped"] == "thin"
+    for m, o, a in zip(masters, outs, alphas):
+        assert np.isfinite(o).all()
+        assert np.array_equal(o[a == 0], m[a == 0])           # outside: the master, bit for bit
+        assert a[20:40, 18:32].min() > 0.99 and not a[20:40, 68:82].any()
+    # every window is drawn from the source: no frame of a previous window comes in as context
+    assert len(model.calls) == 3
+
+
+def test_rerender_node_runs_v5_on_the_learned_route_with_the_cap(monkeypatch, tmp_path):
+    g = _g()
+    lora = tmp_path / "rudra_genfill.safetensors"
+    lora.write_bytes(b"x")
+    monkeypatch.setattr(g, "resolve_region_lora", lambda *a, **k: lora)
+    monkeypatch.setattr(g, "resolve_package", lambda *a: tmp_path)
+    monkeypatch.setattr(g, "resolve_base", lambda *a: str(tmp_path / "base"))
+    monkeypatch.setattr(g, "check_runtime", lambda: None)
+    model = _FakeModel()
+    model.identity = {"lora_sha256": g.GENFILL_V5_SHA256}
+    monkeypatch.setattr(g, "get_model", lambda *a, **k: model)
+    seen = {}
+    real = g.fill_frames
+
+    def spy(*a, **k):
+        seen["ms"], seen["rer"] = a[4], k["rerender"]
+        return real(*a, **k)
+    monkeypatch.setattr(g, "fill_frames", spy)
+
+    class _View:
+        def inverse(self, c):
+            return np.power(np.asarray(c, np.float32), 2.4)
+    a2 = importlib.import_module("radiance.model.rudra_aces2")
+    monkeypatch.setattr(a2, "aces2_view", lambda: _View())
+    img, src = _door_tensors(2)
+    out, gen, recon, report = _rerender_node().rerender(img, "Linear (Rec.709)", src, "", condition="aces",
+                                                         steps=1, keep_detail=True)
+    assert seen["ms"].first_frame is True and seen["rer"].cap_master is True and seen["rer"].keep_detail is True
+    assert "the published v5 LoRA" in report and "keep_detail" in report

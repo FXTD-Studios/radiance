@@ -8,10 +8,10 @@ description = "HDR, ACES and 32-bit float VFX nodes for ComfyUI: learned SDR to 
 # Keep in step with config/constants.py VERSION, package.json, js/radiance_version.js
 # and CHANGELOG.md;
 # tests/test_version_sync.py fails if they drift.
-version = "4.0.1"
+version = "4.1.0"
 readme = "README.md"
-license = "GPL-3.0-only"
-license-files = ["LICENSE"]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"   # ComfyUI's own floor
 authors = [
     { name = "FXTD Studios" },
@@ -113,6 +113,7 @@ Repository    = "https://github.com/fxtd-studios/radiance"
 Documentation = "https://www.fxtdstudios.com/radiance-comfyui.html"
 Changelog     = "https://github.com/fxtd-studios/radiance/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/fxtd-studios/radiance/issues"
+Discord       = "https://discord.gg/C7aTNFhJeP"
 Models        = "https://huggingface.co/fxtdstudios/RUDRA"
 
 [tool.comfy]

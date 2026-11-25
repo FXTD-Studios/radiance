@@ -69,4 +69,38 @@ test('the tour does not mention LTX', () => {
 test('links point at the FXTD site and the GitHub issues', () => {
     assert.match(LINKS.radiance, /^https:\/\/www\.fxtdstudios\.com\//);
     assert.match(LINKS.issues, /^https:\/\/github\.com\/FXTD-Studios\/radiance\/issues$/);
+    assert.match(LINKS.discord, /^https:\/\/discord\.gg\/[A-Za-z0-9]+$/);
+});
+
+// ── First-start display check (4.0) ─────────────────────────────────────────
+import { displayCheck, probeDisplay } from '../radiance_welcome_logic.js';
+
+test('display check: no WebGL is bad, WebGL 1 or no float targets warn, WebGL 2 is ok', () => {
+    assert.equal(displayCheck({ webgl: 0 }).status, 'bad');
+    assert.equal(displayCheck(null).status, 'bad');
+    assert.equal(displayCheck({ webgl: 1 }).status, 'warn');
+    assert.equal(displayCheck({ webgl: 2, floatTargets: false }).status, 'warn');
+    const sdr = displayCheck({ webgl: 2, floatTargets: true, hdr: false, p3: false });
+    assert.equal(sdr.status, 'ok');
+    assert.match(sdr.detail, /SDR display \(Rec\.709\).*tone-mapped/);
+    assert.match(displayCheck({ webgl: 2, floatTargets: true, hdr: true }).detail, /HDR display/);
+    assert.match(displayCheck({ webgl: 2, floatTargets: true, p3: true }).detail, /P3/);
+    assert.equal(sdr.id, 'display');
+    assert.equal(sdr.fix, null);
+});
+
+test('display probe: reads media queries and WebGL, and survives a browser without either', () => {
+    const lost = [];
+    const gl2 = {
+        getExtension: (n) => (n === 'EXT_color_buffer_float' ? {} : n === 'WEBGL_lose_context' ? { loseContext: () => lost.push(1) } : null),
+        getParameter: () => 'Fake GPU', RENDERER: 1,
+    };
+    const win = {
+        matchMedia: (q) => ({ matches: q === '(dynamic-range: high)' }),
+        document: { createElement: () => ({ getContext: (k) => (k === 'webgl2' ? gl2 : null) }) },
+    };
+    assert.deepEqual(probeDisplay(win), { hdr: true, p3: false, webgl: 2, floatTargets: true, renderer: 'Fake GPU' });
+    assert.equal(lost.length, 1, 'the probe context is released');
+    const bare = probeDisplay({ document: { createElement: () => { throw new Error('no canvas'); } } });
+    assert.deepEqual(bare, { hdr: false, p3: false, webgl: 0, floatTargets: false, renderer: '' });
 });

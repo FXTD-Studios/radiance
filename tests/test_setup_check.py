@@ -54,13 +54,13 @@ def test_the_catalog_knows_what_each_workflow_loads():
     assert w["sdr_to_hdr_analytic"]["required"] == []                       # no model at all
     assert set(w["multipass_relight"]["required"]) == {"radiance/moge2", "radiance/marigold_appearance",
                                                       "radiance/marigold_lighting"}
-    assert {"radiance/rudra_genfill_v3", "radiance/wan_vace_base"} <= set(w["sdr_to_hdr_ai_fill"]["required"])
-    assert "radiance/wan_vace_text_encoder" in w["sdr_to_hdr_ai_fill"]["optional"]
-    # The Starter decodes Direct HDR (RUDRA inside) and estimates depth.
-    assert {"radiance/RUDRA_ACES_2", "radiance/depth_anything_v2_large",
-            "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["start"]["required"])
+    assert {"radiance/rudra_genfill_v3", "radiance/wan_vace_base"} <= set(w["sdr_remaster_ai_fill"]["required"])
+    assert "radiance/wan_vace_text_encoder" in w["sdr_remaster_ai_fill"]["optional"]
+    # The Starter builds its HDR master with RUDRA ACES 2; its depth map is optional.
+    assert {"radiance/RUDRA_ACES_2", "diffusion_models/flux-2-klein-4b-fp8.safetensors"} <= set(w["t2i_i2i_hdr"]["required"])
+    assert "radiance/depth_anything_v2_large" in w["t2i_i2i_hdr"]["optional"]
     # Wan 2.2's loader pairs the low-noise expert itself.
-    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan22_hdr_shot_plates"]["required"]
+    assert "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors" in w["wan_hdr"]["required"]
     # A bypassed node's model is optional, an alternative is not required.
     assert "loras/minimax_h3_fl2v_turbo_8step_v1.1_768p_comfyui_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
     assert "diffusion_models/minimax_h3_fl2va_bf16.safetensors" in w["minimax_h3_hdr"]["optional"]
@@ -102,14 +102,14 @@ def test_scan_creates_the_radiance_folder_and_says_what_is_missing(models):
     result = sc.scan()
     rows = {w["id"]: w for w in result["workflows"]}
     assert rows["sdr_to_hdr"]["ready"] is True
-    assert "vae/flux2-vae.safetensors" not in rows["start"]["missing"]
+    assert "vae/flux2-vae.safetensors" not in rows["t2i_i2i_hdr"]["missing"]
     assert result["models"]["vae/flux2-vae.safetensors"]["installed"] is True
-    assert "vae/flux2-vae.safetensors" in rows["start"]["required"]
+    assert "vae/flux2-vae.safetensors" in rows["t2i_i2i_hdr"]["required"]
 
 
 def test_the_ai_fill_says_it_needs_a_16_gb_gpu(models):
     rows = {w["id"]: w for w in sc.scan()["workflows"]}
-    assert "16 GB" in rows["sdr_to_hdr_ai_fill"]["gpu_note"]
+    assert "16 GB" in rows["sdr_remaster_ai_fill"]["gpu_note"]
     assert rows["sdr_to_hdr"]["gpu_note"] == ""
 
 
@@ -140,14 +140,15 @@ def test_a_file_is_pinned_from_the_hub_then_fetched_into_its_folder(models):
         return dest
 
     q = sc.DownloadQueue(fetcher=fetch, metadata=meta)
-    mid = "text_encoders/qwen_3_4b.safetensors"
+    mid = "vae/ltx-2.5-video-vae-bf16.safetensors"                   # in a gated repo: not pinned
+    assert not sc.load_catalog()["models"][mid].get("sha256")
     assert q.enqueue([mid]) == [mid]
     job = _wait(q, mid)
     assert job["status"] == "done", job
     url, dest, sha, size = calls["fetch"]
-    assert url == ("https://huggingface.co/Comfy-Org/flux2-klein/resolve/" + "a" * 40 +
-                   "/split_files/text_encoders/qwen_3_4b.safetensors")
-    assert Path(dest) == models.root / "text_encoders" / "qwen_3_4b.safetensors"
+    assert url == ("https://huggingface.co/Lightricks/LTX-2.5/resolve/" + "a" * 40 +
+                   "/vae/ltx-2.5-video-vae-bf16.safetensors")
+    assert Path(dest) == models.root / "vae" / "ltx-2.5-video-vae-bf16.safetensors"
     assert (sha, size) == ("b" * 64, 11)
     assert job["done"] == job["total"] == 11
     assert q.enqueue([mid]) == []                                     # installed: nothing to do
@@ -215,9 +216,9 @@ def test_downloads_off_means_no_queue(models, monkeypatch):
 def test_missing_for_a_workflow_lists_only_what_is_not_installed(models):
     models.packs.add("radiance/RUDRA_ACES_2")
     assert sc.missing_for("sdr_to_hdr") == []
-    assert "radiance/rudra_genfill_v3" in sc.missing_for("sdr_to_hdr_ai_fill")
-    assert "radiance/wan_vace_text_encoder" not in sc.missing_for("sdr_to_hdr_ai_fill")
-    assert "radiance/wan_vace_text_encoder" in sc.missing_for("sdr_to_hdr_ai_fill", include_optional=True)
+    assert "radiance/rudra_genfill_v3" in sc.missing_for("sdr_remaster_ai_fill")
+    assert "radiance/wan_vace_text_encoder" not in sc.missing_for("sdr_remaster_ai_fill")
+    assert "radiance/wan_vace_text_encoder" in sc.missing_for("sdr_remaster_ai_fill", include_optional=True)
 
 
 def test_hub_metadata_reads_the_lfs_digest_and_the_commit(monkeypatch):
@@ -268,3 +269,85 @@ def test_fetch_reports_progress_and_can_be_cancelled(tmp_path, monkeypatch):
     with pytest.raises(mf.ModelFetchError, match="cancelled"):
         mf.fetch("https://example.invalid/m", str(dest2), sha256=digest, size=len(payload), should_cancel=lambda: True)
     assert not dest2.exists()
+
+
+def test_a_file_listed_twice_keeps_the_link_the_workflow_uses():
+    text = ("- vae: [flux2-vae](https://huggingface.co/a/gated/resolve/main/vae/flux2-vae.safetensors) 🔒\n"
+            "- vae: [flux2-vae](https://huggingface.co/b/open/resolve/main/split_files/vae/flux2-vae.safetensors) (used)\n")
+    link = _tool()._links(text)["flux2-vae.safetensors"]
+    assert link["url"].startswith("https://huggingface.co/b/open/") and not link["gated"]
+
+
+class _Hdrs(dict):
+    def get(self, k, d=None):
+        for key, v in self.items():
+            if key.lower() == k.lower():
+                return v
+        return d
+
+
+def _hub(responses):
+    """An opener answering HEAD requests in order: (code, headers)."""
+    import urllib.error
+    seen = []
+
+    class Opener:
+        def open(self, req, timeout):
+            seen.append(req.full_url)
+            code, headers = responses.pop(0)
+            if code in (301, 302, 303, 307, 308):
+                raise urllib.error.HTTPError(req.full_url, code, "redirect", _Hdrs(headers), None)
+            return type("R", (), {"headers": _Hdrs(headers), "code": code, "status": code})()
+    return Opener(), seen
+
+
+def test_a_relative_hub_redirect_is_followed_and_its_body_is_not_the_size(monkeypatch):
+    """The 20 Nov --pin run stored 106-144 byte 'sizes' for five Comfy-Org files:
+    the Hub answered 307 to /api/resolve-cache/... (relative, no file headers) and
+    Content-Length was the redirect's body."""
+    opener, seen = _hub([
+        (307, {"Location": "/api/resolve-cache/models/Comfy-Org/x/abc/vae.safetensors", "Content-Length": "144"}),
+        (302, {"Location": "https://cas-bridge.xethub.hf.co/blob", "X-Repo-Commit": "c" * 40,
+               "X-Linked-Etag": '"' + "e" * 64 + '"', "X-Linked-Size": "254000000", "Content-Length": "0"}),
+    ])
+    monkeypatch.setattr(sc.urllib.request, "build_opener", lambda *a: opener)
+    meta = sc.hub_metadata("https://huggingface.co/Comfy-Org/x/resolve/main/vae.safetensors")
+    assert meta == {"revision": "c" * 40, "sha256": "e" * 64, "size": 254000000}
+    assert seen[1] == "https://huggingface.co/api/resolve-cache/models/Comfy-Org/x/abc/vae.safetensors"
+
+
+def test_pin_leaves_a_file_unpinned_rather_than_store_a_redirect_body(monkeypatch):
+    tool = _tool()
+    opener, _ = _hub([(307, {"Location": "https://elsewhere.example/x", "Content-Length": "131"})])
+    monkeypatch.setattr(tool.urllib.request, "build_opener", lambda *a: opener)
+    cat = {"models": {"vae/x.safetensors": {"url": "https://huggingface.co/a/b/resolve/main/x.safetensors",
+                                            "size": 131}}}
+    assert tool.pin(cat) == 1
+    assert "size" not in cat["models"]["vae/x.safetensors"]
+    assert "sha256" not in cat["models"]["vae/x.safetensors"]
+
+
+def test_the_shipped_catalog_has_no_size_without_a_digest():
+    for mid, m in sc.load_catalog()["models"].items():
+        if m.get("size") and not sc.is_pack(mid):
+            assert m.get("sha256") and m.get("revision"), f"{mid}: a size with no pin"
+
+
+def test_a_pinned_file_downloads_from_its_pinned_commit_without_asking_the_hub(models):
+    calls = {}
+
+    def fetch(url, dest, *, sha256, size, label, progress, should_cancel):
+        calls["fetch"] = (url, sha256, size)
+        Path(dest).write_bytes(b"x")
+        return dest
+
+    def meta(url):
+        raise AssertionError("a pinned file must not ask the Hub again")
+
+    q = sc.DownloadQueue(fetcher=fetch, metadata=meta)
+    mid = "text_encoders/qwen_3_4b.safetensors"
+    pin = sc.load_catalog()["models"][mid]
+    q.enqueue([mid])
+    assert _wait(q, mid)["status"] == "done"
+    url, sha, size = calls["fetch"]
+    assert f"/resolve/{pin['revision']}/" in url and (sha, size) == (pin["sha256"], pin["size"])

@@ -220,6 +220,7 @@ Run technical QC on an image or sequence (crushed blacks, clipped whites, out-of
 | `output_path` (optional) | string |  |  | Export folder. Empty = ComfyUI output folder; relative = subfolder of it; absolute paths are used as is. Export mode only. |
 | `filename_prefix` (optional) | string | `qc_report` |  | Report file name stem; a date-time stamp and the extension are appended. Export mode only. |
 | `export_format` (optional) | choice | `json` | `json`, `csv`, `html`, `all` | Report file format to write; all writes JSON, CSV and HTML. Export mode only. |
+| `signal` (optional) | choice | `Auto` | `Auto`, `Display (0-1)`, `Scene-linear / HDR` | What the values mean. Display (0-1): values above white_threshold are clipping and fail the frame. Scene-linear / HDR (EXR masters, ACEScg, PQ in nits): values above 1.0 are highlights, reported as the peak in stops above 18% grey, and negative values are a warning. Auto: scene-linear when any value is above 1.0. |
 
 **Outputs**
 

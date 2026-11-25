@@ -6,6 +6,8 @@
                                      "optional": false}: queue the missing ones
     POST /radiance/setup/cancel      {"id": model id}
     GET  /radiance/setup/downloads   the queue, with progress
+    POST /radiance/setup/fix         {"action": "output"|"ocio"}: one first-start
+                                     fix (core/first_start.py); returns the check
 
 Only ids from config/model_catalog.json are accepted: the page cannot make
 the server download an arbitrary URL. No node classes live here.
@@ -55,9 +57,10 @@ async def _body(request) -> dict:
 @_route("post", "/radiance/setup/scan")
 async def setup_scan(request):
     from radiance.core import setup_check
+    refresh = bool((await _body(request)).get("refresh"))
     try:
         result = await asyncio.get_running_loop().run_in_executor(
-            None, lambda: setup_check.scan(create_radiance_dir=True))
+            None, lambda: setup_check.scan(create_radiance_dir=True, refresh=refresh))
         result["downloads"] = setup_check.QUEUE.jobs()
         return web.json_response(result)
     except Exception as exc:  # noqa: BLE001
@@ -94,3 +97,17 @@ async def setup_cancel(request):
 async def setup_downloads(request):
     from radiance.core import setup_check
     return web.json_response({"downloads": setup_check.QUEUE.jobs()})
+
+
+@_route("post", "/radiance/setup/fix")
+async def setup_fix(request):
+    from radiance.core import first_start
+    data = await _body(request)
+    try:
+        check = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: first_start.fix(str(data.get("action", ""))))
+        return web.json_response({"check": check})
+    except KeyError:
+        return web.json_response({"error": "not a Radiance setup fix"}, status=400)
+    except OSError as exc:
+        return web.json_response({"error": str(exc)}, status=500)

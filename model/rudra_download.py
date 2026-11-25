@@ -10,6 +10,9 @@ moved into place; a large file resumes where an interrupted download stopped.
                       install time by ``install.py``.
 ``rudra_genfill_v3``  RUDRA AI fill v3: the FXTD LoRA, brightness estimator
                       and cached base-prompt embedding (Apache 2.0, 271 MB).
+``rudra_genfill_v5``  RUDRA AI fill v5, the region re-render's LoRA (RUDRA 1.3.0,
+                      Apache 2.0, 263 MB); ``rudra_genfill_v4`` holds v4.3 (RUDRA
+                      1.2.4). Fetched by SDR → HDR AI Fill Re-render.
 ``Wan2.1-VACE-1.3B-diffusers``
                       the AI fill's base model (Wan-AI, Apache 2.0): VAE,
                       transformer, scheduler and tokenizer (7.7 GB). The umT5
@@ -153,7 +156,36 @@ WAN_TEXT_ENCODER = Package(
     size_mb=11400, default_allowed=True, repo=WAN_REPO, revision=WAN_REVISION, folder=WAN_DIRNAME,
 )
 
-PACKAGES: Dict[str, Package] = {p.name: p for p in (ACES2, GENFILL_V3, WAN_BASE, WAN_TEXT_ENCODER)}
+#: The Hub commit that published AI fill v5 with RUDRA 1.3.0 (24 Nov 2026); v4.3 (15 Nov) is in it too.
+#: RUDRA ACES 2 and AI fill v3 are byte-identical there, and stay pinned to their own commits above.
+REGION_REVISION = "6fd8893ad69676fe675474959aade5f18cbe6cb1"
+
+# The region re-render's LoRAs (Wan2.1-VACE-1.3B, Apache 2.0). v5 is what RUDRA 1.3 runs; v4.3 is what
+# RUDRA 1.2.4 - 1.2.9 ran. The JSON files are RUDRA's registration and gate report for each.
+GENFILL_V5 = Package(
+    name="rudra_genfill_v5", title="RUDRA AI fill v5 (region re-render)", repo_dir="models/rudra_genfill_v5",
+    files=(
+        ("registration_v5.json", 7830, "1d9d6a5a1803ca8704dff357c1a1a06065486ff0d65c272bed979f5a14df1039"),
+        ("report_v5.json", 30283, "bc17f9678828e0957efbd4d581c9a1a2cfa783101fa01402873c584173ae2237"),
+        ("rudra_genfill.safetensors", 262570552,
+         "5c5d4ab4107088f86bdc8213ae2ec21c1a882cc6d942141f0e12fb7733fda5e6"),
+    ),
+    size_mb=263, default_allowed=True, revision=REGION_REVISION,
+)
+
+GENFILL_V43 = Package(
+    name="rudra_genfill_v4", title="RUDRA AI fill v4.3 (region re-render)", repo_dir="models/rudra_genfill_v4",
+    files=(
+        ("registration_v4.json", 2548, "8f2324358a10feb7599446443af7622a096f360f99d16a12830f5ebc6a68e90d"),
+        ("report_v4.json", 2386, "d2f507bbcfdcc0203bec82050a3f5ef89188b12e8310b8b5f5a12d7816b5db8c"),
+        ("rudra_genfill.safetensors", 262570552,
+         "406b1dc7b7d3ada5406b396a6aa8c7e5ec9eac8d0be0d04e8038d68b5bf1b390"),
+    ),
+    size_mb=263, default_allowed=True, revision=REGION_REVISION,
+)
+
+PACKAGES: Dict[str, Package] = {p.name: p for p in (ACES2, GENFILL_V3, GENFILL_V5, GENFILL_V43, WAN_BASE,
+                                                    WAN_TEXT_ENCODER)}
 
 _lock = threading.Lock()
 _failed: Dict[str, bool] = {}

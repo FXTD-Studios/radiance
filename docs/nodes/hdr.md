@@ -30,7 +30,7 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 - [RUDRA Master Write](#rudra-master-write)
 - [RUDRA Region](#rudra-region)
 - [SDR → HDR AI Fill (RUDRA v3)](#sdr--hdr-ai-fill-rudra-v3)
-- [SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)](#sdr--hdr-ai-fill-v4-re-render-rudra-experimental)
+- [SDR → HDR AI Fill Re-render (RUDRA v5, experimental)](#sdr--hdr-ai-fill-re-render-rudra-v5-experimental)
 - [SDR → HDR Analytic (RUDRA)](#sdr--hdr-analytic-rudra)
 - [SDR → HDR Recover](#sdr--hdr-recover)
 - [SDR → HDR Universal](#sdr--hdr-universal)
@@ -683,11 +683,11 @@ RUDRA AI fill v3: draws the shape inside fully clipped highlights of an HDR mast
 | `reconstructed_mask` | MASK |
 | `report` | STRING |
 
-## SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)
+## SDR → HDR AI Fill Re-render (RUDRA v5, experimental)
 
 `RadianceSDRToHDRAIFillRerender`
 
-RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the region the SDR's codes are not kept; outside it every pixel is the master's. Needs the v4 LoRA, which is not published. Plausible, not recovered.
+RUDRA AI fill v5, region re-render (experimental): draws a whole bright region of an HDR master again (a window, an open door, a sky just under white, a practical lamp, sun glare), with RUDRA 1.3's app finish. Inside the region the SDR's codes are not kept; outside it every pixel is the master's. Downloads the v5 LoRA (263 MB) and Wan2.1-VACE-1.3B (7.7 GB) on first use; about 16 GB of GPU memory. Plausible, not recovered.
 
 **Inputs**
 
@@ -699,14 +699,16 @@ RUDRA AI fill v4, region re-render (experimental): draws a whole bright region o
 | `prompt_highlight` | string |  | multi-line text | What is in the bright area (e.g. 'an overcast sky through an open door'). Empty: texture with no subject. A new prompt loads the 11 GB umT5 text encoder once. |
 | `reconstructed_mask` (optional) | MASK |  |  | The master's reconstructed_mask; the output becomes max(it, generated). |
 | `condition` (optional) | choice | `bt1886` | `bt1886`, `aces` | How the model reads the source. bt1886: code ^ 2.4, RUDRA's analytic route (what v4 was gated on). aces: the ACES 2.0 inverse, for a master from the RUDRA ACES 2 route. |
-| `finish` (optional) | choice | `RUDRA app (12 Nov 2026)` | `RUDRA app (12 Nov 2026)`, `off (the model as registered)` | RUDRA app: source colour (0.3 of the model's), level 3.3 x SDR white, smoothing 0.8, dark detail at most 0.3 stops, near-white sources only. off: the model's own colour and level, as registered on 9 Nov (it failed the level and flicker gates). |
+| `finish` (optional) | choice | `RUDRA app (1.3)` | `RUDRA app (1.3)`, `off (the model as registered)`, `RUDRA app (12 Nov 2026)` | RUDRA app: source colour (0.3 of the model's), level 3.3 x SDR white, smoothing 0.8, dark detail at most 0.3 stops, near-white sources only. off: the model's own colour and level, as registered on 9 Nov (it failed the level and flicker gates). |
 | `steps` (optional) | int | 30 | 4 to 80, step 1 | Denoising steps per window. RUDRA uses 30. |
 | `seed` (optional) | int | 0 | 0 to 4294967295 | Noise seed. The same seed and settings give the same fill. |
-| `lora` (optional) | string |  |  | The v4 LoRA (rudra_genfill.safetensors of research_genfill_v4_20261109), or its folder. Empty searches RADIANCE_RUDRA_GENFILL_V4, then models/radiance/rudra_genfill_v4/. Never downloaded: it is not published. |
+| `lora` (optional) | string |  |  | A region LoRA file or its folder, instead of region_model's own. Empty: v5 from RADIANCE_RUDRA_GENFILL_V5 or models/radiance/rudra_genfill_v5/, v4.3 from models/radiance/rudra_genfill_v4/ (downloaded if missing); v4 research from RADIANCE_RUDRA_GENFILL_V4 or models/radiance/rudra_genfill_v4/ (never downloaded). |
 | `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
 | `fill_package` (optional) | string |  |  | The AI fill v3 folder, used here for its prompt cache only (the base prompt's embedding, so no 11 GB text encoder for an empty prompt). |
-| `allow_download` (optional) | boolean | on |  | Download the Wan base model (7.7 GB) and the v3 package's prompt cache (271 MB) if missing. Never the v4 LoRA. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `allow_download` (optional) | boolean | on |  | Download what is missing: the v5 or v4.3 LoRA (263 MB), the Wan base model (7.7 GB) and the v3 package's prompt cache (271 MB). Never the v4 research LoRA. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
 | `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
+| `region_model` (optional) | choice | `v5` | `v5`, `v4.3`, `v4 research` | Which region LoRA draws. v5 (RUDRA 1.3): steadier on lamps, doors, windows, sun glare and thin objects against a bright sky. v4.3 (RUDRA 1.2.4). v4 research: the 12 Nov build this node first ported, with its 12 Nov finish. |
+| `keep_detail` (optional) | boolean | off |  | Thin, broken-up and small parts of the region keep the master's picture (a floor grating's bright bars, a railing, a practical lamp); RUDRA 1.2.7. Off redraws the whole region, as RUDRA's app does by default. |
 
 **Outputs**
 

@@ -1,0 +1,21 @@
+FXTD Radiance
+Copyright 2026 FXTD Studios
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Releases up to and including 4.0.x were distributed under GPL-3.0-only; those
+releases remain available under that licence.
+
+This product includes software developed by third parties:
+
+- RUDRA (FXTD Studios), Apache License 2.0. Portions of model/rudra_*.py and
+  nodes/hdr/rudra_*.py are ported from it.
+- OpenColorIO (WebAssembly build), BSD-3-Clause. Copyright Contributors to the
+  OpenColorIO Project. See js/vendor/ocio/THIRD_PARTY_NOTICES.md.
+- Naga (wgpu project), MIT OR Apache-2.0. See js/vendor/ocio/THIRD_PARTY_NOTICES.md.
+- AgX working space matrices (Blender / Troy Sobotka), BSD-licensed. See hdr/tonemap.py.
+- Fonts (DM Mono, Inter, JetBrains Mono), SIL Open Font License 1.1. See js/fonts/.
+- OpenEXR sample images used in documentation, (c) 2004 Industrial Light & Magic.
+  See docs/images/LICENSE-openexr-images.txt.
+
+Model weights downloaded at runtime are NOT covered by this licence. Each model
+has its own licence (some are non-commercial); see docs/MODELS.md.

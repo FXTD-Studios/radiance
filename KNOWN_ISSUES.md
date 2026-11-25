@@ -99,13 +99,15 @@ These parts of the release gate need checks that cannot run in CI:
   default prompt is cached and needs none of it). What it draws is plausible, not recovered: review
   every frame (the report flags frames where the fill adds flicker). RUDRA's
   registered gates covered highlights; shadow fill is off by default.
-- **AI fill v4 (region re-render) is a research build.** It passed RUDRA's
-  gates on one shot (09V) and the held-out set, and fails the structure gate
-  on a second (a flat softbox) and on frame 1 of another; frame 1 is the
-  weakest on every shot. It was gated on RUDRA's analytic route (`condition`
-  `bt1886`). Its LoRA is not published, so the node only runs with a copy put
-  in `models/radiance/rudra_genfill_v4/`, and the report says when the file is
-  not the gated one. Inside the region the SDR's codes change.
+- **AI fill v5 / v4.3 (region re-render) is experimental.** About 16 GB of
+  VRAM; inside the region the SDR's codes change, and what it draws is
+  plausible, not recovered. RUDRA checked v5 mostly on its analytic route
+  (`condition` `bt1886`); its own notes say the sky can still shift slightly
+  where windows join and it can invent a sun or flare in a plain sky, so review
+  every frame. Radiance runs RUDRA 1.3's finish; it does not have RUDRA 1.2.5's
+  lower-memory mode, so a card under 16 GB may run out of memory. The 12 Nov
+  research build (`region_model` v4 research) is kept for old graphs and never
+  downloaded.
 
 ## Placeholders and labelled limits (3.5.0 honest release pass)
 
@@ -250,6 +252,19 @@ node downloads").
   is set; the node stops with both steps until then.
 - **SeedVR2** needs the ComfyUI-SeedVR2_VideoUpscaler node pack, which fetches
   its own weights; without it Tier 3 uses the SD x4 upscaler.
+
+## Package and user data (4.0 release audit, 20 Nov 2026)
+
+- **The package is about 72 MB.** 58 MB is the workflow library; five video
+  cards (LTX 2.3, LTX 2.5 and their 3-stage versions, MiniMax H3) each carry
+  two 1920x1080 RGBA example PNGs, about 7 MB a card. *Planned fix (4.1):*
+  ship them as JPEG or fetch them when the card is first opened.
+- **The library and gizmos moved to `ComfyUI/user/radiance/` in 4.0.** The
+  first start copies them from the package folder and leaves the originals
+  there; delete `custom_nodes/radiance/workflows/<your projects>` and
+  `custom_nodes/radiance/gizmos/*.gizmo` once the copies are confirmed. The
+  library keeps a synced copy of the shipped cards (about 58 MB) in
+  `user/radiance/workflows/official`.
 
 ## Minor
 

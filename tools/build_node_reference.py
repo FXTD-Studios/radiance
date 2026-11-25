@@ -189,6 +189,8 @@ def render(class_mappings: Mapping[str, Any], display_names: Mapping[str, str],
         if getattr(cls, "DEPRECATED", False):
             retired.append((name, key))
             continue
+        if getattr(cls, "DEV_ONLY", False):
+            continue                    # not in the menu (ComfyUI dev mode only)
         by_section.setdefault(_node_section(cls), []).append((name, key, cls))
 
     order = [s for s in section_blurbs if s in by_section] + sorted(s for s in by_section if s not in section_blurbs)

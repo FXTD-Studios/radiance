@@ -938,6 +938,7 @@ def test_the_amf_sidecar_is_absent_by_default(h):
 
 
 def test_reveal_folder_opens_the_output_directory(h, monkeypatch):
+    monkeypatch.setenv("RADIANCE_ALLOW_REVEAL", "1")
     import subprocess
     seen = []
     monkeypatch.setattr(subprocess, "Popen", lambda cmd, *a, **k: seen.append(cmd))
@@ -958,6 +959,21 @@ def test_reveal_folder_is_off_by_default(h, monkeypatch):
     h.put(flat(0.5))
     h.run()
     assert seen == []
+
+
+def test_reveal_folder_needs_the_machine_opt_in(h, monkeypatch):
+    """A request alone never launches the file manager (Comfy Registry scan)."""
+    import subprocess
+    seen = []
+    monkeypatch.delenv("RADIANCE_ALLOW_REVEAL", raising=False)
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, *a, **k: seen.append(cmd))
+    if hasattr(os, "startfile"):
+        monkeypatch.setattr(os, "startfile", lambda path: seen.append([path]))
+    h.put(flat(0.5))
+    resp = h.run({"reveal_folder": True})
+    assert resp.status == 200
+    assert seen == []
+    assert not any("Reveal" in w or "Launch" in w for w in h.body(resp).get("warnings", []))
 
 
 def test_a_thumbnail_failure_does_not_cost_the_other_sidecars(h, monkeypatch):
@@ -998,6 +1014,7 @@ def test_a_failing_session_log_does_not_fail_the_delivery(h, monkeypatch):
 
 
 def test_reveal_folder_uses_open_on_macos(h, monkeypatch):
+    monkeypatch.setenv("RADIANCE_ALLOW_REVEAL", "1")
     import platform
     import subprocess
     seen = []
@@ -1011,6 +1028,7 @@ def test_reveal_folder_uses_open_on_macos(h, monkeypatch):
 
 
 def test_a_failing_file_manager_does_not_fail_the_delivery(h, monkeypatch):
+    monkeypatch.setenv("RADIANCE_ALLOW_REVEAL", "1")
     import subprocess
 
     def _boom(*a, **k):
