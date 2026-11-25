@@ -1,11 +1,14 @@
 """ComfyUI-Manager runs this after installing (or updating) Radiance.
 
-It makes Radiance work with nothing to configure:
+It checks, and does not install, the libraries the colour pipeline and
+SDR -> HDR are built on (ComfyUI-Manager and the Comfy Registry install them
+from requirements.txt / pyproject.toml; Radiance never runs pip itself):
 
-* the libraries the colour pipeline and SDR -> HDR are built on are present
-  and new enough: OpenEXR (EXR read/write), OpenColorIO 2.5+ (colour
-  management, the ACES 2.0 view RUDRA is built on), diffusers 0.35+ (Wan VACE
-  for the RUDRA AI fill, Marigold for Multipass) and accelerate;
+* the libraries must be present and new enough: OpenEXR (EXR read/write),
+  OpenColorIO 2.5+ (colour management, the ACES 2.0 view RUDRA is built
+  on), diffusers 0.35+ (Wan VACE for the RUDRA AI fill, Marigold for
+  Multipass) and accelerate. Anything missing is reported with the pip line
+  to run;
 * RUDRA ACES 2, the learned SDR -> HDR model (2.2 MB, Apache 2.0), is fetched
   into ComfyUI/models/radiance/RUDRA_ACES_2, pinned and hash-checked, so SDR ->
   HDR Universal and Recover run their learned path offline from the first
@@ -16,7 +19,6 @@ built-in ACES config. Set RADIANCE_ALLOW_DOWNLOADS=0 to skip every download.
 """
 import importlib.util
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -88,20 +90,22 @@ def _prefetch_rudra() -> None:
         print(f"[Radiance] RUDRA ACES 2 not fetched now ({exc}); it downloads on first use.")
 
 
+def pip_command(todo) -> str:
+    """The pip line a user can run themselves for the libraries in ``todo``."""
+    return f'"{sys.executable}" -m pip install -U ' + " ".join(f'"{t}"' for t in todo)
+
+
 def main() -> int:
-    rc = 0
     todo = _missing()
     if not todo:
         print("[Radiance] Required libraries present; OCIO is configured automatically at startup.")
     else:
-        print(f"[Radiance] installing {', '.join(todo)} ...")
-        rc = subprocess.call([sys.executable, "-m", "pip", "install", "-U", *todo])
-        if rc != 0:
-            print(f"[Radiance] pip failed ({rc}). Install manually: {sys.executable} -m pip install -U "
-                  + " ".join(f'"{t}"' for t in todo))
+        # Reported, not installed: running pip from a custom node is something the
+        # Comfy Registry scan flags, and Manager already installs requirements.txt.
+        print(f"[Radiance] missing or too old: {', '.join(todo)}. Install them with:\n"
+              f"    {pip_command(todo)}")
     _prefetch_rudra()
-    return rc
-
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
