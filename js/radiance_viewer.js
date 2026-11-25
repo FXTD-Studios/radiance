@@ -13273,7 +13273,20 @@ self.onmessage = async ({ data: { id, url } }) => {
             if (times.length >= 3 && Number.isFinite(vid.duration) && vid.duration > 1 && this.videoEl === vid) {
                 vid.currentTime = vid.duration * 0.9;
                 const far = await nextFrame(1500);
-                if (far != null && far > times[times.length - 1]) times.push(far);
+                if (far != null && far > times[times.length - 1]) {
+                    times.push(far);
+                    // A busy machine can present only every other frame while the clip plays, so
+                    // every gap above is two frames. Three quarters of the shortest gap past the far
+                    // frame is the next frame when that happened, and the same frame when it did not.
+                    let shortest = Infinity;
+                    for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] > 1e-4) shortest = Math.min(shortest, times[i] - times[i - 1]);
+                    const probe = far + 0.75 * shortest;
+                    if (Number.isFinite(probe) && probe < vid.duration && this.videoEl === vid) {
+                        vid.currentTime = probe;
+                        const next = await nextFrame(1500);
+                        if (next != null && next > far) times.push(next);
+                    }
+                }
             }
         } finally {
             if (this.videoEl === vid) vid.pause();
@@ -13309,10 +13322,12 @@ self.onmessage = async ({ data: { id, url } }) => {
         const gaps = [];
         for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] > 1e-4) gaps.push(times[i] - times[i - 1]);
         if (gaps.length < 2) return null;
-        // One-frame gaps only: a skipped frame makes a gap of two.
+        // A skipped frame makes a gap of two: it counts as two frames, not one.
         const shortest = Math.min(...gaps);
-        const single = gaps.filter((g) => g < 1.5 * shortest);
-        const raw = single.length / single.reduce((a, b) => a + b, 0);
+        // Each nearby gap counted in frames of the shortest one, so a lone one-frame gap (read after
+        // a seek) does not carry the rate on its own millisecond-rounded length.
+        const near = gaps.filter((g) => g < 2.5 * shortest);
+        const raw = near.reduce((n, g) => n + Math.round(g / shortest), 0) / near.reduce((a, b) => a + b, 0);
         const misfit = (rate) => {
             let worst = 0;
             for (const t of times) {
@@ -13321,14 +13336,36 @@ self.onmessage = async ({ data: { id, url } }) => {
             }
             return worst;
         };
-        const standard = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 119.88, 120]
-            .filter((r) => Math.abs(r - raw) / r < 0.015);
-        if (!standard.length) return Math.round(raw * 1000) / 1000;
-        standard.sort((a, b) => misfit(a) - misfit(b)
-            || (Number.isInteger(b) ? 1 : 0) - (Number.isInteger(a) ? 1 : 0));
-        const best = standard[0];
-        const whole = standard.find((r) => Number.isInteger(r));
-        return whole && misfit(whole) <= misfit(best) + 0.0006 ? whole : best;
+        const STANDARD = [23.976, 24, 25, 29.97, 30, 47.952, 48, 50, 59.94, 60, 119.88, 120];
+        // The standard rate near the measured one whose frame grid the times fit best (a whole-number
+        // rate when the fit cannot tell them apart), or the measured rate when none is near.
+        const nearest = (measured) => {
+            const standard = STANDARD.filter((r) => Math.abs(r - measured) / r < 0.015);
+            if (!standard.length) {
+                // Off the list (12, 15, 12.5 fps): the whole number when the times fit it as well.
+                const whole = Math.round(measured);
+                return whole > 0 && misfit(whole) <= misfit(measured) + 0.0006 ? whole : Math.round(measured * 1000) / 1000;
+            }
+            standard.sort((a, b) => misfit(a) - misfit(b)
+                || (Number.isInteger(b) ? 1 : 0) - (Number.isInteger(a) ? 1 : 0));
+            const best = standard[0];
+            const whole = standard.find((r) => Number.isInteger(r));
+            return whole && misfit(whole) <= misfit(best) + 0.0006 ? whole : best;
+        };
+        const rate = nearest(raw);
+        // A busy machine (a CI runner with no GPU, 25 Nov 2026) can present every other frame while the
+        // rate is read: every gap is then two frames and a 24 fps clip measures 12.048. When the times do not
+        // sit on the measured rate's grid (the frames read after seeking say so; _measureVideoFps reads one
+        // just past the far frame for this), a standard rate at 2, 3 or 4 times the measured one whose grid
+        // they do fit is the clip's. A clip that really is 12 fps fits its own grid and keeps it. (The
+        // browser's dropped-frame count cannot say which: headless Chromium counts drops it presented.)
+        const FIT = 0.0015;                               // seconds: millisecond time stamps
+        if (misfit(rate) <= FIT) return rate;
+        for (const k of [2, 3, 4]) {
+            const r = nearest(raw * k);
+            if (STANDARD.includes(r) && misfit(r) <= FIT) return r;
+        }
+        return rate;
     }
 
     /** The video element reported an error: say what, over the picture. */

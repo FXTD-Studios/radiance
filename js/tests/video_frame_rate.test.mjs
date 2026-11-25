@@ -64,3 +64,19 @@ test('too few frames give no rate', () => {
     assert.equal(rateOf([0, 0.042]), null);
     assert.equal(rateOf([]), null);
 });
+
+
+test('every other frame presented on a busy machine still reads the clip\'s rate', () => {
+    // CI, 25 Nov 2026: a 24 fps clip measured 12.048 when the runner presented every second frame.
+    assert.equal(rateOf(frames(24, [0, 2, 4, 6, 8, 10, 12, 14, 16, 27])), 24);   // the far frame is odd
+    assert.equal(rateOf(frames(30, [1, 3, 5, 7, 9, 11, 13, 15, 17, 302])), 30);
+    // The far frame on the half grid: the frame read just past it tells.
+    assert.equal(rateOf(frames(24, [1, 3, 5, 7, 9, 11, 13, 15, 17, 27, 28])), 24);
+    assert.equal(rateOf(frames(30, [1, 3, 5, 7, 9, 11, 13, 15, 17, 301, 302])), 30);
+});
+
+test('a clip that really is 12 or 15 fps keeps its rate', () => {
+    assert.equal(rateOf(frames(12, [...run(0, 9), 27])), 12);
+    assert.equal(rateOf(frames(15, [...run(0, 9), 31])), 15);
+    assert.equal(rateOf(frames(24, [...run(0, 9), 27])), 24);                    // and 24 stays 24, not 48
+});
