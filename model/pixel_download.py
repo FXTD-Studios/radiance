@@ -10,7 +10,7 @@ fallback with only a log line to say why.
 This module fetches it on first use instead. The file is small (~5 MB) and
 first-party, so unlike the large third-party weights it is allowed by default.
 The weights are licensed for NON-COMMERCIAL use (RUDRA's weights licence,
-separate from Radiance's GPL-3.0 code), and the download says so in the log.
+separate from Radiance's Apache-2.0 code), and the download says so in the log.
 It is pinned to one Hugging Face commit and verified by size and sha256
 before it is moved into place, so a changed or truncated file is never loaded.
 

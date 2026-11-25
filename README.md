@@ -15,7 +15,7 @@ Generate in HDR, grade and review like a finishing suite, and deliver masters to
 [![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=flat-square)](https://registry.comfy.org/nodes/radiance)
 [![Platforms](https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux-5C7CFA?style=flat-square)](#what-you-need)
-[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 
 **[Install](#install)** &nbsp;·&nbsp; **[First HDR image](#your-first-hdr-image)** &nbsp;·&nbsp; **[Workflows](#example-workflows)** &nbsp;·&nbsp; **[Viewer](#using-the-viewer)** &nbsp;·&nbsp; **[Help](#help)**
 
@@ -202,7 +202,7 @@ Radiance is made by [FXTD Studios](https://fxtdstudios.com).
 
 ## License
 
-Radiance is licensed under [GPL-3.0](LICENSE). Model weights have their own licences; check them before you use or share them.
+Radiance is licensed under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE) for third-party notices. Releases up to 4.0.x were published under GPL-3.0. Model weights have their own licences; check them before you use or share them.
 
 The Viewer screenshots use the OpenEXR sample images (Candlelight / StillLife, MtTamWest, Desk), © 2004 Industrial Light & Magic, under the [OpenEXR images licence](docs/images/LICENSE-openexr-images.txt).
 
