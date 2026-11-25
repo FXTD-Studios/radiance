@@ -379,19 +379,12 @@ jobs:
       - name: Install Playwright and Chromium
         run: npm install --no-save playwright && npx playwright install --with-deps chromium
 
-      - name: Run the browser-driven viewer tests
-        run: >
-          node --test
-          js/tests/viewer_truth.test.mjs
-          js/tests/viewer_session.test.mjs
-          js/tests/viewer_reach.test.mjs
-          js/tests/viewer_polish.test.mjs
-          js/tests/grade_render.test.mjs
-          js/tests/grade_panel_dom.test.mjs
-          js/tests/viewer_color.test.mjs
-          js/tests/sequence_load.test.mjs
-          js/tests/panel_dom.test.mjs
-          js/tests/viewer_v4_browser.test.mjs
+      # Every JS test with Playwright present, the same command the publish
+      # gate runs. A hand-picked list here left the other browser suites (for
+      # example viewer_inspect_review) to run for the first time at tag time,
+      # where a stale one blocked the v4.0.0 publish.
+      - name: Run every JS test (unit and browser), as the publish gate does
+        run: node --test --test-concurrency=2 js/tests/*.test.mjs
 
   # ── YAML / TOML lint ────────────────────────────────────────────────────────
   lint-config:
