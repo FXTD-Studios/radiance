@@ -32,6 +32,19 @@ export const WHATS_NEW = Object.freeze([
         ],
     },
     {
+        version: '4.0.2',
+        items: [
+            'Install no longer runs pip: missing libraries are listed with the command to run.',
+            'Deliver: Launch Folder works only when ComfyUI is started with RADIANCE_ALLOW_REVEAL=1.',
+        ],
+    },
+    {
+        version: '4.0.1',
+        items: [
+            'SDR → HDR Analytic: BT.1886 masters are no longer too dark in the shadows (RUDRA 1.3).',
+        ],
+    },
+    {
         version: '4.0.0',
         items: [
             'RUDRA ACES 2: SDR to HDR with nothing to set up, and several frames at once on long clips.',

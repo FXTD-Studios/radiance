@@ -219,6 +219,11 @@ def _srgb_encode_display(t: "torch.Tensor") -> "torch.Tensor":
     return out
 
 
+def _reveal_allowed() -> bool:
+    """True when this machine has opted in to Deliver's "Reveal folder" (RADIANCE_ALLOW_REVEAL=1)."""
+    return os.environ.get("RADIANCE_ALLOW_REVEAL", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _note(warnings: list, message: str) -> None:
     """Record something the operator asked for that did not happen.
 
@@ -1061,8 +1066,15 @@ async def radiance_deliver_endpoint(request):
                 }
                 _write_json_atomic(os.path.splitext(path)[0] + "_meta.json", meta)
                 
-                # Reveal Folder Hook
-                if settings.get('reveal_folder', False):
+                # Reveal Folder Hook. Launching the OS file manager is opt-in for the
+                # machine (RADIANCE_ALLOW_REVEAL=1), not just the request: a delivery
+                # request alone never makes the server start a program.
+                if settings.get('reveal_folder', False) and not _reveal_allowed():
+                    # Logged, not a delivery warning: the Viewer's Launch Folder box is
+                    # on by default, so a warning would ride on every export.
+                    logger.info("[Deliver] Launch Folder is off on this machine; set "
+                                "RADIANCE_ALLOW_REVEAL=1 before starting ComfyUI to turn it on.")
+                elif settings.get('reveal_folder', False):
                     import platform, subprocess
                     try:
                         p = os.path.abspath(output_path)
