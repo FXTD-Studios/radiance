@@ -24,6 +24,14 @@ export const LINKS = Object.freeze({
  */
 export const WHATS_NEW = Object.freeze([
     {
+        version: '4.1.0',
+        items: [
+            'RUDRA AI fill v5: redraws a bright window, door, sky, lamp or sun glare, steadier than before.',
+            'SDR → HDR Analytic: BT.1886 masters are no longer too dark in the shadows (RUDRA 1.3).',
+            'New shot asks for its name and starts on an empty canvas; gizmos delete from the library.',
+        ],
+    },
+    {
         version: '4.0.0',
         items: [
             'RUDRA ACES 2: SDR to HDR with nothing to set up, and several frames at once on long clips.',
