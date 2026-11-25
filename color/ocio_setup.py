@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
 from typing import Optional
 
 log = logging.getLogger("radiance.ocio")
@@ -45,10 +46,8 @@ def _write_studio_file(ocio) -> Optional[str]:
                 if f.read() == text:
                     return STUDIO_FILE
         os.makedirs(ACES_DIR, exist_ok=True)
-        tmp = STUDIO_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, STUDIO_FILE)
+        from ..core.sequence_safety import write_text_atomic
+        write_text_atomic(STUDIO_FILE, text)
         return STUDIO_FILE
     except OSError as exc:
         # A read-only install still works: OCIO accepts the URI directly.
@@ -105,6 +104,58 @@ def configure_ocio(environ: Optional[dict] = None) -> dict:
     return STATE
 
 
+def _mtime(path: str) -> float:
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0      # an ocio:// URI, or gone: the load below decides
+
+
+@lru_cache(maxsize=16)
+def _load(path: str, mtime: float):
+    import PyOpenColorIO as ocio  # type: ignore
+    cfg = ocio.Config.CreateFromFile(path)
+    cfg.validate()
+    return cfg
+
+
+def _usable(path: str) -> bool:
+    try:
+        _load(path, _mtime(path))
+        return True
+    except Exception:  # noqa: BLE001 - missing, unparsable or invalid
+        return False
+
+
+def active_config_path(environ: Optional[dict] = None) -> str:
+    """The OCIO config every Radiance consumer uses when none is named (4.0).
+
+    ``$OCIO`` when it loads: the user's or studio's, or the one configure_ocio
+    set at startup. Otherwise the config configure_ocio chose, running it if it
+    has not run. A file path or an ``ocio://`` URI; "" without OpenColorIO or
+    any config. Until 4.0 five places answered this question, with different
+    fallbacks (two ended on the bundled CG config, whose colour space names
+    differ) and different handling of ``ocio://`` URIs.
+    """
+    env = os.environ if environ is None else environ
+    user = (env.get("OCIO") or "").strip()
+    if user and _usable(user):
+        return user
+    if not STATE["configured"]:
+        configure_ocio(environ)
+    return STATE["path"] if STATE["configured"] else ""
+
+
+def active_config(path: str = ""):
+    """The OCIO.Config at ``path``, or at active_config_path(); None when there
+    is none. Cached per path and file modification time, so an edited config
+    is read again."""
+    p = (path or "").strip() or active_config_path()
+    if not p:
+        return None
+    return _load(p, _mtime(p))
+
+
 def summary() -> str:
     if not STATE["configured"]:
         return f"OCIO not configured: {STATE['error'] or 'not run'}"
@@ -112,4 +163,5 @@ def summary() -> str:
             f"({STATE['colorspaces']} colorspaces, {STATE['source']})")
 
 
-__all__ = ["configure_ocio", "summary", "STATE", "STUDIO_FILE", "BUNDLED_CG", "BUILTIN_URI"]
+__all__ = ["configure_ocio", "active_config_path", "active_config", "summary", "STATE",
+           "STUDIO_FILE", "BUNDLED_CG", "BUILTIN_URI"]

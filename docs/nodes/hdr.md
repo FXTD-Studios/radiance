@@ -4,7 +4,7 @@
 
 HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 
-36 nodes. [All sections](README.md)
+29 nodes. [All sections](README.md)
 
 - [ACES 2.0 Gamut Compress](#aces-20-gamut-compress)
 - [ACES 2.0 Output Check](#aces-20-output-check)
@@ -12,33 +12,26 @@ HDR uplift, ACES, tone mapping, analysis, encoding, and delivery.
 - [ACES 2.0 Tonescale](#aces-20-tonescale)
 - [ACES Config Manager](#aces-config-manager)
 - [ACES Metadata File (AMF)](#aces-metadata-file-amf)
-- [ACES Transform](#aces-transform)
 - [Clip Detector](#clip-detector)
-- [ColorSpace Info](#colorspace-info)
-- [Float32 Convert](#float32-convert)
-- [GPU Tensor Ops](#gpu-tensor-ops)
 - [HDR 360 Generate](#hdr-360-generate)
-- [HDR Analysis](#hdr-analysis)
-- [HDR Auto Log Select](#hdr-auto-log-select)
-- [HDR Blend Validator](#hdr-blend-validator)
-- [HDR Color Pipeline](#hdr-color-pipeline)
 - [HDR Diagnostics](#hdr-diagnostics)
+- [HDR Dynamic Metadata (RUDRA)](#hdr-dynamic-metadata-rudra)
 - [HDR Encode](#hdr-encode)
-- [HDR Expand Dynamic Range](#hdr-expand-dynamic-range)
 - [HDR Exposure Blend](#hdr-exposure-blend)
-- [HDR Highlight Composite](#hdr-highlight-composite)
-- [HDR LoRA Apply](#hdr-lora-apply)
-- [HDR LoRA Loader](#hdr-lora-loader)
-- [HDR Per-Channel Denorm](#hdr-per-channel-denorm)
-- [HDR Per-Channel Norm](#hdr-per-channel-norm)
+- [HDR Flicker Report (RUDRA)](#hdr-flicker-report-rudra)
+- [HDR Peak Fit (RUDRA)](#hdr-peak-fit-rudra)
+- [HDR Region EV (RUDRA)](#hdr-region-ev-rudra)
 - [HDR Shadow / Highlight Recovery](#hdr-shadow--highlight-recovery)
-- [HDR Synthesis Engine](#hdr-synthesis-engine)
-- [Highlight Synthesis](#highlight-synthesis)
-- [Luminance Guidance](#luminance-guidance)
+- [HDR Shot Hold (RUDRA)](#hdr-shot-hold-rudra)
 - [OCIO List Colorspaces](#ocio-list-colorspaces)
 - [OCIO Transform](#ocio-transform)
-- [SDR → HDR Expand](#sdr--hdr-expand)
-- [SDR → HDR Prepare](#sdr--hdr-prepare)
+- [RUDRA Calibrate](#rudra-calibrate)
+- [RUDRA Fill Prompt](#rudra-fill-prompt)
+- [RUDRA Master Write](#rudra-master-write)
+- [RUDRA Region](#rudra-region)
+- [SDR → HDR AI Fill (RUDRA v3)](#sdr--hdr-ai-fill-rudra-v3)
+- [SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)](#sdr--hdr-ai-fill-v4-re-render-rudra-experimental)
+- [SDR → HDR Analytic (RUDRA)](#sdr--hdr-analytic-rudra)
 - [SDR → HDR Recover](#sdr--hdr-recover)
 - [SDR → HDR Universal](#sdr--hdr-universal)
 - [Tonemap](#tonemap)
@@ -82,7 +75,7 @@ Compare a display render against the ACES 2.0 reference Output Transform (OpenCo
 | `scene_image` | IMAGE |  |  | Scene-linear ACEScg image BEFORE the output transform. |
 | `display_image` | IMAGE |  |  | Display-encoded image AFTER the output transform under test. |
 | `output_type` | choice | `SDR_sRGB` | `SDR_sRGB`, `SDR_P3`, `HDR_PQ_1000`, `HDR_PQ_2000`, `HDR_PQ_4000`, `HDR_HLG` | ACES 2.0 Output Transform the display image is meant to be. The reference is rendered for this output and compared. |
-| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Shown in the report header only; the peak comes from output_type. |
+| `peak_nits` (optional) | float | 100 | 48 to 10000, step 1 | Label only: printed in the report header, never checked. The peak the reference is rendered for comes from output_type (SDR 100, PQ 1000/2000/4000, HLG 1000 nits). |
 
 **Outputs**
 
@@ -154,7 +147,7 @@ Detect, download, and manage ACES OCIO configurations.
 | :--- | :--- | :--- | :--- | :--- |
 | `action` | choice | `Detect Config` | `Detect Config`, `Download ACES 2.0`, `List Colorspaces`, `Get Config Info` | Action to perform. |
 | `custom_config_path` (optional) | string |  |  | Custom path to .ocio config. Leave empty for auto-detection. |
-| `install_path` (optional) | string |  |  | Where to install downloaded ACES config. Defaults to <radiance>/ACES/. |
+| `install_path` (optional) | string |  |  | Where to install downloaded ACES config. Defaults to &lt;radiance>/ACES/. |
 
 **Outputs**
 
@@ -191,30 +184,6 @@ Read or write ACES metadata XML sidecar files for shot archiving.
 | `amf_xml` | STRING |
 | `amf_summary` | STRING |
 
-## ACES Transform
-
-`RadianceACESTransform`
-
-Approximate ACES-style output transform: a fitted filmic tone curve (Narkowicz ACES fit, not the full RRT) on ACEScg, then conversion and encoding for an sRGB, P3, PQ or HLG display. Use for quick previews, not deliverables.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Scene-linear ACEScg image. |
-| `odt` | choice | `sRGB D65` | `sRGB D65`, `DCI-P3 D65`, `Rec.2020 PQ (HDR10)`, `Rec.2020 HLG` | Target display. sRGB: sRGB curve. DCI-P3 D65: P3 primaries, 2.6 gamma. Rec.2020 PQ: ST 2084 signal. Rec.2020 HLG: HLG signal, tone-mapped white at signal 1.0. |
-| `exposure_offset` | float | 0 | -4 to 4, step 0.1 | Exposure change in stops applied to the scene-linear input before the tone curve. |
-| `peak_nits` | float | 1000 | 100 to 10000, step 100 | Luminance in nits that tone-mapped white (1.0) is encoded at. Only used by Rec.2020 PQ (HDR10); ignored by the other outputs. |
-| `saturation` | float | 1 | 0 to 1.5, step 0.02 | Saturation after the tone curve, around Rec.709-weighted luma: 0 = greyscale, 1 = unchanged. Result is clamped to 0..1. |
-| `grade_info_in` (optional) | string |  |  | Optional grade_info JSON from an upstream node. Only recorded as "upstream" in this node's info output; it does not change the image. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `aces_info` | STRING |
-
 ## Clip Detector
 
 `RadianceClipDetector`
@@ -238,72 +207,6 @@ Detect clipped highlights in SDR images. Wire clip_mask → RadianceSDRToHDRPrep
 | `clip_mask` | MASK |
 | `clip_fraction` | FLOAT |
 | `visualization` | IMAGE |
-
-## ColorSpace Info
-
-`RadianceColorSpaceInfo`
-
-Output colour space metadata as JSON. Image is passed through unchanged.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image passed through unchanged; only its size, channels and batch are read. |
-| `encoding` | choice | `sRGB` | `sRGB`, `Rec.709 (OETF)`, `BT.1886 (TV γ2.4)`, `Gamma 2.2`, `Gamma 2.4`, `PQ (ST.2084)`, `HLG`, `ARRI LogC4`, `Sony S-Log3`, `Linear (none)` | Transfer curve to record in the JSON. Metadata only; the image is not decoded. |
-| `primaries` | choice | `Rec.709 (sRGB)` | `Rec.709 (sRGB)`, `BT.2020`, `ACEScg`, `DCI-P3 (D65)`, `XYZ (D65)` | Primaries to record in the JSON. Metadata only; no conversion is done. |
-| `scene_referred` (optional) | boolean | off |  | Records in the JSON that the image is scene-referred (values above 1.0 are valid). Metadata only; nothing is clamped either way. |
-| `peak_nits` (optional) | float | 100 | 80 to 10000, step 10 | Mastering display peak in nits to record in the JSON. Metadata only; pixel values are not scaled. |
-| `notes` (optional) | string |  |  | Optional free-text notes stored alongside the colorspace metadata JSON output. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-| `colorspace_json` | STRING |
-
-## Float32 Convert
-
-`RadianceFloat32Convert`
-
-Convert images to 32-bit float precision for HDR processing. Preserves full dynamic range without clamping.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to convert to float32. Values are not clamped. |
-| `normalize` (optional) | boolean | off |  | Per frame, divide by the frame's maximum when that maximum is above 1.0, so each frame peaks at 1.0. Frames already within 0 to 1 are left as they are. |
-| `source_gamma` (optional) | float | 1 | 0.1 to 4, step 0.01 | Source gamma to linearize. 1.0 = already linear, 2.2 = sRGB-ish, 2.6 = DCI. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-
-## GPU Tensor Ops
-
-`RadianceGPUTensorOps`
-
-GPU-accelerated HDR operations. Fast exposure, gamma, and normalization.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to process, usually linear float. The whole batch is processed. |
-| `operation` | choice | `Exposure` | `Exposure`, `Gamma`, `Lift/Gain`, `Normalize`, `Clamp` | Exposure: x * 2^value. Gamma: sign-preserving x^(1/value). Lift/Gain: adds value (an offset only, no gain). Normalize: per-frame min/max to 0-1. Clamp: to 0-1. |
-| `value` (optional) | float | 0 | -10 to 10, step 0.1 | Exposure: stops. Gamma: gamma (0 means 2.2, anything below 0.1 including negatives is treated as 0.1). Lift/Gain: offset added. Ignored by Normalize and Clamp. |
-| `force_gpu` (optional) | boolean | on |  | Run on CUDA when available. Off always runs on the CPU. Results are the same either way. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `processed_image` | IMAGE |
-| `performance_info` | STRING |
 
 ## HDR 360 Generate
 
@@ -335,103 +238,6 @@ Generate 360° equirectangular panoramas for HDRI environment mapping in 3D appl
 | `panorama` | IMAGE | Generated 360° panorama. |
 | `projection_map` | IMAGE | UV projection map for debugging. |
 
-## HDR Analysis
-
-`RadianceHDRAnalysis`
-
-Analyse HDR image statistics: peak luminance, clipping, histogram.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image to measure; set colorspace to match its encoding. Luma above 1.0 counts as above SDR white (203 nits). Images over 500k pixels are measured on a strided subsample. |
-| `colorspace` (optional) | choice | `Linear (sRGB)` | `Linear (sRGB)`, `sRGB (Standard)`, `ARRI LogC3`, `ARRI LogC4`, `Sony S-Log3`, `Panasonic V-Log`, `DaVinci Intermediate`, `ACEScg`, `ACEScct` | Colorspace of the incoming image. 'Linear (sRGB)' is the correct setting for Radiance Decode output. Log spaces are linearised first for accurate nit estimation. |
-
-**Outputs**
-
-| Output | Type | What it is |
-| :--- | :--- | :--- |
-| `peak_nit` | FLOAT | Estimated peak luminance in cd/m² (BT.2408 anchor: 203 nit = linear 1.0). |
-| `ev_range` | FLOAT | Dynamic range in stops (EV) between p01 and p99 luma. |
-| `clipped_pct` | FLOAT | Percentage of pixels above scene-linear 1.0 (clipped for SDR display). |
-| `is_hdr` | BOOLEAN | True when peak_nit > 203 — image contains HDR content above SDR white. |
-| `stats_json` | STRING | Full zone statistics as JSON. |
-
-## HDR Auto Log Select
-
-`RadianceHDRAutoLogSelect`
-
-Automatically select the optimal log encoding for an HDR input.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Scene-linear HDR image (18% grey = 0.18). Its 95th-percentile luma sets how many stops above grey the log format must hold. The image itself is not changed. |
-| `override` | choice | `auto` | `auto`, `LogC4`, `SLog3`, `VLog`, `LogC3`, `ACEScct` | auto = choose the log format with the smallest highlight range that still fits the image. Any other choice forces that format; stops_detected is still measured. |
-| `model_hint` (optional) | string |  |  | Optional model name (e.g. 'flux', 'cogvideox', 'wan2.1', 'sdxl'). When set, the compression_ratio output is taken from the RADIANCE_MODEL_PRESETS table instead of the log-format default. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `log_format` | STRING |
-| `compression_ratio` | FLOAT |
-| `stops_detected` | FLOAT |
-| `model_preset_used` | STRING |
-
-## HDR Blend Validator
-
-`RadianceHDRBlendValidator`
-
-Validate that blended HDR layers maintain energy and gamut constraints.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image_a` | IMAGE |  |  | Baseline (no HDR blend) |
-| `image_b` | IMAGE |  |  | HDR-blended output |
-| `win_metric` | choice | `dynamic_range` | `dynamic_range`, `ssim`, `js_divergence` | Which metric decides the winner. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `winner` | IMAGE |
-| `report_json` | STRING |
-| `ssim` | FLOAT |
-| `js_divergence` | FLOAT |
-| `dr_delta_stops` | FLOAT |
-
-## HDR Color Pipeline
-
-`RadianceHDRColorPipeline`
-
-Full colour pipeline: linearise → adapt → primaries → HDR compress. Outputs both VAE-ready and scene-linear images.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Encoded input image. Negatives are clamped to 0; alpha is passed through. |
-| `encoding` | choice | `sRGB` | `sRGB`, `Rec.709 (OETF)`, `BT.1886 (TV γ2.4)`, `Gamma 2.2`, `Gamma 2.4`, `PQ (ST.2084)`, `HLG`, `ARRI LogC4`, `Sony S-Log3`, `Linear (none)` | Transfer curve of the input, decoded to linear. PQ decodes so 203 nits = 1.0; log curves decode to camera scene-linear. Linear (none) only clamps negatives. |
-| `compression_ratio` | float | 0.5 | 0 to 1, step 0.01 | Compression ratio for soft-knee HDR highlight compression. |
-| `source_primaries` (optional) | choice | `Rec.709 (sRGB)` | `Rec.709 (sRGB)`, `BT.2020`, `ACEScg`, `DCI-P3 (D65)`, `XYZ (D65)` | Primaries of the input. Any pair of the listed primaries converts, with a Bradford white-point adaptation where the whites differ (ACEScg is D60). |
-| `target_primaries` (optional) | choice | `Rec.709 (sRGB)` | `Rec.709 (sRGB)`, `BT.2020`, `ACEScg`, `DCI-P3 (D65)`, `XYZ (D65)` | Primaries to convert to. Same as source leaves colours unchanged. |
-| `chromatic_adaptation` (optional) | choice | `None` | `None`, `D65_to_D60`, `D60_to_D65`, `D65_to_D50`, `D50_to_D65` | Bradford white-point matrix applied to the linear RGB before the primaries step. Skipped, with a warning, when the primaries conversion already changes the white point (to or from ACEScg), so it is never applied twice. |
-| `pq_peak_nits` (optional) | float | 1000 | 100 to 10000, step 100 | Has no effect on the decode: PQ is absolute, so it always decodes with 203 nits = 1.0 whatever this is set to. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `vae_image` | IMAGE |
-| `scene_linear` | IMAGE |
-| `peak_linear` | FLOAT |
-| `colorspace_json` | STRING |
-
 ## HDR Diagnostics
 
 `RadianceHDRDiagnostics`
@@ -443,7 +249,7 @@ Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stop
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
 | `image` | IMAGE |  |  | HDR image before compression, encoded as set by colorspace. Metrics treat linear 1.0 as 203 nits. |
-| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Must match the value used in HDR Turbo Encoder. |
+| `compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.05 | Soft-knee compression ratio to evaluate; the PSNR estimate round-trips the image through it. Use the value from Auto Log Select. |
 | `model_preset_used` (optional) | string |  |  | Resolved model key from AutoLogSelect. |
 | `stats_json` (optional) | string |  |  | JSON from HDR Per-Channel Norm (optional). |
 | `coherence_map` (optional) | IMAGE |  |  | Optional coherence map (0 to 1). Only its mean is reported, as coherence_mean in the JSON. |
@@ -460,6 +266,41 @@ Run full HDR diagnostic checks. Outputs a JSON report, estimated PSNR, peak stop
 | `ev_range` | FLOAT |
 | `clipped_pct` | FLOAT |
 | `is_hdr` | BOOLEAN |
+
+## HDR Dynamic Metadata (RUDRA)
+
+`RadianceRudraDynamicMetadata`
+
+Measures the master as the display will get it (RUDRA's peak fit first, unless turned off) and writes, beside &lt;prefix>: _hdr10plus.json (x265 --dhdr10-info / hdr10plus_tool inject), _dovi_generate.json (dovi_tool generate, profile 8.1, L1 per shot), _hdr10plus_scenes.json and _hdr_analysis.json (every frame in nits and 12-bit PQ). Statistics are MaxRGB per pixel, per CTA-861.3 and Dolby L1, and never change within a shot.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The movie's frames (a batch), scene-linear HDR. |
+| `image_space` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear (Rec.2020)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)` | What the HDR is: scene-linear in these primaries, 1.0 = reference_white_nits. PQ / HLG are not accepted. |
+| `peak_nits` | float | 1000 | 100 to 10000, step 50 | Mastering display peak (Dolby L6, and the peak fit). |
+| `filename_prefix` | string | `rudra_master` |  | The four files are &lt;prefix>_hdr10plus.json and so on. |
+| `write_files` | boolean | on |  | Off: only the outputs. |
+| `cut_data` (optional) | string |  |  | Shot starts: ◎ Scene Cut Detect's cut_data, a JSON list or '0, 48, 120'. Empty: RUDRA finds them. |
+| `apply_peak_fit` (optional) | boolean | on |  | Measure after RUDRA's shoulder and peak fit, as the encoder will get it. Off: the frames are already mastered to the peak. |
+| `peak_fit` (optional) | choice | `Keep luminance (RUDRA default)` | `Keep luminance (RUDRA default)`, `Scale` | For a colour too bright for the display: give up saturation (Keep luminance) or brightness (Scale). |
+| `knee_nits` (optional) | float | 0 | 0 to 9999, step 10 | 0: RUDRA's 0.75 x peak. |
+| `mastering_min_nits` (optional) | float | 0.0001 | 0 to 1, step 0.0001 | Mastering display black (Dolby L6). |
+| `shot_threshold` (optional) | float | 0.35 | 0.01 to 2, step 0.01 | With no cut_data: RUDRA's histogram distance that declares a cut. Higher: fewer, longer shots (safer: a trim that changes mid-shot pumps). |
+| `hdr10plus_target_nits` (optional) | int | 400 | 100 to 10000 | Targeted display in the scene analysis JSON. |
+| `reference_white_nits` (optional) | float | 203 | 80 to 400, step 1 | Nits of 1.0 in the HDR (BT.2408: 203). |
+| `output_path` (optional) | string |  |  | Folder. Empty: ComfyUI's output folder. |
+
+**Outputs**
+
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `summary` | STRING | What was measured, per shot. |
+| `hdr10plus_json` | STRING | The x265 / hdr10plus_tool JSON, as text. |
+| `dovi_json` | STRING | The dovi_tool generate config, as text. |
+| `analysis_json` | STRING | Every frame in nits and PQ, as text. |
+| `hdr10plus_path` | STRING | The written _hdr10plus.json, for Radiance Write's hdr10plus_json (empty with write_files off). |
 
 ## HDR Encode
 
@@ -483,29 +324,6 @@ Scene-linear HDR → PQ (HDR10/DV) or HLG (Broadcast) delivery signal.
 | Output | Type |
 | :--- | :--- |
 | `encoded_image` | IMAGE |
-
-## HDR Expand Dynamic Range
-
-`RadianceHDRExpandDynamicRange`
-
-Expand SDR images to HDR dynamic range by recovering highlights and extending stops of exposure latitude.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Display-encoded SDR image. Output is linear light; alpha passes through untouched. |
-| `source_gamma` | float | 2.2 | 1 to 3, step 0.1 | Input decoding. 2.1 to 2.3 uses the exact sRGB curve, 1.0 means already linear, any other value is a pure power (e.g. 2.4, 2.6). |
-| `highlight_recovery` | float | 1 | 0 to 2, step 0.1 | Mix between the linearised input (0) and the full expansion (1). Values above 1 push past the expansion curve. |
-| `black_point` | float | 0 | -0.1 to 0.1, step 0.001 | Linear value subtracted before expansion, then clipped at 0. Positive crushes blacks, negative lifts them. |
-| `target_stops` | float | 14 | 8 to 20, step 0.5 | Sets the peak that SDR white is mapped to: 2^(stops - 8) in linear, so 14 gives 64.0 and 8 gives no expansion. |
-| `highlight_rolloff` | float | 1.5 | 1 to 3, step 0.1 | Where expansion starts: linear luma threshold 1 - (rolloff - 1) x 0.2, capped at 0.95 (0.9 at the default, 0.6 at 3.0). Higher starts earlier with a gentler curve. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
 
 ## HDR Exposure Blend
 
@@ -537,111 +355,88 @@ Blend multiple exposures (bracketing) for extended dynamic range. Takes highligh
 | `blend_mask` | IMAGE |
 | `blend_info` | STRING |
 
-## HDR Highlight Composite
+## HDR Flicker Report (RUDRA)
 
-`RadianceHDRHighlightComposite`
+`RadianceRudraFlickerReport`
 
-Composite AI-reconstructed HDR highlights back onto original linearised SDR. Non-clipped areas are pixel-perfect original. Only clipped regions come from the model.
+How far the HDR's average exposure moved from one frame to the next beyond what the source's did, in EV (flicker_ev), and the same per area of a 36 x 64 grid (local_flicker_ev). Frames that start a shot are not scored. Mean, max and the worst frame, as RUDRA's movie report gives them.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `original_image` | IMAGE |  |  | Original display-encoded SDR image. Linearised with inverse_eotf and used outside the mask; its alpha is carried to the output. |
-| `hdr_image` | IMAGE |  |  | Scene-linear HDR reconstruction (e.g. from HDR Decoder). Used inside the mask; resized bilinearly if its size differs from original_image. |
-| `clip_mask` | MASK |  |  | Blend guide from Clip Detector: 1 takes hdr_image, 0 keeps the original. |
-| `inverse_eotf` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Linear (no-op)` | Transfer curve of original_image, used to linearise it so it matches hdr_image. Use the same setting as SDR → HDR Prepare. |
-| `blend_softness` (optional) | int | 24 | 0 to 128, step 1 | Feathering on composite edge in pixels. 0 = hard cut. |
-| `highlight_strength` (optional) | float | 1 | 0 to 1, step 0.05 | How much of the AI highlight reconstruction to use. 1.0 = full. |
+| `sdr` | IMAGE |  |  | The source clip, as decoded (0..1 codes). |
+| `hdr` | IMAGE |  |  | The HDR made from it, scene-linear, the same frames. |
+| `image_space` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear (Rec.2020)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)` | What the HDR is: scene-linear in these primaries, 1.0 = reference_white_nits. PQ / HLG are not accepted. |
+| `sdr_transfer` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Gamma 2.4` | How the source codes decode. |
+| `cut_data` (optional) | string |  |  | Shot starts: ◎ Scene Cut Detect's cut_data, a JSON list or '0, 48, 120'. Empty: RUDRA finds them. |
+| `cut_threshold` (optional) | float | 0.15 | 0.01 to 1, step 0.01 | With no cut_data: RUDRA's thumbnail change that starts a shot. |
+| `reference_white_nits` (optional) | float | 203 | 80 to 400, step 1 | Nits of 1.0 in the HDR (BT.2408: 203). |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `report` | STRING |
+| `json_report` | STRING |
+| `flicker_ev_max` | FLOAT |
+
+## HDR Peak Fit (RUDRA)
+
+`RadianceRudraPeakFit`
+
+RUDRA's master-to-peak: below the knee (0.75 x peak unless set) nothing moves; above it the luminance approaches the display peak smoothly with the pixel's ratios kept. A colour still too bright for the display (a saturated blue sky at 1000 nits) is then fitted: Keep luminance (RUDRA's default) gives up saturation and keeps its brightness and hue; Scale keeps hue and saturation and loses brightness. Measured in Rec.2020, scene-linear out in the same space as in.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | Scene-linear HDR master. |
+| `image_space` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear (Rec.2020)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)` | What the HDR is: scene-linear in these primaries, 1.0 = reference_white_nits. PQ / HLG are not accepted. |
+| `peak_nits` | float | 1000 | 100 to 10000, step 50 | The display's peak. No channel ends above it (in Rec.2020). |
+| `peak_fit` | choice | `Keep luminance (RUDRA default)` | `Keep luminance (RUDRA default)`, `Scale` | For a colour whose luminance fits but one channel does not: give up saturation (Keep luminance) or brightness (Scale). |
+| `knee_nits` (optional) | float | 0 | 0 to 9999, step 10 | Where the shoulder starts. 0: RUDRA's 0.75 x peak. |
+| `reference_white_nits` (optional) | float | 203 | 80 to 400, step 1 | Nits of 1.0 in the image (BT.2408: 203). |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
+| `report` | STRING |
 
-## HDR LoRA Apply
+## HDR Region EV (RUDRA)
 
-`RadianceHDRLoRAApply`
+`RadianceRudraRegionEV`
 
-Apply a Radiance HDR LoRA to a diffusion model. Outputs the patched MODEL and the matching compression_ratio for RadianceHDREncoder.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `model` | MODEL |  |  | Diffusion model to patch. It is cloned and the LoRA deltas are added as ComfyUI patches, so the upstream model is left untouched. |
-| `lora_dict` | LORA_DICT |  |  | LoRA tensors and metadata from HDR LoRA Loader. If no tensor matches a model weight the node raises an error. |
-| `strength` | float | 1 | 0 to 2, step 0.05 | LoRA strength multiplier. 1.0 = trained weight. 0 = no effect. |
-| `model_hint` (optional) | string |  |  | Cross-checks the LoRA's trained model against this hint and warns if mismatched. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `MODEL` | MODEL |
-| `compression_ratio` | FLOAT |
-
-## HDR LoRA Loader
-
-`RadianceHDRLoRALoader`
-
-Load a Radiance HDR LoRA .safetensors and extract embedded training metadata. Wire compression_ratio → RadianceHDREncoder to guarantee consistent HDR response.
+RUDRA's Region EV grade on a scene-linear HDR image: up to three bands of absolute nits (Rec.2020 luma), each pushed up or down in stops with a soft edge, each optionally limited to a mask; the exposure first, the bands read the exposed picture. 0 EV everywhere changes nothing.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `lora_path` | string |  |  | Path to a Radiance HDR LoRA .safetensors file (surrounding quotes are stripped); a relative path resolves from ComfyUI's working directory. Required: a blank path raises an error. |
-| `fallback_compression_ratio` (optional) | float | 0.5 | 0 to 1, step 0.01 | compression_ratio output by this node when the LoRA metadata has none. HDR LoRA Apply does not see this value; it falls back to 0.5 on its own. |
+| `image` | IMAGE |  |  | Scene-linear HDR (Rec.709 or ACES primaries), 1.0 = reference_white_nits. |
+| `exposure_ev` | float | 0 | -6 to 6, step 0.05 | The whole picture, in stops, before the bands read it. |
+| `softness_stops` | float | 1 | 0.05 to 4, step 0.05 | How soft each band's edges are, in stops. |
+| `band1_low_nits` | float | 400 | 0.001 to 40000, step 0.01 | Band 1 (highlights by default): low edge, nits. |
+| `band1_high_nits` | float | 2000 | 0.002 to 40000, step 0.01 | Band 1: high edge, nits. |
+| `band1_ev` | float | 0 | -4 to 4, step 0.05 | Band 1: push in stops (0 = untouched). |
+| `band2_low_nits` | float | 2000 | 0.001 to 40000, step 0.01 | Band 2 (speculars by default): low edge, nits. |
+| `band2_high_nits` | float | 8000 | 0.002 to 40000, step 0.01 | Band 2: high edge, nits. |
+| `band2_ev` | float | 0 | -4 to 4, step 0.05 | Band 2: push in stops (0 = untouched). |
+| `band3_low_nits` | float | 0.05 | 0.001 to 40000, step 0.01 | Band 3 (shadows by default): low edge, nits. |
+| `band3_high_nits` | float | 12 | 0.002 to 40000, step 0.01 | Band 3: high edge, nits. |
+| `band3_ev` | float | 0 | -4 to 4, step 0.05 | Band 3: push in stops (0 = untouched). |
+| `reference_white_nits` | float | 203 | 100 to 1000, step 1 | What 1.0 means in the image. |
+| `mask1` (optional) | MASK |  |  | Limit band 1 to this mask. |
+| `mask2` (optional) | MASK |  |  | Limit band 2 to this mask. |
+| `mask3` (optional) | MASK |  |  | Limit band 3 to this mask. |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
-| `lora_dict` | LORA_DICT |
-| `compression_ratio` | FLOAT |
-| `model_name` | STRING |
-| `metadata_json` | STRING |
-
-## HDR Per-Channel Denorm
-
-`RadianceHDRPerChannelDenorm`
-
-Invert per-channel normalisation to recover HDR tensor values.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Normalised image (0 to 1), typically the VAE-decoded result of an image that went through HDR Per-Channel Norm. |
-| `stats_json` | string |  |  | stats_json output of HDR Per-Channel Norm (per-channel mean, std and norm_center). Used to undo that normalisation. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image_linear` | IMAGE |
-
-## HDR Per-Channel Norm
-
-`RadianceHDRPerChannelNorm`
-
-Per-channel normalise HDR tensors for stable latent space encoding.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | HDR image or batch, usually scene-linear. One mean and std per channel is measured over the whole batch; values beyond +/- norm_center std are clipped in the output. |
-| `norm_center` | float | 3 | 1 to 8, step 0.5 | Window half-width in σ units mapped to [0,1]. 3.0 captures ±3σ. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image_norm` | IMAGE |
-| `stats_json` | STRING |
+| `image` | IMAGE |
 
 ## HDR Shadow / Highlight Recovery
 
@@ -667,75 +462,32 @@ Recover shadow and highlight detail from a single HDR image for better color gra
 | :--- | :--- |
 | `recovered_image` | IMAGE |
 
-## HDR Synthesis Engine
+## HDR Shot Hold (RUDRA)
 
-`RadianceHDRSynthesisEngine`
+`RadianceRudraShotHold`
 
-Synthesise HDR imagery from SDR input and optional guidance signals.
+Where the source pixel did not change from the frame before, the HDR's gain over the source is held with a time constant, so codec noise lifted by the expansion and jitter in recovered highlights stop shimmering; where it moved, or at a cut, the frame is its own. Inside highlights clipped in both frames the HDR's own change decides. Only the gain is held, never the pixel: the source's own change passes through.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | SDR image. Highlights are found where the low-pass luma passes about 0.7; no transfer curve is removed, so linearise first for a linear result. |
-| `energy_target` | float | 10 | 1 to 100, step 1 | Approximate brightness multiplier reached at SDR white (10.0 lifts 1.0 to about 9.6, roughly 3.3 stops). 1.0 = no lift. |
-| `recovery_iters` | int | 3 | 0 to 8, step 1 | Pyramid depth. The lift is applied to the 1/2^N low-pass, so detail finer than about 2^N px keeps its original contrast. 0 lifts the whole image. It does not reconstruct clipped detail. |
-| `chroma_preservation` | float | 0.8 | 0 to 1, step 0.05 | 0 adds neutral highlight energy, reducing saturation as brightness rises. 1 preserves the original low-pass RGB ratios. Both use the same lifted luminance. |
-| `guidance_mask` (optional) | MASK |  |  | Per-pixel guidance mask from Luminance Guidance. |
-| `guidance_nits` (optional) | float | 0 | 0 to 10000, step 50 | Target peak in nits inside guidance_mask, on the package's scale (203 nits = 1.0). 0 = ignore the mask and use energy_target everywhere. |
+| `sdr` | IMAGE |  |  | The source clip, as decoded (0..1 codes). |
+| `hdr` | IMAGE |  |  | The HDR made from it, scene-linear, the same frames. |
+| `image_space` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear (Rec.2020)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)` | What the HDR is: scene-linear in these primaries, 1.0 = reference_white_nits. PQ / HLG are not accepted. |
+| `hold_seconds` | float | 0.25 | 0 to 5, step 0.05 | The hold's time constant (RUDRA's temporal smoothing, default 0.25 s). 0: off. |
+| `fps` | float | 24 | 1 to 240, step 0.001 | The clip's frame rate (sets the per-frame retention). |
+| `sdr_transfer` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Gamma 2.4` | How the source codes decode. |
+| `cut_data` (optional) | string |  |  | Shot starts: ◎ Scene Cut Detect's cut_data, a JSON list or '0, 48, 120'. Empty: RUDRA finds them. |
+| `cut_threshold` (optional) | float | 0.15 | 0.01 to 1, step 0.01 | With no cut_data: RUDRA's thumbnail change that starts a shot. |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
-| `highlight_mask` | IMAGE |
-
-## Highlight Synthesis
-
-`RadianceHighlightSynthesis`
-
-Synthesize high dynamic range details in clipped highlights to simulate film scan quality.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Image with clipped highlights, in any encoding (threshold is compared with its Rec.709 luma). Every channel, alpha included if present, receives the detail noise. |
-| `threshold` | float | 0.95 | 0.5 to 1, step 0.01 | Luminance level above which to synthesize detail. |
-| `expansion` | float | 1.5 | 1 to 4, step 0.1 | Highlight gain above the threshold: gain = 1 + (luma - threshold) x (expansion - 1) x 2, faded in by the highlight mask. 1.0 = no expansion. |
-| `detail_amount` | float | 0.2 | 0 to 1, step 0.05 | Strength of synthetic grain in highlights. |
-| `detail_scale` | float | 1 | 0.1 to 5, step 0.1 | Scale/frequency of the synthetic detail. |
-| `blend_mode` | choice | `Screen` | `Screen`, `Add`, `Soft Light` | How the monochrome detail noise is combined. Add: plain offset. Screen: a + n - a x n, which inverts the noise on values above 1.0. Soft Light: contrast-style blend, normalised by the frame peak. |
-| `seed` | int | 0 | 0 to 18446744073709551615 | Random seed for the detail noise; frame N of a batch uses seed + N. The same seed always gives the same pattern. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `image` | IMAGE |
-
-## Luminance Guidance
-
-`RadianceLuminanceGuidance`
-
-Guide HDR tonemapping using target luminance zone constraints.
-
-**Inputs**
-
-| Input | Type | Default | Range or choices | What it does |
-| :--- | :--- | :--- | :--- | :--- |
-| `mask` | MASK |  |  | Region whose highlights should be driven towards target_nits, 0 to 1. |
-| `target_nits` | float | 1000 | 100 to 10000 | Target brightness in nits for the masked region. 1000 nits = typical HDR10 peak. |
-| `feather` | float | 0.2 | 0 to 1 | Gaussian feather radius. Higher = softer mask edge. |
-
-**Outputs**
-
-| Output | Type |
-| :--- | :--- |
-| `guidance_mask` | MASK |
-| `target_nits` | FLOAT |
-| `feather` | FLOAT |
+| `cut_data` | STRING |
+| `report` | STRING |
 
 ## OCIO List Colorspaces
 
@@ -782,61 +534,235 @@ Apply an OCIO colorspace transform to an image. Supports any source/target pair 
 | `image` | IMAGE |
 | `metadata` | STRING |
 
-## SDR → HDR Expand
+## RUDRA Calibrate
 
-`RadianceSDRtoHDRExpand`
+`RadianceRudraCalibrate`
 
-Expand an SDR image into HDR headroom via inverse OETF and mathematical highlight expansion. Does not reconstruct clipped detail.
+Correct the source curve of SDR → HDR Analytic. Anchors: up to three points (black, an 18% grey card, a highlight), each an SDR code or a position on the frame, with the nits it should be; one anchor shifts the exposure, two or three bend the curve through them. Reference: fit the curve to a graded HDR of the same frame (scene-linear Rec.709, 1.0 = reference white); it replaces the anchors.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | SDR image, display-encoded as chosen in inverse_oetf. Alpha, if present, passes through untouched. |
-| `inverse_oetf` | choice | `sRGB` | `None`, `sRGB`, `Rec.709` | Transfer curve removed before expansion, giving linear light. None = the image is already linear. The output stays linear. |
-| `threshold` | float | 0.8 | 0 to 1, step 0.01 | Linear luminance (after the inverse OETF) above which expansion begins. 0.8 = 80% of SDR white in linear light. |
-| `expansion_gain` | float | 5 | 1 to 100, step 0.1 | Multiplier on the added highlight energy: luma gains gain x (luma - threshold)^gamma. With the defaults SDR white (1.0) rises to about 1.6, not 5x. |
-| `expansion_gamma` | float | 1.2 | 0.1 to 5, step 0.01 | Exponent on the amount luma exceeds the threshold. Above 1.0 the expansion starts more gently and adds less; below 1.0 it rises faster just above the threshold. |
-| `smoothness` | float | 0.1 | 0 to 0.5, step 0.01 | Width, in linear luma units, of the soft onset at the threshold (a sigmoid on luma, not a spatial blur). 0 = hard onset. |
+| `image` | IMAGE |  |  | The SDR frames SDR → HDR Analytic converts (for positions and the reference fit). |
+| `anchors` | string |  | multi-line text | JSON, up to three: [{"code": 118, "nits": 30}] by SDR code, or [{"x": 0.4, "y": 0.6, "nits": 2.5}] by position (0..1 across the frame; its code is the SDR luma there). Ignored when a reference is connected. |
+| `frame` | int | 0 | 0 to 100000 | The frame of the batch the positions and the reference fit read. |
+| `reference` (optional) | IMAGE |  |  | A graded HDR of the same frame: scene-linear Rec.709, 1.0 = reference_white_nits, the SDR's size. Replaces the anchors. |
+| `reference_white_nits` (optional) | float | 203 | 100 to 1000, step 1 | What 1.0 means in the reference. |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `calibration` | RUDRA_CALIBRATION |
+| `summary` | STRING |
+
+## RUDRA Fill Prompt
+
+`RadianceRudraFillPrompt`
+
+Prompts for SDR → HDR AI Fill. 'Suggest' looks at the frames' fully clipped areas with no model: a large one at the top is a sky (blue, overcast or sunset by the colour around it), a small round one the sun or a lamp, a bright rectangle in a dark surround a window, many specks glints, a warm area that changes size from frame to frame a flame; with fill_shadows, crushed blacks ask for shadow detail. Every suggestion says why. Or pick one of RUDRA's nine presets. Presets already embedded in the AI fill's prompt cache run without loading the 11 GB text encoder.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The SDR frames the fill will work on (a few frames of a shot let a flame show itself). |
+| `highlight` | choice | `Suggest from the frames` | `Suggest from the frames`, `Clear blue sky (highlight)`, `Overcast sky (highlight)`, `Sunset sky (highlight)`, `Sun (highlight)`, `Lamp / practical (highlight)`, `Window daylight (highlight)`, `Specular glints (highlight)`, `Flame (highlight)`, `Shadow detail (shadow)`, and 1 more | The highlight prompt: RUDRA's suggestion, a preset, or none. |
+| `shadow` | choice | `None` | `Suggest from the frames`, `Shadow detail (shadow)`, `None` | The shadow prompt, for AI Fill with fill_shadows on. |
+| `highlight_context_code` (optional) | int | 250 | 200 to 256 | AI Fill's highlight_context_code (tau_high): clipped is code >= max(this, 254). |
+| `extra` (optional) | string |  | multi-line text | Added after the highlight prompt (a detail of your own: 'with a plane trail'). |
+
+**Outputs**
+
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `prompt_highlight` | STRING | For AI Fill's prompt_highlight. |
+| `prompt_shadow` | STRING | For AI Fill's prompt_shadow (empty unless asked). |
+| `report` | STRING | What was found and why each prompt was picked. |
+
+## RUDRA Master Write
+
+`RadianceRudraMasterWrite`
+
+Writes an HDR master the way RUDRA delivers one: &lt;name>.exr (stamped with rudra:* provenance), &lt;name>.mattes.exr (rudra.highlight, shadow, changed, region, class, confidence, and rudra.generated split into highlight / shadow when an AI fill mask is connected), &lt;name>.regions.png (what each pixel is, in colour), EV brackets at -2 / 0 / +2 EV read back from the EXR as written with a preview-to-export check, and &lt;name>.json with source and checkpoint SHA-256, build, settings and the pixel-class shares.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The HDR master, scene-linear, 1.0 = 203 nits (diffuse white). Written unchanged. PQ and HLG are refused: write those with the delivery writers. |
+| `filename_prefix` | string | `rudra_master` |  | File stem. Frames are &lt;prefix>.&lt;frame, 4 digits>.exr and the files beside them. |
+| `image_space` | choice | `From the mattes` | `From the mattes`, `Linear (Rec.709)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)` | What the image is. 'From the mattes' takes the Analytic node's output_encoding (linear Rec.709 when no mattes are connected). |
+| `bit_depth` | choice | `16-bit Half Float` | `16-bit Half Float`, `32-bit Float` | The master's and the mattes' pixel type. A half master's brackets differ from the preview by its rounding; the sidecar records by how much. |
+| `write_mattes` | boolean | on |  | &lt;name>.mattes.exr and &lt;name>.regions.png, from the mattes input; without it the sidecar records that none were written. |
+| `write_brackets` | boolean | on |  | &lt;name>.ev-2.png, .ev+0.png and .ev+2.png: SDR views with 203 nits at code 255 at 0 EV, from the EXR read back. |
+| `mattes` (optional) | RUDRA_MATTES |  |  | From ◎ SDR → HDR Analytic (RUDRA). |
+| `generated_mask` (optional) | MASK |  |  | SDR → HDR AI Fill generated_mask: those pixels become class 'generated' and rudra.generated is written. |
+| `source_path` (optional) | string |  |  | The SDR file the frame came from; its SHA-256 is recorded. Empty: not recorded. |
+| `checkpoint_path` (optional) | string |  |  | A model file used upstream (the AI fill's, say); its SHA-256 is recorded. Empty: none. |
+| `output_path` (optional) | string |  |  | Output folder. Empty: the ComfyUI output folder; relative: inside it; absolute: as it is. |
+| `frame_index` (optional) | int | 1 | 0 to 9999999 | The first frame's number in the file names. |
+
+**Outputs**
+
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `master_path` | STRING | The first frame's master EXR. |
+| `sidecar` | STRING | The first frame's sidecar JSON, as written. |
+
+## RUDRA Region
+
+`RadianceRudraRegion`
+
+Limit RUDRA's reconstruction to a range of the SDR's brightness (Rec.709 luma 0..1). Highlights + shadows: each from its own level, with its own softness and strength. Band: only between two levels. Pixels outside the region keep the plain inverse, bit for bit. Wire into SDR → HDR Analytic's region.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `mode` | choice | `Highlights + shadows` | `Highlights + shadows`, `Band` | Highlights + shadows: highlights above one level, shadows below another. Band: one range of SDR brightness. |
+| `highlight_from` | float | 0.75 | 0 to 1, step 0.01 | Highlights reconstruct from this SDR luma up (ramp centre). |
+| `highlight_softness` | float | 0.1 | 0 to 0.5, step 0.01 | Width of the ramp, in SDR luma (0 is a hard edge). |
+| `highlight_strength` | float | 1 | 0 to 2, step 0.05 | How much of the highlight reconstruction (1 = as RUDRA does it). In Band mode it scales the band. |
+| `shadow_below` | float | 0.15 | 0 to 1, step 0.01 | Shadows reconstruct below this SDR luma (ramp centre). |
+| `shadow_softness` | float | 0.1 | 0 to 0.5, step 0.01 | Width of the ramp, in SDR luma (0 is a hard edge). |
+| `shadow_strength` | float | 1 | 0 to 2, step 0.05 | How much of the shadow reconstruction. In Band mode it scales the band's shadow side. |
+| `band_low` | float | 0.5 | 0 to 1, step 0.01 | Band mode: the band's low edge. |
+| `band_high` | float | 0.9 | 0 to 1, step 0.01 | Band mode: the band's high edge. |
+| `band_softness` | float | 0.05 | 0 to 0.5, step 0.01 | Width of the ramp, in SDR luma (0 is a hard edge). |
+
+**Outputs**
+
+| Output | Type |
+| :--- | :--- |
+| `region` | RUDRA_REGION |
+
+## SDR → HDR AI Fill (RUDRA v3)
+
+`RadianceSDRToHDRAIFill`
+
+RUDRA AI fill v3: draws the shape inside fully clipped highlights of an HDR master (Wan2.1-VACE-1.3B + the FXTD LoRA) and sets their brightness with RUDRA's estimator. Region prompts, ±3 stop brightness offset. No 8-bit code of the master's ACES 2.0 SDR view changes; untouched pixels are bit-identical. Plausible, not recovered.
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | The HDR master from SDR → HDR Universal or Recover running RUDRA ACES 2 (scene-linear, 1.0 = diffuse white). A batch is read as ordered frames of one shot. |
+| `image_encoding` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear ACES2065-1 (AP0)`, `ACEScg` | How the master is encoded: the Universal/Recover Linear output, their AP0 output, or ACEScg. The result leaves in the same encoding. |
+| `prompt_highlight` | string |  | multi-line text | What to draw inside clipped highlights (e.g. 'soft clouds in a bright blue sky'). Empty uses RUDRA's base prompt. A new prompt loads the 11 GB umT5 text encoder on the CPU once; its embedding is cached. |
+| `brightness_offset` | float | 0 | -3 to 3, step 0.05 | Stops added to every clipped area's estimated brightness (RUDRA's Highlight brightness). Still capped at max_gain_stops over the master. |
+| `reconstructed_mask` (optional) | MASK |  |  | The reconstructed_mask from Universal/Recover; the reconstructed_mask output becomes max(it, generated). |
+| `fill_shadows` (optional) | boolean | off |  | Also fill fully crushed shadows (code 0). Off by default, as in RUDRA 1.0: the registered gates covered highlights. |
+| `prompt_shadow` (optional) | string |  | multi-line text | What to draw inside crushed shadows, when fill_shadows is on. |
+| `highlight_context_code` (optional) | int | 250 | 200 to 255, step 1 | 8-bit code from which the model sees a highlight as context (tau_high). The fill is still blended only at code 255. |
+| `max_gain_stops` (optional) | float | 3 | 0 to 6, step 0.25 | The fill is never more than this many stops brighter than the master (0 = no cap). |
+| `shape_gain` (optional) | float | 1 | 0 to 2, step 0.05 | How strongly the generated shape varies the brightness inside a clipped area (0 = flat at the estimate). |
+| `use_brightness_estimator` (optional) | boolean | on |  | v3: brightness from the estimator plus the offset. Off: the model's own brightness (RUDRA v1-v2 behaviour). |
+| `steps` (optional) | int | 30 | 4 to 80, step 1 | Denoising steps per window (flow matching, UniPC). RUDRA uses 30. |
+| `seed` (optional) | int | 0 | 0 to 4294967295 | Noise seed. The same seed and settings give the same fill. |
+| `guidance` (optional) | float | 1 | 1 to 8, step 0.1 | Above 1: classifier-free guidance against negative_prompt (twice the compute). RUDRA's gates were run at 1. |
+| `negative_prompt` (optional) | string |  |  | What to steer away from; used only when guidance is above 1. |
+| `window` (optional) | choice | `33` | `33`, `17`, `9`, `49` | Frames per generation window (4k+1). RUDRA uses 33. |
+| `overlap` (optional) | int | 8 | 0 to 16, step 1 | Frames the next window re-reads from the previous one, so windows join without a seam. Must be below window. |
+| `max_area` (optional) | int | 399360 | 65536 to 921600, step 1024 | Working size in pixels (aspect kept); the fill is brought back to full size. RUDRA uses 832 x 480. |
+| `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
+| `fill_package` (optional) | string |  |  | RUDRA AI fill v3 folder (rudra_genfill.safetensors, brightness.json, prompt_cache). Empty searches models/radiance/rudra_genfill_v3 and RADIANCE_RUDRA_GENFILL. |
+| `allow_download` (optional) | boolean | on |  | Download what is missing on first use, into models/radiance: the AI fill v3 package (271 MB) and the Wan2.1-VACE-1.3B base model (7.7 GB; its 11.4 GB text encoder only when a custom prompt is first used). Pinned and hash-checked; resumes if interrupted. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
+| `prompt_strength` (optional) | float | 1 | 0 to 2, step 0.05 | How strongly prompt_highlight / prompt_shadow steer their region. 1 = as RUDRA's gates (the region's prediction replaces the base one); 0 = the prompt is ignored; above 1 pushes further from the base prompt (experimental). |
+| `focus` (optional) | choice | `frame` | `frame`, `region`, `areas` | What the model sees. frame: the whole frame at max_area (v3). region: one box round everything the shot fills, so a sky that is part of the frame gets more detail. areas: one box per group of clipped areas, each drawn at up to max_area (two lamps at opposite edges of a 4K frame each at full detail; one model run per box). Nothing is generated outside the boxes. |
+| `fallback` (optional) | choice | `none` | `none`, `spikes` | spikes: a frame whose fill flickers (more than 0.25 stops beyond the master's own change, both into it and out of it) is returned as the master's own frame. none: every fill is kept (v3). A fill that is not finite always falls back. |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
+| `generated_mask` | MASK |
+| `reconstructed_mask` | MASK |
+| `report` | STRING |
 
-## SDR → HDR Prepare
+## SDR → HDR AI Fill v4 Re-render (RUDRA, experimental)
 
-`RadianceSDRToHDRPrepare`
+`RadianceSDRToHDRAIFillRerender`
 
-Prepare an SDR image for AI HDR reconstruction. Applies inverse EOTF, highlight extrapolation, and soft-knee compression.
+RUDRA AI fill v4, region re-render (experimental): draws a whole bright region of an HDR master again (a window, an open door, a sky parked just under white), with RUDRA's app finish. Inside the region the SDR's codes are not kept; outside it every pixel is the master's. Needs the v4 LoRA, which is not published. Plausible, not recovered.
 
 **Inputs**
 
 | Input | Type | Default | Range or choices | What it does |
 | :--- | :--- | :--- | :--- | :--- |
-| `image` | IMAGE |  |  | Display-encoded SDR image, decoded to linear with inverse_eotf. |
-| `clip_mask` | MASK |  |  | Clip mask from Clip Detector, same size as image. Highlights are boosted inside it and it becomes the feathered inpainting mask output. |
-| `compression_ratio` | float | 0.5 | 0 to 1, step 0.01 | Must match RadianceHDRDecoder. Wire from preset or LoRALoader. |
-| `inverse_eotf` (optional) | choice | `sRGB` | `sRGB`, `Rec.709`, `Gamma 2.2`, `Linear (no-op)` | Transfer curve of the input, decoded to linear before the highlight boost. Linear (no-op) only clamps negatives. |
-| `highlight_boost` (optional) | float | 4 | 1 to 32, step 0.5 | How bright to push extrapolated highlights in scene-linear. 4.0 = 2 stops above white. Higher = more vivid reconstructed highlights. |
-| `boost_gamma` (optional) | float | 1.5 | 0.5 to 4, step 0.1 | Power curve for highlight boost ramp. Higher = sharper specular peaks. |
-| `mask_feather` (optional) | int | 16 | 0 to 128, step 1 | Gaussian feather radius on the inpainting mask edge (pixels). |
+| `image` | IMAGE |  |  | The HDR master (scene-linear, 1.0 = diffuse white), a batch read as ordered frames of one shot. RUDRA tested v4 on its analytic route. |
+| `image_encoding` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear ACES2065-1 (AP0)`, `ACEScg` | How the master is encoded. The result leaves in the same encoding. |
+| `source` | IMAGE |  |  | The SDR the master was made from (display-referred, 0..1), frame for frame. The regions are its codes at 240 and above. Resized to the master's size if it differs. |
+| `prompt_highlight` | string |  | multi-line text | What is in the bright area (e.g. 'an overcast sky through an open door'). Empty: texture with no subject. A new prompt loads the 11 GB umT5 text encoder once. |
+| `reconstructed_mask` (optional) | MASK |  |  | The master's reconstructed_mask; the output becomes max(it, generated). |
+| `condition` (optional) | choice | `bt1886` | `bt1886`, `aces` | How the model reads the source. bt1886: code ^ 2.4, RUDRA's analytic route (what v4 was gated on). aces: the ACES 2.0 inverse, for a master from the RUDRA ACES 2 route. |
+| `finish` (optional) | choice | `RUDRA app (12 Nov 2026)` | `RUDRA app (12 Nov 2026)`, `off (the model as registered)` | RUDRA app: source colour (0.3 of the model's), level 3.3 x SDR white, smoothing 0.8, dark detail at most 0.3 stops, near-white sources only. off: the model's own colour and level, as registered on 9 Nov (it failed the level and flicker gates). |
+| `steps` (optional) | int | 30 | 4 to 80, step 1 | Denoising steps per window. RUDRA uses 30. |
+| `seed` (optional) | int | 0 | 0 to 4294967295 | Noise seed. The same seed and settings give the same fill. |
+| `lora` (optional) | string |  |  | The v4 LoRA (rudra_genfill.safetensors of research_genfill_v4_20261109), or its folder. Empty searches RADIANCE_RUDRA_GENFILL_V4, then models/radiance/rudra_genfill_v4/. Never downloaded: it is not published. |
+| `base_model` (optional) | string |  |  | Wan2.1-VACE-1.3B-diffusers folder. Empty searches RADIANCE_WAN_VACE, models/radiance/ and models/diffusers/. |
+| `fill_package` (optional) | string |  |  | The AI fill v3 folder, used here for its prompt cache only (the base prompt's embedding, so no 11 GB text encoder for an empty prompt). |
+| `allow_download` (optional) | boolean | on |  | Download the Wan base model (7.7 GB) and the v3 package's prompt cache (271 MB) if missing. Never the v4 LoRA. RADIANCE_ALLOW_DOWNLOADS=0 always wins. |
+| `keep_loaded` (optional) | boolean | on |  | Keep Wan VACE on the GPU between runs. Off frees it after this node. |
 
 **Outputs**
 
 | Output | Type |
 | :--- | :--- |
 | `image` | IMAGE |
-| `mask` | MASK |
-| `stats_json` | STRING |
-| `peak_linear` | FLOAT |
+| `generated_mask` | MASK |
+| `reconstructed_mask` | MASK |
+| `report` | STRING |
+
+## SDR → HDR Analytic (RUDRA)
+
+`RadianceSDRToHDRAnalytic`
+
+RUDRA's model-free SDR→HDR (the RUDRA app's default route): the exact inverse of the curve that made the SDR (BT.1886, BT.1886 shadows, ACES, Hable, AgX, camera log, plain clip), clipped highlights rebuilt from what survived (partial channels, smooth sky fill, lamp and sun peaks), Highlight detail, mid-tones anchored to the SDR, master exposure. No model, no download. Diffuse white = 1.0 (203 nits).
+
+**Inputs**
+
+| Input | Type | Default | Range or choices | What it does |
+| :--- | :--- | :--- | :--- | :--- |
+| `image` | IMAGE |  |  | SDR still, batch or video frames, sRGB-encoded 0..1 (a ComfyUI IMAGE as decoded). |
+| `source_curve` | choice | `BT.1886 (graded / broadcast video)` | `BT.1886 (graded / broadcast video)`, `BT.1886 shadows (real HDR blacks)`, `ACES (CG / games, ACES tone map)`, `Filmic (Hable)`, `AgX`, `Camera log through a LUT`, `Rec.709, plain clip` | How the SDR was made; the master is the inverse of this curve. BT.1886: graded and broadcast video, generated video, RUDRA's default. BT.1886 shadows: try it when the blacks look crushed (judge on an HDR display). ACES / Hable / AgX: CG and games with that tone mapper. Camera log: a log clip viewed through a LUT. Plain clip: video simply clipped at white. |
+| `strength` | float | 1 | 0 to 2, step 0.05 | How much of the clipped-highlight fill: 0 leaves the plain inverse (a flat ceiling where the SDR clipped), 1 is RUDRA's default. Lower it where a highlight was only just above the clip or for sparks such as fireworks. |
+| `clip_fill` | boolean | on |  | Fill clipped highlights: partial channels from the ones that survived, a smooth fill and dome for a blown sky, a peak and falloff for lamps and the sun. Off: the plain inverse. |
+| `highlight_detail` | float | 1 | 1 to 4, step 0.05 | Amplifies the structure that survives just under white (SDR luma 0.86-0.94 up): a sky, a window, an open door. 1 is off; 1.5-2 is the range to judge. Needs clip_fill. |
+| `exposure_ev` | float | 0 | -3 to 3, step 0.05 | Moves the whole master brighter or darker, in stops (part of the grade, applied last). |
+| `output_encoding` | choice | `Linear (Rec.709)` | `Linear (Rec.709)`, `Linear ACEScg (AP1)`, `Linear ACES2065-1 (AP0)`, `PQ (HDR10)`, `HLG` | Linear: scene-linear, 1.0 = reference_white_nits (diffuse white). ACEScg / AP0: the same in ACES primaries (a grading master). PQ / HLG: BT.2100 delivery code values. |
+| `clip_peaks` (optional) | string |  | multi-line text | Set the peak of a clipped region: JSON, [{"x": 0.5, "y": 0.3, "nits": 2500}], x and y across the frame 0..1 (a point within 4 px of the region picks it). Empty: none. |
+| `anchor` (optional) | boolean | on |  | Anchor to source exposure: mid-tones stay where the SDR had them (read through the source curve); the reconstruction takes over above anchor_knee. |
+| `anchor_knee` (optional) | float | 0.9 | 0.5 to 0.98, step 0.01 | SDR code where the anchor lets go. |
+| `keep_source_colour` (optional) | boolean | on |  | Carries the source's colour below the clip, so only clipped areas take the reconstruction's hue. |
+| `settle_grain` (optional) | boolean | on |  | Settles flat near-white areas so grain lifted by the expansion does not shimmer. |
+| `peak_nits` (optional) | float | 1000 | 200 to 10000, step 50 | PQ / HLG only: mastering peak; brighter values roll off to it with the hue kept. |
+| `reference_white_nits` (optional) | float | 203 | 100 to 1000, step 1 | Linear 1.0 = this many nits (BT.2408: 203). Diffuse white lands on it. |
+| `region` (optional) | RUDRA_REGION |  |  | From RUDRA Region: limit the reconstruction to a range of the SDR's brightness. Every pixel outside it keeps the plain inverse, bit for bit. |
+| `calibration` (optional) | RUDRA_CALIBRATION |  |  | From RUDRA Calibrate: anchors (an SDR code and its nits) or a fit to a graded HDR reference, applied over the source curve. |
+| `mask` (optional) | MASK |  |  | Where the reconstruction may act (white). Outside it (black) the master is the plain inverse of the source curve, bit for bit. One mask for every frame, or one per frame. |
+| `source_primaries` (optional) | choice | `Rec.709 / sRGB` | `Rec.709 / sRGB`, `Display P3`, `Rec.2020`, `Adobe RGB (1998)` | The SDR's primaries. RUDRA makes the master in them and converts at the end, so a Display P3 photo keeps its colours. A connected `source` decides instead. |
+| `source` (optional) | RUDRA_SOURCE |  |  | From ◎ Load Still (RUDRA): the still's own colour tag. |
+
+**Outputs**
+
+| Output | Type | What it is |
+| :--- | :--- | :--- |
+| `image` | IMAGE | The HDR master in output_encoding. |
+| `filled_mask` | MASK | 1 where the clip fill or the detail gain changed the pixel. |
+| `estimated_mask` | MASK | 1 where every channel clipped: the value is an extrapolation. |
+| `report` | STRING | What the conversion did, in words. |
+| `mattes` | RUDRA_MATTES | RUDRA 1.1 mattes and pixel classes per frame, before the grade: for ◎ RUDRA Master Write. |
+| `regions` | IMAGE | The pixel classes over the picture's grey: reconstructed cyan, estimated magenta, region edge white. |
 
 ## SDR → HDR Recover
 
 `RadianceSDRToHDRRecover`
 
-Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUDRA pixel model, temporal residual model for video). No VAE needed; raises instead of falling back when no checkpoint is installed. Pixels outside the recovery masks are preserved exactly.
+Learned SDR→HDR reconstruction. Default: RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0) — an ACEScg master whose ACES 2.0 SDR view keeps the source's 8-bit codes. Falls back to the RUDRA pixel / temporal models; raises instead of falling back to expansion when no learned model can run.
 
 **Inputs**
 
@@ -857,6 +783,14 @@ Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUD
 | `temporal_window` (optional) | choice | `5` | `5`, `7`, `9` | Adjacent frames used by the temporal residual model. |
 | `temporal_checkpoint` (optional) | string |  |  | Optional temporal checkpoint path. Empty uses RADIANCE_TEMPORAL_RUDRA or models/radiance. |
 | `reference_white_nits` (optional) | float | 203 | 100 to 1000, step 1 | Output convention: linear 1.0 = this many nits (BT.2408 reference white, 203). The same value HDR Encode and Write use, so Linear output re-encodes to the same PQ/HLG this node writes. Recover keeps unclipped pixels at their SDR display level (SDR 1.0 = 100 nits); only the recovered highlights and shadows change. |
+| `learned_backend` (optional) | choice | `Auto` | `Auto`, `RUDRA ACES 2`, `Pixel / Temporal` | Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use; 2.0, released 8 Nov 2026 with the lock: on held-out footage within 0.1 code of the plain ACES 2.0 inverse at the delivered exposure, better at -3 and +3 EV; made for SDR rendered through ACES 2.0, so a grade made another way can put near-white areas too bright: compare with Expand). Auto never uses or downloads the RUDRA 3.x models: if RUDRA ACES 2 cannot run, the node stops and says why. RUDRA ACES 2: that model only. Pixel / Temporal: the RUDRA 3.x models (non-commercial weights), only when chosen. |
+| `aces2_strength` (optional) | float | 1 | 0 to 1.5, step 0.01 | RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) or past it (up to 1.5). The RUDRA app's Strength trim. |
+| `aces2_saturation` (optional) | float | 1 | 0 to 2, step 0.01 | RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance (1 = as the model made it). Nothing outside the reconstructed mask changes. |
+| `aces2_package` (optional) | string |  |  | RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
+| `aces2_bands` (optional) | choice | `Off` | `Off`, `Highlights and shadows` | RUDRA ACES 2 only (RUDRA 1.1.0): Off keeps the model's result everywhere. Highlights and shadows keeps it only where the source's brightest channel is at or above aces2_tau_high or at or below aces2_tau_low, and the exact plain ACES 2.0 inverse between them, with a 2-code ramp. |
+| `aces2_tau_high` (optional) | int | 254 | 128 to 256, step 1 | Bands only: 8-bit code from which the highlights are the model's (256 = no highlights). |
+| `aces2_tau_low` (optional) | int | 5 | -1 to 64, step 1 | Bands only: 8-bit code up to which the shadows are the model's (-1 = no shadows). |
+| `aces2_clean_shadows` (optional) | boolean | off |  | RUDRA ACES 2 only (RUDRA 1.1.0): edge-preserving denoise of the deep shadows (source code 40 and below, fading out by 48). Nothing is invented: each pixel becomes a weighted mean of its neighbours of similar brightness. |
 
 **Outputs**
 
@@ -867,12 +801,13 @@ Learned SDR→HDR reconstruction for clipped highlights and crushed shadows (RUD
 | `shadow_mask` | MASK |
 | `highlight_confidence` | MASK |
 | `shadow_confidence` | MASK |
+| `reconstructed_mask` | MASK |
 
 ## SDR → HDR Universal
 
 `RadianceSDRToHDRUniversal`
 
-SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recover and Hybrid run the RUDRA pixel model (or the temporal model on ordered video); with no checkpoint installed they fall back to Expand, and the report output says so. Professional output transforms and separate highlight/shadow masks. No VAE needed.
+SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recover and Hybrid run RUDRA ACES 2, the learned ACES 2.0 model (Apache 2.0), or the RUDRA pixel / temporal models; with no learned checkpoint available they fall back to Expand, and the report output says so. Professional output transforms and separate highlight/shadow masks. No VAE needed.
 
 **Inputs**
 
@@ -894,12 +829,19 @@ SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recove
 | `highlight_threshold` (optional) | float | 0.98 | 0.8 to 0.999, step 0.001 | Clipping threshold for Recover/Hybrid. Appended for saved-workflow compatibility. |
 | `temporal_window` (optional) | choice | `5` | `5`, `7`, `9` | Adjacent video frames used by temporal RUDRA. |
 | `temporal_checkpoint` (optional) | string |  |  | Optional Phase 3 checkpoint path. Empty uses the configured default. |
-| `learned_backend` (optional) | choice | `Auto` | `Auto`, `Direct Pixel`, `Temporal` | Auto: temporal model on ordered video when installed, else the direct-pixel model. Direct Pixel: pixel model per frame. Temporal: temporal model only (video, 5+ frames). |
+| `learned_backend` (optional) | choice | `Auto` | `Auto`, `RUDRA ACES 2`, `Direct Pixel`, `Temporal` | Auto: RUDRA ACES 2 (the learned ACES 2.0 model, Apache 2.0, ~3 MB on first use; 2.0, released 8 Nov 2026 with the lock: on held-out footage within 0.1 code of the plain ACES 2.0 inverse at the delivered exposure, better at -3 and +3 EV; made for SDR rendered through ACES 2.0, so a grade made another way can put near-white areas too bright: compare with Expand) when it can run, else deterministic expansion, with the reason in the report. Auto never uses or downloads the RUDRA 3.x models. RUDRA ACES 2: that model only; it makes the whole image, so knee settings do not apply. Direct Pixel / Temporal: the RUDRA 3.x models (non-commercial weights), only when chosen. |
 | `pixel_checkpoint` (optional) | string |  |  | Direct-pixel .pt checkpoint. Empty searches models/radiance and RADIANCE_SDR2HDR_PIXEL, and downloads the default RUDRA model (~5 MB) on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
 | `pixel_tile_size` (optional) | int | 512 | 128 to 2048, step 64 | Tile size used only when the whole frame does not fit in memory. The model normalises over its input, so whole-frame inference is more accurate and is always tried first. |
 | `pixel_tile_overlap` (optional) | int | 64 | 0 to 512, step 16 | Overlap in pixels between tiles, feathered to hide seams. Used only when tiling kicks in; must be smaller than pixel_tile_size. |
 | `pixel_recovery_mode` (optional) | choice | `highlights` | `highlights`, `all`, `shadows`, `off` | Highlights is safest and avoids hallucinating chroma in deep shadows. |
 | `pixel_strength` (optional) | float | 1 | 0 to 2, step 0.05 | Multiplier on the pixel model's learned residual over its own inverse tone curve (0 = curve only, 1 = as trained, 2 = doubled). Direct Pixel backend only. |
+| `aces2_strength` (optional) | float | 1 | 0 to 1.5, step 0.01 | RUDRA ACES 2 only: the master moved from the plain ACES 2.0 inverse (0) to the model (1) or past it (up to 1.5), times rudra_blend. The RUDRA app's Strength trim. |
+| `aces2_saturation` (optional) | float | 1 | 0 to 2, step 0.01 | RUDRA ACES 2 only: colour of the reconstructed pixels about their own luminance (1 = as the model made it). |
+| `aces2_package` (optional) | string |  |  | RUDRA ACES 2 package folder (manifest.json + rudra_g1.ts). Empty searches models/radiance/RUDRA_ACES_2 and RADIANCE_RUDRA_ACES2, and downloads it on first use unless RADIANCE_ALLOW_DOWNLOADS=0. |
+| `aces2_bands` (optional) | choice | `Off` | `Off`, `Highlights and shadows` | RUDRA ACES 2 only (RUDRA 1.1.0): Off keeps the model's result everywhere. Highlights and shadows keeps it only where the source's brightest channel is at or above aces2_tau_high or at or below aces2_tau_low, and the exact plain ACES 2.0 inverse between them, with a 2-code ramp. |
+| `aces2_tau_high` (optional) | int | 254 | 128 to 256, step 1 | Bands only: 8-bit code from which the highlights are the model's (256 = no highlights). |
+| `aces2_tau_low` (optional) | int | 5 | -1 to 64, step 1 | Bands only: 8-bit code up to which the shadows are the model's (-1 = no shadows). |
+| `aces2_clean_shadows` (optional) | boolean | off |  | RUDRA ACES 2 only (RUDRA 1.1.0): edge-preserving denoise of the deep shadows (source code 40 and below, fading out by 48). Nothing is invented: each pixel becomes a weighted mean of its neighbours of similar brightness. |
 
 **Outputs**
 
@@ -911,6 +853,7 @@ SDR→HDR orchestrator: deterministic Expand, learned Recover, or Hybrid. Recove
 | `highlight_confidence` | MASK |
 | `shadow_confidence` | MASK |
 | `report` | STRING |
+| `reconstructed_mask` | MASK |
 
 ## Tonemap
 

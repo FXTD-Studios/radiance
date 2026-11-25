@@ -2,7 +2,7 @@
 
 PACKAGE_NAME = "radiance"
 PACKAGE_DISPLAY_NAME = "Radiance"
-VERSION = "3.5.4"
+VERSION = "4.0.1"
 AUTHOR = "Radiance"
 WEB_DIRECTORY = "./js"
 
@@ -34,4 +34,25 @@ WEB_DIRECTORY = "./js"
 #: 2026-09-25: 158 -> 157. RadianceLiteViewer removed; the Viewer's Simple
 #: mode replaces it and the frontend converts saved Lite Viewers on load.
 #: 2026-09-25: 157 -> 156. RadianceVectorMaskDraw (Roto) removed.
-EXPECTED_MIN_NODE_COUNT = 156
+#: 4.0: 156 -> 152. The hidden placeholders RadianceSAMModelLoader,
+#: RadianceSAMGenerator, RadianceHDRLatentEncoder and RadianceHDRTurboEncoder
+#: removed (they only raised since 3.5.0).
+#: 4.0: 152 -> 151. RadianceLoadImageMask (Read Mask) removed; ComfyUI's Load
+#: Image and its mask editor do the same job.
+#: 4.0: 151 -> 152. RadianceSDRToHDRAIFill (RUDRA AI fill v3) added.
+#: 4.0: 152 -> 153. RadianceSDRToHDRAIFillRerender (RUDRA AI fill v4, region
+#: re-render, experimental) added.
+#: 4.0: 153 -> 154. RadianceSDRToHDRAnalytic (RUDRA's analytic route: source
+#: curves, clipped-highlight fill, highlight detail, anchor) added.
+#: 4.0: 154 -> 157. RadianceRudraRegion, RadianceRudraCalibrate and
+#: RadianceRudraRegionEV (RUDRA's luminance region, calibration / reference
+#: fit and Region EV) added.
+#: 4.0: 157 -> 158. RadianceRudraMasterWrite (the master with RUDRA's mattes,
+#: regions picture, EV brackets and provenance sidecar) added.
+#: 4.0: 158 -> 162. RadianceRudraPeakFit, RadianceRudraDynamicMetadata,
+#: RadianceRudraFlickerReport and RadianceRudraShotHold (RUDRA's delivery
+#: steps) added.
+#: 4.0: 162 -> 164. RadianceRudraLoadStill (a still's colour tag and EXIF
+#: orientation, as RUDRA reads them) and RadianceRudraFillPrompt (RUDRA's AI fill
+#: prompt presets and suggestion) added.
+EXPECTED_MIN_NODE_COUNT = 164

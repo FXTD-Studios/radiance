@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  Whole-viewer harness for js/tests/viewer_session.test.mjs.
+
+  Viewers are built the way ComfyUI builds them: the extension's
+  beforeRegisterNodeDef patches a node class, onNodeCreated constructs the
+  viewer and mounts it through addDOMWidget, onRemoved destroys it. The node
+  class is a stand-in with only what those hooks touch.
+
+  Listeners added to window and document are counted, before the viewer
+  module loads, so a test can see what a deleted viewer leaves behind.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>Radiance session harness</title>
+<style>html,body{margin:0;background:#222}.host{width:1200px;height:800px;display:flex;position:relative}</style>
+</head>
+<body>
+<div id="hosts"></div>
+<script>
+(() => {
+    const live = window.__globalListeners = new Map();   // handler -> 'window:type' | 'document:type'
+    const name = (t) => (t === window ? 'window' : t === document ? 'document' : null);
+    const add = EventTarget.prototype.addEventListener;
+    const remove = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.addEventListener = function (type, h, opts) {
+        const n = name(this);
+        if (n && h) {
+            const key = `${n}:${type}`;
+            live.set(h, key);
+            const signal = opts && typeof opts === 'object' ? opts.signal : null;
+            if (signal) signal.addEventListener('abort', () => live.delete(h));
+        }
+        return add.call(this, type, h, opts);
+    };
+    EventTarget.prototype.removeEventListener = function (type, h, opts) {
+        if (name(this) && h) live.delete(h);
+        return remove.call(this, type, h, opts);
+    };
+    window.__unhandled = [];
+    window.addEventListener('unhandledrejection', (e) => window.__unhandled.push(String(e.reason && (e.reason.message || e.reason))));
+})();
+</script>
+<script type="module">
+import "../radiance_viewer.js";
+const ext = (globalThis.__exts || []).find((e) => e.name === 'FXTD.RadianceViewer');
+let nextId = 1;
+class FakeNode {
+    constructor() {
+        this.id = nextId++;
+        this.size = [1200, 800];
+        this.widgets = []; this.inputs = []; this.outputs = [];
+        this.title = 'RadianceViewer'; this.type = 'RadianceViewer'; this.comfyClass = 'RadianceViewer';
+        this.graph = { setDirtyCanvas() {} };
+        this.properties = {};
+    }
+    addDOMWidget(name, type, el, opts) {
+        const host = document.createElement('div'); host.className = 'host';
+        document.getElementById('hosts').appendChild(host);
+        host.appendChild(el);
+        this.__host = host;
+        const w = { name, type, element: el, opts }; this.widgets.push(w); return w;
+    }
+    addWidget() { return { value: null }; }
+    setDirtyCanvas() {}
+    setSize(s) { this.size = s; }
+    computeSize() { return this.size; }
+}
+window.FakeNode = FakeNode;
+await ext.beforeRegisterNodeDef(FakeNode, { name: 'RadianceViewer' }, window.app);
+window.__make = (mode = 'advanced') => {
+    const n = new FakeNode(); n.onNodeCreated();
+    n.radianceViewer.setUIMode?.(mode, { persist: false });
+    return n;
+};
+window.__remove = (n) => { n.onRemoved?.(); n.__host?.remove(); };
+window.__sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+window.__until = async (fn, ms = 10000) => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) { try { if (fn()) return true; } catch { /* not yet */ } await window.__sleep(20); }
+    return false;
+};
+/**
+ * A sequence of n synthetic frames, as the node's onExecuted payload. The
+ * float sidecars are '<prefix>_WxH_i.rhdr' (see session_support.mjs).
+ */
+window.__frames = (n, W = 64, H = 48, extra = {}, prefix = 'f') => ({
+    radiance_images: Array.from({ length: n }, (_, i) => ({
+        filename: `f_${W}x${H}_${i}.png`, subfolder: '', type: 'temp',
+        hdr_sidecar: `${prefix}_${W}x${H}_${i}.rhdr`, hdr_filename: `${prefix}_${W}x${H}_${i}.rhdr`,
+        has_hdr: true, hdr_primary: true, frame: i, total_frames: n,
+        source_width: W, source_height: H, channel_names: ['R', 'G', 'B', 'A'], ...extra,
+    })),
+    fps: [24],
+});
+/** Global listeners still installed that were added by viewer code. */
+window.__listenerCount = () => window.__globalListeners.size;
+window.__ready = true;
+</script>
+</body>
+</html>

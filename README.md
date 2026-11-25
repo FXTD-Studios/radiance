@@ -1,55 +1,49 @@
 <div align="center">
 
-<img src="r_icon.png" width="76" alt="Radiance mark"><br>
-<img src="RADIANCE.png" width="640" alt="Radiance">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/radiance-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/radiance-logo-light.svg">
+  <img src="assets/radiance-logo-light.svg" width="420" alt="Radiance">
+</picture>
 
-**HDR, colour management, VFX tools, and image review inside ComfyUI.**
+### HDR, colour and VFX review for ComfyUI
 
-[![Version](https://img.shields.io/badge/version-3.5.4-c8a96e?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases/tag/v3.5.4)
-[![Installations](https://img.shields.io/badge/installations-6.9K-blue?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
-[![Release](https://img.shields.io/badge/release-stable-brightgreen?style=for-the-badge)](https://github.com/fxtd-studios/radiance/releases)
-[![OS](https://img.shields.io/badge/OS-Windows%20%7C%20Mac%20%7C%20Linux-5C7CFA?style=for-the-badge)](https://github.com/fxtd-studios/radiance)
-[![Security](https://img.shields.io/badge/security-gated%20downloads%20%7C%20no%20shell-green?style=for-the-badge)](KNOWN_ISSUES.md)
-[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=for-the-badge)](LICENSE)
-[![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=for-the-badge)](https://registry.comfy.org/nodes/radiance)
-[![Hugging Face](https://img.shields.io/badge/Hugging_Face-RUDRA_models-ffd21e?style=for-the-badge)](https://huggingface.co/fxtdstudios/RUDRA)
-[![RUDRA GitHub](https://img.shields.io/badge/GitHub-RUDRA-181717?style=for-the-badge&logo=github)](https://github.com/FXTD-Studios/RUDRA)
+Generate in HDR, grade and review like a finishing suite, and deliver masters to Nuke and DaVinci Resolve,<br>without leaving ComfyUI.
 
-Radiance brings 147 visible nodes into your workflows for processing images and video, working with EXR and ACES, reviewing results, and delivering files to Nuke or DaVinci Resolve.
+[![Version](https://img.shields.io/badge/version-4.0.1-c8a96e?style=flat-square)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/status-release%20candidate-orange?style=flat-square)](CHANGELOG.md)
+[![Installs](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.comfy.org%2Fnodes%2Fradiance&query=%24.downloads&label=installs&color=blue&style=flat-square)](https://registry.comfy.org/nodes/radiance)
+[![Comfy Registry](https://img.shields.io/badge/Comfy_Registry-Radiance-orange?style=flat-square)](https://registry.comfy.org/nodes/radiance)
+[![Platforms](https://img.shields.io/badge/Windows%20·%20macOS%20·%20Linux-5C7CFA?style=flat-square)](#what-you-need)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](LICENSE)
 
-[Install](#installation) · [Quick start](#quick-start) · [Models](#models-and-downloads) · [Example workflows](#example-workflows) · [Documentation](#documentation) · [Support](#support)
+**[Install](#install)** &nbsp;·&nbsp; **[First HDR image](#your-first-hdr-image)** &nbsp;·&nbsp; **[Workflows](#example-workflows)** &nbsp;·&nbsp; **[Viewer](#using-the-viewer)** &nbsp;·&nbsp; **[Help](#help)**
+
+<br>
+
+<img src="viewer.png" width="920" alt="The Radiance Viewer showing a real HDR photograph: View, Compare and Check in the header, the Details panel with the brightest point and how much is above white, and a filmstrip timeline">
+
+<sub>A real HDR photograph in the Viewer (OpenEXR sample image, © 2004 Industrial Light &amp; Magic).</sub>
 
 </div>
 
-## What you can do
+<br>
 
-| Your task | Radiance tools |
-|---|---|
-| Create and process HDR images | VAE Encode and Decode (HDR), SDR → HDR tools, HDR diagnostics |
-| Manage colour | ACES, OpenColorIO, colour-space conversion, LUTs, and CDL |
-| Review images and video | Viewer with Simple and Advanced modes, scopes, comparison, and playback |
-| Prepare VFX shots | Masks, depth, optical effects, estimated passes, and relighting |
-| Save and deliver results | Read and Write nodes for images, video, and EXR sequences |
-| Organize your work | Project Manager, Workflow Library, Assets, and reusable Gizmos |
+Radiance adds HDR to ComfyUI: **generate** with FLUX 3 Klein, Qwen-Image, Wan and LTX, **turn SDR into HDR** with RUDRA, **review** it in a Viewer built for the picture, and **deliver** EXR, HDR10 and ProRes masters to Nuke and Resolve.
 
-<div align="center">
-<img src="viewer.png" width="920" alt="Radiance Viewer with image review, colour controls, and scopes">
-</div>
+## Install
 
-## Installation
+**With ComfyUI Manager** (recommended)
 
-### Install with ComfyUI Manager
+1. Open **ComfyUI Manager** and search for **Radiance**.
+2. Click **Install**.
+3. Restart ComfyUI and refresh your browser.
 
-1. Open **ComfyUI Manager**.
-2. Search for **Radiance** and install it.
-3. Restart ComfyUI.
-4. Refresh your browser.
+<details>
+<summary><b>Install manually with Git</b></summary>
+<br>
 
-You can also find Radiance in the [ComfyUI Registry](https://registry.comfy.org/nodes/radiance).
-
-### Install manually
-
-Run these commands using the Python environment that runs ComfyUI:
+Run these with the Python that runs ComfyUI:
 
 ```sh
 cd ComfyUI/custom_nodes
@@ -58,142 +52,153 @@ cd radiance
 python -m pip install -r requirements.txt
 ```
 
+**Windows portable:** use ComfyUI's bundled `python_embeded\python.exe` instead of `python`.
+
 Restart ComfyUI and refresh your browser.
 
-**Windows portable users:** use ComfyUI's bundled `python_embeded\python.exe` when installing dependencies.
+</details>
 
-### Update Radiance
+<details>
+<summary><b>Update</b></summary>
+<br>
 
-Use **Update** in ComfyUI Manager.
-
-For a Git installation, run these commands inside the `radiance` folder:
+Click **Update** in ComfyUI Manager, or inside the `radiance` folder:
 
 ```sh
 git pull
 python -m pip install -r requirements.txt
 ```
 
-Restart ComfyUI and refresh your browser after updating.
+Restart ComfyUI and refresh your browser. Back up your workflows before a major update.
 
-**Upgrading from an older version?** Back up your workflows and check the [migration notes](CHANGELOG.md). Some nodes and widget layouts changed in v3.5.
+</details>
 
-## Quick start
+### What you need
 
-### Process an existing image
+| You need | Why |
+|---|---|
+| A recent **ComfyUI** | FLUX 3 Klein needs 0.41.1 or later; the prompt upsampler needs a Generate Text node with a system prompt |
+| **ffmpeg** | For video: on the PATH, the `imageio-ffmpeg` package, or `RADIANCE_FFMPEG` pointing at it |
+| **OpenColorIO 2.5+** | For the reference ACES 2.0 output transform (older versions fall back to an approximation and say so) |
+| **Disk space** | Some tools download models on first use; Multipass Estimate downloads the most |
 
-Start with this simple workflow:
+## Your first HDR image
 
-**Read → SDR → HDR Universal → Viewer**
+Three ways in. Each one is a ready-made workflow: drag the file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
-1. Load your image with **Read**.
-2. Connect it to **SDR → HDR Universal**.
-3. Connect the result to **Viewer**.
-4. Run the workflow.
-5. Add **Write** to save the result as EXR.
+<table>
+<tr>
+<td width="33%" valign="top">
 
-The SDR-to-HDR model downloads on first use when downloads are enabled.
+### From a photo or SDR video
 
-### Generate an image
+Open [SDR to HDR](workflows/sdr_to_hdr.json).
 
-Open the included [starter workflow](workflows/start.json) in ComfyUI.
+1. Pick your file in **Read**.
+2. Press **Run**. RUDRA ACES 2 (2 MB) downloads the first time.
+3. The **Viewer** opens in Compare: drag the line to see what changed.
+4. **Write** saves a 32-bit EXR master.
 
-Select the FLUX.2 Klein 4B distilled model, FLUX.2 VAE, and Qwen3 4B text encoder in the Loader, enter your prompt, and run the workflow. Review the result in the Viewer and connect a Write node to save the image.
+</td>
+<td width="33%" valign="top">
 
-The required model files are separate downloads. See [Models and downloads](#models-and-downloads) below.
+### Without a model
 
-<div align="center">
-<img src="basic_workflow.png" width="920" alt="Radiance starter workflow from model loading to HDR review">
-</div>
+Open [SDR to HDR, analytic](workflows/sdr_to_hdr_analytic.json).
 
-## Models and downloads
+1. Pick a photo in **Load still**: its colour profile and orientation are read for you.
+2. Press **Run**. Nothing downloads; any GPU, or none.
+3. In the Viewer, **Check › Rebuilt by AI** shows what was reconstructed.
+4. **RUDRA Master Write** saves the EXR, its mattes and −2 / 0 / +2 EV brackets.
 
-### RUDRA for SDR to HDR
+</td>
+<td width="33%" valign="top">
 
-[RUDRA on Hugging Face](https://huggingface.co/fxtdstudios/RUDRA) provides the learned SDR-to-HDR model used by **SDR → HDR Universal** and **SDR → HDR Recover**. The default model downloads on first use when downloads are enabled.
+### Generate one
 
-For manual or offline installation:
+1. Drag the [starter workflow](workflows/start.json) onto the canvas.
+2. Pick the model files in the **Loader** ([which files?](docs/MODELS.md#flux2-klein-starter-workflow)).
+3. Type your prompt and press **Run**.
+4. Review it in the **Viewer**; add **Write** to save.
 
-| Model | Download | Save in |
-|---|---|---|
-| `sdr2hdr_shadow_v1.safetensors` | [Download default model](https://huggingface.co/fxtdstudios/RUDRA/resolve/main/sdr2hdr/sdr2hdr_shadow_v1.safetensors) | `ComfyUI/models/radiance/` |
-| Alternative RUDRA image checkpoints | [Browse available models](https://huggingface.co/fxtdstudios/RUDRA/tree/main/sdr2hdr) | `ComfyUI/models/radiance/` |
+For another model, pick its preset in the Loader. The Sampler sets its steps and CFG for you.
 
-Create the `radiance` folder if needed. Leave `pixel_checkpoint` empty to use the default model. To prevent automatic model downloads, set `RADIANCE_ALLOW_DOWNLOADS=0` before starting ComfyUI.
-
-**Model licence:** RUDRA weights are licensed for non-commercial use. Read the [RUDRA weights licence](https://huggingface.co/fxtdstudios/RUDRA/blob/main/LICENSE) before use. This is separate from the Radiance codebase licence.
-
-### Models for the starter workflow
-
-The included [starter workflow](workflows/start.json) uses **FLUX.2 Klein 4B distilled**, with 4 sampling steps at 1024 × 1024. Download these three files, place them in the folders below, and start the workflow.
-
-| File | Hugging Face download | Save in |
-|---|---|---|
-| `flux-2-klein-4b-fp8.safetensors` | [FLUX.2 Klein 4B distilled](https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/blob/main/flux-2-klein-4b-fp8.safetensors) | `ComfyUI/models/diffusion_models/` |
-| `flux2-vae.safetensors` | [FLUX.2 VAE](https://huggingface.co/Comfy-Org/flux2-dev/blob/main/split_files/vae/flux2-vae.safetensors) | `ComfyUI/models/vae/` |
-| `qwen_3_4b.safetensors` | [Qwen3 4B text encoder](https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/blob/main/split_files/text_encoders/qwen_3_4b.safetensors) | `ComfyUI/models/text_encoders/` |
-
-Use the distilled model listed above, not the `base` variant, which needs different sampling settings. Update ComfyUI for FLUX.2 Klein support and review each model's licence. See the [official ComfyUI FLUX docs](https://docs.comfy.org) for model compatibility details.
+</td>
+</tr>
+</table>
 
 ## Example workflows
 
-Choose a workflow that matches your task:
+Drag a file onto the ComfyUI canvas, or open it from **Templates › Radiance** or from **Radiance › Workflows** (the Radiance button in the top bar).
 
-| Workflow | Purpose |
-|---|---|
-| [Starter workflow](workflows/start.json) | Generate and review an image |
-| [SDR to HDR](workflows/sdr_to_hdr.json) | Convert an existing image to HDR and save EXR |
-| [Colour grading](workflows/colour_grade.json) | Adjust colour and save a graded image |
-| [HDR VAE](workflows/hdr_vae_encode_decode.json) | Encode, decode, and compare an HDR image |
-| [Multipass relighting](workflows/multipass_relight.json) | Estimate passes and relight an image |
-| [HDR delivery](workflows/hdr_delivery.json) | Create EXR, HDR10, and SDR outputs |
+<table>
+<tr><td width="33%" valign="top"><a href="workflows/start.json"><img src="docs/images/cards/start.png" width="300" alt="Starter workflow card"></a><br><b><a href="workflows/start.json">Starter</a></b><br>Generate an image and review it</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr.json"><img src="docs/images/cards/sdr_to_hdr.png" width="300" alt="SDR to HDR workflow card"></a><br><b><a href="workflows/sdr_to_hdr.json">SDR to HDR</a></b><br>A photo or video to an ACES 2.0 HDR master</td><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_analytic.json"><img src="docs/images/cards/sdr_to_hdr_analytic.png" width="300" alt="SDR to HDR, analytic workflow card"></a><br><b><a href="workflows/sdr_to_hdr_analytic.json">SDR to HDR, analytic</a></b><br>SDR to HDR with no model, on any GPU</td></tr>
+<tr><td width="33%" valign="top"><a href="workflows/sdr_to_hdr_ai_fill.json"><img src="docs/images/cards/sdr_to_hdr_ai_fill.png" width="300" alt="SDR to HDR with AI fill workflow card"></a><br><b><a href="workflows/sdr_to_hdr_ai_fill.json">SDR to HDR with AI fill</a></b><br>Rebuild large blown highlights (16 GB GPU)</td><td width="33%" valign="top"><a href="workflows/hdr_delivery.json"><img src="docs/images/cards/hdr_delivery.png" width="300" alt="HDR delivery workflow card"></a><br><b><a href="workflows/hdr_delivery.json">HDR delivery</a></b><br>EXR, HDR10 with HDR10+, and SDR from one master</td><td width="33%" valign="top"><a href="workflows/sdr_remaster_ai_fill.json"><img src="docs/images/cards/sdr_remaster_ai_fill.png" width="300" alt="SDR remaster with AI fill workflow card"></a><br><b><a href="workflows/sdr_remaster_ai_fill.json">SDR remaster with AI fill</a></b><br>SDR footage to an HDR remaster (16 GB GPU)</td></tr>
+</table>
 
-Drag a workflow JSON file onto the ComfyUI canvas to open it.
+**[See all 45 workflows →](docs/WORKFLOWS.md)** 20 run on your own GPU; 25 generate with a ComfyUI API node (Nano Banana, Seedance, Veo, Kling…) and lift the result to HDR.
 
 ## Using the Viewer
 
-Start in **Simple mode** for image review, comparison, and playback. Switch to **Advanced mode** for scopes, colour controls, and detailed inspection.
+The Viewer puts the picture first. Pick a task in its header; a panel floats over the picture and follows it.
 
-- Hover or select the Viewer to use its keyboard shortcuts.
-- VIDEO inputs can include audio. IMAGE batches do not contain audio.
-- Use **Write** nodes for video and sequence export.
-- Viewer adjustments affect the preview unless you apply equivalent processing in the workflow.
+| Task | Use it to |
+|---|---|
+| **View** | See what the frame is and how bright it gets, with a warning when parts are brighter than your screen |
+| **Compare** | Put two versions against each other: Split, Difference, Flip |
+| **Check** | Find what needs a look, in plain sentences, with overlays like the exposure map and Rebuilt by AI |
+| **Pro tools** | Grade, masks, effects, scopes, pixel probe, full QC, and Deliver Master |
 
-## Before you start
+<p align="center"><img src="docs/images/viewer_v5_compare.png" width="720" alt="Compare: an SDR photo of a mountain view (left, sky clipped) against its HDR master (right, sky recovered), with a split line"></p>
 
-- **OpenColorIO 2.5+:** the ACES 2.0 Output Transform uses the Academy reference from OCIO's built-in ACES 2.0 config. With an older OCIO it falls back to an approximation and says so in its info output.
-- **3.5.4 registry release:** 3.5.3 plus the Comfy Registry security-scan fixes (no process-wide environment rewrites from nodes, no `exec` hints, no flagged download links). Every P0 audit fix (FIX-001 to FIX-018) is done; see the [changelog](CHANGELOG.md) for the upgrade notes (saved ACES 2.0 Tonescale nodes, strict EXR Multi-Part, CDL Import errors).
-- **Additional models:** some tools download models on first use. Multipass Estimate requires substantially larger downloads than SDR → HDR.
-- **Long-video windowing:** experimental and disabled by default. Some scenes can distort when split into temporal windows.
-- **Viewer backend:** WebGL is the default. Optional WebGPU support has feature limitations.
-- **Estimated passes:** depth and material predictions are estimates, so results can vary and video may flicker.
-- **Temporary previews:** rerun the workflow if ComfyUI's temporary preview files have been removed.
+Viewer changes affect the preview only, never your files. **[Viewer guide, shortcuts and delivery →](docs/VIEWER.md)**
 
-Read the full [known limitations](KNOWN_ISSUES.md).
+## Models
 
-## Documentation
+| Model | Best for | Downloads |
+|---|---|---|
+| **RUDRA** | Turning SDR into HDR (the learned ACES 2 model, a no-model analytic route, AI fill for blown highlights) | automatic, 2 MB (AI fill: 271 MB + 7.7 GB, 16 GB GPU) |
+| **FLUX.2 Klein** | Getting started, fast drafts (4 steps) | partly automatic |
+| **FLUX 3 Image Klein** | Quality, editing with up to 10 references, layouts | manual, gated |
+| **Qwen-Image 2.1** | Editing with up to 16 references, transparency | automatic |
 
-- [Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)
-- [Wiki: guides, tutorials, and troubleshooting](https://github.com/fxtd-studios/radiance/wiki)
-- [Node reference](docs/nodes/README.md)
-- [Release notes](https://github.com/fxtd-studios/radiance/releases)
-- [Changelog and migration notes](CHANGELOG.md)
+Every automatic download is pinned and hash-checked; `RADIANCE_ALLOW_DOWNLOADS=0` turns them off. **[Files, folders and licences →](docs/MODELS.md)**
 
-In ComfyUI, hover over a node or input to read its description.
+## What's new in 4.0
 
-## Support
+- **Viewer V5:** the picture first, three tasks in plain words, Pro tools when you need them.
+- **RUDRA:** SDR → HDR with the learned ACES 2 model or with no model at all, plus HDR10+ / Dolby Vision metadata, shot hold and the Rebuilt by AI overlay.
+- **New models:** FLUX 3 Image Klein, Qwen-Image 2.1 and a prompt upsampler; **Deliver Master** with a render queue.
 
-If something does not work:
+Coming from 3.x? Read the [upgrade notes and full changelog](CHANGELOG.md).
+
+## Help
+
+Something not working? Try these first:
 
 1. Restart ComfyUI and refresh your browser.
-2. Check the ComfyUI console for errors or missing dependencies.
-3. Confirm dependencies were installed into ComfyUI's Python environment.
+2. Look in the ComfyUI console for errors or missing packages.
+3. Make sure the requirements went into ComfyUI's own Python.
 
-[Report an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance version, ComfyUI version, operating system, error message, and a minimal workflow that reproduces the problem.
+Still stuck? [Open an issue](https://github.com/fxtd-studios/radiance/issues) with your Radiance and ComfyUI versions, your operating system, the error message and a small workflow that shows the problem.
+
+### Learn more
+
+- **[Radiance website](https://www.fxtdstudios.com/radiance-comfyui.html)**: guides and tutorials
+- **[Wiki](https://github.com/fxtd-studios/radiance/wiki)**: how-tos and troubleshooting
+- **[Node reference](docs/nodes/README.md)**: all 121 visible nodes and their inputs
+- **[Changelog](CHANGELOG.md)**: what changed and upgrade notes
+- **[Known issues](KNOWN_ISSUES.md)**: current limits (long-video windowing, estimated passes)
+
+Tip: in ComfyUI, hover over any node or input to read what it does.
 
 ## License
 
-Radiance is licensed under [GPL-3.0](LICENSE).
+Radiance is licensed under [GPL-3.0](LICENSE). Model weights have their own licences; check them before you use or share them.
 
-Downloaded model weights have their own licences. Review those terms before using or distributing them.
+The Viewer screenshots use the OpenEXR sample images (Candlelight / StillLife, MtTamWest, Desk), © 2004 Industrial Light & Magic, under the [OpenEXR images licence](docs/images/LICENSE-openexr-images.txt).
 
-Built by [FXTD Studios](https://fxtdstudios.com).
+<div align="center">
+<br>
+Made by <a href="https://fxtdstudios.com"><b>FXTD Studios</b></a>
+</div>

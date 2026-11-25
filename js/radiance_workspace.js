@@ -5,6 +5,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 import { escapeHtml } from "./radiance_dom_utils.js";
+import { openSavedGraph } from "./radiance_graph_format.js";
 
 // ALBABIT-FIX: resolve extension base at runtime so the path works regardless of the install folder name (e.g. "radiance" vs "radiance-beta")
 const _EXT_BASE = import.meta.url.replace(/\/[^/]+$/, '');
@@ -13,17 +14,17 @@ const HEADER = "RAD_WORKSPACE_V1::";
 const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 
-// Listen for postMessage updates from Studio Dashboard
-window.addEventListener("message", (event) => {
+// Listen for postMessage updates from the Radiance page
+window.addEventListener("message", async (event) => {
     // Reject cross-origin senders. Without this, any page that can get a handle
     // to this window could load an arbitrary graph, or ask for the user's graph
     // back via the radiance_save_project_version reply below. The sibling
-    // handler in project_manager_dashboard.mjs already does this check.
+    // handler in studio.mjs does the same check.
     if (event.origin !== window.location.origin) return;
     if (event.data && event.data.type === "radiance_load_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, false);
+            await openSavedGraph(app, graphData, false, event.data.name || "workflow");
             showToast("Workflow loaded from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse loaded graph", "error");
@@ -31,11 +32,13 @@ window.addEventListener("message", (event) => {
     } else if (event.data && event.data.type === "radiance_append_workflow") {
         try {
             const graphData = typeof event.data.content === 'string' ? JSON.parse(event.data.content) : event.data.content;
-            app.loadGraphData(graphData, true);
+            await openSavedGraph(app, graphData, true, event.data.name || "workflow");
             showToast("Workflow merged from dashboard!", "success");
         } catch(err) {
             showToast("Failed to parse merged graph", "error");
         }
+    } else if (event.data && event.data.type === "radiance_close_dashboard") {
+        window.closeRadianceDashboard?.();
     } else if (event.data && event.data.type === "radiance_save_project_version") {
         try {
             const projectId = event.data.projectId || "general";
@@ -134,7 +137,7 @@ if (!window.showRadianceDashboard) {
         const dot = document.createElement("span");
         Object.assign(dot.style, {
             width: "9px", height: "9px", borderRadius: "50%",
-            background: "#c8a96e", boxShadow: "0 0 10px rgba(200,169,110,0.8)",
+            background: "#0a84ff", boxShadow: "0 0 10px rgba(10,132,255,0.8)",
         });
         const label = document.createElement("div");
         label.textContent = title;
@@ -174,7 +177,10 @@ if (!window.showRadianceDashboard) {
         const close = () => {
             window.removeEventListener("keydown", onKey);
             overlay.remove();
+            if (window.closeRadianceDashboard === close) delete window.closeRadianceDashboard;
         };
+        // The Radiance page closes the overlay itself after opening a workflow.
+        window.closeRadianceDashboard = close;
         const onKey = (e) => { if (e.key === "Escape") close(); };
         closeBtn.onclick = close;
         overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
@@ -514,14 +520,14 @@ app.registerExtension({
             origOnNodeCreated?.apply(this, arguments);
 
             // Keep the Project Manager dashboard separate from the workflow library.
-            this.addWidget("button", "◎ PROJECT MANAGER", "launch_project_manager", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/project_manager_dashboard.html", "Radiance Project Manager");
+            this.addWidget("button", "◎ STUDIO · SHOTS", "launch_project_manager", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#shots`, "Radiance");
             });
-            this.addWidget("button", "WORKFLOW LIBRARY", "launch_dashboard", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/workspace_dashboard.html", "Radiance Workflow Library");
+            this.addWidget("button", "WORKFLOWS", "launch_dashboard", () => {
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#workflows`, "Radiance");
             });
             this.addWidget("button", "◎ ASSETS", "launch_assets", () => {
-                window.showRadianceDashboard("${_EXT_BASE}/assets_dashboard.html", "Radiance Assets");
+                window.showRadianceDashboard(`${_EXT_BASE}/studio.html#assets`, "Radiance");
             });
             this.addWidget("button", "QUICK SAVE", "quick_save", () => this.saveToLibrary());
             this.addWidget("button", "INCREMENTAL SAVE", "inc_save", () => this.incrementalSave());
@@ -611,7 +617,7 @@ app.registerExtension({
                 if (!data.success) throw new Error(data.error);
 
                 const graphData = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-                app.loadGraphData(graphData, append);
+                await openSavedGraph(app, graphData, append, "workflow");
 
                 if (data.secure) {
                     console.log("[Radiance] Verified secure binary .rad workspace.");
@@ -853,7 +859,7 @@ app.registerExtension({
                 content = data.content;
                 metadata = data.metadata;
 
-                app.loadGraphData(typeof content === 'string' ? JSON.parse(content) : content, append);
+                await openSavedGraph(app, typeof content === 'string' ? JSON.parse(content) : content, append, wf.filename);
                 const success = true;
                 if (success) {
                     const action = append ? "Appended" : "Loaded";

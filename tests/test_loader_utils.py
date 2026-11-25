@@ -283,11 +283,19 @@ class TestDownloadModel:
         errs = [m for m in msgs(loader_logs) if "CHECKSUM MISMATCH" in m]
         assert errs and bad in errs[0] and GOOD in errs[0]
 
-    def test_a_preexisting_file_of_the_right_size_is_kept(self, dl_env, tmp_path):
+    def test_a_preexisting_file_that_matches_its_pin_is_kept(self, dl_env, tmp_path):
         target = tmp_path / "m.bin"
         target.write_bytes(b"GOOD-OLD-MODEL")
-        assert L._download_model("http://host/u", str(target), "vae", "0" * 64, size=len(b"GOOD-OLD-MODEL")) is True
+        digest = hashlib.sha256(b"GOOD-OLD-MODEL").hexdigest()
+        assert L._download_model("http://host/u", str(target), "vae", digest, size=len(b"GOOD-OLD-MODEL")) is True
         assert target.read_bytes() == b"GOOD-OLD-MODEL" and dl_env.urls == []
+
+    def test_a_preexisting_file_of_the_right_size_but_wrong_digest_is_replaced(self, dl_env, tmp_path):
+        # Until 4.0 a right-sized file was trusted without its digest.
+        target = tmp_path / "m.bin"
+        target.write_bytes(b"X" * len(b"MODELDATA"))
+        assert L._download_model("http://host/u", str(target), "vae", GOOD, size=len(b"MODELDATA")) is True
+        assert target.read_bytes() == b"MODELDATA" and dl_env.urls == ["http://host/u"]
 
     def test_transport_failure_keeps_the_part_file_and_the_next_run_resumes(self, dl_env, tmp_path, loader_logs):
         target = tmp_path / "m.bin"
@@ -1198,11 +1206,21 @@ class TestLoadClipStack:
         assert "Failed to load CLIP" in str(exc.value)
         assert "safetensors header corrupt" in str(exc.value)
 
-    def test_missing_encoder_file_is_dropped_from_the_paths(self, clip_env):
-        clip, slots, _, _ = call_clip(clip_env, clip_l="clip_l.safetensors",
-                                      clip_g="not_installed.safetensors")
-        assert clip_env.load_clip_calls[0]["ckpt_paths"] == [clip_env.clip_l]
-        assert clip == "CLIP<1>"
+    def test_a_selected_encoder_that_is_not_on_disk_is_an_error(self, clip_env):
+        """It used to be dropped with a log line and the stack loaded without it,
+        so ComfyUI picked a different encoder for the files that were left."""
+        with pytest.raises(ValueError) as exc:
+            call_clip(clip_env, clip_l="clip_l.safetensors",
+                      clip_g="not_installed.safetensors")
+        text = str(exc.value)
+        assert "not found on disk" in text
+        assert "clip_g: not_installed.safetensors" in text
+        assert clip_env.load_clip_calls == []
+
+    def test_a_baked_slot_is_not_reported_as_missing(self, clip_env):
+        call_clip(clip_env, arch="ltxav", llm_encoder="t5.safetensors",
+                  text_projection="Baked (from UNET)")
+        assert len(clip_env.load_clip_calls) == 1
 
     # Was xfail(strict): the defect it documented is fixed.
     def test_unused_slots_are_not_reported_as_used(self, clip_env):

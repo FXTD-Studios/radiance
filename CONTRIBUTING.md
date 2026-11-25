@@ -149,11 +149,32 @@ def test_input_types():
    - [ ] Verified `pytest tests/ -q` passes locally
 3. **Submit PR**: include a detailed description of changes.
 
+## 4.0 feature freeze
+
+4.0 has been feature-frozen since 16 November 2026 (release candidate 1, tag
+`v4.0.0-rc1`). Until 4.0.0 is released:
+
+- **`release/4.0` takes fixes only:** bug fixes, crash and security fixes,
+  documentation, and fixes to tests and CI. Branch them as `fix/...` from
+  `release/4.0` and open the pull request against it.
+- **Not on `release/4.0`:** new nodes, new inputs or outputs, new workflows,
+  new models or model versions, new Viewer or Radiance-page features, and
+  changes to defaults or file names. Those wait for 4.1.
+- A fix that changes behaviour someone can see gets a line in the 4.0.0
+  section of the CHANGELOG.
+- Each fix on `release/4.0` is merged forward into the 4.1 work so it is not
+  lost.
+- If a fix needs more than a fix (a new input, say), it goes to 4.1 and
+  KNOWN_ISSUES.md says so for 4.0.
+
+When the fixes are done and the checks are green, `release/4.0` is tagged
+`v4.0.0`, merged into `main`, and the CHANGELOG heading gets its date.
+
 ## Version Numbering
 
-- **v3.1.x**: Patch fixes (single source of truth: `pyproject.toml` → read via `importlib.metadata`)
-- **v3.2.0**: New features (non-breaking)
-- **v4.0.0**: Breaking changes
+- **v4.0.x**: Patch fixes (single source of truth: `pyproject.toml` → read via `importlib.metadata`)
+- **v4.1.0**: New features (non-breaking)
+- **v5.0.0**: Breaking changes
 
 ## Questions?
 

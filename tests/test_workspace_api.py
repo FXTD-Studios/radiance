@@ -413,6 +413,11 @@ def test_project_slug(value, expected):
     ("SH_0420 comp", "SH0420"),
     ("beauty_pass", "GENERAL"),
     ("sh1", "GENERAL"),          # needs at least 2 digits
+    # The Project Manager node's own names join with "_", a word character, so
+    # a \b-anchored pattern never matched them (code review P2-3).
+    ("sh010_v002", "SH010"),
+    ("sh010_ada_v0003.rad", "SH010"),
+    ("fresh010_v002", "GENERAL"),  # "sh" inside a word is not a shot code
 ])
 def test_shot_from_name(value, expected):
     assert ws_mod._shot_from_name(value) == expected
@@ -423,6 +428,10 @@ def test_shot_from_name(value, expected):
     ("comp v0123 final", "v0123"),
     ("comp_v12", "v001"),        # too few digits
     ("nothing", "v001"),
+    ("sh010_v002", "v002"),
+    ("comp_artist_v0003", "v0003"),
+    ("sh010_ada_v0003.rad", "v0003"),
+    ("dev0003", "v001"),         # "v" inside a word is not a version
 ])
 def test_version_from_name(value, expected):
     assert ws_mod._version_from_name(value) == expected
@@ -1470,6 +1479,33 @@ def test_set_shot_status_rejects_unknown_values(populated, status):
     assert not (populated.root / "SHOW A" / ".shot_status.json").exists()
 
 
+def test_a_project_name_from_a_shared_rad_cannot_place_status_outside_the_library(ws, tmp_path):
+    """The project name comes from metadata inside any .rad (or its v1 .json
+    sidecar), so a shared file could name its project "../../escaped" and make
+    the status route create .shot_status.json outside the library (code review
+    P3-3)."""
+    (ws.root / "evil.rad").write_text('{"nodes": []}')
+    (ws.root / "evil.rad.json").write_text('{"project": "../../escaped"}')
+
+    resp = run(ws.m.set_shot_status(Req(json_body={"status": "Approved"},
+                                        match_info={"project_id": "escaped", "shot": "SH010"})))
+
+    assert resp.status == 400, body(resp)
+    assert not (tmp_path.parent / "escaped").exists()
+    project, _ = ws.m._find_project("escaped")
+    assert ws.m._load_shot_status(project) == {}
+
+
+def test_a_long_project_name_keeps_its_shot_status(ws):
+    """Only leaving the library is refused; _resolve_safe_path's filename rules
+    (length, control characters) are not the point here."""
+    name = "S" * 190
+    (ws.root / "x.rad").write_text('{"nodes": []}')
+    (ws.root / "x.rad.json").write_text(json.dumps({"project": name}))
+    project, _ = ws.m._find_project(ws.m._project_slug(name))
+    assert ws.m._shot_status_path(project) == ws.root / name / ".shot_status.json"
+
+
 def test_shot_status_loader_ignores_corrupt_and_non_dict_files(populated):
     project, _ = populated.m._find_project("show-a")
     path = populated.m._shot_status_path(project)
@@ -1724,6 +1760,57 @@ def test_upload_saves_allowed_files_and_skips_the_rest(ws):
     assert not (ws.inp.parent.parent / "escape.png").exists()
 
 
+# A second upload with a taken name used to open the existing file with "wb":
+# the first plate was destroyed, and every workflow that referenced it read the
+# new one. An aborted upload left a truncated file under the real name (code
+# review P2-5).
+
+def test_uploading_a_taken_name_keeps_both_files(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"SECOND")])))
+
+    assert resp.status == 200
+    assert body(resp) == {"success": True, "saved": ["plate_1.exr"],
+                          "renamed": {"plate.exr": "plate_1.exr"}}
+    dest = ws.inp / "radiance_assets"
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+    assert (dest / "plate_1.exr").read_bytes() == b"SECOND"
+
+
+def test_the_same_name_twice_in_one_upload_keeps_both(ws):
+    resp = run(ws.m.upload_asset(Req(parts=[_Part("a.png", b"1"), _Part("a.png", b"2")])))
+    assert body(resp)["saved"] == ["a.png", "a_1.png"]
+
+
+class _BrokenPart(_Part):
+    async def read_chunk(self, size: int = 0) -> bytes:
+        if self._pos:
+            raise ConnectionResetError("client went away")
+        return await super().read_chunk(size)
+
+
+def test_an_aborted_upload_leaves_no_partial_file(ws):
+    run(ws.m.upload_asset(Req(parts=[_Part("plate.exr", b"FIRST")])))
+    resp = run(ws.m.upload_asset(Req(parts=[_BrokenPart("plate.exr", b"0123456789ABCDEF")])))
+
+    assert resp.status == 500
+    dest = ws.inp / "radiance_assets"
+    assert sorted(p.name for p in dest.iterdir()) == ["plate.exr"]
+    assert (dest / "plate.exr").read_bytes() == b"FIRST"
+
+
+def test_a_failed_part_takes_the_rest_of_its_request_with_it(ws):
+    """A request is all or nothing: the client gets a 500 and no list of what
+    was saved, so a file kept from an earlier part would be orphaned, and a
+    retry would add a plate_1.exr beside it."""
+    resp = run(ws.m.upload_asset(Req(parts=[
+        _Part("a.png", b"first"),
+        _BrokenPart("b.png", b"0123456789ABCDEF"),
+    ])))
+    assert resp.status == 500
+    assert list((ws.inp / "radiance_assets").iterdir()) == []
+
+
 def test_upload_500_without_an_input_directory(ws, monkeypatch):
     monkeypatch.delattr(ws.m.folder_paths, "get_input_directory")
     resp = run(ws.m.upload_asset(Req(parts=[])))
@@ -1789,6 +1876,42 @@ def test_node_run_writes_a_v3_container_with_metadata(ws):
     assert meta["stats"]["node_count"] == 6
     assert meta["stats"]["is_hdr"] is True
     assert meta["pipeline"]["models"] == ["film_grain.ckpt", "flux_dev.safetensors"]
+
+
+# What ComfyUI actually passes: `prompt` is the API graph ({id: {class_type,
+# inputs}}); the UI workflow, which loadGraphData opens, is in
+# extra_pnginfo["workflow"]. Saving the prompt left node_count at 0 and stored a
+# graph the dashboard could not reopen (code review P2-2).
+API_PROMPT = {
+    "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "flux_dev.safetensors"}},
+    "2": {"class_type": "RadianceHDRTonemap", "inputs": {"image": ["1", 0], "space": "rec2020"}},
+    "3": {"class_type": "PreviewImage", "inputs": {"images": ["2", 0]}},
+}
+
+
+def test_node_run_saves_the_ui_workflow_comfyui_provides(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == GRAPH, "the library opens this with loadGraphData"
+    assert meta["stats"]["node_count"] == 6
+
+
+def test_node_run_with_only_an_api_prompt_still_reports_its_contents(ws):
+    ws.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1, prompt=API_PROMPT)
+    graph, meta, _ = ws.m._unpack_rad_v3((ws.root / "sh010_ada_v0001.rad").read_bytes())
+    assert json.loads(graph) == API_PROMPT
+    assert meta["stats"]["node_count"] == 3
+    assert meta["stats"]["is_hdr"] is True
+    assert meta["pipeline"]["models"] == ["flux_dev.safetensors"]
+
+
+def test_a_saved_workflow_is_listed_under_its_own_shot(ws):
+    ws.m.RadianceProjectManager().run(filename="SHOW A/sh010", artist="ada", version=3,
+                                      prompt=API_PROMPT, extra_pnginfo={"workflow": GRAPH})
+    project, _ = ws.m._find_project("show-a")
+    (version,) = ws.m._versions_for_project(project)
+    assert version["shot"] == "SH010", version
 
 
 def test_node_run_without_a_filename_uses_the_artist(ws):
@@ -1917,21 +2040,23 @@ def test_version_list_survives_a_corrupt_backup_sidecar(ws):
     assert [v["status"] for v in versions] == ["WIP", "Backup"]
 
 
-def test_save_shot_status_swallows_a_write_failure(ws, monkeypatch):
+def test_save_shot_status_raises_on_a_write_failure(ws, monkeypatch):
+    """Phase 5 (E-10): a status that was not saved must not be reported as saved."""
     blocker = ws.root / "blocker"
     blocker.write_bytes(b"file, not a directory")
     monkeypatch.setattr(ws.m, "_shot_status_path",
                         lambda project: blocker / "sub" / ".shot_status.json")
 
-    ws.m._save_shot_status({"name": "X"}, {"SH010": "Final"})   # must not raise
+    with pytest.raises(OSError):
+        ws.m._save_shot_status({"name": "X"}, {"SH010": "Final"})
     assert blocker.read_bytes() == b"file, not a directory"
 
 
-def test_save_bins_swallows_a_write_failure(ws, monkeypatch):
+def test_save_bins_failure_is_reported_not_swallowed(ws, monkeypatch):
     monkeypatch.setattr(ws.m, "_ASSETS_BINS_PATH", ws.root)   # a directory
     resp = run(ws.m.create_asset_bin(Req(json_body={"name": "B"})))
-    assert resp.status == 200            # the failure is logged, not raised
-    assert ws.m._load_bins() == []       # ...and nothing was persisted
+    assert resp.status == 500, body(resp)    # the client is told, not given a success
+    assert ws.m._load_bins() == []           # ...and nothing was persisted
 
 
 def test_asset_roots_skips_a_getter_that_raises(ws, monkeypatch):
@@ -2151,3 +2276,244 @@ def test_thumb_415_when_the_cache_directory_cannot_be_created(ws, monkeypatch):
     resp = run(ws.m.asset_thumb(Req(query={"path": str(src)})))
     assert resp.status == 415
     assert body(resp) == {"error": "not previewable"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Audit 2026-10-16: restore at the retention limit, preview admission
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_restoring_the_oldest_version_at_the_retention_limit_keeps_it(ws, monkeypatch):
+    monkeypatch.setattr(ws_mod, "MAX_VERSIONS", 3)
+    for i in range(4):                       # current + v1..v3, history full
+        ws.save("full.rad", content=json.dumps({"nodes": [], "rev": i}))
+    vdir = ws.root / ".versions"
+    assert sorted(p.name for p in vdir.glob("full.v*.rad")) == ["full.v1.rad", "full.v2.rad", "full.v3.rad"]
+
+    resp = run(ws.m.restore_workflow_version(Req(json_body={
+        "filename": "full.rad", "version_file": "full.v1.rad"})))
+
+    assert resp.status == 200, body(resp)
+    graph, _ = ws.m._unpack_rad_v2((ws.root / "full.rad").read_bytes())
+    assert json.loads(graph)["rev"] == 0                  # v1 is what was restored
+    names = sorted(p.name for p in vdir.glob("full.v*.rad"))
+    assert "full.v1.rad" in names, "the restored version was evicted by the pre-restore backup"
+    assert "full.v2.rad" not in names                    # the oldest other one went instead
+    pre, _ = ws.m._unpack_rad_v2((vdir / "full.v4.rad").read_bytes())
+    assert json.loads(pre)["rev"] == 3                   # the state before the restore
+    assert not list(ws.root.glob(".full.rad.restore-*")), "temporary restore file left behind"
+
+
+def test_a_failed_restore_leaves_the_current_file_alone(ws, monkeypatch):
+    ws.save("keep.rad", content='{"nodes": [], "rev": "a"}')
+    ws.save("keep.rad", content='{"nodes": [], "rev": "b"}')
+    before = (ws.root / "keep.rad").read_bytes()
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(ws_mod, "_create_version_backup", boom)
+    resp = run(ws.m.restore_workflow_version(Req(json_body={
+        "filename": "keep.rad", "version_file": "keep.v1.rad"})))
+    assert resp.status == 500
+    assert (ws.root / "keep.rad").read_bytes() == before
+    assert (ws.root / ".versions" / "keep.v1.rad").exists()
+    assert not list(ws.root.glob(".keep.rad.restore-*"))
+
+
+def test_preview_applies_the_unpackers_size_limit(ws, monkeypatch):
+    _v3_with_preview(ws.root / "big.rad", png=b"\x89PNG" + b"\0" * 1020)
+    monkeypatch.setattr(ws_mod, "MAX_RAD_UNCOMPRESSED_BYTES", 64)
+    with pytest.raises(ValueError):
+        ws.m._unpack_rad_v3((ws.root / "big.rad").read_bytes())
+    resp = run(ws.m.get_workflow_preview(Req(query={"filename": "big.rad"})))
+    assert resp.status == 413, "the preview expanded an archive the unpacker refuses"
+
+
+def test_preview_refuses_an_oversized_preview_entry(ws, monkeypatch):
+    _v3_with_preview(ws.root / "huge.rad", png=b"\x89PNG" + b"\0" * 2000)
+    monkeypatch.setattr(ws_mod, "MAX_RAD_PREVIEW_BYTES", 1024)
+    resp = run(ws.m.get_workflow_preview(Req(query={"filename": "huge.rad"})))
+    assert resp.status == 413
+    assert body(resp) == {"error": "Preview image is too large"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  29. Input files travel inside a .rad v3
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _loader_graph(*values):
+    return {"nodes": [{"type": "LoadImage", "widgets_values": [value, "image"]} for value in values]}
+
+
+def _open(ws, filename):
+    return body(run(ws.m.get_workflow(Req(query={"filename": filename}))))
+
+
+def test_save_embeds_the_input_files_the_graph_reads(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    (ws.inp / "sub").mkdir()
+    (ws.inp / "sub" / "ref.png").write_bytes(b"SUB")
+    (ws.out / "render.png").write_bytes(b"OUT")
+    (ws.inp.parent / "escape.png").write_bytes(b"OUTSIDE")
+    graph = _loader_graph("ref.png", "sub/ref.png [input]", "render.png [output]",
+                          "missing.png", "../escape.png")
+
+    data = ws.save("sh010.rad", content=json.dumps(graph)).read_bytes()
+
+    assert data[:4] == ws.m.RAD_MAGIC_V3, "only a v3 container can carry the input files"
+    _, meta, assets = ws.m._unpack_rad_v3(data)
+    assert assets == {"ref.png": PNG_1PX, "ref_1.png": b"SUB"}
+    assert meta["inputs"] == {"ref.png": "ref.png", "ref_1.png": "sub/ref.png"}
+
+
+def test_open_puts_missing_input_files_back(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    (ws.inp / "sub").mkdir()
+    (ws.inp / "sub" / "ref.png").write_bytes(b"SUB")
+    graph = _loader_graph("ref.png", "sub/ref.png")
+    ws.save("sh010.rad", content=json.dumps(graph))
+    (ws.inp / "ref.png").unlink()
+    (ws.inp / "sub" / "ref.png").unlink()
+    (ws.inp / "sub").rmdir()
+
+    assert json.loads(_open(ws, "sh010.rad")["content"]) == graph
+    assert (ws.inp / "ref.png").read_bytes() == PNG_1PX
+    assert (ws.inp / "sub" / "ref.png").read_bytes() == b"SUB"
+
+
+def test_open_reuses_an_identical_input_file(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png")
+    ws.save("sh010.rad", content=json.dumps(graph))
+
+    assert json.loads(_open(ws, "sh010.rad")["content"]) == graph
+    assert [p.name for p in ws.inp.iterdir()] == ["ref.png"]
+
+
+def test_open_never_overwrites_a_different_input_file(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    ws.save("sh010.rad", content=json.dumps(_loader_graph("ref.png", "ref.png [input]")))
+    (ws.inp / "ref.png").write_bytes(b"SOMEONE ELSE'S")
+    (ws.inp / "ref_1.png").write_bytes(b"ANOTHER")
+
+    content = json.loads(_open(ws, "sh010.rad")["content"])
+
+    assert (ws.inp / "ref.png").read_bytes() == b"SOMEONE ELSE'S"
+    assert (ws.inp / "ref_1.png").read_bytes() == b"ANOTHER"
+    assert (ws.inp / "ref_2.png").read_bytes() == PNG_1PX
+    assert content == _loader_graph("ref_2.png", "ref_2.png [input]")
+
+
+# "" and "." name the input folder itself, whose free name ("input_1") is outside it.
+@pytest.mark.parametrize("rel", ["../evil.png", "", ".", "sub/.."])
+def test_open_refuses_an_input_path_outside_the_input_folder(ws, rel):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("x.png")), {},
+                             assets={"x.png": b"EVIL"}, inputs={"x.png": rel})
+    (ws.root / "evil.rad").write_bytes(blob)
+    before = sorted(ws.inp.parent.iterdir())
+
+    resp = run(ws.m.get_workflow(Req(query={"filename": "evil.rad"})))
+
+    assert resp.status == 500
+    assert "unsafe input path" in body(resp)["error"]
+    assert sorted(ws.inp.parent.iterdir()) == before
+    assert list(ws.inp.iterdir()) == []
+
+
+# CodeRabbit review on PR #76: the manifest comes from the file.
+@pytest.mark.parametrize("inputs, error", [
+    (["x.png"], "malformed input list"),
+    ({"x.png": 7}, "unsafe input path"),
+    ({"x.png": None}, "unsafe input path"),
+])
+def test_open_refuses_a_malformed_input_list(ws, inputs, error):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("x.png")), {},
+                             assets={"x.png": b"EVIL"}, inputs=inputs)
+    (ws.root / "bad.rad").write_bytes(blob)
+    resp = run(ws.m.get_workflow(Req(query={"filename": "bad.rad"})))
+    assert resp.status == 500
+    assert error in body(resp)["error"]
+    assert list(ws.inp.iterdir()) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_link_under_the_free_name_cannot_carry_the_write_outside(ws, tmp_path):
+    (ws.inp / "ref.png").write_bytes(b"SOMEONE ELSE'S")
+    outside = tmp_path / "outside_target.png"            # does not exist yet: a dangling link
+    (ws.inp / "ref_1.png").symlink_to(outside)
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("ref.png")), {},
+                             assets={"ref.png": PNG_1PX}, inputs={"ref.png": "ref.png"})
+    (ws.root / "link.rad").write_bytes(blob)
+    resp = run(ws.m.get_workflow(Req(query={"filename": "link.rad"})))
+    assert resp.status == 500 and "unsafe input path" in body(resp)["error"]
+    assert not outside.exists(), "the restore wrote through a link to outside the input folder"
+
+
+def test_a_string_that_is_no_file_name_does_not_stop_the_save(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png", "nul\x00byte.png", "長いファイル名" * 25)
+
+    _, meta, _ = ws.m._unpack_rad_v3(ws.save("sh010.rad", content=json.dumps(graph)).read_bytes())
+
+    assert meta["inputs"] == {"ref.png": "ref.png"}
+
+
+def test_a_rad_with_a_preview_and_input_files_still_opens(ws, monkeypatch):
+    """The preview is stored twice (base64 in the manifest, decoded in preview.png):
+    counted once, input files could fill the room and the .rad would not open."""
+    import base64
+    preview = "data:image/png;base64," + base64.b64encode(b"P" * 150_000).decode()
+    (ws.inp / "big.png").write_bytes(b"B" * 150_000)
+    content = json.dumps(_loader_graph("big.png"))
+    monkeypatch.setattr(ws.m, "MAX_RAD_UNCOMPRESSED_BYTES", 65536 + len(content) + 2 * len(preview) + 1000)
+
+    ws.save("sh010.rad", content=content, preview_image=preview)
+
+    assert run(ws.m.get_workflow(Req(query={"filename": "sh010.rad"}))).status == 200
+
+
+def test_import_puts_input_files_back(ws):
+    blob = ws.m._pack_rad_v3(json.dumps(_loader_graph("ref.png")), {},
+                             assets={"ref.png": PNG_1PX}, inputs={"ref.png": "ref.png"})
+
+    payload = body(run(ws.m.unpack_workflow_api(Req(raw=blob))))
+
+    assert payload["success"] is True
+    assert (ws.inp / "ref.png").read_bytes() == PNG_1PX
+
+
+def test_a_file_past_the_container_limit_is_left_out(ws, monkeypatch, caplog):
+    (ws.inp / "small.png").write_bytes(b"S" * 10)
+    (ws.inp / "big.mp4").write_bytes(b"B" * 5000)
+    content = json.dumps(_loader_graph("small.png", "big.mp4"))
+    monkeypatch.setattr(ws.m, "MAX_RAD_UNCOMPRESSED_BYTES", 65536 + len(content) + 1000)
+
+    _, meta, assets = ws.m._unpack_rad_v3(ws.save("sh010.rad", content=content).read_bytes())
+
+    assert meta["inputs"] == {"small.png": "small.png"}
+    assert "big.mp4 is not embedded in the .rad" in caplog.text
+
+
+def test_export_packs_input_files_into_a_v3(ws):
+    (ws.inp / "ref.png").write_bytes(PNG_1PX)
+    resp = run(ws.m.pack_workflow(Req(json_body={"content": json.dumps(_loader_graph("ref.png"))})))
+
+    blob = raw_body(resp)
+    assert blob[:4] == ws.m.RAD_MAGIC_V3
+    _, meta, assets = ws.m._unpack_rad_v3(blob)
+    assert assets == {"ref.png": PNG_1PX}
+    assert meta["format"] == "v3"
+
+
+def test_node_run_and_save_version_embed_input_files(populated):
+    (populated.inp / "ref.png").write_bytes(PNG_1PX)
+    graph = _loader_graph("ref.png")
+    populated.m.RadianceProjectManager().run(filename="sh010", artist="ada", version=1,
+                                             prompt=API_PROMPT, extra_pnginfo={"workflow": graph})
+    run(populated.m.save_project_version(Req(
+        match_info={"project_id": "show-a"},
+        json_body={"content": json.dumps(graph), "filename": "new.rad"})))
+
+    for written in (populated.root / "sh010_ada_v0001.rad", populated.root / "SHOW A" / "new.rad"):
+        _, meta, assets = populated.m._unpack_rad_v3(written.read_bytes())
+        assert assets == {"ref.png": PNG_1PX}, written.name
+        assert meta["inputs"] == {"ref.png": "ref.png"}

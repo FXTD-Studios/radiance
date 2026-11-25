@@ -111,9 +111,10 @@ def _check_readme(errors: list[str]) -> None:
         if claim.lower() in readme.lower():
             errors.append(f"README contains stale or unsafe claim: {claim!r}")
 
-    required_sections = ("## Installation", "## Quick start", "## Example workflows",
-                         "## Using the Viewer", "## Before you start",
-                         "## Documentation", "## Support", "## License")
+    # The end-user order (V5 README): install, a first result, workflows, the
+    # Viewer, help.
+    required_sections = ("## Install", "### What you need", "## Your first HDR image",
+                         "## Example workflows", "## Using the Viewer", "## Help", "## License")
     for section in required_sections:
         if section not in readme:
             errors.append(f"README missing section: {section}")
@@ -131,6 +132,25 @@ def _check_package_paths(pyproject: dict, errors: list[str]) -> None:
     for pattern in setuptools.get("package-data", {}).get("radiance", []):
         if not any(ROOT.glob(pattern)) and "TEMPLATES" not in pattern:
             errors.append(f"package-data entry matches no file: {pattern}")
+    # The other way round: a tracked non-Python file inside a package is read
+    # at run time, so a wheel without it breaks (package audit R3: the prompt
+    # upsampler's templates were tracked but never shipped).
+    for rel in _unshipped_package_files(setuptools):
+        errors.append(f"tracked package file not in package-data, so no wheel ships it: {rel}")
+
+
+def _unshipped_package_files(setuptools: dict) -> list[str]:
+    import fnmatch
+    tracked = _tracked_files()
+    if tracked is None:
+        return []
+    patterns = setuptools.get("package-data", {}).get("radiance", [])
+    dirs = [str(p).removeprefix("radiance").replace(".", "/").strip("/") for p in setuptools.get("packages", [])]
+    dirs = [d for d in dirs if d]
+    return [f for f in tracked
+            if not f.endswith(".py") and "/__pycache__/" not in f
+            and any(f.startswith(d + "/") for d in dirs)
+            and not any(fnmatch.fnmatch(f, p) for p in patterns)]
 
 
 def _tracked_files() -> list[str] | None:

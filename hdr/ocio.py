@@ -104,46 +104,38 @@ def _resolve_colorspace_name(config, name: str) -> "Optional[str]":
 
 def _resolve_config(ocio_config_path: str = "") -> "Optional[OCIO.Config]":
     """
-    Resolve an OCIO config from (in priority order):
-      1. Explicit path argument
-      2. OCIO environment variable
-      3. Active process config (OCIO.GetCurrentConfig), when one was actually
-         configured -- see _is_unconfigured_default() for why that qualifier
-         has to be there
-      4. Local Radiance ACES folder  (../ACES/config.ocio relative to this file)
-      5. ComfyUI models/ACES/config.ocio
+    The config for an explicit path, else the session's active config.
+
+      1. Explicit path argument, when it exists
+      2. color/ocio_setup.active_config(): $OCIO when it loads, else the
+         ACES studio config set up at startup (or the bundled CG config on
+         OpenColorIO < 2.2)
+      3. ComfyUI models/ACES/config.ocio, only when there is no active
+         config at all (the ACES Config Manager's Download action puts the
+         config there when its install_path is that folder; by default it
+         installs to the package's ACES folder)
 
     Returns an OCIO.Config object, or None if nothing is found.
-    Centralises what was previously copy-pasted across three nodes.
+
+    Until 4.0 this had its own order: $OCIO, then OCIO's process-current
+    config, then the bundled CG config, whose colour space names differ from
+    the studio config every other consumer fell back to.
     """
     if not HAS_OCIO:
         return None
 
-    # 1. Explicit path
     if ocio_config_path and os.path.exists(ocio_config_path):
         return OCIO.Config.CreateFromFile(ocio_config_path)
 
-    # 2. Environment variable
-    env_path = os.environ.get("OCIO", "")
-    if env_path and (os.path.exists(env_path) or env_path.startswith("ocio://")):
-        return OCIO.Config.CreateFromFile(env_path)
-
-    # 3. Active process config, if a host application set one
     try:
-        cfg = OCIO.GetCurrentConfig()
-        if cfg is not None and not _is_unconfigured_default(cfg):
+        from radiance.color.ocio_setup import active_config
+        cfg = active_config()
+        if cfg is not None:
             return cfg
-    except Exception:  # nosec B110
-        pass
+    except Exception as _exc:  # noqa: BLE001
+        logger.debug("[Radiance] _resolve_config(): no active config (%s: %s)",
+                     type(_exc).__name__, _exc)
 
-    # 4. Local ACES folder shipped alongside the Radiance package
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    radiance_dir = os.path.dirname(current_dir)  # hdr/ -> radiance/
-    local_aces = os.path.join(radiance_dir, "ACES", "config.ocio")
-    if os.path.exists(local_aces):
-        return OCIO.Config.CreateFromFile(local_aces)
-
-    # 5. ComfyUI models folder
     try:
         import folder_paths
 
@@ -597,6 +589,10 @@ class ACESConfigManager:
         "https://github.com/AcademySoftwareFoundation/OpenColorIO-Config-ACES/"
         "releases/download/v4.0.0/cg-config-v4.0.0_aces-v2.0_ocio-v2.5.ocio"
     )
+    # Pinned (4.0): the download goes through core.model_fetch, which checks
+    # consent and this digest before anything lands at config.ocio.
+    ACES2_CONFIG_SHA256 = "9e3ec773a7fbc0bb6666e428dedd8ccec4f59b8b6d40506c825cc7a8c02ff2ff"
+    ACES2_CONFIG_SIZE = 32807
 
     @classmethod
     def INPUT_TYPES(cls) -> Dict[str, Any]:
@@ -643,11 +639,20 @@ class ACESConfigManager:
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _find_existing_config(self) -> Tuple[str, str]:
-        """Find existing ACES config on the system."""
+        """The session's active config first (color/ocio_setup), as every other
+        consumer uses; until 4.0 this read $OCIO raw and returned a broken one
+        the rest had fallen back from. Then the usual install locations."""
         try:
-            env_config = os.environ.get("OCIO", "")
-            if env_config and os.path.exists(env_config):
-                return env_config, f"Found config from OCIO environment: {env_config}"
+            try:
+                from radiance.color.ocio_setup import active_config_path
+                active = active_config_path()
+            except Exception as _exc:  # noqa: BLE001 - no OpenColorIO
+                logger.debug("[Radiance] _find_existing_config(): no active config: %s", _exc)
+                active = ""
+            if active and os.path.isfile(active):
+                source = "OCIO environment" if active == os.environ.get("OCIO", "").strip() \
+                    else "the session's active config"
+                return active, f"Found config from {source}: {active}"
 
             for path in self.COMMON_PATHS:
                 expanded = os.path.expanduser(path)
@@ -689,9 +694,7 @@ class ACESConfigManager:
             return f"Error reading config: {e}"
 
     def _download_aces_config(self, install_path: str) -> Tuple[str, str]:
-        """Download the official ACES 2.0 config."""
-        import urllib.request
-
+        """Download the official ACES 2.0 config, pinned and verified."""
         if not install_path:
             current_dir = os.path.dirname(os.path.realpath(__file__))
             radiance_dir = os.path.dirname(current_dir)
@@ -703,34 +706,28 @@ class ACESConfigManager:
         if os.path.exists(config_file):
             return config_file, f"ACES config already exists at: {config_file}"
 
+        # Until 4.0 this fetched straight into config.ocio with no download
+        # consent and no integrity check, so a dropped connection left a
+        # truncated config that later loads found "already exists".
+        from radiance.core.model_fetch import ModelFetchError, fetch
         try:
-            logger.info(f"Downloading ACES 2.0 config to {config_file}...")
-            # FIX: Previously called urllib.request.install_opener() which installs
-            # the custom opener PROCESS-WIDE, affecting every subsequent urllib call
-            # made by any other code in the ComfyUI session (other nodes, extensions,
-            # the server itself).  Use opener.open() locally instead so the custom
-            # User-Agent header is scoped to this single download request only.
-            opener = urllib.request.build_opener()
-            opener.addheaders = [("User-agent", "Mozilla/5.0")]
-            with opener.open(self.ACES2_CONFIG_URL) as response:
-                with open(config_file, "wb") as f:
-                    f.write(response.read())
-
-            # $OCIO is left alone: rewriting it would change the colour
-            # pipeline of every other node in the session. The path is the
-            # node's output; wire it into OCIO Context, or export OCIO before
-            # launching ComfyUI to make it the default.
-            return (
-                config_file,
-                f"Successfully downloaded ACES 2.0 config to: {config_file}\n"
-                f"Wire this path into OCIO Context, or set OCIO to it before "
-                f"launching ComfyUI to make it the session default.",
-            )
-        except Exception as e:
+            fetch(self.ACES2_CONFIG_URL, config_file, sha256=self.ACES2_CONFIG_SHA256,
+                  size=self.ACES2_CONFIG_SIZE, label="ACES 2.0 CG config")
+        except ModelFetchError as e:
             return (
                 "",
                 f"Download failed: {e}\n\nManual download URL:\n{self.ACES2_CONFIG_URL}",
             )
+        # $OCIO is left alone: rewriting it would change the colour
+        # pipeline of every other node in the session. The path is the
+        # node's output; wire it into OCIO Context, or export OCIO before
+        # launching ComfyUI to make it the default.
+        return (
+            config_file,
+            f"Successfully downloaded ACES 2.0 config to: {config_file}\n"
+            f"Wire this path into OCIO Context, or set OCIO to it before "
+            f"launching ComfyUI to make it the session default.",
+        )
 
     def _get_config_info(self, config_path: str) -> str:
         """Get detailed info about the config."""

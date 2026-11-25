@@ -251,7 +251,7 @@ class RadianceHDRAutoLogSelect:
 
     Usage:
         image → RadianceHDRAutoLogSelect → log_format, compression_ratio
-                                         → RadianceHDRTurboEncoder
+                                         → HDR Diagnostics (PSNR estimate)
     """
 
     @classmethod
@@ -399,7 +399,7 @@ class RadianceHDRDiagnostics:
             "optional": {
                 "compression_ratio": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Must match the value used in HDR Turbo Encoder.",
+                    "tooltip": "Soft-knee compression ratio to evaluate; the PSNR estimate round-trips the image through it. Use the value from Auto Log Select.",
                 }),
                 "model_preset_used": ("STRING", {
                     "default": "",

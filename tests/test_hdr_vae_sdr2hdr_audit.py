@@ -153,10 +153,10 @@ def test_recover_uses_the_same_convention(monkeypatch):
                         lambda srgb, **k: torch.full_like(srgb[..., :3], 0.05))
     img = torch.full((1, 2, 2, 3), 0.5)
     rec = uu.RadianceSDRToHDRRecover()
-    out = rec.recover(img, "None", 1000.0, 0.98, 0.001, 1.0, 1.0, "Linear")[0]
+    out = rec.recover(img, "None", 1000.0, 0.98, 0.001, 1.0, 1.0, "Linear", learned_backend="Pixel / Temporal")[0]
     # unclipped pixel: SDR display level (0.5 * 100 nits) in 203-nit units
     assert float(out[0, 0, 0, 0]) == pytest.approx(0.5 / 2.03, abs=1e-5)
-    pq = rec.recover(img, "None", 1000.0, 0.98, 0.001, 1.0, 1.0, "PQ (HDR10)")[0]
+    pq = rec.recover(img, "None", 1000.0, 0.98, 0.001, 1.0, 1.0, "PQ (HDR10)", learned_backend="Pixel / Temporal")[0]
     assert float(pq[0, 0, 0, 0]) == pytest.approx(
         float(ops.linear_to_pq_bt2408(torch.tensor([0.5 / 2.03]))[0]), abs=1e-5)
 

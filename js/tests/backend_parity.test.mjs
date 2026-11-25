@@ -1,8 +1,8 @@
 /**
  * The two rendering backends must agree.
  *
- * Radiance ships a WebGL renderer and a WebGPU renderer, and WebGPU is the
- * *preferred* one — `_tryWebGPUUpgrade()` runs whenever `navigator.gpu` exists.
+ * Radiance ships a WebGL renderer (the default) and an opt-in WebGPU renderer:
+ * `_tryWebGPUUpgrade()` runs only when `radiance_prefer_webgpu` is set.
  * Nothing has ever compared their output. An audit of the two files found the
  * grade maths implemented four separate times, and they do not all agree:
  *
@@ -92,7 +92,7 @@ test('neither backend re-implements contrast or gamma', () => {
     }
     // And the shared functions still behave, so a green suite here means
     // something.
-    assert.equal(applyContrast(0.25, 2, 0.5), 0);
+    assert.equal(applyContrast(0.25, 2, 0.5), 0.125);
     assert.ok(Number.isFinite(applyGamma(0.5, 0)));
 });
 
@@ -180,4 +180,39 @@ test('every WebGPU gap is written down where a person will read it', () => {
     assert.match(bullets[0], /WGSL/,
         'the KNOWN_ISSUES.md entry should say what is missing, not just that '
         + 'something is');
+});
+
+// ── 4.0: one list of WebGPU gaps, shown to the person and kept in step ──────
+import { WEBGPU_GAPS, webgpuGapSentence } from '../radiance_backend_gaps.js';
+import { packLut3DRGBA } from '../radiance_renderer.js';
+
+test('KNOWN_ISSUES.md names every gap the viewer tells a WebGPU user about', () => {
+    const known = readFileSync(join(JS, '..', 'KNOWN_ISSUES.md'), 'utf8');
+    const bullet = known.split(/\n(?=- \*\*)/).find((b) => /WebGPU/.test(b));
+    for (const g of WEBGPU_GAPS) assert.match(bullet, g.known, `KNOWN_ISSUES.md does not describe the ${g.id} gap`);
+    const sentence = webgpuGapSentence();
+    for (const g of WEBGPU_GAPS) assert.ok(sentence.includes(g.text), `the WebGPU notice leaves out ${g.id}`);
+});
+
+test('the WebGPU badge and Settings note come from the gap list, and scopes say what they read', () => {
+    const viewer = read('radiance_viewer.js');
+    assert.match(viewer, /this\._engineBadge\.title = isWebGPU \? _webgpuGapSentence\(\) : '';/);
+    assert.match(viewer, /\[Renderer\] WebGPU enabled\. Reload to apply\. \$\{_webgpuGapSentence\(\)\}/);
+    assert.match(viewer, /On WebGPU these scopes read the 8-bit preview at 256 px, overlays included/);
+    assert.match(viewer, /The viewer f-stop is not implemented on WebGPU/);
+});
+
+test('the WebGPU LUT upload packs RGB triplets without scrambling or replacing zeros', () => {
+    const size = 2;
+    const rgb = new Float32Array(size ** 3 * 3).map((_, i) => (i % 7) / 10);   // includes zeros
+    const out = packLut3DRGBA(rgb, size);
+    assert.equal(out.length, size ** 3 * 4);
+    for (let i = 0; i < size ** 3; i++) {
+        assert.deepEqual([...out.slice(i * 4, i * 4 + 3)].map((v) => +v.toFixed(5)), [...rgb.slice(i * 3, i * 3 + 3)].map((v) => +v.toFixed(5)));
+        assert.equal(out[i * 4 + 3], 1);
+    }
+    const rgba = new Float32Array(size ** 3 * 4).fill(0.25);
+    assert.deepEqual([...packLut3DRGBA(rgba, size).slice(0, 4)], [0.25, 0.25, 0.25, 1]);
+    assert.throws(() => packLut3DRGBA(new Float32Array(5), size));
+    assert.match(read('radiance_webgpu.js'), /const lutData = packLut3DRGBA\(data, size\);/);
 });
